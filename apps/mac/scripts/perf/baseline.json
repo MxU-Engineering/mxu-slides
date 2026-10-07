@@ -1,0 +1,33 @@
+{
+ "note": "Reference run and limits for scripts/perf/run.sh. metrics: perf guardrails package 4 on this M3 Pro (2026-09-25, Release, 302-deck sandbox library); a run over any threshold fails. drag/resize passes: package 4 removed the ~110 ms library-list pass after each save, so any perf.pass line (100 ms or more) after a later drag or a resize fails.",
+ "machine": "Apple M3 Pro",
+ "commit": "perf guardrails 4",
+ "metrics": {
+  "animateIdle.mainBusy": 0.9,
+  "playback.mainBusy": 18.2,
+  "playback.timelineBodiesPerSecond": 0.0,
+  "render.renderBusy": 4.7,
+  "drag.firstLongestPass": 0,
+  "drag.laterLongestPass": 0,
+  "drag.laterPassesOver100": 0,
+  "drag.laterMainBusy": 9.3,
+  "drag.laterDecodeSamples": 0,
+  "resize.longestPass": 0,
+  "resize.mainBusy": 7.0
+ },
+ "thresholds": {
+  "animateIdle.mainBusy": 5,
+  "playback.mainBusy": 25,
+  "playback.timelineBodiesPerSecond": 5,
+  "render.renderBusy": 12,
+  "drag.firstLongestPass": 600,
+  "drag.laterLongestPass": 99,
+  "drag.laterPassesOver100": 0,
+  "drag.laterMainBusy": 15,
+  "drag.laterDecodeSamples": 20,
+  "resize.longestPass": 99,
+  "resize.mainBusy": 15,
+  "alarms.spins": 0,
+  "alarms.storms": 0
+ }
+}

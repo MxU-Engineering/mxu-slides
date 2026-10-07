@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>MxU Slides</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>MxU Slides</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.video</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>MXUGitCommit</key>
+	<string>$(MXU_GIT_COMMIT)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MxU Slides shows cameras and capture devices on your screens as live video inputs.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MxU Slides uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MxU Slides can include a capture device's audio when it is used as a live input.</string>
+</dict>
+</plist>

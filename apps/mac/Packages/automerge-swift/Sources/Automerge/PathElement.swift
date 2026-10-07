@@ -1,0 +1,38 @@
+import struct AutomergeUniffi.PathElement
+import enum AutomergeUniffi.Prop
+
+typealias FfiPathElem = AutomergeUniffi.PathElement
+typealias FfiProp = AutomergeUniffi.Prop
+
+public struct PathElement: Equatable {
+    public let prop: Prop
+    public let obj: ObjId
+
+    public init(obj: ObjId, prop: Prop) {
+        self.prop = prop
+        self.obj = obj
+    }
+
+    static func fromFfi(_ ffiElem: FfiPathElem) -> Self {
+        Self(
+            obj: ObjId(bytes: ffiElem.obj),
+            prop: Prop.fromFfi(ffiElem.prop)
+        )
+    }
+}
+
+public enum Prop: Equatable, Sendable {
+
+    case Key(String)
+
+    case Index(UInt64)
+
+    static func fromFfi(_ ffi: FfiProp) -> Self {
+        switch ffi {
+        case let .index(value):
+            return .Index(value)
+        case let .key(value):
+            return .Key(value)
+        }
+    }
+}

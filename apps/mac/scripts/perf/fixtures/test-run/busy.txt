@@ -1,0 +1,18 @@
+Analysis of sampling MxU Slides (pid 123) every 1 millisecond
+Call graph:
+    200 Thread_1: Main Thread   DispatchQueue_<multiple>
+    + 200 start  (in dyld) + 6992  [0x181f044e4]
+    + ! 200 main  (in MxU Slides) + 64  [0x1034bbb70]
+    + !   150 __CFRunLoopServiceMachPort  (in CoreFoundation) + 196  [0x182370f00]
+    + !   50 AnimationTimelinePanel.body.getter  (in MxU Slides) + 40  [0x1]
+    200 Thread_3
+    + 200 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x18]
+    + ! 30 DocumentStore.loadValues(_:priority:)  (in PresenterCore) + 8  [0x20]
+    + ! : 30 ReplicaParts.decoding(_:)  (in PresenterCore) + 8  [0x21]
+    + ! 170 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x19]
+    200 Thread_4
+    + 200 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x18]
+    + ! 12 deckBundles(ids:priority:)  (in PresenterCore) + 8  [0x22]
+    + ! 188 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x19]
+
+Total number in stack (recursive counted multiple, when >=5):

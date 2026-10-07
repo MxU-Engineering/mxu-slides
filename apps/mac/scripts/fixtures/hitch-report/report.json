@@ -1,0 +1,9 @@
+{
+  "files" : ["breadcrumbs-2026-09-22.log"],
+  "message" : "fixture for scripts/test-hitch-report.sh",
+  "system_info" : {
+    "app_build" : "4210",
+    "app_commit" : "1a2b3c4d5e",
+    "app_version" : "0.1.0"
+  }
+}

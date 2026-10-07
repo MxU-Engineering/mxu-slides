@@ -1,0 +1,4599 @@
+{
+  "schemaVersion": 130,
+  "types": {
+    "SlideObjectKind": {
+      "kind": "enum",
+      "cases": [
+        "text",
+        "media",
+        "shape",
+        "liveInput"
+      ]
+    },
+    "BlendMode": {
+      "kind": "enum",
+      "cases": [
+        "normal",
+        "multiply",
+        "screen",
+        "add"
+      ]
+    },
+    "FillKind": {
+      "kind": "enum",
+      "cases": [
+        "none",
+        "solid",
+        "linearGradient",
+        "media"
+      ]
+    },
+    "ShapeKind": {
+      "kind": "enum",
+      "cases": [
+        "rectangle",
+        "roundedRectangle",
+        "ellipse",
+        "path"
+      ]
+    },
+    "ShapeTextPlacement": {
+      "kind": "enum",
+      "cases": [
+        "inside",
+        "edgeOutside",
+        "edgeInside"
+      ]
+    },
+    "TickerDirection": {
+      "kind": "enum",
+      "cases": [
+        "rightToLeft",
+        "leftToRight"
+      ]
+    },
+    "TextPathSide": {
+      "kind": "enum",
+      "cases": [
+        "outside",
+        "inside"
+      ]
+    },
+    "MediaScaleMode": {
+      "kind": "enum",
+      "cases": [
+        "fill",
+        "fit",
+        "stretch"
+      ]
+    },
+    "MediaSourceRect": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "x",
+          "type": "double"
+        },
+        {
+          "name": "y",
+          "type": "double"
+        },
+        {
+          "name": "width",
+          "type": "double"
+        },
+        {
+          "name": "height",
+          "type": "double"
+        }
+      ]
+    },
+    "TextHorizontalAlignment": {
+      "kind": "enum",
+      "cases": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    "TextVerticalAlignment": {
+      "kind": "enum",
+      "cases": [
+        "top",
+        "middle",
+        "bottom"
+      ]
+    },
+    "TextTransform": {
+      "kind": "enum",
+      "cases": [
+        "none",
+        "uppercase"
+      ]
+    },
+    "GradientStop": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "colorHex",
+          "type": "string"
+        },
+        {
+          "name": "position",
+          "type": "double"
+        }
+      ]
+    },
+    "ObjectFill": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fillKind",
+          "type": "FillKind"
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "gradientAngleDegrees",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "gradientStops",
+          "type": "list:GradientStop",
+          "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mediaScaleMode",
+          "type": "MediaScaleMode",
+          "optional": true
+        },
+        {
+          "name": "mediaSourceRect",
+          "type": "MediaSourceRect",
+          "optional": true
+        },
+        {
+          "name": "loops",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "captureSourceKind",
+          "type": "CaptureSourceKind",
+          "optional": true
+        },
+        {
+          "name": "captureSourceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "screenSourceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "StrokeDashKind": {
+      "kind": "enum",
+      "cases": [
+        "solid",
+        "dashed",
+        "dotted"
+      ]
+    },
+    "ObjectStroke": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "colorHex",
+          "type": "string"
+        },
+        {
+          "name": "width",
+          "type": "double"
+        },
+        {
+          "name": "dashKind",
+          "type": "StrokeDashKind",
+          "optional": true
+        }
+      ]
+    },
+    "ObjectShadow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "colorHex",
+          "type": "string"
+        },
+        {
+          "name": "blurRadius",
+          "type": "double"
+        },
+        {
+          "name": "offsetX",
+          "type": "double"
+        },
+        {
+          "name": "offsetY",
+          "type": "double"
+        }
+      ]
+    },
+    "LineStyleOverride": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "lineIndex",
+          "type": "int"
+        },
+        {
+          "name": "fontName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "tracking",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "firstLineIndent",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "leftIndent",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "rightIndent",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "TextLineFillWidthMode": {
+      "kind": "enum",
+      "cases": [
+        "fullWidth",
+        "lineWidth",
+        "maxLineWidth"
+      ]
+    },
+    "TextLineFill": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fill",
+          "type": "ObjectFill"
+        },
+        {
+          "name": "widthMode",
+          "type": "TextLineFillWidthMode",
+          "optional": true
+        },
+        {
+          "name": "verticalPadding",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "horizontalPadding",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "verticalOffset",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "horizontalOffset",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "cornerRadius",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "ChordNotation": {
+      "kind": "enum",
+      "cases": [
+        "chords",
+        "numbers",
+        "numerals",
+        "doReMi"
+      ]
+    },
+    "ChordPlacement": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "line",
+          "type": "int"
+        },
+        {
+          "name": "column",
+          "type": "int"
+        },
+        {
+          "name": "symbol",
+          "type": "string"
+        }
+      ]
+    },
+    "TextStyle": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fontName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "fill",
+          "type": "ObjectFill",
+          "optional": true
+        },
+        {
+          "name": "tracking",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "lineHeightMultiple",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "horizontalAlignment",
+          "type": "TextHorizontalAlignment",
+          "optional": true
+        },
+        {
+          "name": "verticalAlignment",
+          "type": "TextVerticalAlignment",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform",
+          "optional": true
+        },
+        {
+          "name": "tabularFigures",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "autoShrink",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "minFontSize",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "keepLinesWhole",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "pageOnClick",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "balancedWrap",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "outline",
+          "type": "ObjectStroke",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ObjectShadow",
+          "optional": true
+        },
+        {
+          "name": "lineStyles",
+          "type": "list:LineStyleOverride",
+          "optional": true
+        },
+        {
+          "name": "lineFill",
+          "type": "TextLineFill",
+          "optional": true
+        },
+        {
+          "name": "pathData",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "tickerSpeed",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "tickerDirection",
+          "type": "TickerDirection",
+          "optional": true
+        },
+        {
+          "name": "pathSide",
+          "type": "TextPathSide",
+          "optional": true
+        },
+        {
+          "name": "pathOffset",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "tickerRepeat",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "tickerRamp",
+          "type": "AnimationRamp",
+          "optional": true
+        },
+        {
+          "name": "scroll",
+          "type": "BlockScroll",
+          "optional": true
+        },
+        {
+          "name": "tickerStream",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "tickerGap",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "tickerSeparator",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "wordSpacing",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "insetTop",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "insetLeft",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "insetBottom",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "insetRight",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "firstLineIndent",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "leftIndent",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "rightIndent",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "paragraphSpacing",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "showChords",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "chordNotation",
+          "type": "ChordNotation",
+          "optional": true
+        },
+        {
+          "name": "chordColorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "underline",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "strikethrough",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "VisibilityMatch": {
+      "kind": "enum",
+      "cases": [
+        "all",
+        "any",
+        "none"
+      ]
+    },
+    "VisibilityConditionKind": {
+      "kind": "enum",
+      "cases": [
+        "timer",
+        "videoCountdown",
+        "audioPlayback",
+        "liveInput",
+        "capture",
+        "objectText"
+      ]
+    },
+    "VisibilityConditionState": {
+      "kind": "enum",
+      "cases": [
+        "hasTimeRemaining",
+        "hasExpired",
+        "isRunning",
+        "isNotRunning",
+        "isActive",
+        "isInactive",
+        "isConnected",
+        "isDisconnected",
+        "hasText",
+        "hasNoText"
+      ]
+    },
+    "VisibilityCondition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "conditionKind",
+          "type": "VisibilityConditionKind"
+        },
+        {
+          "name": "state",
+          "type": "VisibilityConditionState"
+        },
+        {
+          "name": "timerId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "objectId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "TextStyleRun": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "line",
+          "type": "int"
+        },
+        {
+          "name": "column",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        },
+        {
+          "name": "underline",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "strikethrough",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "fontName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "highlightColorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "tracking",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "KeepFromSlideOptions": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "bold",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "italic",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "underline",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "strikethrough",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "sizeEmphasis",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "wordLetterSpacing",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "highlight",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "textColor",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "AnimationKind": {
+      "kind": "enum",
+      "cases": [
+        "in",
+        "out",
+        "emphasis",
+        "morph"
+      ]
+    },
+    "AnimationTrigger": {
+      "kind": "enum",
+      "cases": [
+        "onClick",
+        "withPrevious",
+        "afterPrevious",
+        "onDismiss"
+      ]
+    },
+    "StepAnimation": {
+      "kind": "enum",
+      "cases": [
+        "fade",
+        "move",
+        "scale",
+        "wipe",
+        "blur",
+        "burn",
+        "glitch",
+        "draw",
+        "type",
+        "pulse",
+        "color"
+      ]
+    },
+    "BlockScrollAxis": {
+      "kind": "enum",
+      "cases": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ]
+    },
+    "BlockScroll": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "axis",
+          "type": "BlockScrollAxis",
+          "optional": true
+        },
+        {
+          "name": "speed",
+          "type": "double"
+        },
+        {
+          "name": "passes",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "ramp",
+          "type": "AnimationRamp",
+          "optional": true
+        },
+        {
+          "name": "restAtEnd",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "fadeTowardTop",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "AnimationRamp": {
+      "kind": "enum",
+      "cases": [
+        "none",
+        "in",
+        "out",
+        "both"
+      ]
+    },
+    "AnimationEdge": {
+      "kind": "enum",
+      "cases": [
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ]
+    },
+    "AnimationRange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "line",
+          "type": "int"
+        },
+        {
+          "name": "column",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ]
+    },
+    "VideoPushAlignment": {
+      "kind": "enum",
+      "cases": [
+        "center",
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ]
+    },
+    "VideoPushMode": {
+      "kind": "enum",
+      "cases": [
+        "fill",
+        "fit",
+        "blurBackground"
+      ]
+    },
+    "VideoPush": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "alignment",
+          "type": "VideoPushAlignment",
+          "optional": true
+        },
+        {
+          "name": "mode",
+          "type": "VideoPushMode",
+          "optional": true
+        },
+        {
+          "name": "zoom",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "margin",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "backdrop",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "blurRadius",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "AnimationStep": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "AnimationKind"
+        },
+        {
+          "name": "animation",
+          "type": "StepAnimation"
+        },
+        {
+          "name": "trigger",
+          "type": "AnimationTrigger"
+        },
+        {
+          "name": "delaySeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "durationSeconds",
+          "type": "double"
+        },
+        {
+          "name": "ramp",
+          "type": "AnimationRamp",
+          "optional": true
+        },
+        {
+          "name": "withFade",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "ranges",
+          "type": "list:AnimationRange",
+          "optional": true
+        },
+        {
+          "name": "edge",
+          "type": "AnimationEdge",
+          "optional": true
+        },
+        {
+          "name": "offsetX",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "offsetY",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "fromScale",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "softEdge",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "cursor",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "placeholderUnderline",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "drawStart",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "reverse",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "toObject",
+          "type": "SlideObject",
+          "optional": true
+        },
+        {
+          "name": "videoPush",
+          "type": "VideoPush",
+          "optional": true
+        },
+        {
+          "name": "fromObject",
+          "type": "SlideObject",
+          "optional": true
+        }
+      ]
+    },
+    "AnimationPreset": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "steps",
+          "type": "list:AnimationStep"
+        },
+        {
+          "name": "staggerSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "scroll",
+          "type": "BlockScroll",
+          "optional": true
+        },
+        {
+          "name": "tilt",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "AnimationPresetBoard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "presets",
+          "type": "list:AnimationPreset"
+        },
+        {
+          "name": "defaultIn",
+          "type": "AnimationStep",
+          "optional": true
+        },
+        {
+          "name": "defaultOut",
+          "type": "AnimationStep",
+          "optional": true
+        }
+      ]
+    },
+    "SlideObject": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "objectKind",
+          "type": "SlideObjectKind"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "x",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "y",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "rotationDegrees",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "hidden",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "visibilityMatch",
+          "type": "VisibilityMatch",
+          "optional": true
+        },
+        {
+          "name": "visibilityConditions",
+          "type": "list:VisibilityCondition",
+          "optional": true
+        },
+        {
+          "name": "flipHorizontal",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "flipVertical",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "blendMode",
+          "type": "BlendMode",
+          "optional": true
+        },
+        {
+          "name": "groupId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maskObjectId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maskMode",
+          "type": "MaskMode",
+          "optional": true
+        },
+        {
+          "name": "effects",
+          "type": "list:Effect",
+          "optional": true
+        },
+        {
+          "name": "effectsApplyBelow",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "textLink",
+          "type": "TextLink",
+          "optional": true
+        },
+        {
+          "name": "textStyle",
+          "type": "TextStyle",
+          "optional": true
+        },
+        {
+          "name": "chords",
+          "type": "list:ChordPlacement",
+          "optional": true
+        },
+        {
+          "name": "styleRuns",
+          "type": "list:TextStyleRun",
+          "optional": true
+        },
+        {
+          "name": "shapeKind",
+          "type": "ShapeKind",
+          "optional": true
+        },
+        {
+          "name": "cornerRadius",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "pathData",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shapeTextPlacement",
+          "type": "ShapeTextPlacement",
+          "optional": true
+        },
+        {
+          "name": "shapeTextCornerRadius",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "fill",
+          "type": "ObjectFill",
+          "optional": true
+        },
+        {
+          "name": "stroke",
+          "type": "ObjectStroke",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ObjectShadow",
+          "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mediaScaleMode",
+          "type": "MediaScaleMode",
+          "optional": true
+        },
+        {
+          "name": "mediaSourceRect",
+          "type": "MediaSourceRect",
+          "optional": true
+        },
+        {
+          "name": "loops",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "captureSourceKind",
+          "type": "CaptureSourceKind",
+          "optional": true
+        },
+        {
+          "name": "captureSourceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "screenSourceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "keepFromSlide",
+          "type": "KeepFromSlideOptions",
+          "optional": true
+        },
+        {
+          "name": "animationSteps",
+          "type": "list:AnimationStep",
+          "optional": true
+        },
+        {
+          "name": "builds",
+          "type": "list:AnimationStep",
+          "optional": true
+        },
+        {
+          "name": "tilt",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "swing",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "tiltPivot",
+          "type": "TiltPivot",
+          "optional": true
+        },
+        {
+          "name": "keystoneTop",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "keystoneBottom",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "skewX",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "skewY",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "keystoneMode",
+          "type": "KeystoneMode",
+          "optional": true
+        }
+      ]
+    },
+    "KeystoneMode": {
+      "kind": "enum",
+      "cases": [
+        "perspective",
+        "stretch"
+      ]
+    },
+    "TiltPivot": {
+      "kind": "enum",
+      "cases": [
+        "top",
+        "center",
+        "bottom"
+      ]
+    },
+    "CueMediaLayer": {
+      "kind": "enum",
+      "cases": [
+        "loopingVideos",
+        "stillGraphics",
+        "videos"
+      ]
+    },
+    "CueMediaMode": {
+      "kind": "enum",
+      "cases": [
+        "slideOnly",
+        "untilReplaced"
+      ]
+    },
+    "CueMedia": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "mediaId",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "CueMediaMode",
+          "optional": true
+        },
+        {
+          "name": "layer",
+          "type": "CueMediaLayer",
+          "optional": true
+        },
+        {
+          "name": "loops",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "classification",
+          "type": "MediaClassification",
+          "optional": true
+        }
+      ]
+    },
+    "Slide": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "objects",
+          "type": "list:SlideObject"
+        },
+        {
+          "name": "background",
+          "type": "CueMedia",
+          "optional": true
+        },
+        {
+          "name": "backgroundFill",
+          "type": "ObjectFill",
+          "optional": true
+        },
+        {
+          "name": "sectionId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "themeSlideName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "unthemed",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "overrideDesigns",
+          "type": "list:OverrideDesign",
+          "optional": true
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction",
+          "optional": true
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "autoAdvance",
+          "type": "AutoAdvance",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "Transition",
+          "optional": true
+        },
+        {
+          "name": "animationOrder",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "buildOrder",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "keepWords",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "history",
+          "type": "list:SlideVersion",
+          "optional": true
+        }
+      ]
+    },
+    "AutoAdvance": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "delaySeconds",
+          "type": "double"
+        },
+        {
+          "name": "loopToStart",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "afterPlayback",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "PresentationSection": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "background",
+          "type": "CueMedia",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "CCLIInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "songNumber",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "songTitle",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "author",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "publisher",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "copyrightYear",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "copyright",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "Arrangement": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "sectionIds",
+          "type": "list:string"
+        }
+      ]
+    },
+    "PresentationKind": {
+      "kind": "enum",
+      "cases": [
+        "song",
+        "deck"
+      ]
+    },
+    "Presentation": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "presentationKind",
+          "type": "PresentationKind"
+        },
+        {
+          "name": "themeId",
+          "type": "string"
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "folderId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slides",
+          "type": "list:Slide"
+        },
+        {
+          "name": "canvasWidth",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "canvasHeight",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "background",
+          "type": "CueMedia",
+          "optional": true
+        },
+        {
+          "name": "backgroundFill",
+          "type": "ObjectFill",
+          "optional": true
+        },
+        {
+          "name": "sections",
+          "type": "list:PresentationSection",
+          "optional": true
+        },
+        {
+          "name": "arrangements",
+          "type": "list:Arrangement",
+          "optional": true
+        },
+        {
+          "name": "defaultArrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "reflowSource",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "ccli",
+          "type": "CCLIInfo",
+          "optional": true
+        },
+        {
+          "name": "chordProSource",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "musicKey",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "autoAdvance",
+          "type": "AutoAdvance",
+          "optional": true
+        },
+        {
+          "name": "displayKey",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "MediaKind": {
+      "kind": "enum",
+      "cases": [
+        "image",
+        "video"
+      ]
+    },
+    "MediaClassification": {
+      "kind": "enum",
+      "cases": [
+        "foreground",
+        "background"
+      ]
+    },
+    "MediaFileStatus": {
+      "kind": "enum",
+      "cases": [
+        "ready",
+        "needsTranscode",
+        "transcoding",
+        "transcodeFailed"
+      ]
+    },
+    "MediaItem": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "mediaKind",
+          "type": "MediaKind"
+        },
+        {
+          "name": "classification",
+          "type": "MediaClassification"
+        },
+        {
+          "name": "fileHash",
+          "type": "string"
+        },
+        {
+          "name": "fileName",
+          "type": "string"
+        },
+        {
+          "name": "fileStatus",
+          "type": "MediaFileStatus"
+        },
+        {
+          "name": "statusDetail",
+          "type": "string"
+        },
+        {
+          "name": "tags",
+          "type": "list:string"
+        },
+        {
+          "name": "favorite",
+          "type": "bool"
+        },
+        {
+          "name": "collections",
+          "type": "list:string"
+        },
+        {
+          "name": "loops",
+          "type": "bool"
+        },
+        {
+          "name": "inPoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "outPoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "playRate",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "effects",
+          "type": "list:Effect",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "Transition",
+          "optional": true
+        },
+        {
+          "name": "durationSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "pixelWidth",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "pixelHeight",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "folderId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "recordedAt",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "recordedByPresetId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction",
+          "optional": true
+        },
+        {
+          "name": "autoAdvance",
+          "type": "AutoAdvance",
+          "optional": true
+        }
+      ]
+    },
+    "AudioItem": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "fileHash",
+          "type": "string"
+        },
+        {
+          "name": "fileName",
+          "type": "string"
+        },
+        {
+          "name": "tags",
+          "type": "list:string"
+        },
+        {
+          "name": "favorite",
+          "type": "bool"
+        },
+        {
+          "name": "inPoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "outPoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "durationSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "folderId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "PlaylistRefKind": {
+      "kind": "enum",
+      "cases": [
+        "media",
+        "audio"
+      ]
+    },
+    "PlaylistEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "refKind",
+          "type": "PlaylistRefKind"
+        },
+        {
+          "name": "refId",
+          "type": "string"
+        },
+        {
+          "name": "autoAdvanceDelaySeconds",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "PlaybackMode": {
+      "kind": "enum",
+      "cases": [
+        "playAll",
+        "loopPlaylist",
+        "loopSingle"
+      ],
+      "legacyAliases": {
+        "shuffle": "playAll"
+      }
+    },
+    "PlaylistKind": {
+      "kind": "enum",
+      "cases": [
+        "media",
+        "audio"
+      ]
+    },
+    "Playlist": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "playlistKind",
+          "type": "PlaylistKind",
+          "optional": true
+        },
+        {
+          "name": "entries",
+          "type": "list:PlaylistEntry"
+        },
+        {
+          "name": "playbackMode",
+          "type": "PlaybackMode"
+        },
+        {
+          "name": "shuffle",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "crossfadeSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "autoAdvance",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "autoAdvanceDelaySeconds",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "ServiceItemKind": {
+      "kind": "enum",
+      "cases": [
+        "presentation",
+        "media",
+        "audio",
+        "playlist",
+        "header",
+        "info"
+      ]
+    },
+    "ServiceItem": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "itemKind",
+          "type": "ServiceItemKind"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "refId",
+          "type": "string"
+        },
+        {
+          "name": "arrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "outputPresetId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuItemHexId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "duration",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "mxuKind",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "excludedTimeHexIds",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "hiddenInPresenter",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "mxuSongTitle",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuCcliNumber",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "mxuArrangementName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuSongAuthor",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuMultiTracksUrl",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuNotes",
+          "type": "list:MxUPlanItemNote",
+          "optional": true
+        },
+        {
+          "name": "mxuMessageNotesDocumentHexId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuMessageNotesSubmittedAt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuMessageNotesOnReady",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuMessageNotesDeckDocId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPcoItemId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPcoSongId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPcoArrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPcoKeyId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuSongKey",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuDescription",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuServicePosition",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuBpm",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "mxuTimeSignature",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuSongKeyApplied",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "ServiceLinkRule": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "normalizedName",
+          "type": "string"
+        },
+        {
+          "name": "serviceTypeName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "itemKind",
+          "type": "ServiceItemKind"
+        },
+        {
+          "name": "refId",
+          "type": "string"
+        }
+      ]
+    },
+    "ServiceLinkRules": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "rules",
+          "type": "list:ServiceLinkRule"
+        }
+      ]
+    },
+    "MxUPlanTime": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "hexId",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "startsAt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "isRehearsal",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "MxUPlanItemNote": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "positions",
+          "type": "list:string",
+          "optional": true
+        }
+      ]
+    },
+    "MxUPlanTimeOrder": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "timeHexId",
+          "type": "string"
+        },
+        {
+          "name": "itemHexIds",
+          "type": "list:string"
+        }
+      ]
+    },
+    "ServiceVersionStation": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    },
+    "ServiceItemChange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "itemId",
+          "type": "string"
+        },
+        {
+          "name": "after",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "hidden",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "itemKind",
+          "type": "ServiceItemKind",
+          "optional": true
+        },
+        {
+          "name": "refId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "arrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "outputPresetId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "ServiceVersion": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "stations",
+          "type": "list:ServiceVersionStation",
+          "optional": true
+        },
+        {
+          "name": "added",
+          "type": "list:ServiceItem",
+          "optional": true
+        },
+        {
+          "name": "changes",
+          "type": "list:ServiceItemChange",
+          "optional": true
+        }
+      ]
+    },
+    "Service": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "serviceDate",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "list:ServiceItem"
+        },
+        {
+          "name": "origin",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPlanHexId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuServiceTypeName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPlanVersion",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuPlanTimes",
+          "type": "list:MxUPlanTime",
+          "optional": true
+        },
+        {
+          "name": "mxuTimeOrders",
+          "type": "list:MxUPlanTimeOrder",
+          "optional": true
+        },
+        {
+          "name": "mxuSyncedOrder",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "mxuDerivedName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuSyncPaused",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "versions",
+          "type": "list:ServiceVersion",
+          "optional": true
+        }
+      ]
+    },
+    "Overlay": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "objects",
+          "type": "list:SlideObject"
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "folderId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "layer",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "animationOrder",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "buildOrder",
+          "type": "list:string",
+          "optional": true
+        }
+      ]
+    },
+    "OutputTargetKind": {
+      "kind": "enum",
+      "cases": [
+        "display",
+        "placeholderScreen"
+      ],
+      "legacyAliases": {
+        "virtualScreen": "placeholderScreen"
+      }
+    },
+    "OutputAssignment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "targetKind",
+          "type": "OutputTargetKind"
+        },
+        {
+          "name": "targetId",
+          "type": "string"
+        },
+        {
+          "name": "enabledLayers",
+          "type": "list:string"
+        },
+        {
+          "name": "slideThemeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideThemeFolder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideThemeSlideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maskIds",
+          "type": "list:string",
+          "optional": true
+        }
+      ]
+    },
+    "OutputPreset": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "assignments",
+          "type": "list:OutputAssignment"
+        }
+      ]
+    },
+    "MIDIDeviceItemDirection": {
+      "kind": "enum",
+      "cases": [
+        "input",
+        "output",
+        "both"
+      ]
+    },
+    "MIDIDevice": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "direction",
+          "type": "MIDIDeviceItemDirection",
+          "optional": true
+        },
+        {
+          "name": "channel",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "sourceNames",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "destinationNames",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "autoReconnect",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "AlertBehavior": {
+      "kind": "enum",
+      "cases": [
+        "persist",
+        "flash"
+      ]
+    },
+    "AlertTarget": {
+      "kind": "enum",
+      "cases": [
+        "confidence",
+        "audience",
+        "both"
+      ]
+    },
+    "AlertPreset": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        },
+        {
+          "name": "behavior",
+          "type": "AlertBehavior"
+        },
+        {
+          "name": "target",
+          "type": "AlertTarget",
+          "optional": true
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "layer",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "Theme": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "fontFamily",
+          "type": "string"
+        },
+        {
+          "name": "fontSize",
+          "type": "double"
+        },
+        {
+          "name": "textColorHex",
+          "type": "string"
+        },
+        {
+          "name": "backgroundColorHex",
+          "type": "string"
+        },
+        {
+          "name": "slides",
+          "type": "list:Slide",
+          "optional": true
+        }
+      ]
+    },
+    "StreamTransport": {
+      "kind": "enum",
+      "cases": [
+        "rtmp",
+        "rtmps",
+        "srt",
+        "hls"
+      ]
+    },
+    "StreamVideoCodec": {
+      "kind": "enum",
+      "cases": [
+        "h264",
+        "hevc"
+      ]
+    },
+    "StreamPresetDestination": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "transport",
+          "type": "StreamTransport"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "streamKey",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "linkedPlatform",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "linkedTargetId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "videoCodec",
+          "type": "StreamVideoCodec",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "hdr",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "privacy",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "canvasScreenId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "frameRate",
+          "type": "int",
+          "optional": true
+        }
+      ]
+    },
+    "StreamPresetKind": {
+      "kind": "enum",
+      "cases": [
+        "stream",
+        "recordOnly"
+      ]
+    },
+    "StreamDestination": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "transport",
+          "type": "StreamTransport"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "streamKey",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "linkedPlatform",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "linkedTargetId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "linkedTargetName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "videoCodec",
+          "type": "StreamVideoCodec",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "hdr",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "defaultPrivacy",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "canvasScreenId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "frameRate",
+          "type": "int",
+          "optional": true
+        }
+      ]
+    },
+    "StreamSourceKind": {
+      "kind": "enum",
+      "cases": [
+        "screen",
+        "mediaItem",
+        "latestRecording"
+      ]
+    },
+    "StreamRecordPreset": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "destinations",
+          "type": "list:StreamPresetDestination"
+        },
+        {
+          "name": "destinationIds",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "presetKind",
+          "type": "StreamPresetKind",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "frameRate",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "videoBitrateKbps",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "canvasScreenId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "recordWhileStreaming",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "recordCodec",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "streamDescription",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "recordFolder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioInputUid",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioIncludesProgram",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "audioInputId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioMixId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioDelayMs",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "sourceKind",
+          "type": "StreamSourceKind",
+          "optional": true
+        },
+        {
+          "name": "sourceMediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "sourceFolder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "sourceMaxAgeHours",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "recordLibraryFolder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "recordExportFolder",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "CaptureSourceKind": {
+      "kind": "enum",
+      "cases": [
+        "camera",
+        "ndi"
+      ]
+    },
+    "SlideActionKind": {
+      "kind": "enum",
+      "cases": [
+        "clearLayer",
+        "clearAll",
+        "clearAudio",
+        "clearSignage",
+        "switchOutputPreset",
+        "fireMedia",
+        "fireAlert",
+        "dismissAlert",
+        "timerStart",
+        "timerPause",
+        "timerReset",
+        "timerConfigure",
+        "midiOut",
+        "fireCombo",
+        "captureStart",
+        "captureStop",
+        "firePresentation",
+        "setConfidenceLayout",
+        "fireOverlay",
+        "dismissOverlay",
+        "fireLiveInput",
+        "setSignage",
+        "setScreenSource",
+        "enableAudioInput",
+        "disableAudioInput",
+        "fireAudio",
+        "fireAudioPlaylist"
+      ]
+    },
+    "MIDIMessageKind": {
+      "kind": "enum",
+      "cases": [
+        "noteOn",
+        "controlChange"
+      ]
+    },
+    "TimerMode": {
+      "kind": "enum",
+      "cases": [
+        "countdown",
+        "countdownToTime",
+        "countUp"
+      ]
+    },
+    "SlideAction": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "SlideActionKind"
+        },
+        {
+          "name": "layer",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "presetId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alertId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timerId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timerMode",
+          "type": "TimerMode",
+          "optional": true
+        },
+        {
+          "name": "timerDurationSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "timerHour",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "timerMinute",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "comboId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "midiKind",
+          "type": "MIDIMessageKind",
+          "optional": true
+        },
+        {
+          "name": "midiChannel",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "midiNumber",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "midiValue",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "midiDeviceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "capturePresetId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "capturePrivacy",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "presentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideIndex",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "confidenceLayoutId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "confidenceScreenId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "overlayId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "inputSourceKind",
+          "type": "CaptureSourceKind",
+          "optional": true
+        },
+        {
+          "name": "inputSourceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioInputId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "playlistId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioItemId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioEntryId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audioRepeat",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "signageId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "screenId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "delaySeconds",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "ActionCombo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction"
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "iconName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "runOnStartup",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "ScheduleConditionKind": {
+      "kind": "enum",
+      "cases": [
+        "weekly",
+        "oneTime",
+        "timerReaches"
+      ]
+    },
+    "ScheduleCondition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "ScheduleConditionKind"
+        },
+        {
+          "name": "days",
+          "type": "list:int",
+          "optional": true
+        },
+        {
+          "name": "timeOfDay",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "date",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timerId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timerSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "excludedDates",
+          "type": "list:string",
+          "optional": true
+        }
+      ]
+    },
+    "ScheduleConditionLogic": {
+      "kind": "enum",
+      "cases": [
+        "any",
+        "all"
+      ]
+    },
+    "ScheduleTrigger": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "conditions",
+          "type": "list:ScheduleCondition"
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction"
+        },
+        {
+          "name": "conditionLogic",
+          "type": "ScheduleConditionLogic",
+          "optional": true
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "notes",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "archived",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "disabledUntil",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "enabledUntil",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "ScheduleFolder": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "collapsed",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "triggerIds",
+          "type": "list:string"
+        }
+      ]
+    },
+    "SchedulerBoard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "nodes",
+          "type": "list:string"
+        },
+        {
+          "name": "folders",
+          "type": "list:ScheduleFolder"
+        }
+      ]
+    },
+    "ControlFolder": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "collapsed",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "itemIds",
+          "type": "list:string"
+        }
+      ]
+    },
+    "ControlBoard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "nodes",
+          "type": "list:string"
+        },
+        {
+          "name": "folders",
+          "type": "list:ControlFolder"
+        }
+      ]
+    },
+    "GroupDefinition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "colorHex",
+          "type": "string"
+        },
+        {
+          "name": "hotKey",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "GroupPalette": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "groups",
+          "type": "list:GroupDefinition"
+        }
+      ]
+    },
+    "ImportLedgerEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "docId",
+          "type": "string"
+        },
+        {
+          "name": "hash",
+          "type": "string"
+        }
+      ]
+    },
+    "ImportLedger": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "entries",
+          "type": "list:ImportLedgerEntry"
+        }
+      ]
+    },
+    "TransitionKind": {
+      "kind": "enum",
+      "cases": [
+        "cut",
+        "dissolve",
+        "fadeBlack",
+        "fadeWhite",
+        "fadeColor",
+        "blurDissolve",
+        "filmBurn"
+      ]
+    },
+    "Transition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "transitionKind",
+          "type": "TransitionKind"
+        },
+        {
+          "name": "durationSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "EffectPreset": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "effects",
+          "type": "list:Effect"
+        }
+      ]
+    },
+    "EffectPresetBoard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "presets",
+          "type": "list:EffectPreset"
+        }
+      ]
+    },
+    "MaskMode": {
+      "kind": "enum",
+      "cases": [
+        "in",
+        "out"
+      ]
+    },
+    "EffectKind": {
+      "kind": "enum",
+      "cases": [
+        "blur",
+        "colorAdjust",
+        "hueRotate",
+        "invert",
+        "posterize",
+        "pixelate",
+        "vignette",
+        "warp",
+        "echo",
+        "scatter",
+        "stainedGlass",
+        "grain",
+        "ghostTrails"
+      ]
+    },
+    "Effect": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "effectKind",
+          "type": "EffectKind"
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "radius",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "amount",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "scale",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "speed",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "fade",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "smooth",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "brightness",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "contrast",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "saturation",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "hue",
+          "type": "double",
+          "optional": true
+        }
+      ]
+    },
+    "TextSourceKind": {
+      "kind": "enum",
+      "cases": [
+        "currentSlide",
+        "nextSlide",
+        "lastSlide",
+        "clock",
+        "timer",
+        "videoCountdown",
+        "slidePosition",
+        "currentServiceItem",
+        "nextServiceItem",
+        "stageMessage",
+        "currentGroup",
+        "currentPresentation",
+        "nextServiceTitle"
+      ]
+    },
+    "TimerTextFormat": {
+      "kind": "enum",
+      "cases": [
+        "digits",
+        "abbreviated",
+        "words"
+      ]
+    },
+    "TextLink": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "source",
+          "type": "TextSourceKind"
+        },
+        {
+          "name": "timerId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "clockFormat",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "usesWarningColor",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "maxLines",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "includeSteps",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "includeBuilds",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "sourceObjectName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "showsVideoName",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "videoLayer",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timerFormat",
+          "type": "TimerTextFormat",
+          "optional": true
+        },
+        {
+          "name": "timerPattern",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "MultiViewSplitAxis": {
+      "kind": "enum",
+      "cases": [
+        "columns",
+        "rows"
+      ]
+    },
+    "MultiViewSourceKind": {
+      "kind": "enum",
+      "cases": [
+        "empty",
+        "screen",
+        "liveInput",
+        "media",
+        "clock",
+        "timer",
+        "videoCountdown",
+        "text"
+      ]
+    },
+    "MultiViewNode": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "axis",
+          "type": "MultiViewSplitAxis",
+          "optional": true
+        },
+        {
+          "name": "children",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "fractions",
+          "type": "list:double",
+          "optional": true
+        },
+        {
+          "name": "sourceKind",
+          "type": "MultiViewSourceKind",
+          "optional": true
+        },
+        {
+          "name": "screenSourceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "screenSourceName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timerId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "scaleMode",
+          "type": "MediaScaleMode",
+          "optional": true
+        },
+        {
+          "name": "matchSourceShape",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "MultiViewTree": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "rootId",
+          "type": "string"
+        },
+        {
+          "name": "nodes",
+          "type": "list:MultiViewNode"
+        }
+      ]
+    },
+    "ConfidenceLayout": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "objects",
+          "type": "list:SlideObject"
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "folderId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "canvasWidth",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "canvasHeight",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "animationOrder",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "buildOrder",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "multiView",
+          "type": "MultiViewTree",
+          "optional": true
+        }
+      ]
+    },
+    "SignageChannel": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "playlistId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "SignageBoard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "signages",
+          "type": "list:SignageChannel"
+        }
+      ]
+    },
+    "NoteRun": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "bold",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "italic",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "underline",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "strike",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "code",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "highlight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "size",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "href",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideGroup",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideType",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "commentId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "NoteBlockType": {
+      "kind": "enum",
+      "cases": [
+        "heading",
+        "paragraph",
+        "list",
+        "taskList",
+        "quote",
+        "code",
+        "rule",
+        "image",
+        "attachment",
+        "slideRef",
+        "unknown"
+      ]
+    },
+    "NoteListItem": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "runs",
+          "type": "list:NoteRun"
+        },
+        {
+          "name": "checked",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "blocks",
+          "type": "list:NoteBlock",
+          "optional": true
+        }
+      ]
+    },
+    "NoteSlideRef": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "presentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideIndex",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "ppIntegrationHexId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "ppPresentationUuid",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "ppPlaylistUuid",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "ppItemIndex",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "ppSlideIndex",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "presentationName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideText",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideLabel",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideLabelColor",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideNotes",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "thumbnailUrl",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "showThumbnail",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "showText",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "showNotes",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "showLabels",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "showName",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "showNumber",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "placedByHand",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "NoteBlock": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "type",
+          "type": "NoteBlockType"
+        },
+        {
+          "name": "level",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "runs",
+          "type": "list:NoteRun",
+          "optional": true
+        },
+        {
+          "name": "ordered",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "items",
+          "type": "list:NoteListItem",
+          "optional": true
+        },
+        {
+          "name": "blocks",
+          "type": "list:NoteBlock",
+          "optional": true
+        },
+        {
+          "name": "language",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "alt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "attachmentKind",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "hexId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "filename",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slide",
+          "type": "NoteSlideRef",
+          "optional": true
+        }
+      ]
+    },
+    "NoteBody": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "blocks",
+          "type": "list:NoteBlock"
+        },
+        {
+          "name": "plainText",
+          "type": "string"
+        }
+      ]
+    },
+    "OverrideDesign": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "themeId",
+          "type": "string"
+        },
+        {
+          "name": "themeSlideName",
+          "type": "string"
+        }
+      ]
+    },
+    "SlideAnchor": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "presentationId",
+          "type": "string"
+        },
+        {
+          "name": "slideId",
+          "type": "string"
+        },
+        {
+          "name": "slideIndex",
+          "type": "int"
+        },
+        {
+          "name": "blockIndex",
+          "type": "int"
+        },
+        {
+          "name": "offset",
+          "type": "int",
+          "optional": true
+        }
+      ]
+    },
+    "NoteMadeBox": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ]
+    },
+    "NoteMadeSlide": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "slideId",
+          "type": "string"
+        },
+        {
+          "name": "boxes",
+          "type": "list:NoteMadeBox"
+        }
+      ]
+    },
+    "NoteMadePassage": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "groupId",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "themeSlideName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slides",
+          "type": "list:NoteMadeSlide"
+        }
+      ]
+    },
+    "NotePendingUpdate": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "string"
+        },
+        {
+          "name": "groupId",
+          "type": "string"
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "afterSlideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "before",
+          "type": "list:NoteMadeBox",
+          "optional": true
+        },
+        {
+          "name": "after",
+          "type": "list:NoteMadeBox",
+          "optional": true
+        },
+        {
+          "name": "proposed",
+          "type": "Slide",
+          "optional": true
+        }
+      ]
+    },
+    "SlideVersion": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "at",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "name": "slide",
+          "type": "Slide"
+        }
+      ]
+    },
+    "NoteDocument": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "folder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "origin",
+          "type": "string"
+        },
+        {
+          "name": "mxuDocumentHexId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuVersion",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuUpdatedAt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuIconEmoji",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "body",
+          "type": "NoteBody",
+          "optional": true
+        },
+        {
+          "name": "anchors",
+          "type": "list:SlideAnchor",
+          "optional": true
+        },
+        {
+          "name": "removedFromMxU",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "presentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slidesMadeFromSubmittedAt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "madePassages",
+          "type": "list:NoteMadePassage",
+          "optional": true
+        },
+        {
+          "name": "markedByStructure",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "pendingUpdates",
+          "type": "list:NotePendingUpdate",
+          "optional": true
+        }
+      ]
+    },
+    "StationSettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "localOnlyThresholdBytes",
+          "type": "int",
+          "optional": true
+        }
+      ]
+    },
+    "SlideBuildingSettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "designMap",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "messageNotesThemeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "lyricsImportThemeId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "FontFile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "family",
+          "type": "string"
+        },
+        {
+          "name": "faces",
+          "type": "list:string"
+        },
+        {
+          "name": "ext",
+          "type": "string"
+        },
+        {
+          "name": "byteSize",
+          "type": "int",
+          "optional": true
+        }
+      ]
+    },
+    "WorkspaceSettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "screens",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timers",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transitions",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "controlMappings",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "audio",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "confidence",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "signage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "inputs",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "behavior",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    }
+  }
+}

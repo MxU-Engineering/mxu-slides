@@ -1,0 +1,13 @@
+2026-09-24T14:00:01Z launch — v0.1.0 (4212) commit 176862e910 on macOS Version 26.5.1 (Build 25F80), image MxU Slides at 0x104500000 uuid 5B1E0F4A-0000-4000-8000-00000000ABCE
+2026-09-24T14:01:00Z perf.pulse — cpu 14% | passes >16:3 >50:0 >100:0 >250:0 | bodies peak/s LibrarySidebar 4
+2026-09-24T14:02:00Z perf.pulse — cpu 95% | passes >16:80 >50:2 >100:0 >250:0 | bodies peak/s ShellView 2
+2026-09-24T14:02:10Z perf.spin — main busy 88% for 3.0 s, no input for 6.4 s, load 0x104500000 | libswiftCore.dylib+0x1 ← $s7SwiftUI14ViewThatFitsV+4 ← $s9MxUSlides14SlideEditorViewV13editorToolbaryQrAA0bC5ModelCF+88 ← AppKit+0x2
+2026-09-24T14:03:00Z perf.pulse — cpu 106% | passes >16:900 >50:0 >100:0 >250:0 | bodies peak/s none
+2026-09-24T14:04:00Z perf.pulse — cpu 104%
+2026-09-24T14:04:20Z perf.spin.end — lasted 133.0 s, peak 97% busy
+2026-09-24T14:05:00Z perf.pulse — cpu 20% | bodies peak/s AnimationTimelinePanel 31
+2026-09-24T14:05:05Z perf.bodyStorm — view=AnimationTimelinePanel 31/s for 2 s
+2026-09-24T14:05:40Z perf.bodyStorm — view=AnimationTimelinePanel 30/s for 2 s
+2026-09-24T14:05:50Z perf.bodyStorm — view=SlideObjectInspector 61/s for 2 s (+1 dropped)
+2026-09-24T14:06:00Z perf.pulse — cpu 92%
+2026-09-24T14:07:00Z perf.pulse — cpu 12%

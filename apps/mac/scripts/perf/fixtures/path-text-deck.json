@@ -1,0 +1,180 @@
+{
+ "id": "perf.pathtext",
+ "name": "Path Text Perf",
+ "presentationKind": "deck",
+ "themeId": "pack.editorialSerif.theme",
+ "slides": [
+  {
+   "id": "perf.slide1",
+   "name": "Path Text 1",
+   "backgroundFill": {
+    "fillKind": "solid",
+    "colorHex": "#0B1220FF"
+   },
+   "objects": [
+    {
+     "id": "perf.slide1.shape",
+     "name": "Card",
+     "objectKind": "shape",
+     "shapeKind": "roundedRectangle",
+     "cornerRadius": 60,
+     "x": 560,
+     "y": 240,
+     "width": 800,
+     "height": 600,
+     "fill": {
+      "fillKind": "solid",
+      "colorHex": "#1E3A8AFF"
+     },
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "shapeTextPlacement": "edgeOutside",
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 34,
+      "colorHex": "#F8FAFCFF",
+      "tickerSpeed": 90
+     }
+    },
+    {
+     "id": "perf.slide1.ring1",
+     "name": "Ring 1",
+     "objectKind": "text",
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "x": 470,
+     "y": 150,
+     "width": 980,
+     "height": 780,
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 30,
+      "colorHex": "#FBBF24FF",
+      "tickerSpeed": 70,
+      "pathData": "M 0.15 0 L 0.85 0 Q 1 0 1 0.15 L 1 0.85 Q 1 1 0.85 1 L 0.15 1 Q 0 1 0 0.85 L 0 0.15 Q 0 0 0.15 0 Z"
+     }
+    },
+    {
+     "id": "perf.slide1.ring2",
+     "name": "Ring 2",
+     "objectKind": "text",
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "x": 380,
+     "y": 60,
+     "width": 1160,
+     "height": 960,
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 28,
+      "colorHex": "#A7F3D0FF",
+      "tickerSpeed": -60,
+      "pathData": "M 0.5 0 C 0.77614 0 1 0.22386 1 0.5 C 1 0.77614 0.77614 1 0.5 1 C 0.22386 1 0 0.77614 0 0.5 C 0 0.22386 0.22386 0 0.5 0 Z"
+     }
+    },
+    {
+     "id": "perf.slide1.inner",
+     "name": "Inner Ticker",
+     "objectKind": "text",
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "x": 600,
+     "y": 280,
+     "width": 720,
+     "height": 520,
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 44,
+      "colorHex": "#FFFFFFFF",
+      "tickerSpeed": 120,
+      "pathData": "M 0.15 0 L 0.85 0 Q 1 0 1 0.15 L 1 0.85 Q 1 1 0.85 1 L 0.15 1 Q 0 1 0 0.85 L 0 0.15 Q 0 0 0.15 0 Z"
+     },
+     "maskObjectId": "perf.slide1.shape",
+     "maskMode": "in"
+    }
+   ]
+  },
+  {
+   "id": "perf.slide2",
+   "name": "Path Text 2",
+   "backgroundFill": {
+    "fillKind": "solid",
+    "colorHex": "#0B1220FF"
+   },
+   "objects": [
+    {
+     "id": "perf.slide2.shape",
+     "name": "Card",
+     "objectKind": "shape",
+     "shapeKind": "roundedRectangle",
+     "cornerRadius": 60,
+     "x": 560,
+     "y": 240,
+     "width": 800,
+     "height": 600,
+     "fill": {
+      "fillKind": "solid",
+      "colorHex": "#1E3A8AFF"
+     },
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "shapeTextPlacement": "edgeOutside",
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 34,
+      "colorHex": "#F8FAFCFF",
+      "tickerSpeed": 90
+     }
+    },
+    {
+     "id": "perf.slide2.ring1",
+     "name": "Ring 1",
+     "objectKind": "text",
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "x": 470,
+     "y": 150,
+     "width": 980,
+     "height": 780,
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 30,
+      "colorHex": "#FBBF24FF",
+      "tickerSpeed": 70,
+      "pathData": "M 0.15 0 L 0.85 0 Q 1 0 1 0.15 L 1 0.85 Q 1 1 0.85 1 L 0.15 1 Q 0 1 0 0.85 L 0 0.15 Q 0 0 0.15 0 Z"
+     }
+    },
+    {
+     "id": "perf.slide2.ring2",
+     "name": "Ring 2",
+     "objectKind": "text",
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "x": 380,
+     "y": 60,
+     "width": 1160,
+     "height": 960,
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 28,
+      "colorHex": "#A7F3D0FF",
+      "tickerSpeed": -60,
+      "pathData": "M 0.5 0 C 0.77614 0 1 0.22386 1 0.5 C 1 0.77614 0.77614 1 0.5 1 C 0.22386 1 0 0.77614 0 0.5 C 0 0.22386 0.22386 0 0.5 0 Z"
+     }
+    },
+    {
+     "id": "perf.slide2.inner",
+     "name": "Inner Ticker",
+     "objectKind": "text",
+     "text": "TAKE YOU AT YOUR WORD • WALK BY FAITH • TAKE YOU AT YOUR WORD • WALK BY FAITH • ",
+     "x": 600,
+     "y": 280,
+     "width": 720,
+     "height": 520,
+     "textStyle": {
+      "fontName": "Georgia-Bold",
+      "fontSize": 44,
+      "colorHex": "#FFFFFFFF",
+      "tickerSpeed": 120,
+      "pathData": "M 0.15 0 L 0.85 0 Q 1 0 1 0.15 L 1 0.85 Q 1 1 0.85 1 L 0.15 1 Q 0 1 0 0.85 L 0 0.15 Q 0 0 0.15 0 Z"
+     },
+     "maskObjectId": "perf.slide2.shape",
+     "maskMode": "in"
+    }
+   ]
+  }
+ ]
+}

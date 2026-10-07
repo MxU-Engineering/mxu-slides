@@ -1,0 +1,8 @@
+2026-09-24T20:01:01Z perf.pass — default 524 ms, opens none, sql 0
+2026-09-24T20:01:02Z perf.pass — tracking 150 ms, opens none, sql 0
+2026-09-24T20:01:05Z perf.mark — bodies SlideObjectInspector 4
+2026-09-24T20:02:02Z perf.pass — default 116 ms, opens none, sql 0
+2026-09-24T20:03:03Z perf.pass — default 122 ms, opens none, sql 0
+2026-09-24T20:03:03Z perf.bodyStorm — view=SlideObjectInspector 61/s for 2 s
+2026-09-24T20:04:01Z perf.pass — default 157 ms, opens none, sql 0
+2026-09-24T20:09:00Z perf.pass — default 900 ms, opens none, sql 0

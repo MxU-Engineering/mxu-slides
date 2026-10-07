@@ -1,0 +1,8 @@
+{"step": "run", "label": "fixture", "commit": "abc1234567", "machine": "Test Mac", "os": "26.5", "date": "2026-09-24T20:00:00Z"}
+{"step": "animateIdle", "sample": "idle.txt"}
+{"step": "playback", "sample": "busy.txt", "from": "2026-09-24T20:00:10Z", "to": "2026-09-24T20:00:13Z", "diagnostics": "diagnostics-animate", "seconds": 3}
+{"step": "render", "sample": "idle.txt"}
+{"step": "drag", "n": 1, "sample": "busy.txt", "from": "2026-09-24T20:01:00Z", "to": "2026-09-24T20:01:04Z", "diagnostics": "diagnostics-edit", "seconds": 4}
+{"step": "drag", "n": 2, "sample": "idle.txt", "from": "2026-09-24T20:02:00Z", "to": "2026-09-24T20:02:04Z", "diagnostics": "diagnostics-edit", "seconds": 4}
+{"step": "drag", "n": 3, "sample": "busy.txt", "from": "2026-09-24T20:03:00Z", "to": "2026-09-24T20:03:04Z", "diagnostics": "diagnostics-edit", "seconds": 4}
+{"step": "resize", "n": 1, "sample": "idle.txt", "from": "2026-09-24T20:04:00Z", "to": "2026-09-24T20:04:04Z", "diagnostics": "diagnostics-edit", "seconds": 4}

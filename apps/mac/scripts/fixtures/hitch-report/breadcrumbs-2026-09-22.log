@@ -1,0 +1,31 @@
+2026-09-22T10:00:01Z launch — v0.1.0 (4210) commit 1a2b3c4d5e on macOS Version 26.5.1 (Build 25F80), image MxU Slides at 0x104500000 uuid 5B1E0F4A-0000-4000-8000-00000000ABCD
+2026-09-22T10:00:30Z perf.pulse — cpu 12%
+2026-09-22T10:01:05Z present.fire — presentation/AAA
+2026-09-22T10:01:06Z present.focus — deck BBB
+2026-09-22T10:01:07Z perf.hitch — main thread blocked 300ms
+2026-09-22T10:01:07Z perf.hitch.stack — kCFRunLoopDefaultMode 310 ms | libsqlite3.dylib+0x1f2a4 ← $s13PresenterCore12LibraryIndexC7entries2ofSayAA0B5EntryVGAA12DocumentKindO_tKF+88 ← $s9MxUSlides8AppModelC7folders2inSaySSGAA14LibrarySectionO_tF+40 ← SwiftUI+0x55aa0
+2026-09-22T10:01:08Z perf.pass — 180 ms kCFRunLoopDefaultMode | opens media×12 theme×1 (40 ms) | sql 36
+2026-09-22T10:01:08Z library.storm — 12 opens (media×10 theme×2) totaling 30ms in one main-thread pass via $s9MxUSlides8AppModelC7folders2in
+2026-09-22T10:01:30Z perf.pulse — cpu 30% | hitches 1 worst 300ms
+2026-09-22T10:02:05Z present.focus — slide 3
+2026-09-22T10:02:10Z menu.track — (context) 7 items, 1.10 s, menu windows peak 1 (no submenu), hitches 0, opened after 80 ms, submenu never, hovered submenu item: yes after 410 ms, longest tick gap 350 ms, late ticks 2
+2026-09-22T10:02:20Z menu.track — (context) 8 items, 2.00 s, menu windows peak 2 (submenu opened), hitches 1, opened after 120 ms, submenu after 640 ms, hovered submenu item: yes after 500 ms, longest tick gap 110 ms, late ticks 0
+2026-09-22T10:02:30Z perf.hitch — main thread blocked 1200ms
+2026-09-22T10:02:30Z perf.hitch.stack — NSEventTrackingRunLoopMode 1150 ms | CoreFoundation+0x7f0 ← $s13PresenterCore12LibraryIndexC7entries2ofSayAA0B5EntryVGAA12DocumentKindO_tKF+120 ← AppKit+0x1000
+2026-09-22T10:02:31Z perf.pass — 420 ms NSEventTrackingRunLoopMode | opens presentations×1 (380 ms) | sql 2
+2026-09-22T10:02:32Z perf.pulse — cpu 25%
+2026-09-22T10:03:10Z present.next — slide 4
+2026-09-22T10:03:12Z perf.hitch — main thread blocked 450ms
+2026-09-22T10:03:40Z perf.pulse — cpu 11%
+2026-09-22T10:04:02Z media.import — media/CCC 2 MB
+2026-09-22T10:04:05Z perf.hitch — main thread blocked 4000ms
+2026-09-22T10:04:05Z perf.hitch.stack — default 4000 ms | CoreFoundation+0x1234 ← MxU Slides+0x9a3c0 ← AppKit+0x44
+2026-09-22T10:04:06Z library.slowOpen — presentations/9F2C: 14ms on main
+2026-09-22T10:05:01Z menu.track — File 4 items, 0.50 s, menu windows peak 1 (no submenu), hitches 0, opened after ? ms (no click), submenu never, hovered submenu item: no, longest tick gap 100 ms, late ticks 0
+2026-09-22T10:05:20Z menu.track — (context) 7 items, 1.30 s, menu windows peak 1 (no submenu), hitches 0
+2026-09-22T10:06:00Z perf.pulse — cpu 9%
+2026-09-22T10:07:00Z perf.pulse — cpu 9%
+2026-09-22T10:08:00Z perf.pulse — cpu 9%
+2026-09-22T10:09:00Z perf.pulse — cpu 9%
+2026-09-22T10:09:00Z perf.hitch — main thread blocked 7260000ms
+this line is not a breadcrumb and is skipped
