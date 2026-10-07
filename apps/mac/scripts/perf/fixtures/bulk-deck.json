@@ -1,0 +1,720 @@
+{
+ "id": "welcome.presentation",
+ "name": "Welcome to MxU Slides",
+ "presentationKind": "deck",
+ "slides": [
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.welcome",
+   "name": "Welcome to MxU Slides",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.welcome.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Getting Started",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.welcome.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.welcome.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Welcome to MxU Slides",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.welcome.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "This deck is a two-minute tour. Click this slide to take it live, then press the Right Arrow or Space for the next one.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.live",
+   "name": "Click a slide to go live",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.live.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Step 1",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.live.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.live.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Click a slide to go live",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.live.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "Whatever you click shows on your audience screen. Left and Right Arrow move through the deck, and the Clear controls take layers back off the screen.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.screens",
+   "name": "Pick your screens",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.screens.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Step 2",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.screens.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.screens.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Pick your screens",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.screens.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "Window › Screen Configuration assigns each display a role: Audience for the room, Confidence for the stage. With one display, the Output Preview shows what the room would see.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.services",
+   "name": "Build a service",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.services.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Step 3",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.services.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.services.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Build a service",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.services.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "A service is your run order, like a ProPresenter playlist. This deck lives in the Getting Started service. File › New Service starts your own; drag presentations and media in from the library.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.edit",
+   "name": "Edit and restyle",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.edit.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Step 4",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.edit.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.edit.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Edit and restyle",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.edit.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "Switch to Edit to change words, fonts and layout. Themes restyle a whole presentation at once; four starter themes and their overlays are already in your library.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.import",
+   "name": "Bring what you have",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.import.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Step 5",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.import.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.import.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Bring what you have",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.import.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "File › Import brings in a ProPresenter workspace, single ProPresenter files, PowerPoint decks and lyrics. Imports never overwrite what is already here without asking.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.account",
+   "name": "Sign in for more",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.account.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Step 6",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.account.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.account.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Sign in for more",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.account.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "Everything runs on this Mac: slides, media, outputs and recording, with no account or server.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  },
+  {
+   "backgroundFill": {
+    "colorHex": "#0B1220FF",
+    "fillKind": "solid"
+   },
+   "id": "welcome.presentation.feedback",
+   "name": "Tell us what broke",
+   "objects": [
+    {
+     "height": 60,
+     "id": "welcome.presentation.feedback.kicker",
+     "name": "Kicker",
+     "objectKind": "text",
+     "text": "Beta",
+     "textStyle": {
+      "colorHex": "#3B82F6FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 32,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "textTransform": "uppercase",
+      "tracking": 4,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 250
+    },
+    {
+     "fill": {
+      "colorHex": "#3B82F6FF",
+      "fillKind": "solid"
+     },
+     "height": 4,
+     "id": "welcome.presentation.feedback.rule",
+     "name": "Rule",
+     "objectKind": "shape",
+     "shapeKind": "rectangle",
+     "text": "",
+     "width": 160,
+     "x": 200,
+     "y": 325
+    },
+    {
+     "height": 170,
+     "id": "welcome.presentation.feedback.title",
+     "name": "Title",
+     "objectKind": "text",
+     "text": "Tell us what broke",
+     "textStyle": {
+      "colorHex": "#FFFFFFFF",
+      "fontName": "HelveticaNeue-Bold",
+      "fontSize": 104,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1,
+      "tracking": 0,
+      "verticalAlignment": "middle"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 350
+    },
+    {
+     "height": 330,
+     "id": "welcome.presentation.feedback.body",
+     "name": "Body",
+     "objectKind": "text",
+     "text": "Help › Report a Problem saves your note with diagnostics to Downloads. Help › Show Welcome reopens setup, and this deck is yours to delete.",
+     "textStyle": {
+      "colorHex": "#CBD5E1FF",
+      "fontName": "HelveticaNeue",
+      "fontSize": 46,
+      "horizontalAlignment": "left",
+      "insetLeft": 0,
+      "insetRight": 0,
+      "lineHeightMultiple": 1.3,
+      "tracking": 0,
+      "verticalAlignment": "top"
+     },
+     "width": 1520,
+     "x": 200,
+     "y": 540
+    }
+   ]
+  }
+ ],
+ "themeId": ""
+}

@@ -1,0 +1,5 @@
+module CNDI [system] {
+    header "/Library/NDI SDK for Apple/include/Processing.NDI.Lib.h"
+    header "/Library/NDI SDK for Apple/include/Processing.NDI.DynamicLoad.h"
+    export *
+}

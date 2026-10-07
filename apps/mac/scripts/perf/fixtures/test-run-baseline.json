@@ -1,0 +1,29 @@
+{
+ "note": "Reference numbers and limits for scripts/perf/run.sh. metrics: the 2026-09-24 Release numbers on the M3 Pro (brief); thresholds: a run over any limit fails.",
+ "machine": "Apple M3 Pro",
+ "commit": "176862e910",
+ "metrics": {
+  "animateIdle.mainBusy": 1,
+  "playback.mainBusy": 12,
+  "drag.laterLongestPass": 122,
+  "drag.laterPassesOver100": 1,
+  "drag.laterMainBusy": 9,
+  "drag.laterDecodeSamples": 0,
+  "render.renderBusy": 7.9
+ },
+ "thresholds": {
+  "animateIdle.mainBusy": 5,
+  "playback.mainBusy": 20,
+  "playback.timelineBodiesPerSecond": 5,
+  "render.renderBusy": 12,
+  "drag.firstLongestPass": 600,
+  "drag.laterLongestPass": 180,
+  "drag.laterPassesOver100": 2,
+  "drag.laterMainBusy": 15,
+  "drag.laterDecodeSamples": 20,
+  "resize.longestPass": 200,
+  "resize.mainBusy": 15,
+  "alarms.spins": 0,
+  "alarms.storms": 0
+ }
+}

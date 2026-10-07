@@ -1,0 +1,3502 @@
+import Foundation
+
+#if canImport(automergeFFI)
+import automergeFFI
+#endif
+
+fileprivate extension RustBuffer {
+
+    init(bytes: [UInt8]) {
+        let rbuf = bytes.withUnsafeBufferPointer { ptr in
+            RustBuffer.from(ptr)
+        }
+        self.init(capacity: rbuf.capacity, len: rbuf.len, data: rbuf.data)
+    }
+
+    static func empty() -> RustBuffer {
+        RustBuffer(capacity: 0, len:0, data: nil)
+    }
+
+    static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
+        try! rustCall { ffi_uniffi_automerge_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+    }
+
+    func deallocate() {
+        try! rustCall { ffi_uniffi_automerge_rustbuffer_free(self, $0) }
+    }
+}
+
+fileprivate extension ForeignBytes {
+    init(bufferPointer: UnsafeBufferPointer<UInt8>) {
+        self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
+    }
+}
+
+fileprivate extension Data {
+    init(rustBuffer: RustBuffer) {
+        self.init(
+            bytesNoCopy: rustBuffer.data!,
+            count: Int(rustBuffer.len),
+            deallocator: .none
+        )
+    }
+}
+
+fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+    (data: data, offset: 0)
+}
+
+fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+    let range = reader.offset..<reader.offset + MemoryLayout<T>.size
+    guard reader.data.count >= range.upperBound else {
+        throw UniffiInternalError.bufferOverflow
+    }
+    if T.self == UInt8.self {
+        let value = reader.data[reader.offset]
+        reader.offset += 1
+        return value as! T
+    }
+    var value: T = 0
+    let _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range)})
+    reader.offset = range.upperBound
+    return value.bigEndian
+}
+
+fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
+    let range = reader.offset..<(reader.offset+count)
+    guard reader.data.count >= range.upperBound else {
+        throw UniffiInternalError.bufferOverflow
+    }
+    var value = [UInt8](repeating: 0, count: count)
+    value.withUnsafeMutableBufferPointer({ buffer in
+        reader.data.copyBytes(to: buffer, from: range)
+    })
+    reader.offset = range.upperBound
+    return value
+}
+
+fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+    return Float(bitPattern: try readInt(&reader))
+}
+
+fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+    return Double(bitPattern: try readInt(&reader))
+}
+
+fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+    return reader.offset < reader.data.count
+}
+
+fileprivate func createWriter() -> [UInt8] {
+    return []
+}
+
+fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+    writer.append(contentsOf: byteArr)
+}
+
+fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+    var value = value.bigEndian
+    withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
+}
+
+fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+    writeInt(&writer, value.bitPattern)
+}
+
+fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+    writeInt(&writer, value.bitPattern)
+}
+
+fileprivate protocol FfiConverter {
+    associatedtype FfiType
+    associatedtype SwiftType
+
+    static func lift(_ value: FfiType) throws -> SwiftType
+    static func lower(_ value: SwiftType) -> FfiType
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType
+    static func write(_ value: SwiftType, into buf: inout [UInt8])
+}
+
+fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
+
+extension FfiConverterPrimitive {
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ value: FfiType) throws -> SwiftType {
+        return value
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ value: SwiftType) -> FfiType {
+        return value
+    }
+}
+
+fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+
+extension FfiConverterRustBuffer {
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ buf: RustBuffer) throws -> SwiftType {
+        var reader = createReader(data: Data(rustBuffer: buf))
+        let value = try read(from: &reader)
+        if hasRemaining(reader) {
+            throw UniffiInternalError.incompleteData
+        }
+        buf.deallocate()
+        return value
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ value: SwiftType) -> RustBuffer {
+          var writer = createWriter()
+          write(value, into: &writer)
+          return RustBuffer(bytes: writer)
+    }
+}
+
+fileprivate enum UniffiInternalError: LocalizedError {
+    case bufferOverflow
+    case incompleteData
+    case unexpectedOptionalTag
+    case unexpectedEnumCase
+    case unexpectedNullPointer
+    case unexpectedRustCallStatusCode
+    case unexpectedRustCallError
+    case unexpectedStaleHandle
+    case rustPanic(_ message: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .bufferOverflow: return "Reading the requested value would read past the end of the buffer"
+        case .incompleteData: return "The buffer still has data after lifting its containing value"
+        case .unexpectedOptionalTag: return "Unexpected optional tag; should be 0 or 1"
+        case .unexpectedEnumCase: return "Raw enum value doesn't match any cases"
+        case .unexpectedNullPointer: return "Raw pointer value was null"
+        case .unexpectedRustCallStatusCode: return "Unexpected RustCallStatus code"
+        case .unexpectedRustCallError: return "CALL_ERROR but no errorClass specified"
+        case .unexpectedStaleHandle: return "The object in the handle map has been dropped already"
+        case let .rustPanic(message): return message
+        }
+    }
+}
+
+fileprivate extension NSLock {
+    func withLock<T>(f: () throws -> T) rethrows -> T {
+        self.lock()
+        defer { self.unlock() }
+        return try f()
+    }
+}
+
+fileprivate let CALL_SUCCESS: Int8 = 0
+fileprivate let CALL_ERROR: Int8 = 1
+fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
+fileprivate let CALL_CANCELLED: Int8 = 3
+
+fileprivate extension RustCallStatus {
+    init() {
+        self.init(
+            code: CALL_SUCCESS,
+            errorBuf: RustBuffer.init(
+                capacity: 0,
+                len: 0,
+                data: nil
+            )
+        )
+    }
+}
+
+private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
+    let neverThrow: ((RustBuffer) throws -> Never)? = nil
+    return try makeRustCall(callback, errorHandler: neverThrow)
+}
+
+private func rustCallWithError<T, E: Swift.Error>(
+    _ errorHandler: @escaping (RustBuffer) throws -> E,
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
+    try makeRustCall(callback, errorHandler: errorHandler)
+}
+
+private func makeRustCall<T, E: Swift.Error>(
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
+    errorHandler: ((RustBuffer) throws -> E)?
+) throws -> T {
+    uniffiEnsureInitialized()
+    var callStatus = RustCallStatus.init()
+    let returnedVal = callback(&callStatus)
+    try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
+    return returnedVal
+}
+
+private func uniffiCheckCallStatus<E: Swift.Error>(
+    callStatus: RustCallStatus,
+    errorHandler: ((RustBuffer) throws -> E)?
+) throws {
+    switch callStatus.code {
+        case CALL_SUCCESS:
+            return
+
+        case CALL_ERROR:
+            if let errorHandler = errorHandler {
+                throw try errorHandler(callStatus.errorBuf)
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.unexpectedRustCallError
+            }
+
+        case CALL_UNEXPECTED_ERROR:
+
+            if callStatus.errorBuf.len > 0 {
+                throw UniffiInternalError.rustPanic(try FfiConverterString.lift(callStatus.errorBuf))
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.rustPanic("Rust panic")
+            }
+
+        case CALL_CANCELLED:
+            fatalError("Cancellation not supported yet")
+
+        default:
+            throw UniffiInternalError.unexpectedRustCallStatusCode
+    }
+}
+
+private func uniffiTraitInterfaceCall<T>(
+    callStatus: UnsafeMutablePointer<RustCallStatus>,
+    makeCall: () throws -> T,
+    writeReturn: (T) -> ()
+) {
+    do {
+        try writeReturn(makeCall())
+    } catch let error {
+        callStatus.pointee.code = CALL_UNEXPECTED_ERROR
+        callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
+    }
+}
+
+private func uniffiTraitInterfaceCallWithError<T, E>(
+    callStatus: UnsafeMutablePointer<RustCallStatus>,
+    makeCall: () throws -> T,
+    writeReturn: (T) -> (),
+    lowerError: (E) -> RustBuffer
+) {
+    do {
+        try writeReturn(makeCall())
+    } catch let error as E {
+        callStatus.pointee.code = CALL_ERROR
+        callStatus.pointee.errorBuf = lowerError(error)
+    } catch {
+        callStatus.pointee.code = CALL_UNEXPECTED_ERROR
+        callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
+    }
+}
+fileprivate class UniffiHandleMap<T> {
+    private var map: [UInt64: T] = [:]
+    private let lock = NSLock()
+    private var currentHandle: UInt64 = 1
+
+    func insert(obj: T) -> UInt64 {
+        lock.withLock {
+            let handle = currentHandle
+            currentHandle += 1
+            map[handle] = obj
+            return handle
+        }
+    }
+
+     func get(handle: UInt64) throws -> T {
+        try lock.withLock {
+            guard let obj = map[handle] else {
+                throw UniffiInternalError.unexpectedStaleHandle
+            }
+            return obj
+        }
+    }
+
+    @discardableResult
+    func remove(handle: UInt64) throws -> T {
+        try lock.withLock {
+            guard let obj = map.removeValue(forKey: handle) else {
+                throw UniffiInternalError.unexpectedStaleHandle
+            }
+            return obj
+        }
+    }
+
+    var count: Int {
+        get {
+            map.count
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
+    typealias FfiType = UInt8
+    typealias SwiftType = UInt8
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt8 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: UInt8, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+    typealias FfiType = UInt32
+    typealias SwiftType = UInt32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
+    typealias FfiType = Int64
+    typealias SwiftType = Int64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int64, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterBool : FfiConverter {
+    typealias FfiType = Int8
+    typealias SwiftType = Bool
+
+    public static func lift(_ value: Int8) throws -> Bool {
+        return value != 0
+    }
+
+    public static func lower(_ value: Bool) -> Int8 {
+        return value ? 1 : 0
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Bool, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterString: FfiConverter {
+    typealias SwiftType = String
+    typealias FfiType = RustBuffer
+
+    public static func lift(_ value: RustBuffer) throws -> String {
+        defer {
+            value.deallocate()
+        }
+        if value.data == nil {
+            return String()
+        }
+        let bytes = UnsafeBufferPointer<UInt8>(start: value.data!, count: Int(value.len))
+        return String(bytes: bytes, encoding: String.Encoding.utf8)!
+    }
+
+    public static func lower(_ value: String) -> RustBuffer {
+        return value.utf8CString.withUnsafeBufferPointer { ptr in
+
+            ptr.withMemoryRebound(to: UInt8.self) { ptr in
+
+                let buf = UnsafeBufferPointer(rebasing: ptr.prefix(upTo: ptr.count - 1))
+                return RustBuffer.from(buf)
+            }
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
+        let len: Int32 = try readInt(&buf)
+        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+    }
+
+    public static func write(_ value: String, into buf: inout [UInt8]) {
+        let len = Int32(value.utf8.count)
+        writeInt(&buf, len)
+        writeBytes(&buf, value.utf8)
+    }
+}
+
+
+
+
+public protocol DocProtocol : AnyObject {
+    
+    func actorId()  -> ActorId
+    
+    func applyEncodedChanges(changes: [UInt8]) throws 
+    
+    func applyEncodedChangesWithPatches(changes: [UInt8]) throws  -> [Patch]
+    
+    func changeByHash(hash: ChangeHash)  -> Change?
+    
+    func changes()  -> [ChangeHash]
+    
+    func commitWith(msg: String?, time: Int64) 
+    
+    func cursor(obj: ObjId, position: UInt64) throws  -> Cursor
+    
+    func cursorAt(obj: ObjId, position: UInt64, heads: [ChangeHash]) throws  -> Cursor
+    
+    func cursorPosition(obj: ObjId, cursor: Cursor) throws  -> UInt64
+    
+    func cursorPositionAt(obj: ObjId, cursor: Cursor, heads: [ChangeHash]) throws  -> UInt64
+    
+    func deleteInList(obj: ObjId, index: UInt64) throws 
+    
+    func deleteInMap(obj: ObjId, key: String) throws 
+    
+    func difference(before: [ChangeHash], after: [ChangeHash])  -> [Patch]
+    
+    func encodeChangesSince(heads: [ChangeHash]) throws  -> [UInt8]
+    
+    func encodeNewChanges()  -> [UInt8]
+    
+    func fork()  -> Doc
+    
+    func forkAt(heads: [ChangeHash]) throws  -> Doc
+    
+    func generateSyncMessage(state: SyncState)  -> [UInt8]?
+    
+    func getAllAtInList(obj: ObjId, index: UInt64, heads: [ChangeHash]) throws  -> [Value]
+    
+    func getAllAtInMap(obj: ObjId, key: String, heads: [ChangeHash]) throws  -> [Value]
+    
+    func getAllInList(obj: ObjId, index: UInt64) throws  -> [Value]
+    
+    func getAllInMap(obj: ObjId, key: String) throws  -> [Value]
+    
+    func getAtInList(obj: ObjId, index: UInt64, heads: [ChangeHash]) throws  -> Value?
+    
+    func getAtInMap(obj: ObjId, key: String, heads: [ChangeHash]) throws  -> Value?
+    
+    func getInList(obj: ObjId, index: UInt64) throws  -> Value?
+    
+    func getInMap(obj: ObjId, key: String) throws  -> Value?
+    
+    func heads()  -> [ChangeHash]
+    
+    func incrementInList(obj: ObjId, index: UInt64, by: Int64) throws 
+    
+    func incrementInMap(obj: ObjId, key: String, by: Int64) throws 
+    
+    func insertInList(obj: ObjId, index: UInt64, value: ScalarValue) throws 
+    
+    func insertObjectInList(obj: ObjId, index: UInt64, objType: ObjType) throws  -> ObjId
+    
+    func joinBlock(obj: ObjId, index: UInt32) throws 
+    
+    func length(obj: ObjId)  -> UInt64
+    
+    func lengthAt(obj: ObjId, heads: [ChangeHash])  -> UInt64
+    
+    func mapEntries(obj: ObjId) throws  -> [KeyValue]
+    
+    func mapEntriesAt(obj: ObjId, heads: [ChangeHash]) throws  -> [KeyValue]
+    
+    func mapKeys(obj: ObjId)  -> [String]
+    
+    func mapKeysAt(obj: ObjId, heads: [ChangeHash])  -> [String]
+    
+    func mark(obj: ObjId, start: UInt64, end: UInt64, expand: ExpandMark, name: String, value: ScalarValue) throws 
+    
+    func marks(obj: ObjId) throws  -> [Mark]
+    
+    func marksAt(obj: ObjId, heads: [ChangeHash]) throws  -> [Mark]
+    
+    func marksAtPosition(obj: ObjId, position: Position, heads: [ChangeHash]) throws  -> [Mark]
+    
+    func merge(other: Doc) throws 
+    
+    func mergeWithPatches(other: Doc) throws  -> [Patch]
+    
+    func objectType(obj: ObjId)  -> ObjType
+    
+    func path(obj: ObjId) throws  -> [PathElement]
+    
+    func putInList(obj: ObjId, index: UInt64, value: ScalarValue) throws 
+    
+    func putInMap(obj: ObjId, key: String, value: ScalarValue) throws 
+    
+    func putObjectInList(obj: ObjId, index: UInt64, objType: ObjType) throws  -> ObjId
+    
+    func putObjectInMap(obj: ObjId, key: String, objType: ObjType) throws  -> ObjId
+    
+    func receiveSyncMessage(state: SyncState, msg: [UInt8]) throws 
+    
+    func receiveSyncMessageWithPatches(state: SyncState, msg: [UInt8]) throws  -> [Patch]
+    
+    func save()  -> [UInt8]
+    
+    func setActor(actor: ActorId) 
+    
+    func splice(obj: ObjId, start: UInt64, delete: Int64, values: [ScalarValue]) throws 
+    
+    func spliceText(obj: ObjId, start: UInt64, delete: Int64, chars: String) throws 
+    
+    func splitBlock(obj: ObjId, index: UInt32) throws  -> ObjId
+    
+    func text(obj: ObjId) throws  -> String
+    
+    func textAt(obj: ObjId, heads: [ChangeHash]) throws  -> String
+    
+    func textEncoding()  -> TextEncoding
+    
+    func updateText(obj: ObjId, chars: String) throws 
+    
+    func values(obj: ObjId) throws  -> [Value]
+    
+    func valuesAt(obj: ObjId, heads: [ChangeHash]) throws  -> [Value]
+    
+}
+
+open class Doc:
+    DocProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_uniffi_automerge_fn_clone_doc(self.pointer, $0) }
+    }
+public convenience init() {
+    let pointer =
+        try! rustCall() {
+    uniffi_uniffi_automerge_fn_constructor_doc_new($0
+    )
+}
+    self.init(unsafeFromRawPointer: pointer)
+}
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_uniffi_automerge_fn_free_doc(pointer, $0) }
+    }
+
+    
+public static func load(bytes: [UInt8])throws  -> Doc {
+    return try  FfiConverterTypeDoc.lift(try rustCallWithError(FfiConverterTypeLoadError.lift) {
+    uniffi_uniffi_automerge_fn_constructor_doc_load(
+        FfiConverterSequenceUInt8.lower(bytes),$0
+    )
+})
+}
+    
+public static func newWithActor(actor: ActorId) -> Doc {
+    return try!  FfiConverterTypeDoc.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_constructor_doc_new_with_actor(
+        FfiConverterTypeActorId.lower(actor),$0
+    )
+})
+}
+    
+public static func newWithTextEncoding(textEncoding: TextEncoding) -> Doc {
+    return try!  FfiConverterTypeDoc.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_constructor_doc_new_with_text_encoding(
+        FfiConverterTypeTextEncoding.lower(textEncoding),$0
+    )
+})
+}
+    
+
+    
+open func actorId() -> ActorId {
+    return try!  FfiConverterTypeActorId.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_actor_id(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func applyEncodedChanges(changes: [UInt8])throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_apply_encoded_changes(self.uniffiClonePointer(),
+        FfiConverterSequenceUInt8.lower(changes),$0
+    )
+}
+}
+    
+open func applyEncodedChangesWithPatches(changes: [UInt8])throws  -> [Patch] {
+    return try  FfiConverterSequenceTypePatch.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_apply_encoded_changes_with_patches(self.uniffiClonePointer(),
+        FfiConverterSequenceUInt8.lower(changes),$0
+    )
+})
+}
+    
+open func changeByHash(hash: ChangeHash) -> Change? {
+    return try!  FfiConverterOptionTypeChange.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_change_by_hash(self.uniffiClonePointer(),
+        FfiConverterTypeChangeHash.lower(hash),$0
+    )
+})
+}
+    
+open func changes() -> [ChangeHash] {
+    return try!  FfiConverterSequenceTypeChangeHash.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_changes(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func commitWith(msg: String?, time: Int64) {try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_commit_with(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(msg),
+        FfiConverterInt64.lower(time),$0
+    )
+}
+}
+    
+open func cursor(obj: ObjId, position: UInt64)throws  -> Cursor {
+    return try  FfiConverterTypeCursor.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_cursor(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(position),$0
+    )
+})
+}
+    
+open func cursorAt(obj: ObjId, position: UInt64, heads: [ChangeHash])throws  -> Cursor {
+    return try  FfiConverterTypeCursor.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_cursor_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(position),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func cursorPosition(obj: ObjId, cursor: Cursor)throws  -> UInt64 {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_cursor_position(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterTypeCursor.lower(cursor),$0
+    )
+})
+}
+    
+open func cursorPositionAt(obj: ObjId, cursor: Cursor, heads: [ChangeHash])throws  -> UInt64 {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_cursor_position_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterTypeCursor.lower(cursor),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func deleteInList(obj: ObjId, index: UInt64)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_delete_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),$0
+    )
+}
+}
+    
+open func deleteInMap(obj: ObjId, key: String)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_delete_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),$0
+    )
+}
+}
+    
+open func difference(before: [ChangeHash], after: [ChangeHash]) -> [Patch] {
+    return try!  FfiConverterSequenceTypePatch.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_difference(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeChangeHash.lower(before),
+        FfiConverterSequenceTypeChangeHash.lower(after),$0
+    )
+})
+}
+    
+open func encodeChangesSince(heads: [ChangeHash])throws  -> [UInt8] {
+    return try  FfiConverterSequenceUInt8.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_encode_changes_since(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func encodeNewChanges() -> [UInt8] {
+    return try!  FfiConverterSequenceUInt8.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_encode_new_changes(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func fork() -> Doc {
+    return try!  FfiConverterTypeDoc.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_fork(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func forkAt(heads: [ChangeHash])throws  -> Doc {
+    return try  FfiConverterTypeDoc.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_fork_at(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func generateSyncMessage(state: SyncState) -> [UInt8]? {
+    return try!  FfiConverterOptionSequenceUInt8.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_generate_sync_message(self.uniffiClonePointer(),
+        FfiConverterTypeSyncState.lower(state),$0
+    )
+})
+}
+    
+open func getAllAtInList(obj: ObjId, index: UInt64, heads: [ChangeHash])throws  -> [Value] {
+    return try  FfiConverterSequenceTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_all_at_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func getAllAtInMap(obj: ObjId, key: String, heads: [ChangeHash])throws  -> [Value] {
+    return try  FfiConverterSequenceTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_all_at_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func getAllInList(obj: ObjId, index: UInt64)throws  -> [Value] {
+    return try  FfiConverterSequenceTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_all_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),$0
+    )
+})
+}
+    
+open func getAllInMap(obj: ObjId, key: String)throws  -> [Value] {
+    return try  FfiConverterSequenceTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_all_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),$0
+    )
+})
+}
+    
+open func getAtInList(obj: ObjId, index: UInt64, heads: [ChangeHash])throws  -> Value? {
+    return try  FfiConverterOptionTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_at_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func getAtInMap(obj: ObjId, key: String, heads: [ChangeHash])throws  -> Value? {
+    return try  FfiConverterOptionTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_at_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func getInList(obj: ObjId, index: UInt64)throws  -> Value? {
+    return try  FfiConverterOptionTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),$0
+    )
+})
+}
+    
+open func getInMap(obj: ObjId, key: String)throws  -> Value? {
+    return try  FfiConverterOptionTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_get_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),$0
+    )
+})
+}
+    
+open func heads() -> [ChangeHash] {
+    return try!  FfiConverterSequenceTypeChangeHash.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_heads(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func incrementInList(obj: ObjId, index: UInt64, by: Int64)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_increment_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterInt64.lower(by),$0
+    )
+}
+}
+    
+open func incrementInMap(obj: ObjId, key: String, by: Int64)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_increment_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),
+        FfiConverterInt64.lower(by),$0
+    )
+}
+}
+    
+open func insertInList(obj: ObjId, index: UInt64, value: ScalarValue)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_insert_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterTypeScalarValue.lower(value),$0
+    )
+}
+}
+    
+open func insertObjectInList(obj: ObjId, index: UInt64, objType: ObjType)throws  -> ObjId {
+    return try  FfiConverterTypeObjId.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_insert_object_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterTypeObjType.lower(objType),$0
+    )
+})
+}
+    
+open func joinBlock(obj: ObjId, index: UInt32)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_join_block(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt32.lower(index),$0
+    )
+}
+}
+    
+open func length(obj: ObjId) -> UInt64 {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_length(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func lengthAt(obj: ObjId, heads: [ChangeHash]) -> UInt64 {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_length_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func mapEntries(obj: ObjId)throws  -> [KeyValue] {
+    return try  FfiConverterSequenceTypeKeyValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_map_entries(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func mapEntriesAt(obj: ObjId, heads: [ChangeHash])throws  -> [KeyValue] {
+    return try  FfiConverterSequenceTypeKeyValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_map_entries_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func mapKeys(obj: ObjId) -> [String] {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_map_keys(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func mapKeysAt(obj: ObjId, heads: [ChangeHash]) -> [String] {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_map_keys_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func mark(obj: ObjId, start: UInt64, end: UInt64, expand: ExpandMark, name: String, value: ScalarValue)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_mark(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(start),
+        FfiConverterUInt64.lower(end),
+        FfiConverterTypeExpandMark.lower(expand),
+        FfiConverterString.lower(name),
+        FfiConverterTypeScalarValue.lower(value),$0
+    )
+}
+}
+    
+open func marks(obj: ObjId)throws  -> [Mark] {
+    return try  FfiConverterSequenceTypeMark.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_marks(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func marksAt(obj: ObjId, heads: [ChangeHash])throws  -> [Mark] {
+    return try  FfiConverterSequenceTypeMark.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_marks_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func marksAtPosition(obj: ObjId, position: Position, heads: [ChangeHash])throws  -> [Mark] {
+    return try  FfiConverterSequenceTypeMark.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_marks_at_position(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterTypePosition.lower(position),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func merge(other: Doc)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_merge(self.uniffiClonePointer(),
+        FfiConverterTypeDoc.lower(other),$0
+    )
+}
+}
+    
+open func mergeWithPatches(other: Doc)throws  -> [Patch] {
+    return try  FfiConverterSequenceTypePatch.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_merge_with_patches(self.uniffiClonePointer(),
+        FfiConverterTypeDoc.lower(other),$0
+    )
+})
+}
+    
+open func objectType(obj: ObjId) -> ObjType {
+    return try!  FfiConverterTypeObjType.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_object_type(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func path(obj: ObjId)throws  -> [PathElement] {
+    return try  FfiConverterSequenceTypePathElement.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_path(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func putInList(obj: ObjId, index: UInt64, value: ScalarValue)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_put_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterTypeScalarValue.lower(value),$0
+    )
+}
+}
+    
+open func putInMap(obj: ObjId, key: String, value: ScalarValue)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_put_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),
+        FfiConverterTypeScalarValue.lower(value),$0
+    )
+}
+}
+    
+open func putObjectInList(obj: ObjId, index: UInt64, objType: ObjType)throws  -> ObjId {
+    return try  FfiConverterTypeObjId.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_put_object_in_list(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(index),
+        FfiConverterTypeObjType.lower(objType),$0
+    )
+})
+}
+    
+open func putObjectInMap(obj: ObjId, key: String, objType: ObjType)throws  -> ObjId {
+    return try  FfiConverterTypeObjId.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_put_object_in_map(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(key),
+        FfiConverterTypeObjType.lower(objType),$0
+    )
+})
+}
+    
+open func receiveSyncMessage(state: SyncState, msg: [UInt8])throws  {try rustCallWithError(FfiConverterTypeReceiveSyncError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_receive_sync_message(self.uniffiClonePointer(),
+        FfiConverterTypeSyncState.lower(state),
+        FfiConverterSequenceUInt8.lower(msg),$0
+    )
+}
+}
+    
+open func receiveSyncMessageWithPatches(state: SyncState, msg: [UInt8])throws  -> [Patch] {
+    return try  FfiConverterSequenceTypePatch.lift(try rustCallWithError(FfiConverterTypeReceiveSyncError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_receive_sync_message_with_patches(self.uniffiClonePointer(),
+        FfiConverterTypeSyncState.lower(state),
+        FfiConverterSequenceUInt8.lower(msg),$0
+    )
+})
+}
+    
+open func save() -> [UInt8] {
+    return try!  FfiConverterSequenceUInt8.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_save(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func setActor(actor: ActorId) {try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_set_actor(self.uniffiClonePointer(),
+        FfiConverterTypeActorId.lower(actor),$0
+    )
+}
+}
+    
+open func splice(obj: ObjId, start: UInt64, delete: Int64, values: [ScalarValue])throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_splice(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(start),
+        FfiConverterInt64.lower(delete),
+        FfiConverterSequenceTypeScalarValue.lower(values),$0
+    )
+}
+}
+    
+open func spliceText(obj: ObjId, start: UInt64, delete: Int64, chars: String)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_splice_text(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt64.lower(start),
+        FfiConverterInt64.lower(delete),
+        FfiConverterString.lower(chars),$0
+    )
+}
+}
+    
+open func splitBlock(obj: ObjId, index: UInt32)throws  -> ObjId {
+    return try  FfiConverterTypeObjId.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_split_block(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterUInt32.lower(index),$0
+    )
+})
+}
+    
+open func text(obj: ObjId)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_text(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func textAt(obj: ObjId, heads: [ChangeHash])throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_text_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+open func textEncoding() -> TextEncoding {
+    return try!  FfiConverterTypeTextEncoding.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_doc_text_encoding(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func updateText(obj: ObjId, chars: String)throws  {try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_update_text(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterString.lower(chars),$0
+    )
+}
+}
+    
+open func values(obj: ObjId)throws  -> [Value] {
+    return try  FfiConverterSequenceTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_values(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),$0
+    )
+})
+}
+    
+open func valuesAt(obj: ObjId, heads: [ChangeHash])throws  -> [Value] {
+    return try  FfiConverterSequenceTypeValue.lift(try rustCallWithError(FfiConverterTypeDocError.lift) {
+    uniffi_uniffi_automerge_fn_method_doc_values_at(self.uniffiClonePointer(),
+        FfiConverterTypeObjId.lower(obj),
+        FfiConverterSequenceTypeChangeHash.lower(heads),$0
+    )
+})
+}
+    
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDoc: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = Doc
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> Doc {
+        return Doc(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: Doc) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Doc {
+        let v: UInt64 = try readInt(&buf)
+
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: Doc, into buf: inout [UInt8]) {
+
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDoc_lift(_ pointer: UnsafeMutableRawPointer) throws -> Doc {
+    return try FfiConverterTypeDoc.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDoc_lower(_ value: Doc) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeDoc.lower(value)
+}
+
+
+
+
+public protocol SyncStateProtocol : AnyObject {
+    
+    func encode()  -> [UInt8]
+    
+    func reset() 
+    
+    func theirHeads()  -> [ChangeHash]?
+    
+}
+
+open class SyncState:
+    SyncStateProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_uniffi_automerge_fn_clone_syncstate(self.pointer, $0) }
+    }
+public convenience init() {
+    let pointer =
+        try! rustCall() {
+    uniffi_uniffi_automerge_fn_constructor_syncstate_new($0
+    )
+}
+    self.init(unsafeFromRawPointer: pointer)
+}
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_uniffi_automerge_fn_free_syncstate(pointer, $0) }
+    }
+
+    
+public static func decode(bytes: [UInt8])throws  -> SyncState {
+    return try  FfiConverterTypeSyncState.lift(try rustCallWithError(FfiConverterTypeDecodeSyncStateError.lift) {
+    uniffi_uniffi_automerge_fn_constructor_syncstate_decode(
+        FfiConverterSequenceUInt8.lower(bytes),$0
+    )
+})
+}
+    
+
+    
+open func encode() -> [UInt8] {
+    return try!  FfiConverterSequenceUInt8.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_syncstate_encode(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func reset() {try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_syncstate_reset(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+open func theirHeads() -> [ChangeHash]? {
+    return try!  FfiConverterOptionSequenceTypeChangeHash.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_method_syncstate_their_heads(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSyncState: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = SyncState
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> SyncState {
+        return SyncState(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: SyncState) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SyncState {
+        let v: UInt64 = try readInt(&buf)
+
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: SyncState, into buf: inout [UInt8]) {
+
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSyncState_lift(_ pointer: UnsafeMutableRawPointer) throws -> SyncState {
+    return try FfiConverterTypeSyncState.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSyncState_lower(_ value: SyncState) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeSyncState.lower(value)
+}
+
+
+public struct Change {
+    public var actorId: ActorId
+    public var message: String?
+    public var deps: [ChangeHash]
+    public var timestamp: Int64
+    public var bytes: [UInt8]
+    public var hash: ChangeHash
+
+    public init(actorId: ActorId, message: String?, deps: [ChangeHash], timestamp: Int64, bytes: [UInt8], hash: ChangeHash) {
+        self.actorId = actorId
+        self.message = message
+        self.deps = deps
+        self.timestamp = timestamp
+        self.bytes = bytes
+        self.hash = hash
+    }
+}
+
+
+
+extension Change: Equatable, Hashable {
+    public static func ==(lhs: Change, rhs: Change) -> Bool {
+        if lhs.actorId != rhs.actorId {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.deps != rhs.deps {
+            return false
+        }
+        if lhs.timestamp != rhs.timestamp {
+            return false
+        }
+        if lhs.bytes != rhs.bytes {
+            return false
+        }
+        if lhs.hash != rhs.hash {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(actorId)
+        hasher.combine(message)
+        hasher.combine(deps)
+        hasher.combine(timestamp)
+        hasher.combine(bytes)
+        hasher.combine(hash)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Change {
+        return
+            try Change(
+                actorId: FfiConverterTypeActorId.read(from: &buf), 
+                message: FfiConverterOptionString.read(from: &buf), 
+                deps: FfiConverterSequenceTypeChangeHash.read(from: &buf), 
+                timestamp: FfiConverterInt64.read(from: &buf), 
+                bytes: FfiConverterSequenceUInt8.read(from: &buf), 
+                hash: FfiConverterTypeChangeHash.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Change, into buf: inout [UInt8]) {
+        FfiConverterTypeActorId.write(value.actorId, into: &buf)
+        FfiConverterOptionString.write(value.message, into: &buf)
+        FfiConverterSequenceTypeChangeHash.write(value.deps, into: &buf)
+        FfiConverterInt64.write(value.timestamp, into: &buf)
+        FfiConverterSequenceUInt8.write(value.bytes, into: &buf)
+        FfiConverterTypeChangeHash.write(value.hash, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChange_lift(_ buf: RustBuffer) throws -> Change {
+    return try FfiConverterTypeChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChange_lower(_ value: Change) -> RustBuffer {
+    return FfiConverterTypeChange.lower(value)
+}
+
+
+public struct KeyValue {
+    public var key: String
+    public var value: Value
+
+    public init(key: String, value: Value) {
+        self.key = key
+        self.value = value
+    }
+}
+
+
+
+extension KeyValue: Equatable, Hashable {
+    public static func ==(lhs: KeyValue, rhs: KeyValue) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(value)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKeyValue: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KeyValue {
+        return
+            try KeyValue(
+                key: FfiConverterString.read(from: &buf), 
+                value: FfiConverterTypeValue.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: KeyValue, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterTypeValue.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyValue_lift(_ buf: RustBuffer) throws -> KeyValue {
+    return try FfiConverterTypeKeyValue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyValue_lower(_ value: KeyValue) -> RustBuffer {
+    return FfiConverterTypeKeyValue.lower(value)
+}
+
+
+public struct Mark {
+    public var start: UInt64
+    public var end: UInt64
+    public var name: String
+    public var value: ScalarValue
+
+    public init(start: UInt64, end: UInt64, name: String, value: ScalarValue) {
+        self.start = start
+        self.end = end
+        self.name = name
+        self.value = value
+    }
+}
+
+
+
+extension Mark: Equatable, Hashable {
+    public static func ==(lhs: Mark, rhs: Mark) -> Bool {
+        if lhs.start != rhs.start {
+            return false
+        }
+        if lhs.end != rhs.end {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(start)
+        hasher.combine(end)
+        hasher.combine(name)
+        hasher.combine(value)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMark: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Mark {
+        return
+            try Mark(
+                start: FfiConverterUInt64.read(from: &buf), 
+                end: FfiConverterUInt64.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterTypeScalarValue.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Mark, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.start, into: &buf)
+        FfiConverterUInt64.write(value.end, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterTypeScalarValue.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMark_lift(_ buf: RustBuffer) throws -> Mark {
+    return try FfiConverterTypeMark.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMark_lower(_ value: Mark) -> RustBuffer {
+    return FfiConverterTypeMark.lower(value)
+}
+
+
+public struct Patch {
+    public var path: [PathElement]
+    public var action: PatchAction
+
+    public init(path: [PathElement], action: PatchAction) {
+        self.path = path
+        self.action = action
+    }
+}
+
+
+
+extension Patch: Equatable, Hashable {
+    public static func ==(lhs: Patch, rhs: Patch) -> Bool {
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.action != rhs.action {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(path)
+        hasher.combine(action)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Patch {
+        return
+            try Patch(
+                path: FfiConverterSequenceTypePathElement.read(from: &buf), 
+                action: FfiConverterTypePatchAction.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Patch, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypePathElement.write(value.path, into: &buf)
+        FfiConverterTypePatchAction.write(value.action, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePatch_lift(_ buf: RustBuffer) throws -> Patch {
+    return try FfiConverterTypePatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePatch_lower(_ value: Patch) -> RustBuffer {
+    return FfiConverterTypePatch.lower(value)
+}
+
+
+public struct PathElement {
+    public var prop: Prop
+    public var obj: ObjId
+
+    public init(prop: Prop, obj: ObjId) {
+        self.prop = prop
+        self.obj = obj
+    }
+}
+
+
+
+extension PathElement: Equatable, Hashable {
+    public static func ==(lhs: PathElement, rhs: PathElement) -> Bool {
+        if lhs.prop != rhs.prop {
+            return false
+        }
+        if lhs.obj != rhs.obj {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(prop)
+        hasher.combine(obj)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePathElement: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PathElement {
+        return
+            try PathElement(
+                prop: FfiConverterTypeProp.read(from: &buf), 
+                obj: FfiConverterTypeObjId.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PathElement, into buf: inout [UInt8]) {
+        FfiConverterTypeProp.write(value.prop, into: &buf)
+        FfiConverterTypeObjId.write(value.obj, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePathElement_lift(_ buf: RustBuffer) throws -> PathElement {
+    return try FfiConverterTypePathElement.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePathElement_lower(_ value: PathElement) -> RustBuffer {
+    return FfiConverterTypePathElement.lower(value)
+}
+
+
+public enum DecodeSyncStateError {
+
+    
+    
+    case Internal(message: String)
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDecodeSyncStateError: FfiConverterRustBuffer {
+    typealias SwiftType = DecodeSyncStateError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DecodeSyncStateError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Internal(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DecodeSyncStateError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        case .Internal(_ ):
+            writeInt(&buf, Int32(1))
+
+        
+        }
+    }
+}
+
+
+extension DecodeSyncStateError: Equatable, Hashable {}
+
+extension DecodeSyncStateError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+
+public enum DocError {
+
+    
+    
+    case WrongObjectType(message: String)
+    
+    case Internal(message: String)
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDocError: FfiConverterRustBuffer {
+    typealias SwiftType = DocError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DocError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .WrongObjectType(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .Internal(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: DocError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        case .WrongObjectType(_ ):
+            writeInt(&buf, Int32(1))
+        case .Internal(_ ):
+            writeInt(&buf, Int32(2))
+
+        
+        }
+    }
+}
+
+
+extension DocError: Equatable, Hashable {}
+
+extension DocError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+public enum ExpandMark {
+    
+    case before
+    case after
+    case none
+    case both
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExpandMark: FfiConverterRustBuffer {
+    typealias SwiftType = ExpandMark
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExpandMark {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .before
+        
+        case 2: return .after
+        
+        case 3: return .none
+        
+        case 4: return .both
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ExpandMark, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .before:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .after:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .none:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .both:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExpandMark_lift(_ buf: RustBuffer) throws -> ExpandMark {
+    return try FfiConverterTypeExpandMark.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExpandMark_lower(_ value: ExpandMark) -> RustBuffer {
+    return FfiConverterTypeExpandMark.lower(value)
+}
+
+
+
+extension ExpandMark: Equatable, Hashable {}
+
+
+
+
+public enum LoadError {
+
+    
+    
+    case Internal(message: String)
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLoadError: FfiConverterRustBuffer {
+    typealias SwiftType = LoadError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LoadError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Internal(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LoadError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        case .Internal(_ ):
+            writeInt(&buf, Int32(1))
+
+        
+        }
+    }
+}
+
+
+extension LoadError: Equatable, Hashable {}
+
+extension LoadError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+public enum ObjType {
+    
+    case map
+    case list
+    case text
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeObjType: FfiConverterRustBuffer {
+    typealias SwiftType = ObjType
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ObjType {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .map
+        
+        case 2: return .list
+        
+        case 3: return .text
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ObjType, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .map:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .list:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .text:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeObjType_lift(_ buf: RustBuffer) throws -> ObjType {
+    return try FfiConverterTypeObjType.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeObjType_lower(_ value: ObjType) -> RustBuffer {
+    return FfiConverterTypeObjType.lower(value)
+}
+
+
+
+extension ObjType: Equatable, Hashable {}
+
+public enum PatchAction {
+    
+    case put(obj: ObjId, prop: Prop, value: Value
+    )
+    case insert(obj: ObjId, index: UInt64, values: [Value]
+    )
+    case spliceText(obj: ObjId, index: UInt64, value: String, marks: [String: Value]
+    )
+    case increment(obj: ObjId, prop: Prop, value: Int64
+    )
+    case conflict(obj: ObjId, prop: Prop
+    )
+    case deleteMap(obj: ObjId, key: String
+    )
+    case deleteSeq(obj: ObjId, index: UInt64, length: UInt64
+    )
+    case marks(obj: ObjId, marks: [Mark]
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePatchAction: FfiConverterRustBuffer {
+    typealias SwiftType = PatchAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PatchAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .put(obj: try FfiConverterTypeObjId.read(from: &buf), prop: try FfiConverterTypeProp.read(from: &buf), value: try FfiConverterTypeValue.read(from: &buf)
+        )
+        
+        case 2: return .insert(obj: try FfiConverterTypeObjId.read(from: &buf), index: try FfiConverterUInt64.read(from: &buf), values: try FfiConverterSequenceTypeValue.read(from: &buf)
+        )
+        
+        case 3: return .spliceText(obj: try FfiConverterTypeObjId.read(from: &buf), index: try FfiConverterUInt64.read(from: &buf), value: try FfiConverterString.read(from: &buf), marks: try FfiConverterDictionaryStringTypeValue.read(from: &buf)
+        )
+        
+        case 4: return .increment(obj: try FfiConverterTypeObjId.read(from: &buf), prop: try FfiConverterTypeProp.read(from: &buf), value: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        case 5: return .conflict(obj: try FfiConverterTypeObjId.read(from: &buf), prop: try FfiConverterTypeProp.read(from: &buf)
+        )
+        
+        case 6: return .deleteMap(obj: try FfiConverterTypeObjId.read(from: &buf), key: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 7: return .deleteSeq(obj: try FfiConverterTypeObjId.read(from: &buf), index: try FfiConverterUInt64.read(from: &buf), length: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 8: return .marks(obj: try FfiConverterTypeObjId.read(from: &buf), marks: try FfiConverterSequenceTypeMark.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PatchAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .put(obj,prop,value):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterTypeProp.write(prop, into: &buf)
+            FfiConverterTypeValue.write(value, into: &buf)
+            
+        
+        case let .insert(obj,index,values):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterUInt64.write(index, into: &buf)
+            FfiConverterSequenceTypeValue.write(values, into: &buf)
+            
+        
+        case let .spliceText(obj,index,value,marks):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterUInt64.write(index, into: &buf)
+            FfiConverterString.write(value, into: &buf)
+            FfiConverterDictionaryStringTypeValue.write(marks, into: &buf)
+            
+        
+        case let .increment(obj,prop,value):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterTypeProp.write(prop, into: &buf)
+            FfiConverterInt64.write(value, into: &buf)
+            
+        
+        case let .conflict(obj,prop):
+            writeInt(&buf, Int32(5))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterTypeProp.write(prop, into: &buf)
+            
+        
+        case let .deleteMap(obj,key):
+            writeInt(&buf, Int32(6))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterString.write(key, into: &buf)
+            
+        
+        case let .deleteSeq(obj,index,length):
+            writeInt(&buf, Int32(7))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterUInt64.write(index, into: &buf)
+            FfiConverterUInt64.write(length, into: &buf)
+            
+        
+        case let .marks(obj,marks):
+            writeInt(&buf, Int32(8))
+            FfiConverterTypeObjId.write(obj, into: &buf)
+            FfiConverterSequenceTypeMark.write(marks, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePatchAction_lift(_ buf: RustBuffer) throws -> PatchAction {
+    return try FfiConverterTypePatchAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePatchAction_lower(_ value: PatchAction) -> RustBuffer {
+    return FfiConverterTypePatchAction.lower(value)
+}
+
+
+
+extension PatchAction: Equatable, Hashable {}
+
+public enum Position {
+    
+    case cursor(position: Cursor
+    )
+    case index(position: UInt64
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePosition: FfiConverterRustBuffer {
+    typealias SwiftType = Position
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Position {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cursor(position: try FfiConverterTypeCursor.read(from: &buf)
+        )
+        
+        case 2: return .index(position: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Position, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .cursor(position):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeCursor.write(position, into: &buf)
+            
+        
+        case let .index(position):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(position, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePosition_lift(_ buf: RustBuffer) throws -> Position {
+    return try FfiConverterTypePosition.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePosition_lower(_ value: Position) -> RustBuffer {
+    return FfiConverterTypePosition.lower(value)
+}
+
+
+
+extension Position: Equatable, Hashable {}
+
+public enum Prop {
+    
+    case key(value: String
+    )
+    case index(value: UInt64
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProp: FfiConverterRustBuffer {
+    typealias SwiftType = Prop
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Prop {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .key(value: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .index(value: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Prop, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .key(value):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(value, into: &buf)
+            
+        
+        case let .index(value):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(value, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProp_lift(_ buf: RustBuffer) throws -> Prop {
+    return try FfiConverterTypeProp.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProp_lower(_ value: Prop) -> RustBuffer {
+    return FfiConverterTypeProp.lower(value)
+}
+
+
+
+extension Prop: Equatable, Hashable {}
+
+
+
+
+public enum ReceiveSyncError {
+
+    
+    
+    case Internal(message: String)
+    
+    case InvalidMessage(message: String)
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReceiveSyncError: FfiConverterRustBuffer {
+    typealias SwiftType = ReceiveSyncError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReceiveSyncError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Internal(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .InvalidMessage(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ReceiveSyncError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        case .Internal(_ ):
+            writeInt(&buf, Int32(1))
+        case .InvalidMessage(_ ):
+            writeInt(&buf, Int32(2))
+
+        
+        }
+    }
+}
+
+
+extension ReceiveSyncError: Equatable, Hashable {}
+
+extension ReceiveSyncError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+public enum ScalarValue {
+    
+    case bytes(value: [UInt8]
+    )
+    case string(value: String
+    )
+    case uint(value: UInt64
+    )
+    case int(value: Int64
+    )
+    case f64(value: Double
+    )
+    case counter(value: Int64
+    )
+    case timestamp(value: Int64
+    )
+    case boolean(value: Bool
+    )
+    case unknown(typeCode: UInt8, data: [UInt8]
+    )
+    case null
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeScalarValue: FfiConverterRustBuffer {
+    typealias SwiftType = ScalarValue
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ScalarValue {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .bytes(value: try FfiConverterSequenceUInt8.read(from: &buf)
+        )
+        
+        case 2: return .string(value: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .uint(value: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 4: return .int(value: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        case 5: return .f64(value: try FfiConverterDouble.read(from: &buf)
+        )
+        
+        case 6: return .counter(value: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        case 7: return .timestamp(value: try FfiConverterInt64.read(from: &buf)
+        )
+        
+        case 8: return .boolean(value: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 9: return .unknown(typeCode: try FfiConverterUInt8.read(from: &buf), data: try FfiConverterSequenceUInt8.read(from: &buf)
+        )
+        
+        case 10: return .null
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ScalarValue, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .bytes(value):
+            writeInt(&buf, Int32(1))
+            FfiConverterSequenceUInt8.write(value, into: &buf)
+            
+        
+        case let .string(value):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(value, into: &buf)
+            
+        
+        case let .uint(value):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt64.write(value, into: &buf)
+            
+        
+        case let .int(value):
+            writeInt(&buf, Int32(4))
+            FfiConverterInt64.write(value, into: &buf)
+            
+        
+        case let .f64(value):
+            writeInt(&buf, Int32(5))
+            FfiConverterDouble.write(value, into: &buf)
+            
+        
+        case let .counter(value):
+            writeInt(&buf, Int32(6))
+            FfiConverterInt64.write(value, into: &buf)
+            
+        
+        case let .timestamp(value):
+            writeInt(&buf, Int32(7))
+            FfiConverterInt64.write(value, into: &buf)
+            
+        
+        case let .boolean(value):
+            writeInt(&buf, Int32(8))
+            FfiConverterBool.write(value, into: &buf)
+            
+        
+        case let .unknown(typeCode,data):
+            writeInt(&buf, Int32(9))
+            FfiConverterUInt8.write(typeCode, into: &buf)
+            FfiConverterSequenceUInt8.write(data, into: &buf)
+            
+        
+        case .null:
+            writeInt(&buf, Int32(10))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeScalarValue_lift(_ buf: RustBuffer) throws -> ScalarValue {
+    return try FfiConverterTypeScalarValue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeScalarValue_lower(_ value: ScalarValue) -> RustBuffer {
+    return FfiConverterTypeScalarValue.lower(value)
+}
+
+
+
+extension ScalarValue: Equatable, Hashable {}
+
+public enum TextEncoding {
+    
+    case unicodeCodePoint
+    case utf8CodeUnit
+    case utf16CodeUnit
+    case graphemeCluster
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextEncoding: FfiConverterRustBuffer {
+    typealias SwiftType = TextEncoding
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextEncoding {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unicodeCodePoint
+        
+        case 2: return .utf8CodeUnit
+        
+        case 3: return .utf16CodeUnit
+        
+        case 4: return .graphemeCluster
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TextEncoding, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unicodeCodePoint:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .utf8CodeUnit:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .utf16CodeUnit:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .graphemeCluster:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextEncoding_lift(_ buf: RustBuffer) throws -> TextEncoding {
+    return try FfiConverterTypeTextEncoding.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextEncoding_lower(_ value: TextEncoding) -> RustBuffer {
+    return FfiConverterTypeTextEncoding.lower(value)
+}
+
+
+
+extension TextEncoding: Equatable, Hashable {}
+
+public enum Value {
+    
+    case object(typ: ObjType, id: ObjId
+    )
+    case scalar(value: ScalarValue
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeValue: FfiConverterRustBuffer {
+    typealias SwiftType = Value
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Value {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .object(typ: try FfiConverterTypeObjType.read(from: &buf), id: try FfiConverterTypeObjId.read(from: &buf)
+        )
+        
+        case 2: return .scalar(value: try FfiConverterTypeScalarValue.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Value, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .object(typ,id):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeObjType.write(typ, into: &buf)
+            FfiConverterTypeObjId.write(id, into: &buf)
+            
+        
+        case let .scalar(value):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeScalarValue.write(value, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeValue_lift(_ buf: RustBuffer) throws -> Value {
+    return try FfiConverterTypeValue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeValue_lower(_ value: Value) -> RustBuffer {
+    return FfiConverterTypeValue.lower(value)
+}
+
+
+
+extension Value: Equatable, Hashable {}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+    typealias SwiftType = String?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChange: FfiConverterRustBuffer {
+    typealias SwiftType = Change?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChange.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChange.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeValue: FfiConverterRustBuffer {
+    typealias SwiftType = Value?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeValue.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeValue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceUInt8: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt8]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceUInt8.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceUInt8.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceTypeChangeHash: FfiConverterRustBuffer {
+    typealias SwiftType = [ChangeHash]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeChangeHash.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeChangeHash.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceUInt8: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt8]
+
+    public static func write(_ value: [UInt8], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt8.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt8] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt8]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt8.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeKeyValue: FfiConverterRustBuffer {
+    typealias SwiftType = [KeyValue]
+
+    public static func write(_ value: [KeyValue], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeKeyValue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [KeyValue] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [KeyValue]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeKeyValue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMark: FfiConverterRustBuffer {
+    typealias SwiftType = [Mark]
+
+    public static func write(_ value: [Mark], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMark.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Mark] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Mark]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMark.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePatch: FfiConverterRustBuffer {
+    typealias SwiftType = [Patch]
+
+    public static func write(_ value: [Patch], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePatch.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Patch] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Patch]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePatch.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePathElement: FfiConverterRustBuffer {
+    typealias SwiftType = [PathElement]
+
+    public static func write(_ value: [PathElement], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePathElement.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PathElement] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PathElement]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePathElement.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeScalarValue: FfiConverterRustBuffer {
+    typealias SwiftType = [ScalarValue]
+
+    public static func write(_ value: [ScalarValue], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeScalarValue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ScalarValue] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ScalarValue]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeScalarValue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeValue: FfiConverterRustBuffer {
+    typealias SwiftType = [Value]
+
+    public static func write(_ value: [Value], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeValue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Value] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Value]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeValue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChangeHash: FfiConverterRustBuffer {
+    typealias SwiftType = [ChangeHash]
+
+    public static func write(_ value: [ChangeHash], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChangeHash.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChangeHash] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChangeHash]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChangeHash.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterDictionaryStringTypeValue: FfiConverterRustBuffer {
+    public static func write(_ value: [String: Value], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for (key, value) in value {
+            FfiConverterString.write(key, into: &buf)
+            FfiConverterTypeValue.write(value, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String: Value] {
+        let len: Int32 = try readInt(&buf)
+        var dict = [String: Value]()
+        dict.reserveCapacity(Int(len))
+        for _ in 0..<len {
+            let key = try FfiConverterString.read(from: &buf)
+            let value = try FfiConverterTypeValue.read(from: &buf)
+            dict[key] = value
+        }
+        return dict
+    }
+}
+
+public typealias ActorId = [UInt8]
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeActorId: FfiConverter {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ActorId {
+        return try FfiConverterSequenceUInt8.read(from: &buf)
+    }
+
+    public static func write(_ value: ActorId, into buf: inout [UInt8]) {
+        return FfiConverterSequenceUInt8.write(value, into: &buf)
+    }
+
+    public static func lift(_ value: RustBuffer) throws -> ActorId {
+        return try FfiConverterSequenceUInt8.lift(value)
+    }
+
+    public static func lower(_ value: ActorId) -> RustBuffer {
+        return FfiConverterSequenceUInt8.lower(value)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeActorId_lift(_ value: RustBuffer) throws -> ActorId {
+    return try FfiConverterTypeActorId.lift(value)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeActorId_lower(_ value: ActorId) -> RustBuffer {
+    return FfiConverterTypeActorId.lower(value)
+}
+
+public typealias ChangeHash = [UInt8]
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChangeHash: FfiConverter {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChangeHash {
+        return try FfiConverterSequenceUInt8.read(from: &buf)
+    }
+
+    public static func write(_ value: ChangeHash, into buf: inout [UInt8]) {
+        return FfiConverterSequenceUInt8.write(value, into: &buf)
+    }
+
+    public static func lift(_ value: RustBuffer) throws -> ChangeHash {
+        return try FfiConverterSequenceUInt8.lift(value)
+    }
+
+    public static func lower(_ value: ChangeHash) -> RustBuffer {
+        return FfiConverterSequenceUInt8.lower(value)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChangeHash_lift(_ value: RustBuffer) throws -> ChangeHash {
+    return try FfiConverterTypeChangeHash.lift(value)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChangeHash_lower(_ value: ChangeHash) -> RustBuffer {
+    return FfiConverterTypeChangeHash.lower(value)
+}
+
+public typealias Cursor = [UInt8]
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCursor: FfiConverter {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Cursor {
+        return try FfiConverterSequenceUInt8.read(from: &buf)
+    }
+
+    public static func write(_ value: Cursor, into buf: inout [UInt8]) {
+        return FfiConverterSequenceUInt8.write(value, into: &buf)
+    }
+
+    public static func lift(_ value: RustBuffer) throws -> Cursor {
+        return try FfiConverterSequenceUInt8.lift(value)
+    }
+
+    public static func lower(_ value: Cursor) -> RustBuffer {
+        return FfiConverterSequenceUInt8.lower(value)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCursor_lift(_ value: RustBuffer) throws -> Cursor {
+    return try FfiConverterTypeCursor.lift(value)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCursor_lower(_ value: Cursor) -> RustBuffer {
+    return FfiConverterTypeCursor.lower(value)
+}
+
+public typealias ObjId = [UInt8]
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeObjId: FfiConverter {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ObjId {
+        return try FfiConverterSequenceUInt8.read(from: &buf)
+    }
+
+    public static func write(_ value: ObjId, into buf: inout [UInt8]) {
+        return FfiConverterSequenceUInt8.write(value, into: &buf)
+    }
+
+    public static func lift(_ value: RustBuffer) throws -> ObjId {
+        return try FfiConverterSequenceUInt8.lift(value)
+    }
+
+    public static func lower(_ value: ObjId) -> RustBuffer {
+        return FfiConverterSequenceUInt8.lower(value)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeObjId_lift(_ value: RustBuffer) throws -> ObjId {
+    return try FfiConverterTypeObjId.lift(value)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeObjId_lower(_ value: ObjId) -> RustBuffer {
+    return FfiConverterTypeObjId.lower(value)
+}
+
+public func root() -> ObjId {
+    return try!  FfiConverterTypeObjId.lift(try! rustCall() {
+    uniffi_uniffi_automerge_fn_func_root($0
+    )
+})
+}
+
+private enum InitializationResult {
+    case ok
+    case contractVersionMismatch
+    case apiChecksumMismatch
+}
+
+private var initializationResult: InitializationResult = {
+
+    let bindings_contract_version = 26
+
+    let scaffolding_contract_version = ffi_uniffi_automerge_uniffi_contract_version()
+    if bindings_contract_version != scaffolding_contract_version {
+        return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_func_root() != 19647) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_actor_id() != 10869) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_apply_encoded_changes() != 57114) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_apply_encoded_changes_with_patches() != 63928) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_change_by_hash() != 44577) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_changes() != 1878) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_commit_with() != 65319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_cursor() != 18441) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_cursor_at() != 39363) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_cursor_position() != 5760) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_cursor_position_at() != 35233) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_delete_in_list() != 36066) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_delete_in_map() != 1721) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_difference() != 13614) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_encode_changes_since() != 49806) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_encode_new_changes() != 56722) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_fork() != 38250) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_fork_at() != 49724) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_generate_sync_message() != 33156) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_all_at_in_list() != 42311) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_all_at_in_map() != 29778) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_all_in_list() != 3346) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_all_in_map() != 46751) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_at_in_list() != 29393) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_at_in_map() != 41003) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_in_list() != 55210) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_get_in_map() != 27911) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_heads() != 44667) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_increment_in_list() != 6803) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_increment_in_map() != 24542) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_insert_in_list() != 26167) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_insert_object_in_list() != 30538) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_join_block() != 37348) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_length() != 30352) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_length_at() != 64377) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_map_entries() != 3918) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_map_entries_at() != 35589) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_map_keys() != 45893) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_map_keys_at() != 36273) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_mark() != 5875) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_marks() != 58967) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_marks_at() != 57491) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_marks_at_position() != 19243) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_merge() != 8598) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_merge_with_patches() != 63992) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_object_type() != 15479) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_path() != 29434) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_put_in_list() != 39558) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_put_in_map() != 3891) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_put_object_in_list() != 29333) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_put_object_in_map() != 50970) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_receive_sync_message() != 17509) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_receive_sync_message_with_patches() != 42532) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_save() != 20308) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_set_actor() != 64337) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_splice() != 29894) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_splice_text() != 20602) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_split_block() != 10956) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_text() != 64716) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_text_at() != 45714) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_text_encoding() != 58521) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_update_text() != 26364) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_values() != 48159) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_doc_values_at() != 16206) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_syncstate_encode() != 34911) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_syncstate_reset() != 57480) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_method_syncstate_their_heads() != 39870) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_constructor_doc_load() != 20048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_constructor_doc_new() != 9447) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_constructor_doc_new_with_actor() != 21001) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_constructor_doc_new_with_text_encoding() != 28053) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_constructor_syncstate_decode() != 17966) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_uniffi_automerge_checksum_constructor_syncstate_new() != 37569) {
+        return InitializationResult.apiChecksumMismatch
+    }
+
+    return InitializationResult.ok
+}()
+
+private func uniffiEnsureInitialized() {
+    switch initializationResult {
+    case .ok:
+        break
+    case .contractVersionMismatch:
+        fatalError("UniFFI contract version mismatch: try cleaning and rebuilding your project")
+    case .apiChecksumMismatch:
+        fatalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+}

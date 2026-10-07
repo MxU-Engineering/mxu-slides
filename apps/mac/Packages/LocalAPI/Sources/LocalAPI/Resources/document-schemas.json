@@ -1,0 +1,3934 @@
+{
+  "schemaVersion": 130,
+  "schemas": {
+    "SlideObjectKind": {
+      "type": "string",
+      "enum": [
+        "text",
+        "media",
+        "shape",
+        "liveInput"
+      ]
+    },
+    "BlendMode": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "multiply",
+        "screen",
+        "add"
+      ]
+    },
+    "FillKind": {
+      "type": "string",
+      "enum": [
+        "none",
+        "solid",
+        "linearGradient",
+        "media"
+      ]
+    },
+    "ShapeKind": {
+      "type": "string",
+      "enum": [
+        "rectangle",
+        "roundedRectangle",
+        "ellipse",
+        "path"
+      ]
+    },
+    "ShapeTextPlacement": {
+      "type": "string",
+      "enum": [
+        "inside",
+        "edgeOutside",
+        "edgeInside"
+      ]
+    },
+    "TickerDirection": {
+      "type": "string",
+      "enum": [
+        "rightToLeft",
+        "leftToRight"
+      ]
+    },
+    "TextPathSide": {
+      "type": "string",
+      "enum": [
+        "outside",
+        "inside"
+      ]
+    },
+    "MediaScaleMode": {
+      "type": "string",
+      "enum": [
+        "fill",
+        "fit",
+        "stretch"
+      ]
+    },
+    "MediaSourceRect": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ]
+    },
+    "TextHorizontalAlignment": {
+      "type": "string",
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    "TextVerticalAlignment": {
+      "type": "string",
+      "enum": [
+        "top",
+        "middle",
+        "bottom"
+      ]
+    },
+    "TextTransform": {
+      "type": "string",
+      "enum": [
+        "none",
+        "uppercase"
+      ]
+    },
+    "GradientStop": {
+      "type": "object",
+      "properties": {
+        "colorHex": {
+          "type": "string"
+        },
+        "position": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "colorHex",
+        "position"
+      ]
+    },
+    "ObjectFill": {
+      "type": "object",
+      "properties": {
+        "fillKind": {
+          "$ref": "#/components/schemas/FillKind"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "gradientAngleDegrees": {
+          "type": "number"
+        },
+        "gradientStops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/GradientStop"
+          }
+        },
+        "mediaId": {
+          "type": "string"
+        },
+        "mediaScaleMode": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        },
+        "mediaSourceRect": {
+          "$ref": "#/components/schemas/MediaSourceRect"
+        },
+        "loops": {
+          "type": "boolean"
+        },
+        "captureSourceKind": {
+          "$ref": "#/components/schemas/CaptureSourceKind"
+        },
+        "captureSourceId": {
+          "type": "string"
+        },
+        "screenSourceId": {
+          "type": "string"
+        },
+        "liveInputId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fillKind"
+      ]
+    },
+    "StrokeDashKind": {
+      "type": "string",
+      "enum": [
+        "solid",
+        "dashed",
+        "dotted"
+      ]
+    },
+    "ObjectStroke": {
+      "type": "object",
+      "properties": {
+        "colorHex": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number"
+        },
+        "dashKind": {
+          "$ref": "#/components/schemas/StrokeDashKind"
+        }
+      },
+      "required": [
+        "colorHex",
+        "width"
+      ]
+    },
+    "ObjectShadow": {
+      "type": "object",
+      "properties": {
+        "colorHex": {
+          "type": "string"
+        },
+        "blurRadius": {
+          "type": "number"
+        },
+        "offsetX": {
+          "type": "number"
+        },
+        "offsetY": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "colorHex",
+        "blurRadius",
+        "offsetX",
+        "offsetY"
+      ]
+    },
+    "LineStyleOverride": {
+      "type": "object",
+      "properties": {
+        "lineIndex": {
+          "type": "integer"
+        },
+        "fontName": {
+          "type": "string"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "tracking": {
+          "type": "number"
+        },
+        "firstLineIndent": {
+          "type": "number"
+        },
+        "leftIndent": {
+          "type": "number"
+        },
+        "rightIndent": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "lineIndex"
+      ]
+    },
+    "TextLineFillWidthMode": {
+      "type": "string",
+      "enum": [
+        "fullWidth",
+        "lineWidth",
+        "maxLineWidth"
+      ]
+    },
+    "TextLineFill": {
+      "type": "object",
+      "properties": {
+        "fill": {
+          "$ref": "#/components/schemas/ObjectFill"
+        },
+        "widthMode": {
+          "$ref": "#/components/schemas/TextLineFillWidthMode"
+        },
+        "verticalPadding": {
+          "type": "number"
+        },
+        "horizontalPadding": {
+          "type": "number"
+        },
+        "verticalOffset": {
+          "type": "number"
+        },
+        "horizontalOffset": {
+          "type": "number"
+        },
+        "cornerRadius": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "fill"
+      ]
+    },
+    "ChordNotation": {
+      "type": "string",
+      "enum": [
+        "chords",
+        "numbers",
+        "numerals",
+        "doReMi"
+      ]
+    },
+    "ChordPlacement": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "integer"
+        },
+        "column": {
+          "type": "integer"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "column",
+        "symbol"
+      ]
+    },
+    "TextStyle": {
+      "type": "object",
+      "properties": {
+        "fontName": {
+          "type": "string"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "fill": {
+          "$ref": "#/components/schemas/ObjectFill"
+        },
+        "tracking": {
+          "type": "number"
+        },
+        "lineHeightMultiple": {
+          "type": "number"
+        },
+        "horizontalAlignment": {
+          "$ref": "#/components/schemas/TextHorizontalAlignment"
+        },
+        "verticalAlignment": {
+          "$ref": "#/components/schemas/TextVerticalAlignment"
+        },
+        "textTransform": {
+          "$ref": "#/components/schemas/TextTransform"
+        },
+        "tabularFigures": {
+          "type": "boolean"
+        },
+        "autoShrink": {
+          "type": "boolean"
+        },
+        "minFontSize": {
+          "type": "number"
+        },
+        "keepLinesWhole": {
+          "type": "boolean"
+        },
+        "pageOnClick": {
+          "type": "boolean"
+        },
+        "balancedWrap": {
+          "type": "boolean"
+        },
+        "outline": {
+          "$ref": "#/components/schemas/ObjectStroke"
+        },
+        "shadow": {
+          "$ref": "#/components/schemas/ObjectShadow"
+        },
+        "lineStyles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LineStyleOverride"
+          }
+        },
+        "lineFill": {
+          "$ref": "#/components/schemas/TextLineFill"
+        },
+        "pathData": {
+          "type": "string"
+        },
+        "tickerSpeed": {
+          "type": "number"
+        },
+        "tickerDirection": {
+          "$ref": "#/components/schemas/TickerDirection"
+        },
+        "pathSide": {
+          "$ref": "#/components/schemas/TextPathSide"
+        },
+        "pathOffset": {
+          "type": "number"
+        },
+        "tickerRepeat": {
+          "type": "integer"
+        },
+        "tickerRamp": {
+          "$ref": "#/components/schemas/AnimationRamp"
+        },
+        "scroll": {
+          "$ref": "#/components/schemas/BlockScroll"
+        },
+        "tickerStream": {
+          "type": "boolean"
+        },
+        "tickerGap": {
+          "type": "number"
+        },
+        "tickerSeparator": {
+          "type": "string"
+        },
+        "wordSpacing": {
+          "type": "number"
+        },
+        "insetTop": {
+          "type": "number"
+        },
+        "insetLeft": {
+          "type": "number"
+        },
+        "insetBottom": {
+          "type": "number"
+        },
+        "insetRight": {
+          "type": "number"
+        },
+        "firstLineIndent": {
+          "type": "number"
+        },
+        "leftIndent": {
+          "type": "number"
+        },
+        "rightIndent": {
+          "type": "number"
+        },
+        "paragraphSpacing": {
+          "type": "number"
+        },
+        "showChords": {
+          "type": "boolean"
+        },
+        "chordNotation": {
+          "$ref": "#/components/schemas/ChordNotation"
+        },
+        "chordColorHex": {
+          "type": "string"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "strikethrough": {
+          "type": "boolean"
+        }
+      }
+    },
+    "VisibilityMatch": {
+      "type": "string",
+      "enum": [
+        "all",
+        "any",
+        "none"
+      ]
+    },
+    "VisibilityConditionKind": {
+      "type": "string",
+      "enum": [
+        "timer",
+        "videoCountdown",
+        "audioPlayback",
+        "liveInput",
+        "capture",
+        "objectText"
+      ]
+    },
+    "VisibilityConditionState": {
+      "type": "string",
+      "enum": [
+        "hasTimeRemaining",
+        "hasExpired",
+        "isRunning",
+        "isNotRunning",
+        "isActive",
+        "isInactive",
+        "isConnected",
+        "isDisconnected",
+        "hasText",
+        "hasNoText"
+      ]
+    },
+    "VisibilityCondition": {
+      "type": "object",
+      "properties": {
+        "conditionKind": {
+          "$ref": "#/components/schemas/VisibilityConditionKind"
+        },
+        "state": {
+          "$ref": "#/components/schemas/VisibilityConditionState"
+        },
+        "timerId": {
+          "type": "string"
+        },
+        "objectId": {
+          "type": "string"
+        },
+        "liveInputId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "conditionKind",
+        "state"
+      ]
+    },
+    "TextStyleRun": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "integer"
+        },
+        "column": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "integer"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "strikethrough": {
+          "type": "boolean"
+        },
+        "fontName": {
+          "type": "string"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "highlightColorHex": {
+          "type": "string"
+        },
+        "tracking": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "line",
+        "column",
+        "length"
+      ]
+    },
+    "KeepFromSlideOptions": {
+      "type": "object",
+      "properties": {
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "strikethrough": {
+          "type": "boolean"
+        },
+        "sizeEmphasis": {
+          "type": "boolean"
+        },
+        "wordLetterSpacing": {
+          "type": "boolean"
+        },
+        "highlight": {
+          "type": "boolean"
+        },
+        "textColor": {
+          "type": "boolean"
+        }
+      }
+    },
+    "AnimationKind": {
+      "type": "string",
+      "enum": [
+        "in",
+        "out",
+        "emphasis",
+        "morph"
+      ]
+    },
+    "AnimationTrigger": {
+      "type": "string",
+      "enum": [
+        "onClick",
+        "withPrevious",
+        "afterPrevious",
+        "onDismiss"
+      ]
+    },
+    "StepAnimation": {
+      "type": "string",
+      "enum": [
+        "fade",
+        "move",
+        "scale",
+        "wipe",
+        "blur",
+        "burn",
+        "glitch",
+        "draw",
+        "type",
+        "pulse",
+        "color"
+      ]
+    },
+    "BlockScrollAxis": {
+      "type": "string",
+      "enum": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ]
+    },
+    "BlockScroll": {
+      "type": "object",
+      "properties": {
+        "axis": {
+          "$ref": "#/components/schemas/BlockScrollAxis"
+        },
+        "speed": {
+          "type": "number"
+        },
+        "passes": {
+          "type": "integer"
+        },
+        "ramp": {
+          "$ref": "#/components/schemas/AnimationRamp"
+        },
+        "restAtEnd": {
+          "type": "boolean"
+        },
+        "fadeTowardTop": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "speed"
+      ]
+    },
+    "AnimationRamp": {
+      "type": "string",
+      "enum": [
+        "none",
+        "in",
+        "out",
+        "both"
+      ]
+    },
+    "AnimationEdge": {
+      "type": "string",
+      "enum": [
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ]
+    },
+    "AnimationRange": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "integer"
+        },
+        "column": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line",
+        "column",
+        "length"
+      ]
+    },
+    "VideoPushAlignment": {
+      "type": "string",
+      "enum": [
+        "center",
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ]
+    },
+    "VideoPushMode": {
+      "type": "string",
+      "enum": [
+        "fill",
+        "fit",
+        "blurBackground"
+      ]
+    },
+    "VideoPush": {
+      "type": "object",
+      "properties": {
+        "alignment": {
+          "$ref": "#/components/schemas/VideoPushAlignment"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/VideoPushMode"
+        },
+        "zoom": {
+          "type": "number"
+        },
+        "margin": {
+          "type": "number"
+        },
+        "backdrop": {
+          "type": "boolean"
+        },
+        "blurRadius": {
+          "type": "number"
+        }
+      }
+    },
+    "AnimationStep": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/AnimationKind"
+        },
+        "animation": {
+          "$ref": "#/components/schemas/StepAnimation"
+        },
+        "trigger": {
+          "$ref": "#/components/schemas/AnimationTrigger"
+        },
+        "delaySeconds": {
+          "type": "number"
+        },
+        "durationSeconds": {
+          "type": "number"
+        },
+        "ramp": {
+          "$ref": "#/components/schemas/AnimationRamp"
+        },
+        "withFade": {
+          "type": "boolean"
+        },
+        "ranges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AnimationRange"
+          }
+        },
+        "edge": {
+          "$ref": "#/components/schemas/AnimationEdge"
+        },
+        "offsetX": {
+          "type": "number"
+        },
+        "offsetY": {
+          "type": "number"
+        },
+        "fromScale": {
+          "type": "number"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "softEdge": {
+          "type": "number"
+        },
+        "cursor": {
+          "type": "boolean"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "placeholderUnderline": {
+          "type": "boolean"
+        },
+        "drawStart": {
+          "type": "number"
+        },
+        "reverse": {
+          "type": "boolean"
+        },
+        "toObject": {
+          "$ref": "#/components/schemas/SlideObject"
+        },
+        "videoPush": {
+          "$ref": "#/components/schemas/VideoPush"
+        },
+        "fromObject": {
+          "$ref": "#/components/schemas/SlideObject"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "animation",
+        "trigger",
+        "durationSeconds"
+      ]
+    },
+    "AnimationPreset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AnimationStep"
+          }
+        },
+        "staggerSeconds": {
+          "type": "number"
+        },
+        "scroll": {
+          "$ref": "#/components/schemas/BlockScroll"
+        },
+        "tilt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "steps"
+      ]
+    },
+    "AnimationPresetBoard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "presets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AnimationPreset"
+          }
+        },
+        "defaultIn": {
+          "$ref": "#/components/schemas/AnimationStep"
+        },
+        "defaultOut": {
+          "$ref": "#/components/schemas/AnimationStep"
+        }
+      },
+      "required": [
+        "id",
+        "presets"
+      ]
+    },
+    "SlideObject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "objectKind": {
+          "$ref": "#/components/schemas/SlideObjectKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "rotationDegrees": {
+          "type": "number"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "visibilityMatch": {
+          "$ref": "#/components/schemas/VisibilityMatch"
+        },
+        "visibilityConditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/VisibilityCondition"
+          }
+        },
+        "flipHorizontal": {
+          "type": "boolean"
+        },
+        "flipVertical": {
+          "type": "boolean"
+        },
+        "opacity": {
+          "type": "number"
+        },
+        "blendMode": {
+          "$ref": "#/components/schemas/BlendMode"
+        },
+        "groupId": {
+          "type": "string"
+        },
+        "maskObjectId": {
+          "type": "string"
+        },
+        "maskMode": {
+          "$ref": "#/components/schemas/MaskMode"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Effect"
+          }
+        },
+        "effectsApplyBelow": {
+          "type": "boolean"
+        },
+        "textLink": {
+          "$ref": "#/components/schemas/TextLink"
+        },
+        "textStyle": {
+          "$ref": "#/components/schemas/TextStyle"
+        },
+        "chords": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ChordPlacement"
+          }
+        },
+        "styleRuns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TextStyleRun"
+          }
+        },
+        "shapeKind": {
+          "$ref": "#/components/schemas/ShapeKind"
+        },
+        "cornerRadius": {
+          "type": "number"
+        },
+        "pathData": {
+          "type": "string"
+        },
+        "shapeTextPlacement": {
+          "$ref": "#/components/schemas/ShapeTextPlacement"
+        },
+        "shapeTextCornerRadius": {
+          "type": "number"
+        },
+        "fill": {
+          "$ref": "#/components/schemas/ObjectFill"
+        },
+        "stroke": {
+          "$ref": "#/components/schemas/ObjectStroke"
+        },
+        "shadow": {
+          "$ref": "#/components/schemas/ObjectShadow"
+        },
+        "mediaId": {
+          "type": "string"
+        },
+        "mediaScaleMode": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        },
+        "mediaSourceRect": {
+          "$ref": "#/components/schemas/MediaSourceRect"
+        },
+        "loops": {
+          "type": "boolean"
+        },
+        "captureSourceKind": {
+          "$ref": "#/components/schemas/CaptureSourceKind"
+        },
+        "captureSourceId": {
+          "type": "string"
+        },
+        "screenSourceId": {
+          "type": "string"
+        },
+        "liveInputId": {
+          "type": "string"
+        },
+        "keepFromSlide": {
+          "$ref": "#/components/schemas/KeepFromSlideOptions"
+        },
+        "animationSteps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AnimationStep"
+          }
+        },
+        "builds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AnimationStep"
+          }
+        },
+        "tilt": {
+          "type": "number"
+        },
+        "swing": {
+          "type": "number"
+        },
+        "tiltPivot": {
+          "$ref": "#/components/schemas/TiltPivot"
+        },
+        "keystoneTop": {
+          "type": "number"
+        },
+        "keystoneBottom": {
+          "type": "number"
+        },
+        "skewX": {
+          "type": "number"
+        },
+        "skewY": {
+          "type": "number"
+        },
+        "keystoneMode": {
+          "$ref": "#/components/schemas/KeystoneMode"
+        }
+      },
+      "required": [
+        "id",
+        "objectKind",
+        "name",
+        "text"
+      ]
+    },
+    "KeystoneMode": {
+      "type": "string",
+      "enum": [
+        "perspective",
+        "stretch"
+      ]
+    },
+    "TiltPivot": {
+      "type": "string",
+      "enum": [
+        "top",
+        "center",
+        "bottom"
+      ]
+    },
+    "CueMediaLayer": {
+      "type": "string",
+      "enum": [
+        "loopingVideos",
+        "stillGraphics",
+        "videos"
+      ]
+    },
+    "CueMediaMode": {
+      "type": "string",
+      "enum": [
+        "slideOnly",
+        "untilReplaced"
+      ]
+    },
+    "CueMedia": {
+      "type": "object",
+      "properties": {
+        "mediaId": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/CueMediaMode"
+        },
+        "layer": {
+          "$ref": "#/components/schemas/CueMediaLayer"
+        },
+        "loops": {
+          "type": "boolean"
+        },
+        "classification": {
+          "$ref": "#/components/schemas/MediaClassification"
+        }
+      },
+      "required": [
+        "mediaId"
+      ]
+    },
+    "Slide": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideObject"
+          }
+        },
+        "background": {
+          "$ref": "#/components/schemas/CueMedia"
+        },
+        "backgroundFill": {
+          "$ref": "#/components/schemas/ObjectFill"
+        },
+        "sectionId": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "themeSlideName": {
+          "type": "string"
+        },
+        "themeId": {
+          "type": "string"
+        },
+        "unthemed": {
+          "type": "boolean"
+        },
+        "overrideDesigns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/OverrideDesign"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "autoAdvance": {
+          "$ref": "#/components/schemas/AutoAdvance"
+        },
+        "transition": {
+          "$ref": "#/components/schemas/Transition"
+        },
+        "animationOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "keepWords": {
+          "type": "boolean"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideVersion"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "objects"
+      ]
+    },
+    "AutoAdvance": {
+      "type": "object",
+      "properties": {
+        "delaySeconds": {
+          "type": "number"
+        },
+        "loopToStart": {
+          "type": "boolean"
+        },
+        "afterPlayback": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "delaySeconds"
+      ]
+    },
+    "PresentationSection": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "background": {
+          "$ref": "#/components/schemas/CueMedia"
+        },
+        "colorHex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "CCLIInfo": {
+      "type": "object",
+      "properties": {
+        "songNumber": {
+          "type": "integer"
+        },
+        "songTitle": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "copyrightYear": {
+          "type": "integer"
+        },
+        "copyright": {
+          "type": "string"
+        }
+      }
+    },
+    "Arrangement": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sectionIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "sectionIds"
+      ]
+    },
+    "PresentationKind": {
+      "type": "string",
+      "enum": [
+        "song",
+        "deck"
+      ]
+    },
+    "Presentation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "presentationKind": {
+          "$ref": "#/components/schemas/PresentationKind"
+        },
+        "themeId": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "folderId": {
+          "type": "string"
+        },
+        "slides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Slide"
+          }
+        },
+        "canvasWidth": {
+          "type": "integer"
+        },
+        "canvasHeight": {
+          "type": "integer"
+        },
+        "background": {
+          "$ref": "#/components/schemas/CueMedia"
+        },
+        "backgroundFill": {
+          "$ref": "#/components/schemas/ObjectFill"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/PresentationSection"
+          }
+        },
+        "arrangements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Arrangement"
+          }
+        },
+        "defaultArrangementId": {
+          "type": "string"
+        },
+        "reflowSource": {
+          "type": "string"
+        },
+        "ccli": {
+          "$ref": "#/components/schemas/CCLIInfo"
+        },
+        "chordProSource": {
+          "type": "string"
+        },
+        "musicKey": {
+          "type": "string"
+        },
+        "autoAdvance": {
+          "$ref": "#/components/schemas/AutoAdvance"
+        },
+        "displayKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "presentationKind",
+        "themeId",
+        "slides"
+      ]
+    },
+    "MediaKind": {
+      "type": "string",
+      "enum": [
+        "image",
+        "video"
+      ]
+    },
+    "MediaClassification": {
+      "type": "string",
+      "enum": [
+        "foreground",
+        "background"
+      ]
+    },
+    "MediaFileStatus": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "needsTranscode",
+        "transcoding",
+        "transcodeFailed"
+      ]
+    },
+    "MediaItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "mediaKind": {
+          "$ref": "#/components/schemas/MediaKind"
+        },
+        "classification": {
+          "$ref": "#/components/schemas/MediaClassification"
+        },
+        "fileHash": {
+          "type": "string"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "fileStatus": {
+          "$ref": "#/components/schemas/MediaFileStatus"
+        },
+        "statusDetail": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "favorite": {
+          "type": "boolean"
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "loops": {
+          "type": "boolean"
+        },
+        "inPoint": {
+          "type": "number"
+        },
+        "outPoint": {
+          "type": "number"
+        },
+        "playRate": {
+          "type": "number"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Effect"
+          }
+        },
+        "transition": {
+          "$ref": "#/components/schemas/Transition"
+        },
+        "durationSeconds": {
+          "type": "number"
+        },
+        "pixelWidth": {
+          "type": "integer"
+        },
+        "pixelHeight": {
+          "type": "integer"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "folderId": {
+          "type": "string"
+        },
+        "recordedAt": {
+          "type": "number"
+        },
+        "recordedByPresetId": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "autoAdvance": {
+          "$ref": "#/components/schemas/AutoAdvance"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mediaKind",
+        "classification",
+        "fileHash",
+        "fileName",
+        "fileStatus",
+        "statusDetail",
+        "tags",
+        "favorite",
+        "collections",
+        "loops"
+      ]
+    },
+    "AudioItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "fileHash": {
+          "type": "string"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "favorite": {
+          "type": "boolean"
+        },
+        "inPoint": {
+          "type": "number"
+        },
+        "outPoint": {
+          "type": "number"
+        },
+        "durationSeconds": {
+          "type": "number"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "folderId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "fileHash",
+        "fileName",
+        "tags",
+        "favorite"
+      ]
+    },
+    "PlaylistRefKind": {
+      "type": "string",
+      "enum": [
+        "media",
+        "audio"
+      ]
+    },
+    "PlaylistEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "refKind": {
+          "$ref": "#/components/schemas/PlaylistRefKind"
+        },
+        "refId": {
+          "type": "string"
+        },
+        "autoAdvanceDelaySeconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "refKind",
+        "refId"
+      ]
+    },
+    "PlaybackMode": {
+      "type": "string",
+      "enum": [
+        "playAll",
+        "loopPlaylist",
+        "loopSingle"
+      ]
+    },
+    "PlaylistKind": {
+      "type": "string",
+      "enum": [
+        "media",
+        "audio"
+      ]
+    },
+    "Playlist": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "playlistKind": {
+          "$ref": "#/components/schemas/PlaylistKind"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/PlaylistEntry"
+          }
+        },
+        "playbackMode": {
+          "$ref": "#/components/schemas/PlaybackMode"
+        },
+        "shuffle": {
+          "type": "boolean"
+        },
+        "crossfadeSeconds": {
+          "type": "number"
+        },
+        "autoAdvance": {
+          "type": "boolean"
+        },
+        "autoAdvanceDelaySeconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "entries",
+        "playbackMode"
+      ]
+    },
+    "ServiceItemKind": {
+      "type": "string",
+      "enum": [
+        "presentation",
+        "media",
+        "audio",
+        "playlist",
+        "header",
+        "info"
+      ]
+    },
+    "ServiceItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "itemKind": {
+          "$ref": "#/components/schemas/ServiceItemKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "refId": {
+          "type": "string"
+        },
+        "arrangementId": {
+          "type": "string"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "outputPresetId": {
+          "type": "string"
+        },
+        "mxuItemHexId": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "integer"
+        },
+        "mxuKind": {
+          "type": "string"
+        },
+        "excludedTimeHexIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hiddenInPresenter": {
+          "type": "boolean"
+        },
+        "mxuSongTitle": {
+          "type": "string"
+        },
+        "mxuCcliNumber": {
+          "type": "integer"
+        },
+        "mxuArrangementName": {
+          "type": "string"
+        },
+        "mxuSongAuthor": {
+          "type": "string"
+        },
+        "mxuMultiTracksUrl": {
+          "type": "string"
+        },
+        "mxuNotes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/MxUPlanItemNote"
+          }
+        },
+        "mxuMessageNotesDocumentHexId": {
+          "type": "string"
+        },
+        "mxuMessageNotesSubmittedAt": {
+          "type": "string"
+        },
+        "mxuMessageNotesOnReady": {
+          "type": "string"
+        },
+        "mxuMessageNotesDeckDocId": {
+          "type": "string"
+        },
+        "mxuPcoItemId": {
+          "type": "string"
+        },
+        "mxuPcoSongId": {
+          "type": "string"
+        },
+        "mxuPcoArrangementId": {
+          "type": "string"
+        },
+        "mxuPcoKeyId": {
+          "type": "string"
+        },
+        "mxuSongKey": {
+          "type": "string"
+        },
+        "mxuDescription": {
+          "type": "string"
+        },
+        "mxuServicePosition": {
+          "type": "string"
+        },
+        "mxuBpm": {
+          "type": "number"
+        },
+        "mxuTimeSignature": {
+          "type": "string"
+        },
+        "mxuSongKeyApplied": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "itemKind",
+        "name",
+        "refId"
+      ]
+    },
+    "ServiceLinkRule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "normalizedName": {
+          "type": "string"
+        },
+        "serviceTypeName": {
+          "type": "string"
+        },
+        "itemKind": {
+          "$ref": "#/components/schemas/ServiceItemKind"
+        },
+        "refId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "normalizedName",
+        "itemKind",
+        "refId"
+      ]
+    },
+    "ServiceLinkRules": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceLinkRule"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "rules"
+      ]
+    },
+    "MxUPlanTime": {
+      "type": "object",
+      "properties": {
+        "hexId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "startsAt": {
+          "type": "string"
+        },
+        "isRehearsal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hexId",
+        "name"
+      ]
+    },
+    "MxUPlanItemNote": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "positions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "MxUPlanTimeOrder": {
+      "type": "object",
+      "properties": {
+        "timeHexId": {
+          "type": "string"
+        },
+        "itemHexIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "timeHexId",
+        "itemHexIds"
+      ]
+    },
+    "ServiceVersionStation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "ServiceItemChange": {
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "itemKind": {
+          "$ref": "#/components/schemas/ServiceItemKind"
+        },
+        "refId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arrangementId": {
+          "type": "string"
+        },
+        "outputPresetId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId"
+      ]
+    },
+    "ServiceVersion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "stations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceVersionStation"
+          }
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceItem"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceItemChange"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Service": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "serviceDate": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceItem"
+          }
+        },
+        "origin": {
+          "type": "string"
+        },
+        "mxuPlanHexId": {
+          "type": "string"
+        },
+        "mxuServiceTypeName": {
+          "type": "string"
+        },
+        "mxuPlanVersion": {
+          "type": "string"
+        },
+        "mxuPlanTimes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/MxUPlanTime"
+          }
+        },
+        "mxuTimeOrders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/MxUPlanTimeOrder"
+          }
+        },
+        "mxuSyncedOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mxuDerivedName": {
+          "type": "string"
+        },
+        "mxuSyncPaused": {
+          "type": "boolean"
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceVersion"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "serviceDate",
+        "items"
+      ]
+    },
+    "Overlay": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideObject"
+          }
+        },
+        "folder": {
+          "type": "string"
+        },
+        "folderId": {
+          "type": "string"
+        },
+        "layer": {
+          "type": "string"
+        },
+        "animationOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "objects"
+      ]
+    },
+    "OutputTargetKind": {
+      "type": "string",
+      "enum": [
+        "display",
+        "placeholderScreen"
+      ]
+    },
+    "OutputAssignment": {
+      "type": "object",
+      "properties": {
+        "targetKind": {
+          "$ref": "#/components/schemas/OutputTargetKind"
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "enabledLayers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "slideThemeId": {
+          "type": "string"
+        },
+        "slideThemeFolder": {
+          "type": "string"
+        },
+        "slideThemeSlideId": {
+          "type": "string"
+        },
+        "maskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "targetKind",
+        "targetId",
+        "enabledLayers"
+      ]
+    },
+    "OutputPreset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/OutputAssignment"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "assignments"
+      ]
+    },
+    "MIDIDeviceItemDirection": {
+      "type": "string",
+      "enum": [
+        "input",
+        "output",
+        "both"
+      ]
+    },
+    "MIDIDevice": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/components/schemas/MIDIDeviceItemDirection"
+        },
+        "channel": {
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "sourceNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "destinationNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "autoReconnect": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "AlertBehavior": {
+      "type": "string",
+      "enum": [
+        "persist",
+        "flash"
+      ]
+    },
+    "AlertTarget": {
+      "type": "string",
+      "enum": [
+        "confidence",
+        "audience",
+        "both"
+      ]
+    },
+    "AlertPreset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "behavior": {
+          "$ref": "#/components/schemas/AlertBehavior"
+        },
+        "target": {
+          "$ref": "#/components/schemas/AlertTarget"
+        },
+        "themeId": {
+          "type": "string"
+        },
+        "layer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "message",
+        "behavior"
+      ]
+    },
+    "Theme": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "fontFamily": {
+          "type": "string"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "textColorHex": {
+          "type": "string"
+        },
+        "backgroundColorHex": {
+          "type": "string"
+        },
+        "slides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Slide"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "fontFamily",
+        "fontSize",
+        "textColorHex",
+        "backgroundColorHex"
+      ]
+    },
+    "StreamTransport": {
+      "type": "string",
+      "enum": [
+        "rtmp",
+        "rtmps",
+        "srt",
+        "hls"
+      ]
+    },
+    "StreamVideoCodec": {
+      "type": "string",
+      "enum": [
+        "h264",
+        "hevc"
+      ]
+    },
+    "StreamPresetDestination": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/components/schemas/StreamTransport"
+        },
+        "url": {
+          "type": "string"
+        },
+        "streamKey": {
+          "type": "string"
+        },
+        "linkedPlatform": {
+          "type": "string"
+        },
+        "linkedTargetId": {
+          "type": "string"
+        },
+        "videoCodec": {
+          "$ref": "#/components/schemas/StreamVideoCodec"
+        },
+        "maxHeight": {
+          "type": "integer"
+        },
+        "hdr": {
+          "type": "boolean"
+        },
+        "privacy": {
+          "type": "string"
+        },
+        "canvasScreenId": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "frameRate": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "transport",
+        "url"
+      ]
+    },
+    "StreamPresetKind": {
+      "type": "string",
+      "enum": [
+        "stream",
+        "recordOnly"
+      ]
+    },
+    "StreamDestination": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/components/schemas/StreamTransport"
+        },
+        "url": {
+          "type": "string"
+        },
+        "streamKey": {
+          "type": "string"
+        },
+        "linkedPlatform": {
+          "type": "string"
+        },
+        "linkedTargetId": {
+          "type": "string"
+        },
+        "linkedTargetName": {
+          "type": "string"
+        },
+        "videoCodec": {
+          "$ref": "#/components/schemas/StreamVideoCodec"
+        },
+        "maxHeight": {
+          "type": "integer"
+        },
+        "hdr": {
+          "type": "boolean"
+        },
+        "defaultPrivacy": {
+          "type": "string"
+        },
+        "canvasScreenId": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "frameRate": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "transport",
+        "url"
+      ]
+    },
+    "StreamSourceKind": {
+      "type": "string",
+      "enum": [
+        "screen",
+        "mediaItem",
+        "latestRecording"
+      ]
+    },
+    "StreamRecordPreset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/StreamPresetDestination"
+          }
+        },
+        "destinationIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "presetKind": {
+          "$ref": "#/components/schemas/StreamPresetKind"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "frameRate": {
+          "type": "integer"
+        },
+        "videoBitrateKbps": {
+          "type": "integer"
+        },
+        "canvasScreenId": {
+          "type": "string"
+        },
+        "recordWhileStreaming": {
+          "type": "boolean"
+        },
+        "recordCodec": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "streamDescription": {
+          "type": "string"
+        },
+        "recordFolder": {
+          "type": "string"
+        },
+        "audioInputUid": {
+          "type": "string"
+        },
+        "audioIncludesProgram": {
+          "type": "boolean"
+        },
+        "audioInputId": {
+          "type": "string"
+        },
+        "audioMixId": {
+          "type": "string"
+        },
+        "audioDelayMs": {
+          "type": "integer"
+        },
+        "sourceKind": {
+          "$ref": "#/components/schemas/StreamSourceKind"
+        },
+        "sourceMediaId": {
+          "type": "string"
+        },
+        "sourceFolder": {
+          "type": "string"
+        },
+        "sourceMaxAgeHours": {
+          "type": "integer"
+        },
+        "recordLibraryFolder": {
+          "type": "string"
+        },
+        "recordExportFolder": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "destinations"
+      ]
+    },
+    "CaptureSourceKind": {
+      "type": "string",
+      "enum": [
+        "camera",
+        "ndi"
+      ]
+    },
+    "SlideActionKind": {
+      "type": "string",
+      "enum": [
+        "clearLayer",
+        "clearAll",
+        "clearAudio",
+        "clearSignage",
+        "switchOutputPreset",
+        "fireMedia",
+        "fireAlert",
+        "dismissAlert",
+        "timerStart",
+        "timerPause",
+        "timerReset",
+        "timerConfigure",
+        "midiOut",
+        "fireCombo",
+        "captureStart",
+        "captureStop",
+        "firePresentation",
+        "setConfidenceLayout",
+        "fireOverlay",
+        "dismissOverlay",
+        "fireLiveInput",
+        "setSignage",
+        "setScreenSource",
+        "enableAudioInput",
+        "disableAudioInput",
+        "fireAudio",
+        "fireAudioPlaylist"
+      ]
+    },
+    "MIDIMessageKind": {
+      "type": "string",
+      "enum": [
+        "noteOn",
+        "controlChange"
+      ]
+    },
+    "TimerMode": {
+      "type": "string",
+      "enum": [
+        "countdown",
+        "countdownToTime",
+        "countUp"
+      ]
+    },
+    "SlideAction": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/SlideActionKind"
+        },
+        "layer": {
+          "type": "string"
+        },
+        "presetId": {
+          "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
+        },
+        "alertId": {
+          "type": "string"
+        },
+        "timerId": {
+          "type": "string"
+        },
+        "timerMode": {
+          "$ref": "#/components/schemas/TimerMode"
+        },
+        "timerDurationSeconds": {
+          "type": "number"
+        },
+        "timerHour": {
+          "type": "integer"
+        },
+        "timerMinute": {
+          "type": "integer"
+        },
+        "comboId": {
+          "type": "string"
+        },
+        "midiKind": {
+          "$ref": "#/components/schemas/MIDIMessageKind"
+        },
+        "midiChannel": {
+          "type": "integer"
+        },
+        "midiNumber": {
+          "type": "integer"
+        },
+        "midiValue": {
+          "type": "integer"
+        },
+        "midiDeviceId": {
+          "type": "string"
+        },
+        "capturePresetId": {
+          "type": "string"
+        },
+        "capturePrivacy": {
+          "type": "string"
+        },
+        "presentationId": {
+          "type": "string"
+        },
+        "slideIndex": {
+          "type": "integer"
+        },
+        "confidenceLayoutId": {
+          "type": "string"
+        },
+        "confidenceScreenId": {
+          "type": "string"
+        },
+        "overlayId": {
+          "type": "string"
+        },
+        "inputSourceKind": {
+          "$ref": "#/components/schemas/CaptureSourceKind"
+        },
+        "inputSourceId": {
+          "type": "string"
+        },
+        "liveInputId": {
+          "type": "string"
+        },
+        "audioInputId": {
+          "type": "string"
+        },
+        "playlistId": {
+          "type": "string"
+        },
+        "audioItemId": {
+          "type": "string"
+        },
+        "audioEntryId": {
+          "type": "string"
+        },
+        "audioRepeat": {
+          "type": "boolean"
+        },
+        "signageId": {
+          "type": "string"
+        },
+        "screenId": {
+          "type": "string"
+        },
+        "delaySeconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ]
+    },
+    "ActionCombo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "iconName": {
+          "type": "string"
+        },
+        "runOnStartup": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "actions"
+      ]
+    },
+    "ScheduleConditionKind": {
+      "type": "string",
+      "enum": [
+        "weekly",
+        "oneTime",
+        "timerReaches"
+      ]
+    },
+    "ScheduleCondition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/components/schemas/ScheduleConditionKind"
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "timeOfDay": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "timerId": {
+          "type": "string"
+        },
+        "timerSeconds": {
+          "type": "number"
+        },
+        "excludedDates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ]
+    },
+    "ScheduleConditionLogic": {
+      "type": "string",
+      "enum": [
+        "any",
+        "all"
+      ]
+    },
+    "ScheduleTrigger": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ScheduleCondition"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "conditionLogic": {
+          "$ref": "#/components/schemas/ScheduleConditionLogic"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "disabledUntil": {
+          "type": "string"
+        },
+        "enabledUntil": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "conditions",
+        "actions"
+      ]
+    },
+    "ScheduleFolder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "collapsed": {
+          "type": "boolean"
+        },
+        "triggerIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "triggerIds"
+      ]
+    },
+    "SchedulerBoard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ScheduleFolder"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "nodes",
+        "folders"
+      ]
+    },
+    "ControlFolder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "collapsed": {
+          "type": "boolean"
+        },
+        "itemIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "itemIds"
+      ]
+    },
+    "ControlBoard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ControlFolder"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "nodes",
+        "folders"
+      ]
+    },
+    "GroupDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "hotKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "colorHex"
+      ]
+    },
+    "GroupPalette": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/GroupDefinition"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "groups"
+      ]
+    },
+    "ImportLedgerEntry": {
+      "type": "object",
+      "properties": {
+        "docId": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "docId",
+        "hash"
+      ]
+    },
+    "ImportLedger": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ImportLedgerEntry"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "entries"
+      ]
+    },
+    "TransitionKind": {
+      "type": "string",
+      "enum": [
+        "cut",
+        "dissolve",
+        "fadeBlack",
+        "fadeWhite",
+        "fadeColor",
+        "blurDissolve",
+        "filmBurn"
+      ]
+    },
+    "Transition": {
+      "type": "object",
+      "properties": {
+        "transitionKind": {
+          "$ref": "#/components/schemas/TransitionKind"
+        },
+        "durationSeconds": {
+          "type": "number"
+        },
+        "colorHex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "transitionKind"
+      ]
+    },
+    "EffectPreset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Effect"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "effects"
+      ]
+    },
+    "EffectPresetBoard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "presets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/EffectPreset"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "presets"
+      ]
+    },
+    "MaskMode": {
+      "type": "string",
+      "enum": [
+        "in",
+        "out"
+      ]
+    },
+    "EffectKind": {
+      "type": "string",
+      "enum": [
+        "blur",
+        "colorAdjust",
+        "hueRotate",
+        "invert",
+        "posterize",
+        "pixelate",
+        "vignette",
+        "warp",
+        "echo",
+        "scatter",
+        "stainedGlass",
+        "grain",
+        "ghostTrails"
+      ]
+    },
+    "Effect": {
+      "type": "object",
+      "properties": {
+        "effectKind": {
+          "$ref": "#/components/schemas/EffectKind"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "opacity": {
+          "type": "number"
+        },
+        "radius": {
+          "type": "number"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "scale": {
+          "type": "number"
+        },
+        "speed": {
+          "type": "number"
+        },
+        "fade": {
+          "type": "number"
+        },
+        "smooth": {
+          "type": "number"
+        },
+        "brightness": {
+          "type": "number"
+        },
+        "contrast": {
+          "type": "number"
+        },
+        "saturation": {
+          "type": "number"
+        },
+        "hue": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "effectKind"
+      ]
+    },
+    "TextSourceKind": {
+      "type": "string",
+      "enum": [
+        "currentSlide",
+        "nextSlide",
+        "lastSlide",
+        "clock",
+        "timer",
+        "videoCountdown",
+        "slidePosition",
+        "currentServiceItem",
+        "nextServiceItem",
+        "stageMessage",
+        "currentGroup",
+        "currentPresentation",
+        "nextServiceTitle"
+      ]
+    },
+    "TimerTextFormat": {
+      "type": "string",
+      "enum": [
+        "digits",
+        "abbreviated",
+        "words"
+      ]
+    },
+    "TextLink": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/components/schemas/TextSourceKind"
+        },
+        "timerId": {
+          "type": "string"
+        },
+        "clockFormat": {
+          "type": "string"
+        },
+        "usesWarningColor": {
+          "type": "boolean"
+        },
+        "maxLines": {
+          "type": "integer"
+        },
+        "includeSteps": {
+          "type": "boolean"
+        },
+        "includeBuilds": {
+          "type": "boolean"
+        },
+        "sourceObjectName": {
+          "type": "string"
+        },
+        "showsVideoName": {
+          "type": "boolean"
+        },
+        "videoLayer": {
+          "type": "string"
+        },
+        "timerFormat": {
+          "$ref": "#/components/schemas/TimerTextFormat"
+        },
+        "timerPattern": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ]
+    },
+    "MultiViewSplitAxis": {
+      "type": "string",
+      "enum": [
+        "columns",
+        "rows"
+      ]
+    },
+    "MultiViewSourceKind": {
+      "type": "string",
+      "enum": [
+        "empty",
+        "screen",
+        "liveInput",
+        "media",
+        "clock",
+        "timer",
+        "videoCountdown",
+        "text"
+      ]
+    },
+    "MultiViewNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "axis": {
+          "$ref": "#/components/schemas/MultiViewSplitAxis"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fractions": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "sourceKind": {
+          "$ref": "#/components/schemas/MultiViewSourceKind"
+        },
+        "screenSourceId": {
+          "type": "string"
+        },
+        "screenSourceName": {
+          "type": "string"
+        },
+        "liveInputId": {
+          "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
+        },
+        "timerId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "scaleMode": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        },
+        "matchSourceShape": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "MultiViewTree": {
+      "type": "object",
+      "properties": {
+        "rootId": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/MultiViewNode"
+          }
+        }
+      },
+      "required": [
+        "rootId",
+        "nodes"
+      ]
+    },
+    "ConfidenceLayout": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideObject"
+          }
+        },
+        "folder": {
+          "type": "string"
+        },
+        "folderId": {
+          "type": "string"
+        },
+        "canvasWidth": {
+          "type": "integer"
+        },
+        "canvasHeight": {
+          "type": "integer"
+        },
+        "animationOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "multiView": {
+          "$ref": "#/components/schemas/MultiViewTree"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "objects"
+      ]
+    },
+    "SignageChannel": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "playlistId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "SignageBoard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "signages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SignageChannel"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "signages"
+      ]
+    },
+    "NoteRun": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "strike": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "boolean"
+        },
+        "highlight": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "size": {
+          "type": "string"
+        },
+        "href": {
+          "type": "string"
+        },
+        "slideGroup": {
+          "type": "string"
+        },
+        "slideType": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "commentId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "NoteBlockType": {
+      "type": "string",
+      "enum": [
+        "heading",
+        "paragraph",
+        "list",
+        "taskList",
+        "quote",
+        "code",
+        "rule",
+        "image",
+        "attachment",
+        "slideRef",
+        "unknown"
+      ]
+    },
+    "NoteListItem": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteRun"
+          }
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteBlock"
+          }
+        }
+      },
+      "required": [
+        "runs"
+      ]
+    },
+    "NoteSlideRef": {
+      "type": "object",
+      "properties": {
+        "presentationId": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "slideIndex": {
+          "type": "integer"
+        },
+        "ppIntegrationHexId": {
+          "type": "string"
+        },
+        "ppPresentationUuid": {
+          "type": "string"
+        },
+        "ppPlaylistUuid": {
+          "type": "string"
+        },
+        "ppItemIndex": {
+          "type": "integer"
+        },
+        "ppSlideIndex": {
+          "type": "integer"
+        },
+        "presentationName": {
+          "type": "string"
+        },
+        "slideText": {
+          "type": "string"
+        },
+        "slideLabel": {
+          "type": "string"
+        },
+        "slideLabelColor": {
+          "type": "string"
+        },
+        "slideNotes": {
+          "type": "string"
+        },
+        "thumbnailUrl": {
+          "type": "string"
+        },
+        "showThumbnail": {
+          "type": "boolean"
+        },
+        "showText": {
+          "type": "boolean"
+        },
+        "showNotes": {
+          "type": "boolean"
+        },
+        "showLabels": {
+          "type": "boolean"
+        },
+        "showName": {
+          "type": "boolean"
+        },
+        "showNumber": {
+          "type": "boolean"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "placedByHand": {
+          "type": "boolean"
+        }
+      }
+    },
+    "NoteBlock": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/components/schemas/NoteBlockType"
+        },
+        "level": {
+          "type": "integer"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteRun"
+          }
+        },
+        "ordered": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteListItem"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteBlock"
+          }
+        },
+        "language": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "alt": {
+          "type": "string"
+        },
+        "attachmentKind": {
+          "type": "string"
+        },
+        "hexId": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "slide": {
+          "$ref": "#/components/schemas/NoteSlideRef"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "NoteBody": {
+      "type": "object",
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteBlock"
+          }
+        },
+        "plainText": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "blocks",
+        "plainText"
+      ]
+    },
+    "OverrideDesign": {
+      "type": "object",
+      "properties": {
+        "themeId": {
+          "type": "string"
+        },
+        "themeSlideName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "themeId",
+        "themeSlideName"
+      ]
+    },
+    "SlideAnchor": {
+      "type": "object",
+      "properties": {
+        "presentationId": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "slideIndex": {
+          "type": "integer"
+        },
+        "blockIndex": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "presentationId",
+        "slideId",
+        "slideIndex",
+        "blockIndex"
+      ]
+    },
+    "NoteMadeBox": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "text"
+      ]
+    },
+    "NoteMadeSlide": {
+      "type": "object",
+      "properties": {
+        "slideId": {
+          "type": "string"
+        },
+        "boxes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMadeBox"
+          }
+        }
+      },
+      "required": [
+        "slideId",
+        "boxes"
+      ]
+    },
+    "NoteMadePassage": {
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "themeSlideName": {
+          "type": "string"
+        },
+        "themeId": {
+          "type": "string"
+        },
+        "slides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMadeSlide"
+          }
+        }
+      },
+      "required": [
+        "groupId",
+        "text",
+        "slides"
+      ]
+    },
+    "NotePendingUpdate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "groupId": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "afterSlideId": {
+          "type": "string"
+        },
+        "before": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMadeBox"
+          }
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMadeBox"
+          }
+        },
+        "proposed": {
+          "$ref": "#/components/schemas/Slide"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "groupId"
+      ]
+    },
+    "SlideVersion": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "slide": {
+          "$ref": "#/components/schemas/Slide"
+        }
+      },
+      "required": [
+        "at",
+        "reason",
+        "slide"
+      ]
+    },
+    "NoteDocument": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "mxuDocumentHexId": {
+          "type": "string"
+        },
+        "mxuVersion": {
+          "type": "string"
+        },
+        "mxuUpdatedAt": {
+          "type": "string"
+        },
+        "mxuIconEmoji": {
+          "type": "string"
+        },
+        "body": {
+          "$ref": "#/components/schemas/NoteBody"
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAnchor"
+          }
+        },
+        "removedFromMxU": {
+          "type": "boolean"
+        },
+        "presentationId": {
+          "type": "string"
+        },
+        "slidesMadeFromSubmittedAt": {
+          "type": "string"
+        },
+        "madePassages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMadePassage"
+          }
+        },
+        "markedByStructure": {
+          "type": "boolean"
+        },
+        "pendingUpdates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NotePendingUpdate"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "origin"
+      ]
+    },
+    "StationSettings": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "localOnlyThresholdBytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "SlideBuildingSettings": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "designMap": {
+          "type": "string"
+        },
+        "messageNotesThemeId": {
+          "type": "string"
+        },
+        "lyricsImportThemeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "FontFile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "faces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ext": {
+          "type": "string"
+        },
+        "byteSize": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "family",
+        "faces",
+        "ext"
+      ]
+    },
+    "WorkspaceSettings": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "screens": {
+          "type": "string"
+        },
+        "timers": {
+          "type": "string"
+        },
+        "transitions": {
+          "type": "string"
+        },
+        "controlMappings": {
+          "type": "string"
+        },
+        "audio": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "signage": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "string"
+        },
+        "behavior": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  }
+}

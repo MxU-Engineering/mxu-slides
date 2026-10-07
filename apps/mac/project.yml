@@ -1,0 +1,146 @@
+name: MxUSlides
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ARCHS: arm64
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  PresenterCore:
+    path: Packages/PresenterCore
+  RenderEngine:
+    path: Packages/RenderEngine
+  MediaEngine:
+    path: Packages/MediaEngine
+  AudioEngine:
+    path: Packages/AudioEngine
+  OutputEngine:
+    path: Packages/OutputEngine
+  SlideScene:
+    path: Packages/SlideScene
+  LocalAPI:
+    path: Packages/LocalAPI
+  ProImport:
+    path: Packages/ProImport
+  PPTXImport:
+    path: Packages/PPTXImport
+  NDIKit:
+    path: Packages/NDIKit
+  StreamEngine:
+    path: Packages/StreamEngine
+  DeckLinkKit:
+    path: Packages/DeckLinkKit
+
+targets:
+  MxUSlides:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+      - HelperShared
+    dependencies:
+      - package: PresenterCore
+      - package: RenderEngine
+      - package: MediaEngine
+      - package: AudioEngine
+      - package: OutputEngine
+      - package: SlideScene
+      - package: LocalAPI
+      - package: ProImport
+      - package: PPTXImport
+      - package: StreamEngine
+      - package: NDIKit
+      - target: NDIHelper
+        embed: true
+      - target: DeckLinkHelper
+        embed: true
+    info:
+      path: Info.plist
+      properties:
+        CFBundleName: MxU Slides
+        CFBundleDisplayName: MxU Slides
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        MXUGitCommit: "$(MXU_GIT_COMMIT)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        LSApplicationCategoryType: public.app-category.video
+        NSLocalNetworkUsageDescription: "MxU Slides uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac."
+        NSCameraUsageDescription: "MxU Slides shows cameras and capture devices on your screens as live video inputs."
+        NSMicrophoneUsageDescription: "MxU Slides can include a capture device's audio when it is used as a live input."
+    settings:
+      base:
+        PRODUCT_NAME: "MxU Slides"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        MXU_GIT_COMMIT: ""
+        MTL_COMPILER_FLAGS: "-fcikernel"
+        MTLLINKER_FLAGS: "-cikernel"
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
+
+  NDIHelper:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - HelperSources/NDIHelper
+      - HelperShared
+    dependencies:
+      - package: NDIKit
+    postBuildScripts:
+      - name: Embed NDI Runtime
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          NDI_DYLIB="/Library/NDI SDK for Apple/lib/macOS/libndi.dylib"
+          [ -f "$NDI_DYLIB" ] || exit 0
+          DEST="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
+          mkdir -p "$DEST"
+          cp -f "$NDI_DYLIB" "$DEST/libndi.dylib"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$DEST/libndi.dylib"
+    info:
+      path: HelperSources/NDIHelper/Info.plist
+      properties:
+        CFBundleDisplayName: MxU NDI Helper
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        XPCService:
+          ServiceType: Application
+          RunLoopType: dispatch_main
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides.NDIHelper
+        SKIP_INSTALL: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  DeckLinkHelper:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - HelperSources/DeckLinkHelper
+      - HelperShared
+    dependencies:
+      - package: DeckLinkKit
+    info:
+      path: HelperSources/DeckLinkHelper/Info.plist
+      properties:
+        CFBundleDisplayName: MxU DeckLink Helper
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        XPCService:
+          ServiceType: Application
+          RunLoopType: dispatch_main
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides.DeckLinkHelper
+        SKIP_INSTALL: YES

@@ -1,0 +1,17 @@
+Analysis of sampling MxU Slides (pid 123) every 1 millisecond
+Call graph:
+    100 Thread_1: Main Thread   DispatchQueue_<multiple>
+    + 100 start  (in dyld) + 6992  [0x181f044e4]
+    + ! 100 main  (in MxU Slides) + 64  [0x1034bbb70]
+    + !   95 __CFRunLoopServiceMachPort  (in CoreFoundation) + 196  [0x182370f00]
+    + !   : 95 mach_msg  (in libsystem_kernel.dylib) + 24  [0x1822a8b18]
+    + !   5 -[NSView layout]  (in AppKit) + 40  [0x18678d7b0]
+    100 Thread_2: RenderEngine.RenderThread
+    + 100 __NSThread__start__  (in Foundation) + 732  [0x183bd1b7c]
+    + ! 92 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x1822ac3c8]
+    + ! 8 Compositor.encode(_:)  (in RenderEngine) + 100  [0x100]
+    100 Thread_3
+    + 100 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x18]
+    + ! 100 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x19]
+
+Total number in stack (recursive counted multiple, when >=5):
