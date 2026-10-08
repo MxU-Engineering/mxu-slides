@@ -17,5 +17,8 @@ struct ProImportStubTests {
         let summaries = await documents.importItems(at: [dir])
         #expect(summaries.map(\.presentationID) == [nil])
         #expect(await documents.importPlaylistBundle(at: dir).failureReason == proImportUnavailable)
+        let theme = await documents.importTheme(at: dir)
+        #expect(theme.themeID == nil)
+        #expect(theme.warnings == [proImportUnavailable])
     }
 }

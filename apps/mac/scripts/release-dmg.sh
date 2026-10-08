@@ -8,7 +8,12 @@ fi
 
 MAC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 IDENTITY="${DEVELOPER_ID_IDENTITY:?set DEVELOPER_ID_IDENTITY to your Developer ID Application signing identity}"
-PROFILE="notarization-profile"
+PROFILE="${NOTARIZATION_PROFILE:-notarization-profile}"
+BUNDLE_ID="${MXU_BUNDLE_ID:?set MXU_BUNDLE_ID to your production reverse-DNS bundle identifier}"
+if [[ "$BUNDLE_ID" == com.example.* || ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+  echo 'MXU_BUNDLE_ID must be a production reverse-DNS identifier, not com.example.*' >&2
+  exit 1
+fi
 DIST="$MAC_DIR/build/dist"
 DERIVED="$MAC_DIR/build/release-deriveddata"
 APP="$DERIVED/Build/Products/Release/MxU Slides.app"
@@ -34,6 +39,7 @@ xcodebuild -project "$MAC_DIR/MxUSlides.xcodeproj" \
   -derivedDataPath "$DERIVED" -destination 'generic/platform=macOS' \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
   PROVISIONING_PROFILE_SPECIFIER= \
+  MXU_BUNDLE_ID="$BUNDLE_ID" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" MXU_GIT_COMMIT="$GIT_COMMIT" \
   build | tail -5
 
@@ -50,6 +56,8 @@ NDI_DYLIB="$APP/Contents/XPCServices/NDIHelper.xpc/Contents/Frameworks/libndi.dy
 NDI_LICENSES="/Library/NDI SDK for Apple/lib/macOS/libndi_licenses.txt"
 [ -f "$NDI_DYLIB" ] || { echo "NDI redist not embedded at $NDI_DYLIB" >&2; exit 1; }
 cp "$NDI_LICENSES" "$APP/Contents/Resources/"
+bash "$MAC_DIR/scripts/check-release-dependencies.sh" "$DERIVED"
+bash "$MAC_DIR/scripts/bundle-licenses.sh" "$APP" "$DERIVED"
 
 echo "==> Signing with Developer ID + hardened runtime"
 codesign --force --timestamp --sign "$IDENTITY" "$NDI_DYLIB"

@@ -4,7 +4,14 @@ import Foundation
 struct APIWebSocketHandler: WSMessageHandler {
     let router: APIRouter
     let events: APIEventBus
-    let scope: APIScope
+    let token: APIToken
+    let tokens: APITokenStore
+
+    private var scope: APIScope { token.scope }
+
+    private var isAuthorized: Bool {
+        tokens.activeToken(id: token.id)?.scope == token.scope
+    }
 
     struct Inbound: Decodable {
         var type: String
@@ -19,6 +26,10 @@ struct APIWebSocketHandler: WSMessageHandler {
         let (output, continuation) = AsyncStream<WSMessage>.makeStream(
             bufferingPolicy: .bufferingNewest(64)
         )
+        guard isAuthorized else {
+            continuation.finish()
+            return output
+        }
         let subscriptions = TopicBox()
         let eventStream = await events.subscribe()
 
@@ -26,6 +37,10 @@ struct APIWebSocketHandler: WSMessageHandler {
 
         let pumpTask = Task {
             for await event in eventStream {
+                guard isAuthorized else {
+                    continuation.finish()
+                    break
+                }
                 guard subscriptions.contains(event.topic) else { continue }
                 Self.send(
                     ["type": "event", "topic": event.topic.rawValue],
@@ -37,6 +52,7 @@ struct APIWebSocketHandler: WSMessageHandler {
 
         let inputTask = Task {
             for await message in client {
+                guard isAuthorized else { break }
                 guard case .text(let text) = message else { continue }
                 await handle(text: text, subscriptions: subscriptions, continuation: continuation)
             }

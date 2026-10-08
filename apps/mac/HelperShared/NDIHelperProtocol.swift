@@ -21,5 +21,5 @@ import IOSurface
 
 enum NDIHelperIdentity {
 
-    static let serviceName = "com.example.mxuslides.NDIHelper"
+    static let serviceName = (Bundle.main.bundleIdentifier ?? "com.example.mxuslides") + ".NDIHelper"
 }

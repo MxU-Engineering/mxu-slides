@@ -26,6 +26,13 @@ public struct ProPresenterImporter {
         summary.failureReason = proImportUnavailable
         return summary
     }
+
+    public func importTheme(at url: URL, policy: ImportConflictPolicy = .updateUnedited) async -> ProThemeImportSummary {
+        ProThemeImportSummary(
+            sourceURL: url, themeID: nil, name: url.deletingPathExtension().lastPathComponent,
+            warnings: [proImportUnavailable], mediaImported: 0
+        )
+    }
 }
 
 @MainActor

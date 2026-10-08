@@ -24,11 +24,15 @@ public enum APIRouteTable {
         routes.append(APIRoute(
             "GET", "/v1/documents/{kind}/{id}", scope: .view,
             operationId: "getDocument",
-            summary: "Fetch a full document as schema JSON.", tag: "Documents",
+            summary: "Fetch a full document as schema JSON. Stream presets require edit access because they can contain ingest credentials.", tag: "Documents",
             responseSchema: .ref("Document")
         ) { context in
-            .raw(try await bridge.documentJSON(
-                kind: context.documentKind(), id: context.pathParameter("id")
+            let kind = try context.documentKind()
+            guard kind != .streamPresets || context.scope.allows(.edit) else {
+                throw APIError.forbidden(.edit)
+            }
+            return .raw(try await bridge.documentJSON(
+                kind: kind, id: context.pathParameter("id")
             ))
         })
 

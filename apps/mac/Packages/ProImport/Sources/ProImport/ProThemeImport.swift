@@ -1,16 +1,6 @@
 import Foundation
 import PresenterCore
 
-public struct ProThemeImportSummary: Sendable {
-    public var sourceURL: URL
-    public var themeID: String?
-    public var name: String
-    public var warnings: [String]
-    public var mediaImported: Int
-
-    public var skipped: ImportSkipReason?
-}
-
 extension ProPresenterImporter {
 
     public func importTheme(at url: URL, policy: ImportConflictPolicy = .updateUnedited) async -> ProThemeImportSummary {

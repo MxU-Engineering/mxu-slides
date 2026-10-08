@@ -186,7 +186,7 @@ public final class StreamSession: @unchecked Sendable {
                 return
             } catch let error as StreamSessionError where error.isFatal {
 
-                log.error("transport failed permanently: \(self.destination.name, privacy: .public) — \(String(describing: error), privacy: .public)")
+                log.error("transport failed permanently: \(self.destination.name, privacy: .public) — \(String(describing: error), privacy: .private)")
                 setState(.failed(error.failureDescription))
                 return
             } catch {
@@ -194,7 +194,7 @@ public final class StreamSession: @unchecked Sendable {
                 let wasPublishing = mutable.withLock { storage.state == .publishing }
                 guard mutable.withLock({ storage.state != .stopped }) else { return }
                 attempt = wasPublishing ? 1 : attempt + 1
-                log.warning("transport lost: \(self.destination.name, privacy: .public) attempt \(attempt) — \(String(describing: error), privacy: .public)")
+                log.warning("transport lost: \(self.destination.name, privacy: .public) attempt \(attempt) — \(String(describing: error), privacy: .private)")
                 setState(.reconnecting(attempt: attempt))
 
                 let delay = min(15.0, pow(2.0, Double(attempt - 1)))
@@ -215,7 +215,7 @@ public final class StreamSession: @unchecked Sendable {
             _ = try await connection.connect(destination.url)
             _ = try await stream.publish(destination.streamKey)
             setState(.publishing)
-            log.info("publishing: \(self.destination.name, privacy: .public) -> \(self.destination.url, privacy: .public)")
+            log.info("publishing: \(self.destination.name, privacy: .public) -> \(self.destination.url, privacy: .private)")
             defer {
                 Task {
                     _ = try? await stream.close()

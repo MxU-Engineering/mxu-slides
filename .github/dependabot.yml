@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: swift
+    directories:
+      - /apps/mac/Packages/LocalAPI
+      - /apps/mac/Packages/StreamEngine
+      - /apps/mac/Packages/ProImport
+    schedule:
+      interval: weekly

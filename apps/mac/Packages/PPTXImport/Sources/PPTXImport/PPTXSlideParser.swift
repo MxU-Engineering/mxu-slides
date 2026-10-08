@@ -661,7 +661,11 @@ enum PPTXSlideParser {
             appendUnique("\(context) links media outside the file — linked media is not imported yet", &warnings)
             return nil
         }
-        return package.fileURL(forPart: package.resolveTarget(rel.target, relativeTo: partPath)).path
+        guard let file = try? package.fileURL(forPart: package.resolveTarget(rel.target, relativeTo: partPath)) else {
+            appendUnique("\(context) points outside the presentation and was skipped", &warnings)
+            return nil
+        }
+        return file.path
     }
 
     private static func parseBackground(

@@ -1,6 +1,15 @@
 import Foundation
 import PresenterCore
 
+public struct ProThemeImportSummary: Sendable {
+    public var sourceURL: URL
+    public var themeID: String?
+    public var name: String
+    public var warnings: [String]
+    public var mediaImported: Int
+    public var skipped: ImportSkipReason?
+}
+
 public struct ProTimerPlan: Sendable, Equatable {
     public enum Mode: Sendable, Equatable {
         case countdown(seconds: Double)

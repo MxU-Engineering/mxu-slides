@@ -31,7 +31,7 @@ enum NetworkInfo {
 }
 
 enum LocalAPIDefaultKeyKeychain {
-    private static let service = "com.example.mxuslides.localapi"
+    private static let service = (Bundle.main.bundleIdentifier ?? "com.example.mxuslides") + ".localapi"
     private static let account = "default-key"
 
     static let vault = honorsSkipKeychain && ProcessInfo.processInfo.environment["MXU_SKIP_KEYCHAIN"] == "1"

@@ -86,7 +86,8 @@ enum PPTXPresentationParser {
                 guard let relID = embedded.first(local: variant)?.relationshipAttr("id"),
                       let rel = rels[relID], !rel.external
                 else { continue }
-                let path = package.fileURL(forPart: package.resolveTarget(rel.target, relativeTo: part)).path
+                guard let file = try? package.fileURL(forPart: package.resolveTarget(rel.target, relativeTo: part)) else { continue }
+                let path = file.path
                 fonts.append(PPTXEmbeddedFont(typeface: typeface, variant: variant, filePath: path))
             }
         }

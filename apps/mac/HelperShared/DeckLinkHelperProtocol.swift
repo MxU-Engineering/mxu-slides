@@ -63,5 +63,5 @@ struct DeckLinkHelperDisplayMode: Codable, Equatable, Identifiable {
 
 enum DeckLinkHelperIdentity {
 
-    static let serviceName = "com.example.mxuslides.DeckLinkHelper"
+    static let serviceName = (Bundle.main.bundleIdentifier ?? "com.example.mxuslides") + ".DeckLinkHelper"
 }

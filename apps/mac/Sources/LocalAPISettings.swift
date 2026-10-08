@@ -13,7 +13,7 @@ extension APIScope {
     var explanation: String {
         switch self {
         case .view:
-            "Read-only. See what's live and read the library — can't change anything on the glass. For dashboards and status displays."
+            "Read-only. See what's live and read the library, except stream presets that may contain credentials. Can't change anything on the glass. For dashboards and status displays."
         case .control:
             "Everything Watch sees, plus running the show: fire slides, clear, alerts, music and video transport. Can't create or edit content. The usual pick for a remote or Stream Deck."
         case .edit:

@@ -87,7 +87,7 @@ public final class LocalAPIServer: @unchecked Sendable {
             else {
                 return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
             }
-            let handler = APIWebSocketHandler(router: router, events: events, scope: token.scope)
+            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens)
             let webSocket = WebSocketHTTPHandler(handler: MessageFrameWSHandler(handler: handler))
             return try await webSocket.handleRequest(request)
         }

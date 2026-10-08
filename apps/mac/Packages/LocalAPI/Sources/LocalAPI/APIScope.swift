@@ -203,6 +203,13 @@ public final class APITokenStore: @unchecked Sendable {
         return tokens.first { APISecretHash.matches(secret, record: $0.secretRecord) }
     }
 
+    /// Recheck an authenticated session without retaining its bearer secret.
+    func activeToken(id: String) -> APIToken? {
+        lock.lock()
+        defer { lock.unlock() }
+        return tokens.first { $0.id == id }
+    }
+
     private func persistLocked() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

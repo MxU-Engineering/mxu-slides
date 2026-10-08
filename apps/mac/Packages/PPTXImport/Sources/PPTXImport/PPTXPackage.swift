@@ -56,14 +56,31 @@ final class PPTXPackage {
         return components.joined(separator: "/")
     }
 
-    func fileURL(forPart part: String) -> URL {
-        root.appendingPathComponent(part)
+    func fileURL(forPart part: String) throws -> URL {
+        let directory = root.standardizedFileURL.resolvingSymlinksInPath()
+        let file = directory.appendingPathComponent(part).standardizedFileURL.resolvingSymlinksInPath()
+        guard file.path.hasPrefix(directory.path + "/") else {
+            throw PPTXImportError.invalidPackage("a package part points outside the presentation")
+        }
+        // Resolving a URL whose final component does not exist can leave parent
+        // symlinks unresolved. Reject links explicitly, including broken links.
+        var component = file
+        while component.path != directory.path {
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: component.path)) != nil {
+                throw PPTXImportError.invalidPackage("symbolic links are not allowed in presentation parts")
+            }
+            component.deleteLastPathComponent()
+        }
+        return file
     }
 
     func document(at part: String) throws -> XMLDocument {
         if let cached = documents[part] { return cached }
         let data = try Data(contentsOf: fileURL(forPart: part))
-        let document = try XMLDocument(data: data, options: [])
+        let document = try XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever])
+        guard document.dtd == nil else {
+            throw PPTXImportError.invalidPackage("DTD declarations are not allowed in presentation XML")
+        }
         documents[part] = document
         return document
     }

@@ -1,4 +1,5 @@
 import Foundation
+import PresenterCore
 
 public enum PPTXImportError: LocalizedError {
     case extractFailed(String)
@@ -20,6 +21,8 @@ enum PPTXArchive {
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("pptx-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var succeeded = false
+        defer { if !succeeded { try? FileManager.default.removeItem(at: destination) } }
 
         let ditto = Process()
         ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -27,11 +30,14 @@ enum PPTXArchive {
         let stderr = Pipe()
         ditto.standardError = stderr
         try ditto.run()
+        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
         ditto.waitUntilExit()
         guard ditto.terminationStatus == 0 else {
-            let detail = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let detail = String(data: errorData, encoding: .utf8) ?? ""
             throw PPTXImportError.extractFailed(detail.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+
+        try ImportArchiveValidation.validateExtractedFiles(in: destination)
 
         let chmod = Process()
         chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
@@ -39,6 +45,7 @@ enum PPTXArchive {
         try chmod.run()
         chmod.waitUntilExit()
 
+        succeeded = true
         return destination
     }
 }

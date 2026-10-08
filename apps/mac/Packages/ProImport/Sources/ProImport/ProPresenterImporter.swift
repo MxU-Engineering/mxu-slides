@@ -296,6 +296,8 @@ public struct ProPresenterImporter {
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("probundle-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var succeeded = false
+        defer { if !succeeded { try? FileManager.default.removeItem(at: destination) } }
 
         let ditto = Process()
         ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -303,11 +305,14 @@ public struct ProPresenterImporter {
         let stderr = Pipe()
         ditto.standardError = stderr
         try ditto.run()
+        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
         ditto.waitUntilExit()
         guard ditto.terminationStatus == 0 else {
-            let detail = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let detail = String(data: errorData, encoding: .utf8) ?? ""
             throw ImportError.extractFailed(detail.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+
+        try ImportArchiveValidation.validateExtractedFiles(in: destination)
 
         let chmod = Process()
         chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
@@ -315,6 +320,7 @@ public struct ProPresenterImporter {
         try chmod.run()
         chmod.waitUntilExit()
 
+        succeeded = true
         return destination
     }
 

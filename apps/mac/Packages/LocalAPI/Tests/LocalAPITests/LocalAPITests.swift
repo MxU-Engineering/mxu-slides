@@ -345,6 +345,23 @@ final class APIRouterTests: XCTestCase {
         XCTAssertEqual(bridge.calls, ["create:presentations"])
     }
 
+    func testStreamPresetCredentialsRequireManageAccess() async throws {
+        let (router, bridge) = makeRouter()
+        let body = Data(#"{"destinations":[{"streamKey":"test-only-key","url":"https://example.invalid/ingest?key=test"}]}"#.utf8)
+        bridge.documents["preset"] = body
+        let match = try XCTUnwrap(router.match(method: "GET", path: "/v1/documents/stream-presets/preset"))
+        for scope in [APIScope.view, .control] {
+            do {
+                _ = try await match.route.handler(APIRequestContext(pathParameters: match.parameters, scope: scope))
+                XCTFail("Read-only/operate clients must not receive stream credentials")
+            } catch let error as APIError {
+                XCTAssertEqual(error.status, 403)
+            }
+        }
+        let response = try await match.route.handler(APIRequestContext(pathParameters: match.parameters, scope: .edit))
+        XCTAssertEqual(response.body, body)
+    }
+
     func testUnknownDocumentKindIsBadRequest() async throws {
         let (router, _) = makeRouter()
         let match = try XCTUnwrap(router.match(method: "GET", path: "/v1/library/nonsense"))
