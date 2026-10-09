@@ -3,6 +3,8 @@ import Foundation
 public enum LyricTextFormat: String, Sendable, Equatable {
     case songSelect
     case chordPro
+
+    case chordChart
     case plainText
 }
 
@@ -28,8 +30,15 @@ public enum LyricTextImporter {
             if chordProDirectiveRegex.wholeMatch(trimmed) { directiveHits += 1 }
             if inlineChordRegex.firstMatch(in: trimmed) != nil { chordLineHits += 1 }
         }
-        if directiveHits >= 1 || chordLineHits >= 2 { return .chordPro }
-        return .plainText
+        if directiveHits >= 1 {
+            return .chordPro
+        } else if ChordChartText.inlined(text).chordCount >= 2 {
+            return .chordChart
+        } else if chordLineHits >= 2 {
+            return .chordPro
+        } else {
+            return .plainText
+        }
     }
 
     public static func makePresentation(
@@ -69,9 +78,19 @@ public enum LyricTextImporter {
         let unified = text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
+
+        let chart = ChordChartText.inlined(unified)
         switch detectFormat(unified) {
-        case .songSelect: return normalizeSongSelect(unified)
+        case .songSelect:
+            var normalized = normalizeSongSelect(chart.text)
+            normalized.musicKey = chart.musicKey
+            return normalized
         case .chordPro: return normalizeChordPro(unified)
+        case .chordChart:
+            var normalized = normalizeChordPro(ChordChartText.titled(chart.text))
+            normalized.format = .chordChart
+            normalized.musicKey = normalized.musicKey ?? chart.musicKey
+            return normalized
         case .plainText:
             return Normalized(format: .plainText, body: unified.trimmingCharacters(in: .whitespacesAndNewlines))
         }

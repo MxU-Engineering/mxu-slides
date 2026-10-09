@@ -1600,15 +1600,17 @@ private struct ImportLyricsSheet: View {
     }
 
     var body: some View {
+        let detected = detected
         VStack(alignment: .leading, spacing: 12) {
             Text("Import Lyrics")
                 .font(.headline)
             TextEditor(text: $text)
-                .font(.body)
+
+                .font(detected == .chordChart ? .body.monospaced() : .body)
                 .frame(minWidth: 420, minHeight: 240)
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
-                        Text("Paste lyrics — SongSelect and ChordPro files are detected automatically")
+                        Text("Paste lyrics or a chord chart — SongSelect, ChordPro, and chords above the words are detected automatically")
                             .foregroundStyle(.tertiary)
                             .padding(.top, 8)
                             .padding(.leading, 5)
@@ -1648,6 +1650,7 @@ private struct ImportLyricsSheet: View {
         switch format {
         case .songSelect: return "Detected: SongSelect lyrics — CCLI number will be stamped"
         case .chordPro: return "Detected: ChordPro — chords stripped for slides, kept for charts"
+        case .chordChart: return "Detected: chord chart — chords above the words become the song's chords"
         case .plainText: return "Plain text — blank lines split slides, labels make sections"
         }
     }
