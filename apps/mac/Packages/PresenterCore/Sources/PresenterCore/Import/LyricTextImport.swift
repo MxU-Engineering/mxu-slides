@@ -47,11 +47,13 @@ public enum LyricTextImporter {
         id: String = UUID().uuidString,
         folder: String? = nil,
         themeId: String = "",
+        themeSlideName: String = "Lyrics",
         linesPerSlide: Int = 2
     ) -> Presentation {
         let normalized = normalize(text)
         let built = Reflow.build(
-            Reflow.parse(normalized.body, linesPerSlide: linesPerSlide).openingOnBlank()
+            Reflow.parse(normalized.body, linesPerSlide: linesPerSlide).openingOnBlank(),
+            themeSlideName: themeSlideName
         )
         var slides = built.slides
         if slides.isEmpty {

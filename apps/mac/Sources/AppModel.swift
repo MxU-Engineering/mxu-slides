@@ -3032,11 +3032,15 @@ final class AppModel {
     }
 
     @discardableResult
-    func importLyrics(text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2, themeId: String = "") -> String? {
+    func importLyrics(
+        text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2,
+        themeId: String = "", themeSlideName: String = "Lyrics"
+    ) -> String? {
         let presentation = LyricTextImporter.makePresentation(
             text,
             fallbackTitle: fallbackTitle,
             themeId: themeId,
+            themeSlideName: themeSlideName,
             linesPerSlide: linesPerSlide
         )
         createInDrive(presentation)

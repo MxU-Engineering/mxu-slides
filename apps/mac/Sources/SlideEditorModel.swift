@@ -1902,7 +1902,9 @@ final class SlideEditorModel {
 
     func applyReflow(text: String, linesPerSlide: Int) {
         guard !isThemeEditor else { return }
-        let built = Reflow.build(from: text, linesPerSlide: linesPerSlide)
+        let built = Reflow.build(
+            from: text, linesPerSlide: linesPerSlide,
+            themeSlideName: Reflow.lyricDesign(of: presentation.slides))
         guard !built.slides.isEmpty else { return }
         selectedObjectIDs = []
         previewFrames = [:]

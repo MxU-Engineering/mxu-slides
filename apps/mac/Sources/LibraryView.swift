@@ -1593,6 +1593,8 @@ private struct ImportLyricsSheet: View {
 
     private var themeId: String { model.slideBuilding.lyricsImportThemeId ?? "" }
 
+    private var design: String { model.slideBuilding.lyricsDesign }
+
     private var detected: LyricTextFormat? {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? nil
@@ -1634,7 +1636,7 @@ private struct ImportLyricsSheet: View {
                     .fixedSize()
             }
             HStack {
-                LyricsThemeChooser(appModel: model, render: render, themeId: model.slideBuildingBinding(\.lyricsImportThemeId))
+                LyricsThemeChooser.lyrics(model, render: render)
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Import", action: importNow)
@@ -1676,7 +1678,8 @@ private struct ImportLyricsSheet: View {
             text: text,
             fallbackTitle: fallback.isEmpty ? nil : fallback,
             linesPerSlide: linesPerSlide,
-            themeId: themeId
+            themeId: themeId,
+            themeSlideName: design
         )
         dismiss()
         if let id { onImported(id) }
