@@ -243,15 +243,18 @@ struct ImportLyricsSheet: View {
 
     private func loadFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
+        panel.allowedContentTypes = [.plainText, .pdf]
             + ["cho", "chopro", "crd", "chordpro"].compactMap { UTType(filenameExtension: $0) }
         panel.begin { response in
-            guard response == .OK, let url = panel.url,
-                  let contents = try? String(contentsOf: url, encoding: .utf8)
-            else { return }
+            guard response == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
             Task { @MainActor in
-                text = contents
-                if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
+                let contents = await Task.detached { ChordChartPDF.importText(from: data, filename: url.lastPathComponent) }.value
+                if let contents {
+                    text = contents
+                    if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
+                } else {
+                    NSSound.beep()
+                }
             }
         }
     }
