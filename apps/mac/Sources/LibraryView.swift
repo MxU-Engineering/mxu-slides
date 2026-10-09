@@ -499,25 +499,15 @@ struct LibrarySidebar: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            let section = model.selectedSection
-            if acceptsImport || section == .presentations {
+            guard acceptsImport else { return false }
 
-                let presentations = urls.filter(AppModel.isPresentationFile)
-                let files = urls.filter { !AppModel.isPresentationFile($0) }
-                Task {
-                    if !presentations.isEmpty { await model.importPresentationFiles(presentations) }
-                    if !files.isEmpty, section == .presentations,
-                       let id = await model.createPresentation(fromFiles: files) {
-                        model.selectedEntryID = id
-                        model.libraryRevealID = id
-                    } else if !files.isEmpty, section != .presentations {
-                        await model.importFiles(files)
-                    }
-                }
-                return true
-            } else {
-                return false
+            let presentations = urls.filter(AppModel.isPresentationFile)
+            let files = urls.filter { !AppModel.isPresentationFile($0) }
+            Task {
+                if !presentations.isEmpty { await model.importPresentationFiles(presentations) }
+                if !files.isEmpty { await model.importFiles(files) }
             }
+            return true
         }
     }
 
@@ -1108,7 +1098,6 @@ struct LibrarySidebar: View {
     private var emptyDescription: String {
         switch model.selectedSection {
         case .media, .audio: "Drop files here or use Import."
-        case .presentations: "Use New, or drop pictures and videos here to make one."
         default: "Use New to create one."
         }
     }

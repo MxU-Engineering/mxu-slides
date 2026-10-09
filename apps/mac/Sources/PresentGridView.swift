@@ -583,7 +583,7 @@ struct SlideGridBody: View {
                 }
                 .gesture(marqueeGesture)
 
-                .onDrop(of: [.plainText, .fileURL], delegate: appendDropDelegate(enabled: !runOnly))
+                .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
             let aspect = SlideGridMetrics.tileAspect(for: presentation)
             let cell = self.cell
             if buildsRowsNearView {
@@ -1380,37 +1380,38 @@ struct SlideGridBody: View {
         }
     }
 
-    private func appendDropDelegate(enabled: Bool) -> GutterDropDelegate {
-        GutterDropDelegate(
+    private func gapDropDelegate(enabled: Bool) -> GridGapDropDelegate {
+        GridGapDropDelegate(
             enabled: enabled,
-            breadcrumb: "grid.appendDrop",
-            dropStarted: {
-                dropSettleUntil = Date().addingTimeInterval(0.6)
-                dropTargetAfterIndex = nil
+            spot: { location in
+                SlideGridDrop.spot(
+                    at: CGPoint(x: location.x - marqueeMargin, y: location.y - marqueeMargin),
+                    tileFrames: tileFrames, count: slides.count, rowGap: SlideGridMetrics.spacing)
             },
-            setLine: { on in
-                if on, Date() >= dropSettleUntil {
-                    dropTargetAfterIndex = slides.count - 1
-                } else if !on, dropTargetAfterIndex == slides.count - 1 {
+            setTarget: { spot in
+                switch spot {
+                case .before(let index)?:
+                    dropTargetIndex = index
+                    dropTargetAfterIndex = nil
+                case .after(let index)?:
+                    dropTargetIndex = nil
+                    dropTargetAfterIndex = index
+                case nil:
+                    dropTargetIndex = nil
                     dropTargetAfterIndex = nil
                 }
             },
-            setRing: { _ in },
-            performText: { payload, _ in
-                dropTargetAfterIndex = nil
-                return !runOnly && insertMediaSlides(mediaIDs: [payload], beforeIndex: slides.count)
+            performText: { payload, index in
+                !runOnly && insertMediaSlides(mediaIDs: [payload], beforeIndex: index)
             },
-            performFiles: { urls, _ in
-                dropTargetAfterIndex = nil
+            performFiles: { urls, index in
                 if !runOnly {
                     Task { @MainActor in
                         let imported = await model.importFiles(urls)
-                        _ = insertMediaSlides(mediaIDs: imported, beforeIndex: slides.count)
+                        _ = insertMediaSlides(mediaIDs: imported, beforeIndex: index)
                     }
                 }
-            },
-            insertOnly: true,
-            rejectPrefixes: ["mxueditslide::", "mxuslide::", "mxuobj::"]
+            }
         )
     }
 
