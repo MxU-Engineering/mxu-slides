@@ -100,6 +100,7 @@ enum ChordChartText {
 
     private static func keyLine(_ line: String) -> String? {
         keyLineRegex.firstMatch(in: line.trimmingCharacters(in: .whitespaces))
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .flatMap { ChordMath.parseKey($0) != nil ? $0 : nil }
     }
 

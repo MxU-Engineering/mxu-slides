@@ -83,6 +83,15 @@ struct ChordChartTextTests {
         #expect(LyricTextImporter.detectFormat("[G]Amazing grace\n[C]How sweet") == .chordPro)
     }
 
+    @Test func keyLinesReadWithOrWithoutASeparator() {
+        let cases = ["Key G": "G", "Key: G": "G", "Key - Bb": "Bb", "Key of Em": "Em", "key g": "G", "KEY = F#m": "F#m"]
+        for (line, key) in cases {
+            let inlined = ChordChartText.inlined("\(line)\nG       C\nAmazing grace")
+            #expect(inlined.musicKey == key, "'\(line)'")
+            #expect(!inlined.text.contains(line), "'\(line)' leaves the body")
+        }
+    }
+
     @Test func chordsPastTheWordsLandAtTheEndInOrder() {
         #expect(ChordChartText.merging([(0, "G"), (12, "C"), (16, "D")], into: "Short") == "[G]Short[C][D]")
     }
