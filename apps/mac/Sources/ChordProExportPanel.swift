@@ -7,7 +7,14 @@ extension AppModel {
     func exportChordPro(presentationID: String) {
         Task { @MainActor in
             if let deck = await presentationsFilled([presentationID])[presentationID] {
-                exportChordPro(deck)
+                if ChordProExport.isSong(deck) {
+                    exportChordPro(deck)
+                } else {
+                    let alert = NSAlert()
+                    alert.messageText = "“\(deck.name)” isn't a song"
+                    alert.informativeText = "ChordPro export is for songs: presentations with lyrics or chords."
+                    alert.runModal()
+                }
             }
         }
     }

@@ -1241,11 +1241,15 @@ struct SlideEditorView: View {
     @ViewBuilder
     private func presentationMenu(_ model: SlideEditorModel) -> some View {
         if !model.isThemeEditor, !model.isSingleComposition {
+
+            let isSong = ChordProExport.isSong(model.presentation)
             Menu {
                 Button("Reflow…") { showingReflow = true }
                 Button("Arrangement…") { showingArrangement = true }
                 Button("Chord Chart…") { showingChords = true }
-                Button("Export ChordPro…") { model.appModel.exportChordPro(model.presentation) }
+                if isSong {
+                    Button("Export ChordPro…") { model.appModel.exportChordPro(model.presentation) }
+                }
                 Divider()
                 Menu("Theme") { themeItems(model) }
                 if !model.presentation.themeId.isEmpty {

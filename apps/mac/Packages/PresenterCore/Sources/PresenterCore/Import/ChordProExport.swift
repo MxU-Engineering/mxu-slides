@@ -32,6 +32,23 @@ public enum ChordProExport {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    public static func isSong(_ presentation: Presentation) -> Bool {
+        ChordMath.hasChords(in: presentation)
+            || presentation.musicKey?.isEmpty == false
+            || presentation.ccli?.songNumber != nil
+            || presentation.chordProSource?.isEmpty == false
+            || (presentation.sections ?? []).contains { section in
+                songSectionWords.contains(
+                    section.name.lowercased().replacingOccurrences(of: "-", with: " ")
+                        .split(separator: " ").first.map(String.init) ?? "")
+            }
+    }
+
+    private static let songSectionWords: Set<String> = [
+        "verse", "chorus", "pre", "prechorus", "bridge", "tag", "intro", "outro", "ending",
+        "refrain", "interlude", "vamp", "breakdown", "turnaround", "instrumental",
+    ]
+
     public enum FileFormat: String, CaseIterable, Sendable {
         case plainText = "txt"
         case chordPro = "cho"

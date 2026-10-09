@@ -99,4 +99,23 @@ struct ChordProExportTests {
         #expect(seed == "Verse 1\nAmazing [D]grace\n\nHow sweet\n\nChorus\n[C]My chains")
         #expect(Reflow.build(from: seed, linesPerSlide: 1).slides.contains { $0.objects.first?.chords?.first?.symbol == "D" })
     }
+
+    @Test func onlySongsAreSongs() {
+        #expect(ChordProExport.isSong(song()))
+        #expect(ChordProExport.isSong(LyricTextImporter.makePresentation("Verse 1\nAmazing grace\n\nChorus\nMy chains")),
+                "lyrics without chords still export")
+
+        let sermon = Presentation(
+            id: "s", name: "Sunday Message", presentationKind: .deck, themeId: "",
+            slides: [Slide(id: "1", name: "", objects: [
+                SlideObject(id: "t", objectKind: .text, name: "Body", text: "Psalm 23 [A]"),
+            ], sectionId: "p1")],
+            sections: [PresentationSection(id: "p1", name: "Point 1"), PresentationSection(id: "r", name: "Reading")])
+        #expect(!ChordProExport.isSong(sermon))
+        #expect(!ChordProExport.isSong(Presentation(id: "m", name: "Welcome Loop", presentationKind: .deck, themeId: "", slides: [])))
+
+        var keyed = Presentation(id: "k", name: "Hymn", presentationKind: .deck, themeId: "", slides: [])
+        keyed.musicKey = "G"
+        #expect(ChordProExport.isSong(keyed))
+    }
 }
