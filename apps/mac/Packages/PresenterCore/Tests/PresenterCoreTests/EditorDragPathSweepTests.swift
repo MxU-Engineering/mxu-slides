@@ -52,6 +52,17 @@ import Testing
         #expect(up.contains("model.setSelection(marqueeSelection)"), "mouse-up lands the sweep as one selection change")
     }
 
+    @Test func inspectorFieldFocusKeepsTheCanvasTextEditOpen() throws {
+        let overlay = try source("EditorInteractionView.swift")
+        let ended = try body(of: "func textDidEndEditing(_ notification: Notification)", in: overlay)
+        #expect(ended.contains("settleCanvasEditFocus()") && !ended.contains("endCanvasEditing()"), "closing the edit as the overlay resigns removed the Selection section mid-click, and AppKit's click loop spun on the orphaned Size field")
+        let settle = try body(of: "private func keepOrEndCanvasEditing()", in: overlay)
+        #expect(settle.contains("field.isFieldEditor") && settle.contains("NSText.didEndEditingNotification"), "a one-line field keeps the edit open until that field's editing ends")
+        #expect(!settle.contains("endCanvasEditing()"), "the deferred close leaves focus where the click put it")
+        let teardown = try body(of: "private func tearDownOverlay()", in: overlay)
+        #expect(teardown.contains("stopWatchingInspectorField()"), "every close drops the field watch")
+    }
+
     @Test func toolbarStateNeverReadsTheLiveDragFrame() throws {
         let model = try source("SlideEditorModel.swift")
         let start = try #require(model.range(of: "var canDistribute: Bool {"))

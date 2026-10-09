@@ -2466,12 +2466,14 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var designMap: String?
     public var messageNotesThemeId: String?
     public var lyricsImportThemeId: String?
+    public var lyricsImportDesign: String?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, lyricsImportDesign: String? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
         self.lyricsImportThemeId = lyricsImportThemeId
+        self.lyricsImportDesign = lyricsImportDesign
     }
 }
 

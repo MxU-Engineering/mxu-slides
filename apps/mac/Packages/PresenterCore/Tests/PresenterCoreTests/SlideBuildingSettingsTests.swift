@@ -94,6 +94,31 @@ import Testing
         #expect(merged.messageNotesThemeId == "notes")
         #expect(merged.lyricsImportThemeId == "lyrics", "neither computer's choice is lost")
     }
+
+    @Test func theLyricThemeAndItsDesignArePickedTogether() {
+        var settings = SlideBuildingSettings(id: SlideBuildingSettings.wellKnownID)
+        #expect(settings.lyricsDesign == "Lyrics", "no pick = the theme's Lyrics design")
+
+        settings.setLyricsLook(themeId: "sunday", design: "Lyrics (Lower Third)")
+        #expect(settings.lyricsImportThemeId == "sunday")
+        #expect(settings.lyricsDesign == "Lyrics (Lower Third)")
+        #expect(!settings.isUnset)
+
+        settings.setLyricsLook(themeId: "sunday", design: nil)
+        #expect(settings.lyricsDesign == "Lyrics (Lower Third)", "a theme-only pick of the same theme keeps the design")
+        settings.setLyricsLook(themeId: "youth", design: nil)
+        #expect(settings.lyricsImportThemeId == "youth")
+        #expect(settings.lyricsImportDesign == nil, "another theme drops a design its names may not have")
+
+        settings.setLyricsLook(themeId: "youth", design: "Big Words")
+        settings.setLyricsLook(themeId: "youth", design: "")
+        #expect(settings.lyricsDesign == "Lyrics", "Use \u{201C}Theme\u{201D} goes back to Lyrics")
+
+        settings.setLyricsLook(themeId: "youth", design: "Big Words")
+        settings.setLyricsLook(themeId: "", design: "")
+        #expect(settings.lyricsImportThemeId == nil)
+        #expect(settings.lyricsImportDesign == nil, "None has no design")
+    }
 }
 
 @Suite struct SlideBuildingReadersSweepTests {
@@ -106,9 +131,18 @@ import Testing
     }
 
     @Test func theReadersUseTheChurchDocument() throws {
-        let text = try source("LibraryView.swift")
-        #expect(!text.contains("\"makeSlides.designMap\""), "LibraryView.swift reads this Mac's design map")
-        #expect(!text.contains("LyricsImportDefaults"), "LibraryView.swift reads this Mac's theme")
+        for name in ["LibraryView.swift", "ImportLyricsSheet.swift"] {
+            let text = try source(name)
+            #expect(!text.contains("\"makeSlides.designMap\""), "\(name) reads this Mac's design map")
+            #expect(!text.contains("LyricsImportDefaults"), "\(name) reads this Mac's theme")
+        }
     }
 
+    @Test func lyricImportsBuildOnThePickedDesignAndAReflowKeepsIt() throws {
+        let text = try source("ImportLyricsSheet.swift")
+        #expect(text.contains("slideBuilding.lyricsDesign"), "ImportLyricsSheet.swift reads the church's lyric design")
+        #expect(text.contains("themeSlideName: design"), "ImportLyricsSheet.swift builds on it")
+        #expect(text.contains("LyricsThemeChooser.lyrics("), "ImportLyricsSheet.swift picks it in the explorer")
+        #expect(try source("SlideEditorModel.swift").contains("themeSlideName: Reflow.lyricDesign(of: presentation.slides)"))
+    }
 }

@@ -51,6 +51,8 @@ struct RunOrderList: View {
 
     @State private var dropTargetItemID: String?
 
+    @State private var emptyDropTargeted = false
+
     @State private var mediaMenuState = MediaCueMenuState()
 
     private var renamingItemActive: Binding<Bool> {
@@ -137,10 +139,20 @@ struct RunOrderList: View {
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
                 }
             }
-            .onInsert(of: [.plainText, .text]) { index, providers in
+            .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
                 guard !runOnly else { return }
                 let anchorID = visible.indices.contains(index) ? visible[index].id : nil
-                for provider in providers {
+
+                let fileURLs = Self.draggedFileURLs()
+                let mediaBatch = fileURLs.isEmpty ? draggedMediaBatch() : []
+                if !fileURLs.isEmpty {
+                    DiagnosticsStore.shared.note("runOrder.insert.files", detail: "\(fileURLs.count)")
+                    Task { await model.insertDroppedMedia(fromFiles: fileURLs, service: serviceID, beforeItemID: anchorID) }
+                } else if !mediaBatch.isEmpty {
+                    DiagnosticsStore.shared.note("runOrder.insert.mediaBatch", detail: "\(mediaBatch.count)")
+                    Task { await model.insertDroppedMedia(mediaBatch, service: serviceID, beforeItemID: anchorID) }
+                }
+                for provider in providers where fileURLs.isEmpty && mediaBatch.isEmpty {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
                         Task { @MainActor in
@@ -148,6 +160,11 @@ struct RunOrderList: View {
                         }
                     }
                 }
+            }
+            if visible.isEmpty, !runOnly {
+                emptyDropRow
+                    .listRowSeparator(.hidden)
+                    .selectionDisabled()
             }
             let hidden = ServiceRunOrder.hidden(service.items)
             if !hidden.isEmpty {
@@ -176,6 +193,64 @@ struct RunOrderList: View {
             pressedRow: { rowPressed($0, $1, visible: visible) })
         .inputRegion("run order")
         .overlay { ListMarqueeBand(rect: marqueeRect) }
+    }
+
+    private var emptyDropRow: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "tray.and.arrow.down")
+                .font(.system(size: 18))
+            Text("Drag presentations or media here")
+                .font(.callout)
+        }
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity, minHeight: 140)
+        .contentShape(Rectangle())
+        .overlay(
+            RoundedRectangle.standard(CornerStandard.element)
+                .strokeBorder(
+                    emptyDropTargeted ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.7),
+                    style: emptyDropTargeted
+                        ? StrokeStyle(lineWidth: 1.5)
+                        : StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
+        .padding(.vertical, 6)
+
+        .onDrop(of: [.plainText, .fileURL], isTargeted: $emptyDropTargeted) { _ in
+            let fileURLs = Self.draggedFileURLs()
+            let payloads = Self.draggedStrings()
+            let mediaBatch = RunOrderMediaDrop.libraryBatch(payloads) { model.media($0) }
+            if runOnly {
+                return false
+            } else if !fileURLs.isEmpty {
+                DiagnosticsStore.shared.note("runOrder.emptyDrop.files", detail: "\(fileURLs.count)")
+                Task { await model.insertDroppedMedia(fromFiles: fileURLs, service: serviceID, beforeItemID: nil) }
+                return true
+            } else if !mediaBatch.isEmpty {
+                DiagnosticsStore.shared.note("runOrder.emptyDrop.mediaBatch", detail: "\(mediaBatch.count)")
+                Task { await model.insertDroppedMedia(mediaBatch, service: serviceID, beforeItemID: nil) }
+                return true
+            } else {
+                var added = false
+                for payload in payloads where model.addServiceItem(serviceID, refID: payload) {
+                    added = true
+                }
+                return added
+            }
+        }
+    }
+
+    private func draggedMediaBatch() -> [MediaItem] {
+        RunOrderMediaDrop.libraryBatch(Self.draggedStrings()) { model.media($0) }
+    }
+
+    private static func draggedStrings() -> [String] {
+        NSPasteboard(name: .drag).pasteboardItems?.compactMap { $0.string(forType: .string) } ?? []
+    }
+
+    private static func draggedFileURLs() -> [URL] {
+        (NSPasteboard(name: .drag).readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
     private func marqueeBegan(_ modifiers: NSEvent.ModifierFlags) {
@@ -243,10 +318,7 @@ struct RunOrderList: View {
 
     private func insertPayload(_ payload: String, beforeItemID: String?) {
         let added: ServiceItem? = if !payload.hasPrefix("svc::"), let ref = model.indexEntry(payload),
-            let kind: ServiceItemKind = ref.kind == .presentation ? .presentation
-                : ref.kind == .media ? .media
-                : ref.kind == .audio ? .audio
-                : ref.kind == .playlist ? .playlist : nil {
+            let kind = ServiceRunOrder.itemKind(adding: ref.kind) {
             ServiceItem(id: UUID().uuidString, itemKind: kind, name: ref.name, refId: payload)
         } else {
             nil

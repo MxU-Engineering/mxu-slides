@@ -122,6 +122,13 @@ import Testing
     #expect(built.arrangement == nil, "no repeats → base order is enough")
 }
 
+@Test func aReflowKeepsTheDeckLyricDesign() {
+    let built = Reflow.build(from: "Verse 1\nA\nB", linesPerSlide: 2, themeSlideName: "Lower Third")
+    #expect(built.slides.allSatisfy { $0.themeSlideName == "Lower Third" })
+    #expect(Reflow.lyricDesign(of: built.slides) == "Lower Third")
+    #expect(Reflow.lyricDesign(of: []) == "Lyrics")
+}
+
 @Test func extraLabelsReadAsSectionsAndTheWiderVocabularyLands() {
     let text = """
     Vamp Out

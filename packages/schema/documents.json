@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 130,
+  "schemaVersion": 131,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -4510,6 +4510,11 @@
         },
         {
           "name": "lyricsImportThemeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "lyricsImportDesign",
           "type": "string",
           "optional": true
         }

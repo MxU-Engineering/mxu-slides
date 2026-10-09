@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 130,
+  "schemaVersion": 131,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -3856,6 +3856,9 @@
           "type": "string"
         },
         "lyricsImportThemeId": {
+          "type": "string"
+        },
+        "lyricsImportDesign": {
           "type": "string"
         }
       },

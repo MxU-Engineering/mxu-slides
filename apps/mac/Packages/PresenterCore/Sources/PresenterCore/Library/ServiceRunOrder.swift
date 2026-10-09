@@ -58,6 +58,16 @@ public enum ServiceRunOrder {
             .filter { $0.itemKind == .presentation || $0.itemKind == .media }
     }
 
+    public static func itemKind(adding kind: DocumentKind) -> ServiceItemKind? {
+        switch kind {
+        case .presentation: .presentation
+        case .media: .media
+        case .audio: .audio
+        case .playlist: .playlist
+        default: nil
+        }
+    }
+
     public static func sidebarRows(
         _ items: [ServiceItem], collapsedHeaders: Set<String>,
         timeHexId: String? = nil, order: [String]? = nil

@@ -48,3 +48,12 @@ private let rows = [item("h1", .header), item("a"), item("b", .media), item("h2"
     #expect(removal.count == 3)
     #expect(RunOrderSelection.removal(of: ["b"], in: items).synced.isEmpty)
 }
+
+@Test func libraryKindsThatAddToTheRunOrder() {
+    #expect(ServiceRunOrder.itemKind(adding: .presentation) == .presentation)
+    #expect(ServiceRunOrder.itemKind(adding: .media) == .media)
+    #expect(ServiceRunOrder.itemKind(adding: .audio) == .audio)
+    #expect(ServiceRunOrder.itemKind(adding: .playlist) == .playlist)
+    #expect(ServiceRunOrder.itemKind(adding: .theme) == nil)
+    #expect(ServiceRunOrder.itemKind(adding: .service) == nil)
+}

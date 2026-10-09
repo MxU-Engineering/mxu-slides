@@ -227,6 +227,10 @@ public enum Reflow {
         )
     }
 
+    public static func lyricDesign(of slides: [Slide]) -> String {
+        slides.lazy.compactMap(\.themeSlideName).first { !$0.isEmpty } ?? "Lyrics"
+    }
+
     public static func build(_ parsed: ParseResult, themeSlideName: String = "Lyrics") -> Built {
         var sections: [PresentationSection] = []
         var slides: [Slide] = []

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ChordEditorSheet: View {
     let model: AppModel
+    let render: RenderContext?
     let presentationID: String
     @Environment(\.dismiss) private var dismiss
 
@@ -90,6 +91,10 @@ struct ChordEditorSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            if let presentation = model.presentation(presentationID), ChordProExport.isSong(presentation) {
+                Button("Export…") { model.exportPresentation(presentation, render: render, preferred: .plainText) }
+                    .help("Save this song as ChordPro text, chords as edited here, or as another format")
+            }
             Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }
