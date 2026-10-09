@@ -7,6 +7,8 @@ struct LibraryPickerDeckRow: View {
     let entry: LibraryIndex.Entry
 
     let proPresenterIDs: Set<String>
+    var snippet: String? = nil
+    var accessory: String? = nil
     let onPick: () -> Void
 
     @State private var hovering = false
@@ -21,6 +23,12 @@ struct LibraryPickerDeckRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.name)
                         .lineLimit(1)
+                    if let snippet {
+                        Text(snippet)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                     if !details.isEmpty {
                         Text(details)
                             .font(.caption2)
@@ -33,6 +41,10 @@ struct LibraryPickerDeckRow: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                if let accessory {
+                    Image(systemName: accessory)
+                        .foregroundStyle(.secondary)
+                }
             }
             .contentShape(Rectangle())
         }
