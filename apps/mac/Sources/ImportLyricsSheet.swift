@@ -20,6 +20,8 @@ struct ImportLyricsSheet: View {
 
     @State private var preview: Preview?
 
+    @State private var browsing: SongSite?
+
     private var themeId: String { model.slideBuilding.lyricsImportThemeId ?? "" }
 
     private var design: String { model.slideBuilding.lyricsDesign }
@@ -77,6 +79,12 @@ struct ImportLyricsSheet: View {
                 .padding(12)
         }
         .frame(minWidth: 940, minHeight: 600)
+        .sheet(item: $browsing) { site in
+            SongSiteBrowser(site: site, start: site.home) { chart, filename in
+                text = chart
+                if title.isEmpty { title = (filename as NSString).deletingPathExtension }
+            }
+        }
         .task(id: input) {
             let input = input
             let built = await Task.detached(priority: .userInitiated) { Self.build(input) }.value
@@ -192,6 +200,11 @@ struct ImportLyricsSheet: View {
     private var footer: some View {
         HStack(spacing: 14) {
             Button("Load File…", action: loadFile)
+                .help("A lyrics or ChordPro file, or a chord chart PDF")
+            ForEach(SongSite.allCases) { site in
+                Button("\(site.name)…") { browsing = site }
+                    .help("Sign in to \(site.name) here, find the song and download it — its words and chords land in the paste")
+            }
             TextField("Title (optional — SongSelect and ChordPro carry their own)", text: $title)
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 200)
