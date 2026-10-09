@@ -51,6 +51,8 @@ struct RunOrderList: View {
 
     @State private var dropTargetItemID: String?
 
+    @State private var emptyDropTargeted = false
+
     @State private var mediaMenuState = MediaCueMenuState()
 
     private var renamingItemActive: Binding<Bool> {
@@ -149,6 +151,11 @@ struct RunOrderList: View {
                     }
                 }
             }
+            if visible.isEmpty, !runOnly {
+                emptyDropRow
+                    .listRowSeparator(.hidden)
+                    .selectionDisabled()
+            }
             let hidden = ServiceRunOrder.hidden(service.items)
             if !hidden.isEmpty {
                 hiddenGroupRow(count: hidden.count)
@@ -176,6 +183,34 @@ struct RunOrderList: View {
             pressedRow: { rowPressed($0, $1, visible: visible) })
         .inputRegion("run order")
         .overlay { ListMarqueeBand(rect: marqueeRect) }
+    }
+
+    private var emptyDropRow: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "tray.and.arrow.down")
+                .font(.system(size: 18))
+            Text("Drag presentations or media here")
+                .font(.callout)
+        }
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity, minHeight: 140)
+        .contentShape(Rectangle())
+        .overlay(
+            RoundedRectangle.standard(CornerStandard.element)
+                .strokeBorder(
+                    emptyDropTargeted ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.7),
+                    style: emptyDropTargeted
+                        ? StrokeStyle(lineWidth: 1.5)
+                        : StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
+        .padding(.vertical, 6)
+        .dropDestination(for: String.self) { payloads, _ in
+            var added = false
+            for payload in payloads where !runOnly && model.addServiceItem(serviceID, refID: payload) {
+                added = true
+            }
+            return added
+        } isTargeted: { emptyDropTargeted = $0 }
     }
 
     private func marqueeBegan(_ modifiers: NSEvent.ModifierFlags) {
@@ -243,10 +278,7 @@ struct RunOrderList: View {
 
     private func insertPayload(_ payload: String, beforeItemID: String?) {
         let added: ServiceItem? = if !payload.hasPrefix("svc::"), let ref = model.indexEntry(payload),
-            let kind: ServiceItemKind = ref.kind == .presentation ? .presentation
-                : ref.kind == .media ? .media
-                : ref.kind == .audio ? .audio
-                : ref.kind == .playlist ? .playlist : nil {
+            let kind = ServiceRunOrder.itemKind(adding: ref.kind) {
             ServiceItem(id: UUID().uuidString, itemKind: kind, name: ref.name, refId: payload)
         } else {
             nil

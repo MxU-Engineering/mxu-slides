@@ -1254,16 +1254,16 @@ final class AppModel {
         }
     }
 
-    func addServiceItem(_ serviceID: String, refID: String) {
-        guard let ref = libraryEntry(refID),
-              let kind: ServiceItemKind = ref.kind == .presentation ? .presentation
-                  : ref.kind == .media ? .media
-                  : ref.kind == .audio ? .audio
-                  : ref.kind == .playlist ? .playlist : nil
-        else { return }
-        let item = ServiceItem(id: UUID().uuidString, itemKind: kind, name: ref.name, refId: refID)
-        updateService(serviceID) { $0.items.append(item) }
-        markUsed(refID)
+    @discardableResult
+    func addServiceItem(_ serviceID: String, refID: String) -> Bool {
+        if let ref = libraryEntry(refID), let kind = ServiceRunOrder.itemKind(adding: ref.kind) {
+            let item = ServiceItem(id: UUID().uuidString, itemKind: kind, name: ref.name, refId: refID)
+            updateService(serviceID) { $0.items.append(item) }
+            markUsed(refID)
+            return true
+        } else {
+            return false
+        }
     }
 
     func addServiceHeader(_ serviceID: String, name: String) {
@@ -1305,10 +1305,7 @@ final class AppModel {
 
     func insertServiceItem(_ serviceID: String, refID: String, at index: Int) {
         guard let ref = libraryEntry(refID),
-              let kind: ServiceItemKind = ref.kind == .presentation ? .presentation
-                  : ref.kind == .media ? .media
-                  : ref.kind == .audio ? .audio
-                  : ref.kind == .playlist ? .playlist : nil
+              let kind = ServiceRunOrder.itemKind(adding: ref.kind)
         else { return }
         let item = ServiceItem(id: UUID().uuidString, itemKind: kind, name: ref.name, refId: refID)
         updateService(serviceID) { $0.items.insert(item, at: min(max(index, 0), $0.items.count)) }
