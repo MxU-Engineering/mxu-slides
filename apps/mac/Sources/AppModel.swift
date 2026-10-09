@@ -1814,15 +1814,17 @@ final class AppModel {
 
     func delete(_ entries: [LibraryIndex.Entry]) {
         guard !entries.isEmpty else { return }
-        for entry in entries {
 
-            if entry.kind == .media, let item = media(entry.id) {
-                posterStore?.writeTombstone(item)
-            }
-            client.delete(kind: entry.kind, id: entry.id)
-        }
+        let tombstones = entries.filter { $0.kind == .media }.compactMap { media($0.id) }
+        client.delete(entries.map { SyncLedger.Key(kind: $0.kind, id: $0.id) })
+        let posterStore = posterStore
 
         Task {
+            await Task.detached(priority: .utility) {
+                for item in tombstones {
+                    posterStore?.writeTombstone(item)
+                }
+            }.value
             await client.settled()
             sweepMediaPosters()
         }

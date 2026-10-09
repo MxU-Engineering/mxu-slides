@@ -460,16 +460,22 @@ import SQLite3
     }
 
     public func remove(id: String) throws {
+        try remove(ids: [id])
+    }
+
+    public func remove(ids: [String]) throws {
         writeGeneration += 1
         try exec("BEGIN IMMEDIATE")
         do {
-            try run("DELETE FROM entities WHERE id = ?", binds: [.text(id)])
-            try run("DELETE FROM entities_fts WHERE id = ?", binds: [.text(id)])
-            try run("DELETE FROM usage WHERE id = ?", binds: [.text(id)])
-            try run("DELETE FROM library_area WHERE id = ?", binds: [.text(id)])
-            try run("DELETE FROM sync_ledger WHERE id = ?", binds: [.text(id)])
-            try run("DELETE FROM pending_changes WHERE id = ?", binds: [.text(id)])
-            try run("DELETE FROM document_heads WHERE id = ?", binds: [.text(id)])
+            for id in ids {
+                try run("DELETE FROM entities WHERE id = ?", binds: [.text(id)])
+                try run("DELETE FROM entities_fts WHERE id = ?", binds: [.text(id)])
+                try run("DELETE FROM usage WHERE id = ?", binds: [.text(id)])
+                try run("DELETE FROM library_area WHERE id = ?", binds: [.text(id)])
+                try run("DELETE FROM sync_ledger WHERE id = ?", binds: [.text(id)])
+                try run("DELETE FROM pending_changes WHERE id = ?", binds: [.text(id)])
+                try run("DELETE FROM document_heads WHERE id = ?", binds: [.text(id)])
+            }
             try exec("COMMIT")
         } catch {
             try? exec("ROLLBACK")

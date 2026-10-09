@@ -137,9 +137,16 @@ import Foundation
 
     @discardableResult
     public func delete(kind: DocumentKind, id: String, origin: ChangeOrigin = .deleted) -> Task<LibraryBatch, any Error> {
-        let change = DocumentChange(kind: kind, id: id, origin: origin, value: nil)
-        readSide?.applyOptimistic(change)
-        return enqueue(change) { [engine] in try engine.delete(kind: kind, id: id, origin: origin) }
+        delete([SyncLedger.Key(kind: kind, id: id)], origin: origin)
+    }
+
+    @discardableResult
+    public func delete(_ documents: [SyncLedger.Key], origin: ChangeOrigin = .deleted) -> Task<LibraryBatch, any Error> {
+        let changes = documents.map { DocumentChange(kind: $0.kind, id: $0.id, origin: origin, value: nil) }
+        for change in changes {
+            readSide?.applyOptimistic(change)
+        }
+        return enqueue(changes) { [engine] in try engine.delete(documents, origin: origin) }
     }
 
     @discardableResult
@@ -486,16 +493,24 @@ import Foundation
     func enqueue<T: Sendable>(
         _ change: DocumentChange?, _ work: @escaping @Sendable @LibraryActor () throws -> T
     ) -> Task<T, any Error> {
+        enqueue(change.map { [$0] } ?? [], work)
+    }
+
+    func enqueue<T: Sendable>(
+        _ changes: [DocumentChange], _ work: @escaping @Sendable @LibraryActor () throws -> T
+    ) -> Task<T, any Error> {
         let previous = tail
         let command = Task { @LibraryActor in
             await previous?()
             return try work()
         }
         tail = { _ = await command.result }
-        if let change {
+        if !changes.isEmpty {
             Task { [weak self] in
                 if case let .failure(error) = await command.result {
-                    self?.readSide?.optimisticWriteFailed(change, error: error)
+                    for change in changes {
+                        self?.readSide?.optimisticWriteFailed(change, error: error)
+                    }
                 }
             }
         }
