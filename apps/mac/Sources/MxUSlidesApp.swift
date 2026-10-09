@@ -108,6 +108,8 @@ struct MxUSlidesApp: App {
 
         SheetWatchRecorder.shared.activate()
 
+        FocusWatchRecorder.shared.activate()
+
         FeedbackController.shared.activate()
 
         UserDefaults.standard.register(defaults: [
