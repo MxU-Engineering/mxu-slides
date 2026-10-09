@@ -2,21 +2,18 @@ import Foundation
 
 public enum SongSite: String, CaseIterable, Identifiable, Sendable {
     case songSelect
-    case multiTracks
 
     public var id: String { rawValue }
 
     public var name: String {
         switch self {
         case .songSelect: "SongSelect"
-        case .multiTracks: "MultiTracks"
         }
     }
 
     public var home: URL {
         switch self {
         case .songSelect: URL(string: "https://songselect.ccli.com/")!
-        case .multiTracks: URL(string: "https://www.multitracks.com/")!
         }
     }
 
@@ -24,16 +21,14 @@ public enum SongSite: String, CaseIterable, Identifiable, Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var components = switch self {
         case .songSelect: URLComponents(string: "https://songselect.ccli.com/search/results")!
-        case .multiTracks: URLComponents(string: "https://www.multitracks.com/songs/")!
         }
         components.queryItems = [URLQueryItem(name: "search", value: trimmed)]
         return trimmed.isEmpty ? home : components.url!
     }
 
-    public func start(ccliNumber: Int? = nil, title: String? = nil, pageURL: String? = nil) -> URL {
+    public func start(ccliNumber: Int? = nil, title: String? = nil) -> URL {
         let page = switch self {
         case .songSelect: ccliNumber.flatMap { URL(string: "https://songselect.ccli.com/songs/\($0)") }
-        case .multiTracks: pageURL.flatMap(URL.init(string:)).flatMap { $0.scheme?.hasPrefix("http") == true ? $0 : nil }
         }
         return page ?? searchURL(title ?? "")
     }

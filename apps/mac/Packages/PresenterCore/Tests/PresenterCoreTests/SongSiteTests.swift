@@ -12,14 +12,6 @@ struct SongSiteTests {
         #expect(SongSite.songSelect.searchURL("  ") == SongSite.songSelect.home)
     }
 
-    @Test func multiTracksOpensOnThePlansSongPageElseASearch() {
-        #expect(SongSite.multiTracks.start(pageURL: "https://www.multitracks.com/songs/Bethel-Music/Center/").absoluteString
-            == "https://www.multitracks.com/songs/Bethel-Music/Center/")
-        #expect(SongSite.multiTracks.start(title: "Center", pageURL: "javascript:alert(1)").absoluteString
-            == "https://www.multitracks.com/songs/?search=Center")
-        #expect(SongSite.multiTracks.start() == SongSite.multiTracks.home)
-    }
-
     @Test(arguments: [
         ("application/pdf", "Center.pdf", nil, true, true, true),
         ("application/pdf", "preview.pdf", nil, false, true, false),

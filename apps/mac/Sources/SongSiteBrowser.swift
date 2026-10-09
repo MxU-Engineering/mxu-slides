@@ -7,11 +7,13 @@ struct SongSiteBrowser: View {
     let site: SongSite
     let start: URL
 
+    var query = ""
+
     let onChart: (_ text: String, _ filename: String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var browser = SongSiteBrowserModel()
-    @State private var query = ""
+    @State private var search = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,10 +26,10 @@ struct SongSiteBrowser: View {
                     .help("Forward")
                 Button { browser.webView.reload() } label: { Image(systemName: "arrow.clockwise") }
                     .help("Reload")
-                TextField("Search \(site.name)", text: $query)
+                TextField("Search \(site.name)", text: $search)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 320)
-                    .onSubmit { browser.webView.load(URLRequest(url: site.searchURL(query))) }
+                    .onSubmit { browser.webView.load(URLRequest(url: site.searchURL(search))) }
                 Text(browser.host)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -41,14 +43,16 @@ struct SongSiteBrowser: View {
             Divider()
             SongSiteWebView(webView: browser.webView)
             Divider()
-            Text(browser.status ?? "Sign in to \(site.name) with your church's account, find the song, then use \(site.name)'s Download (lyrics, ChordPro or a chord chart PDF). MxU Slides brings it in.")
+            Text(browser.status ?? "Sign in to \(site.name) with your church's account, find the song, then use the site's Download button (lyrics, ChordPro or a chord chart PDF). MxU Slides brings it in.")
                 .font(.caption)
                 .foregroundStyle(browser.statusIsProblem ? .red : .secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
         }
-        .frame(minWidth: 1000, minHeight: 720)
+
+        .frame(minWidth: 1240, minHeight: 760)
         .task {
+            search = query
             browser.onChart = { text, filename in
                 onChart(text, filename)
                 dismiss()
