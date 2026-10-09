@@ -1383,13 +1383,23 @@ struct SlideGridBody: View {
     private func gapDropDelegate(enabled: Bool) -> GridGapDropDelegate {
         GridGapDropDelegate(
             enabled: enabled,
+            dropStarted: {
+                dropSettleUntil = Date().addingTimeInterval(0.6)
+                dropTargetIndex = nil
+                dropTargetAfterIndex = nil
+
+                Task { @MainActor in
+                    dropTargetIndex = nil
+                    dropTargetAfterIndex = nil
+                }
+            },
             spot: { location in
                 SlideGridDrop.spot(
                     at: CGPoint(x: location.x - marqueeMargin, y: location.y - marqueeMargin),
                     tileFrames: tileFrames, count: slides.count, rowGap: SlideGridMetrics.spacing)
             },
             setTarget: { spot in
-                switch spot {
+                switch Date() >= dropSettleUntil ? spot : nil {
                 case .before(let index)?:
                     dropTargetIndex = index
                     dropTargetAfterIndex = nil

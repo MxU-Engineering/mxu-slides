@@ -250,6 +250,8 @@ struct CanvasDropDelegate: DropDelegate {
 struct GridGapDropDelegate: DropDelegate {
     let enabled: Bool
 
+    let dropStarted: () -> Void
+
     let spot: (CGPoint) -> SlideGridDrop.Spot
     let setTarget: (SlideGridDrop.Spot?) -> Void
     let performText: (String, Int) -> Bool
@@ -270,7 +272,7 @@ struct GridGapDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         let index = spot(info.location).insertionIndex
-        setTarget(nil)
+        dropStarted()
         DiagnosticsStore.shared.note("grid.gapDrop", detail: "before \(index)")
         let dragPasteboard = NSPasteboard(name: .drag)
         let fileURLs = (dragPasteboard.readObjects(
