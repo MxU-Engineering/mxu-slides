@@ -101,3 +101,12 @@ private func item(_ kind: MediaKind, _ classification: MediaClassification) -> M
     #expect(row.refId == deck.id)
     #expect(RunOrderMediaDrop([]) == nil)
 }
+
+@Test func severalLibraryMediaDraggedTogetherAreOneBatch() {
+    var second = item(.video, .foreground)
+    second.id = "m2"
+    let library = ["m1": item(.image, .foreground), "m2": second]
+    #expect(RunOrderMediaDrop.libraryBatch(["m1", "m2"]) { library[$0] }.map(\.id) == ["m1", "m2"])
+    #expect(RunOrderMediaDrop.libraryBatch(["m1"]) { library[$0] }.isEmpty, "one item keeps its media row")
+    #expect(RunOrderMediaDrop.libraryBatch(["m1", "deck"]) { library[$0] }.isEmpty, "a mix adds per item")
+}

@@ -144,11 +144,15 @@ struct RunOrderList: View {
                 let anchorID = visible.indices.contains(index) ? visible[index].id : nil
 
                 let fileURLs = Self.draggedFileURLs()
+                let mediaBatch = fileURLs.isEmpty ? draggedMediaBatch() : []
                 if !fileURLs.isEmpty {
                     DiagnosticsStore.shared.note("runOrder.insert.files", detail: "\(fileURLs.count)")
                     Task { await model.insertDroppedMedia(fromFiles: fileURLs, service: serviceID, beforeItemID: anchorID) }
+                } else if !mediaBatch.isEmpty {
+                    DiagnosticsStore.shared.note("runOrder.insert.mediaBatch", detail: "\(mediaBatch.count)")
+                    Task { await model.insertDroppedMedia(mediaBatch, service: serviceID, beforeItemID: anchorID) }
                 }
-                for provider in providers where fileURLs.isEmpty {
+                for provider in providers where fileURLs.isEmpty && mediaBatch.isEmpty {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
                         Task { @MainActor in
@@ -213,13 +217,17 @@ struct RunOrderList: View {
 
         .onDrop(of: [.plainText, .fileURL], isTargeted: $emptyDropTargeted) { _ in
             let fileURLs = Self.draggedFileURLs()
-            let payloads = NSPasteboard(name: .drag).pasteboardItems?
-                .compactMap { $0.string(forType: .string) } ?? []
+            let payloads = Self.draggedStrings()
+            let mediaBatch = RunOrderMediaDrop.libraryBatch(payloads) { model.media($0) }
             if runOnly {
                 return false
             } else if !fileURLs.isEmpty {
                 DiagnosticsStore.shared.note("runOrder.emptyDrop.files", detail: "\(fileURLs.count)")
                 Task { await model.insertDroppedMedia(fromFiles: fileURLs, service: serviceID, beforeItemID: nil) }
+                return true
+            } else if !mediaBatch.isEmpty {
+                DiagnosticsStore.shared.note("runOrder.emptyDrop.mediaBatch", detail: "\(mediaBatch.count)")
+                Task { await model.insertDroppedMedia(mediaBatch, service: serviceID, beforeItemID: nil) }
                 return true
             } else {
                 var added = false
@@ -229,6 +237,14 @@ struct RunOrderList: View {
                 return added
             }
         }
+    }
+
+    private func draggedMediaBatch() -> [MediaItem] {
+        RunOrderMediaDrop.libraryBatch(Self.draggedStrings()) { model.media($0) }
+    }
+
+    private static func draggedStrings() -> [String] {
+        NSPasteboard(name: .drag).pasteboardItems?.compactMap { $0.string(forType: .string) } ?? []
     }
 
     private static func draggedFileURLs() -> [URL] {

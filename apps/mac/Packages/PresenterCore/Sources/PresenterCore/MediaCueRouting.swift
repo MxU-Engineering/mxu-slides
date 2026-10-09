@@ -74,6 +74,11 @@ public enum RunOrderMediaDrop: Equatable, Sendable {
         }
     }
 
+    public static func libraryBatch(_ payloads: [String], media: (String) -> MediaItem?) -> [MediaItem] {
+        let items = payloads.compactMap(media)
+        return payloads.count > 1 && items.count == payloads.count ? items : []
+    }
+
     public var row: ServiceItem {
         switch self {
         case .media(let row), .presentation(_, let row): row

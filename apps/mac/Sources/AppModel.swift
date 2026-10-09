@@ -3033,7 +3033,14 @@ final class AppModel {
         fromFiles urls: [URL], service serviceID: String, beforeItemID: String?
     ) async -> Bool {
         let imported = await importFiles(urls)
-        if let drop = RunOrderMediaDrop(imported.compactMap { media($0) }) {
+        return await insertDroppedMedia(imported.compactMap { media($0) }, service: serviceID, beforeItemID: beforeItemID)
+    }
+
+    @discardableResult
+    func insertDroppedMedia(
+        _ items: [MediaItem], service serviceID: String, beforeItemID: String?
+    ) async -> Bool {
+        if let drop = RunOrderMediaDrop(items) {
             if case .presentation(let deck, _) = drop {
 
                 _ = try? await createInDrive(deck).value
