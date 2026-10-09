@@ -23,7 +23,7 @@ final class SlideImageExport {
 
     private let stillPrefix = "export::\(UUID().uuidString)::"
     private nonisolated static let renderQueue = DispatchQueue(
-        label: "io.prodcontrol.mxupresenter.slideExport", qos: .userInitiated)
+        label: "com.example.mxuslides.slideExport", qos: .userInitiated)
 
     init(model: AppModel, render: RenderContext, bundle: DeckBundle, includeMedia: Bool) {
         self.model = model
@@ -211,6 +211,22 @@ final class SlideImageExport {
         }.value
     }
 
+    nonisolated static func drawChecker(in context: CGContext, frame: CGRect) {
+        let well: CGFloat = 21 / 255
+        let ink: CGFloat = 32 / 255
+        context.setFillColor(CGColor(red: well, green: well, blue: well, alpha: 1))
+        context.fill(frame)
+        context.setFillColor(CGColor(red: ink, green: ink, blue: ink, alpha: 1))
+        let square = max(4, (frame.width / 200 * 5).rounded())
+        let columns = Int(ceil(frame.width / square))
+        let rows = Int(ceil(frame.height / square))
+        for row in 0 ..< rows {
+            for column in 0 ..< columns where (row + column).isMultiple(of: 2) {
+                context.fill(CGRect(x: CGFloat(column) * square, y: CGFloat(row) * square, width: square, height: square))
+            }
+        }
+    }
+
     private nonisolated static func jpegBacked(_ image: CGImage, over backdrop: Backdrop) -> CGImage? {
         let frame = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let context = CGContext(
@@ -220,7 +236,7 @@ final class SlideImageExport {
         if let context {
             switch backdrop {
             case .checker:
-                StationThumbnailExporter.drawChecker(in: context, frame: frame)
+                Self.drawChecker(in: context, frame: frame)
             case .color(let color):
                 context.setFillColor(color)
                 context.fill(frame)

@@ -1936,13 +1936,21 @@ struct SlideDropTarget: ViewModifier {
 struct LyricsThemeChooser: View {
     let appModel: AppModel
     let render: RenderContext?
-    @Binding var themeId: String
+    let themeId: String
+
+    var design: String?
+
+    var picksDesigns = false
+
+    let onPick: (_ themeId: String, _ design: String?) -> Void
 
     @State private var choosing = false
 
+    @State private var looks: [ThemeLook]?
+
     var body: some View {
         Button {
-            choosing.toggle()
+            choosing = true
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "paintpalette")
@@ -1954,117 +1962,67 @@ struct LyricsThemeChooser: View {
             }
         }
         .fixedSize()
-        .help("Theme — how the lyrics will look; pick from rendered samples")
-        .popover(isPresented: $choosing, arrowEdge: .top) {
-            catalog
+        .help(picksDesigns
+            ? "Theme — the design the lyrics are built on; pick from any theme's folders"
+            : "Theme — pick from rendered previews")
+        .sheet(isPresented: $choosing) {
+            explorer
         }
     }
 
     private var title: String {
-        guard !themeId.isEmpty else { return "Theme: None" }
-        return "Theme: \(appModel.entry(themeId)?.name ?? "Missing")"
+        if themeId.isEmpty {
+            "Theme: None"
+        } else {
+            "Theme: " + ([appModel.entry(themeId)?.name ?? "Missing"] + [design ?? ""].filter { !$0.isEmpty })
+                .joined(separator: " › ")
+        }
     }
 
-    private var catalog: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 168), spacing: 10)],
-                alignment: .leading, spacing: 10
-            ) {
-                card(id: "", name: "None")
-                ForEach(appModel.entries(in: .themes), id: \.id) { entry in
-                    card(id: entry.id, name: entry.name)
-                }
+    private var explorer: some View {
+        VStack(spacing: 0) {
+            ThemeExplorerView(
+                appModel: appModel, render: render, deckThemeId: themeId, looks: looks,
+                currentBadge: "Current",
+                currentDesign: picksDesigns ? (design ?? SlideBuildingSettings.defaultLyricsDesign) : nil,
+                onPickTheme: { pick($0.id, design: picksDesigns ? "" : nil) },
+                pickThemeVerb: "Use",
+                pickThemeHelp: picksDesigns
+                    ? "Build the lyrics on this theme's Lyrics design. Or pick one design below."
+                    : "Use this theme."
+            ) { themeId, design in
+                pick(themeId, design: picksDesigns ? design.name : nil)
+            }
+            Divider()
+            HStack {
+                Button("No Theme") { pick("", design: picksDesigns ? "" : nil) }
+                Spacer()
+                Button("Cancel", role: .cancel) { choosing = false }
+                    .keyboardShortcut(.cancelAction)
             }
             .padding(12)
         }
-        .frame(width: 580, height: 360)
+        .frame(width: 820, height: 600)
+        .task { looks = await ThemeLook.load(appModel, firstThemeId: themeId) }
     }
 
-    private func card(id: String, name: String) -> some View {
-        let selected = id == themeId
-        return Button {
-            themeId = id
-            choosing = false
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                LyricsThemeSample(appModel: appModel, render: render, themeId: id)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .clipShape(RoundedRectangle.standard(CornerStandard.element))
-                    .overlay(
-                        RoundedRectangle.standard(CornerStandard.element)
-                            .strokeBorder(
-                                selected ? Color.accentColor : Color.separator.opacity(0.5),
-                                lineWidth: selected ? 2 : 1
-                            )
-                    )
-                Text(name)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+    private func pick(_ themeId: String, design: String?) {
+        onPick(themeId, design)
+        choosing = false
     }
 }
 
-struct LyricsThemeSample: View {
-    let appModel: AppModel
-    let render: RenderContext?
-    let themeId: String
+extension LyricsThemeChooser {
 
-    @State private var loaded: Theme?
-
-    @State private var loadedStamp: String?
-
-    static let sampleText = "Amazing grace how sweet the sound\nThat saved a wretch like me"
-
-    private var updatedAt: TimeInterval {
-        appModel.entry(themeId)?.updatedAt.timeIntervalSince1970 ?? 0
-    }
-
-    private var slide: Slide {
-        var slide = Slide(
-            id: "lyrics-theme-sample", name: "",
-            objects: [SlideObject(
-                id: "lyrics-theme-sample-text", objectKind: .text,
-                name: "Lyrics", text: Self.sampleText
-            )]
-        )
-        slide.themeSlideName = "Lyrics"
-        return slide
-    }
-
-    var body: some View {
-        let slide = slide
-        let presentation = Presentation(
-            id: "lyrics-theme-sample|\(themeId)", name: "Sample", presentationKind: .deck,
-            themeId: themeId, slides: [slide]
-        )
-        ZStack {
-            Color.clear
-            if let loadedStamp {
-                SlideThumbnailView(
-                    model: appModel, render: render,
-                    slide: slide, presentation: presentation,
-                    theme: loaded,
-                    arrangementId: nil,
-                    hideScopedBackgrounds: false, legibleText: false,
-                    contentStamp: loadedStamp
-                )
-            }
+    static func lyrics(_ appModel: AppModel, render: RenderContext?, picksDesigns: Bool = true) -> LyricsThemeChooser {
+        let settings = appModel.slideBuilding
+        return LyricsThemeChooser(
+            appModel: appModel, render: render,
+            themeId: settings.lyricsImportThemeId ?? "",
+            design: picksDesigns ? settings.lyricsImportDesign : nil,
+            picksDesigns: picksDesigns
+        ) { themeId, design in
+            appModel.updateSlideBuilding { $0.setLyricsLook(themeId: themeId, design: design) }
         }
-        .task(id: "\(themeId)|\(updatedAt)") { await load() }
-    }
-
-    private func load() async {
-        let stamp = updatedAt
-        if !themeId.isEmpty {
-            loaded = await ThumbnailStore.shared.faceValue(
-                Theme.self, id: themeId, updatedAt: stamp, client: appModel.client
-            )
-        }
-        loadedStamp = "\(stamp)"
     }
 }

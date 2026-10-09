@@ -84,11 +84,8 @@ targets:
         NSLocalNetworkUsageDescription: "MxU Slides uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac."
         NSCameraUsageDescription: "MxU Slides shows cameras and capture devices on your screens as live video inputs."
         NSMicrophoneUsageDescription: "MxU Slides can include a capture device's audio when it is used as a live input."
-        # A presentation exported for another Mac (Cody 2026-10-07): a zip
-        # Finder opens in MxU Slides, which imports it into the library
-        # (SlidesPresentationFile, PresentationFileImport.swift).
         UTExportedTypeDeclarations:
-          - UTTypeIdentifier: io.prodcontrol.mxuslides.presentation
+          - UTTypeIdentifier: com.example.mxuslides.presentation
             UTTypeDescription: MxU Slides Presentation
             UTTypeConformsTo: [public.data, public.archive]
             UTTypeTagSpecification:
@@ -97,7 +94,7 @@ targets:
           - CFBundleTypeName: MxU Slides Presentation
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
-            LSItemContentTypes: [io.prodcontrol.mxuslides.presentation]
+            LSItemContentTypes: [com.example.mxuslides.presentation]
     settings:
       base:
         PRODUCT_NAME: "MxU Slides"

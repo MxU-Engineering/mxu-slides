@@ -17,7 +17,7 @@ import Testing
     }
 
     @Test func theRecorderRunsFromLaunch() throws {
-        #expect(try source("MxUPresenterApp.swift").contains("FocusWatchRecorder.shared.activate()"))
+        #expect(try source("MxUSlidesApp.swift").contains("FocusWatchRecorder.shared.activate()"))
     }
 
     @Test func aClickFollowsTheFocusWatchRules() throws {

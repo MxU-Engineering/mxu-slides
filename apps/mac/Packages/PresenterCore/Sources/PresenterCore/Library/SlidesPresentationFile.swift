@@ -3,7 +3,7 @@ import Foundation
 public enum SlidesPresentationFile {
     public static let fileExtension = "mxuslides"
 
-    public static let typeIdentifier = "io.prodcontrol.mxuslides.presentation"
+    public static let typeIdentifier = "com.example.mxuslides.presentation"
     public static let formatVersion = 1
     static let manifestName = "manifest.json"
     static let payloadName = "presentation.json"
@@ -240,8 +240,8 @@ public enum SlidesPresentationFile {
             }
         }
         let themes = payload.themes.filter { !existing.themes.contains($0.id) }
-            .map { NewComputerJoin.remapped($0, idMap) ?? $0 }
-        var presentation = NewComputerJoin.remapped(payload.presentation, idMap) ?? payload.presentation
+            .map { remapped($0, idMap) ?? $0 }
+        var presentation = remapped(payload.presentation, idMap) ?? payload.presentation
         presentation.id = presentationID ?? presentation.id
         presentation.folder = placement.folder(for: .presentation)
         presentation.folderId = nil
@@ -313,6 +313,31 @@ public enum SlidesPresentationFile {
             presentationID: plan.presentation.id, name: plan.presentation.name,
             themesAdded: plan.themes.count, mediaAdded: plan.media.count + plan.audio.count,
             fontsAdded: fontsAdded, missing: plan.missing)
+    }
+
+    static func remapped<E: Codable>(_ value: E, _ map: [String: String]) -> E? {
+        guard !map.isEmpty, let data = try? JSONEncoder().encode(value),
+              let tree = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) else { return nil }
+        var changed = false
+        func walk(_ node: Any) -> Any {
+            if let string = node as? String {
+                guard let target = map[string] else { return string }
+                changed = true
+                return target
+            } else if let array = node as? [Any] {
+                return array.map(walk)
+            } else if let object = node as? [String: Any] {
+                return Dictionary(object.map { key, value in
+                    if let target = map[key] { changed = true; return (target, walk(value)) }
+                    return (key, walk(value))
+                }, uniquingKeysWith: { first, _ in first })
+            } else {
+                return node
+            }
+        }
+        let out = walk(tree)
+        guard changed, let back = try? JSONSerialization.data(withJSONObject: out, options: .fragmentsAllowed) else { return nil }
+        return try? JSONDecoder().decode(E.self, from: back)
     }
 
     nonisolated static func installFonts(_ files: [URL], libraryRoot: URL) -> Int {

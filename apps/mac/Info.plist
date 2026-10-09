@@ -17,7 +17,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>io.prodcontrol.mxuslides.presentation</string>
+				<string>com.example.mxuslides.presentation</string>
 			</array>
 		</dict>
 	</array>
@@ -58,7 +58,7 @@
 			<key>UTTypeDescription</key>
 			<string>MxU Slides Presentation</string>
 			<key>UTTypeIdentifier</key>
-			<string>io.prodcontrol.mxuslides.presentation</string>
+			<string>com.example.mxuslides.presentation</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
