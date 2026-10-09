@@ -67,6 +67,27 @@ private func song(_ id: String, name: String, lyrics: String) -> Presentation {
         #expect(stamped.snapshot == (try sqlSnapshot(root, generation: stamped.snapshot.generation)), "a fractional date reads back as the index keeps it")
     }
 
+    @LibraryActor @Test func aSavedServiceStampsItsDecksUseAtItsDate() throws {
+        let root = makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let engine = LibraryEngine(rootURL: root)
+        try engine.bootstrap()
+        try engine.create(song("p1", name: "Give Me Jesus", lyrics: "Give me Jesus"))
+        let batch = try engine.create(Service(
+            id: "svc", name: "Renew Worship", serviceDate: "2026-10-04",
+            items: [
+                ServiceItem(id: "i1", itemKind: .presentation, name: "Give Me Jesus", refId: "p1"),
+                ServiceItem(id: "i2", itemKind: .presentation, name: "Header", refId: ""),
+            ]))
+        let used = try #require(batch.snapshot.entry(id: "p1")?.lastUsedAt)
+        #expect(Calendar.current.dateComponents([.year, .month, .day], from: used) == DateComponents(year: 2026, month: 10, day: 4))
+        #expect(batch.snapshot == (try sqlSnapshot(root, generation: batch.snapshot.generation)))
+
+        let future = Service(id: "svc2", name: "Later", serviceDate: "2999-01-01",
+                             items: [ServiceItem(id: "i3", itemKind: .presentation, name: "Give Me Jesus", refId: "p1")])
+        #expect(Library.usageStamps(of: future).isEmpty)
+    }
+
     @LibraryActor @Test func anAreaRowIsWrittenAndOnlyAChangeIsAMove() throws {
         let root = makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

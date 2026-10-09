@@ -73,7 +73,8 @@ import os
             name: document.value.name,
             text: document.value.indexText,
             ccli: document.value.indexCCLI,
-            folderId: document.value.indexFolderId
+            folderId: document.value.indexFolderId,
+            origin: document.value.indexOrigin
         )
         didSave?(Entity.documentKind, document.value.id)
     }
@@ -91,15 +92,22 @@ import os
     }
 
     public func seedUsageFromServices(calendar: Calendar = .current) throws {
-        let now = Date()
         for entry in try index.entries(of: .service) {
             let service = try store.load(Service.self, id: entry.id).value
-            guard let date = ScheduleMath.parseLocalDate(
-                service.serviceDate + "T12:00", calendar: calendar
-            ) else { continue }
-            for item in service.items where !item.refId.isEmpty {
-                try index.touchUsage(id: item.refId, at: min(date, now))
+            for stamp in Self.usageStamps(of: service, futureAsNow: true, calendar: calendar) {
+                try index.touchUsage(id: stamp.id, at: stamp.date)
             }
+        }
+    }
+
+    nonisolated static func usageStamps(
+        of service: Service, futureAsNow: Bool = false, now: Date = Date(), calendar: Calendar = .current
+    ) -> [(id: String, date: Date)] {
+        let date = ScheduleMath.parseLocalDate(service.serviceDate + "T12:00", calendar: calendar)
+        if let date, date <= now || futureAsNow {
+            return service.items.filter { !$0.refId.isEmpty }.map { ($0.refId, min(date, now)) }
+        } else {
+            return []
         }
     }
 
@@ -114,10 +122,15 @@ import os
         func reindex<Entity: DocumentEntity>(_ type: Entity.Type) throws {
             for id in try store.ids(of: Entity.documentKind) {
                 let value = try store.load(type, id: id).value
+
+                let modified = (try? store.url(kind: Entity.documentKind, id: id)
+                    .resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
                 try index.upsert(
                     id: id, kind: Entity.documentKind,
                     subkind: value.indexSubkind, name: value.name,
-                    text: value.indexText, ccli: value.indexCCLI, folderId: value.indexFolderId
+                    text: value.indexText, updatedAt: modified ?? Date(),
+                    ccli: value.indexCCLI, folderId: value.indexFolderId,
+                    origin: value.indexOrigin
                 )
             }
         }

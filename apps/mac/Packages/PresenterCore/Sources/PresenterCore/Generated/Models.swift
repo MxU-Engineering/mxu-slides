@@ -849,6 +849,31 @@ public struct Arrangement: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+public enum PresentationOriginSource: String, Codable, Sendable, CaseIterable, Equatable {
+    case madeHere
+    case proPresenter
+    case planningCenterChart
+    case planningCenterLyrics
+    case songSelect
+    case lyricsFile
+    case chartFile
+    case pastedLyrics
+    case slidesFile
+    case duplicate
+}
+
+public struct PresentationOrigin: Codable, Sendable, Equatable {
+    public var source: PresentationOriginSource
+    public var detail: String?
+    public var createdAt: String?
+
+    public init(source: PresentationOriginSource, detail: String? = nil, createdAt: String? = nil) {
+        self.source = source
+        self.detail = detail
+        self.createdAt = createdAt
+    }
+}
+
 public enum PresentationKind: String, Codable, Sendable, CaseIterable, Equatable {
     case song
     case deck
@@ -875,8 +900,9 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var musicKey: String?
     public var autoAdvance: AutoAdvance?
     public var displayKey: String?
+    public var origin: PresentationOrigin?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -897,6 +923,7 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.musicKey = musicKey
         self.autoAdvance = autoAdvance
         self.displayKey = displayKey
+        self.origin = origin
     }
 }
 

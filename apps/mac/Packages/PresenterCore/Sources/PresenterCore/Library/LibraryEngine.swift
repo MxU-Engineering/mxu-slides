@@ -608,8 +608,18 @@ import Foundation
             let updatedAt = LibraryIndexMirror.indexDate(Date())
             try index.upsert(
                 id: value.id, kind: key.kind, subkind: value.indexSubkind, name: value.name,
-                text: value.indexText, updatedAt: updatedAt, ccli: value.indexCCLI, folderId: value.indexFolderId)
-            mirror.upsert(id: value.id, kind: key.kind, subkind: value.indexSubkind, name: value.name, updatedAt: updatedAt)
+                text: value.indexText, updatedAt: updatedAt, ccli: value.indexCCLI, folderId: value.indexFolderId,
+                origin: value.indexOrigin)
+            mirror.upsert(
+                id: value.id, kind: key.kind, subkind: value.indexSubkind, name: value.name, updatedAt: updatedAt,
+                origin: value.indexOrigin)
+        }
+        if let service = value as? Service {
+            for use in Library.usageStamps(of: service) {
+                let date = LibraryIndexMirror.indexDate(use.date)
+                try index.touchUsage(id: use.id, at: date)
+                mirror.touchUsage(id: use.id, at: date)
+            }
         }
     }
 

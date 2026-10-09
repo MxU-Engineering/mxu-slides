@@ -10,6 +10,8 @@ struct ImportLyricsSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+
+    @State private var loadedFrom: PresentationOrigin?
     @State private var title = ""
     @State private var linesPerSlide = 2
 
@@ -86,6 +88,7 @@ struct ImportLyricsSheet: View {
         .sheet(item: $browsing) { site in
             SongSiteBrowser(site: site, start: site.home) { chart, filename in
                 text = chart
+                loadedFrom = PresentationOrigin(.songSelect, detail: filename)
                 if title.isEmpty, !Self.namesItsTitle(chart) { title = (filename as NSString).deletingPathExtension }
             }
         }
@@ -268,6 +271,9 @@ struct ImportLyricsSheet: View {
                 let contents = await Task.detached { ChordChartPDF.importText(from: data, filename: url.lastPathComponent) }.value
                 if let contents {
                     text = contents
+                    loadedFrom = PresentationOrigin(
+                        url.pathExtension.lowercased() == "pdf" ? .chartFile : .lyricsFile,
+                        detail: url.lastPathComponent)
                     if title.isEmpty, !Self.namesItsTitle(contents) { title = url.deletingPathExtension().lastPathComponent }
                 } else {
                     NSSound.beep()
@@ -284,7 +290,8 @@ struct ImportLyricsSheet: View {
             linesPerSlide: linesPerSlide,
             themeId: themeId,
             themeSlideName: design,
-            lyricLines: lyricLines
+            lyricLines: lyricLines,
+            origin: loadedFrom ?? PresentationOrigin(.pastedLyrics)
         )
         dismiss()
         if let id { onImported(id) }
