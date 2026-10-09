@@ -3010,22 +3010,84 @@ final class AppModel {
     func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {
         isImporting = true
         defer { isImporting = false }
-        let results = await importer?.importFiles(at: urls, placement: placement ?? newPlacement) ?? []
-        let flagged = results.filter {
-            if case .media(_, .needsTranscode) = $0.outcome { return true } else { return false }
-        }.count
-        let skipped = results.filter {
-            if case .skipped = $0.outcome { return true } else { return false }
-        }.count
-        var summary = "Imported \(results.count - skipped) of \(results.count) files"
-        if flagged > 0 { summary += " — \(flagged) flagged for transcode" }
-        if skipped > 0 { summary += " — \(skipped) skipped" }
-        lastImportSummary = summary
-        noteMutation(.media)
-        return results.compactMap { result in
-            if case .media(let id, _) = result.outcome { return id }
-            return nil
+        let files = MediaImporter.files(in: urls)
+        var dedupe = MediaImportDedupe(media: Array(resident.media.values), audio: Array(resident.audio.values))
+        var replaceRest: Bool?
+        var mediaIDs: [String] = []
+        var added = 0, reused = 0, replaced = 0, flagged = 0, skipped = 0
+        for (index, url) in files.enumerated() {
+            let kind = MediaImporter.libraryKind(of: url)
+            let name = url.deletingPathExtension().lastPathComponent
+            let hash = kind == nil ? nil : await Task.detached(priority: .userInitiated) {
+                try? BlobStore.sha256(of: url)
+            }.value
+            let match = if let kind, let hash { dedupe.match(hash: hash, name: name, kind: kind) } else { MediaImportDedupe.Match.new }
+            var replacing: String?
+            if case .sameName(let id, let existing) = match {
+                let replace: Bool
+                if let replaceRest {
+                    replace = replaceRest
+                } else {
+                    let answer = await askMediaNameConflict(name: existing, othersLeft: files.count - index - 1)
+                    replace = answer.replace
+                    if answer.forRest { replaceRest = answer.replace }
+                }
+                replacing = replace ? id : nil
+            }
+            if case .sameFile(let id) = match {
+                reused += 1
+                if kind == .media { mediaIDs.append(id) }
+            } else if let id = replacing, kind == .media, await replaceMediaFile(id, with: url) != nil {
+                replaced += 1
+                mediaIDs.append(id)
+                if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .media) }
+            } else if let id = replacing, kind == .audio {
+                replaceAudioFile(id, with: url)
+                replaced += 1
+                if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+            } else {
+                let result = await importer?.importFiles(at: [url], placement: placement ?? newPlacement).first
+                switch result?.outcome {
+                case .media(let id, let status)?:
+                    added += 1
+                    if status == .needsTranscode { flagged += 1 }
+                    mediaIDs.append(id)
+                    if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .media) }
+                case .audio(let id)?:
+                    added += 1
+                    if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+                case .skipped?, nil:
+                    skipped += 1
+                }
+            }
         }
+        lastImportSummary = [
+            added > 0 || reused + replaced == 0 ? "Imported \(added) of \(files.count) files" : nil,
+            reused > 0 ? "\(reused) already in the library" : nil,
+            replaced > 0 ? "\(replaced) replaced" : nil,
+            flagged > 0 ? "\(flagged) flagged for transcode" : nil,
+            skipped > 0 ? "\(skipped) skipped" : nil,
+        ].compactMap { $0 }.joined(separator: " — ")
+        noteMutation(.media)
+        return mediaIDs
+    }
+
+    private func askMediaNameConflict(name: String, othersLeft: Int) async -> (replace: Bool, forRest: Bool) {
+        let alert = NSAlert()
+        alert.messageText = "“\(name)” is already in your library"
+        alert.informativeText = "Replace it with the new file everywhere it’s used, or keep both?"
+        alert.addButton(withTitle: "Keep Both")
+        alert.addButton(withTitle: "Replace")
+        alert.showsSuppressionButton = othersLeft > 0
+        alert.suppressionButton?.title = "Do the same for the rest of this import"
+        let response: NSApplication.ModalResponse = if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            await withCheckedContinuation { continuation in
+                alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+            }
+        } else {
+            alert.runModal()
+        }
+        return (response == .alertSecondButtonReturn, alert.suppressionButton?.state == .on)
     }
 
     @discardableResult
