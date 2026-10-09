@@ -135,7 +135,9 @@ public enum ProDocumentMapper {
             defaultArrangementId: defaultArrangementId,
             ccli: ccli,
             musicKey: musicKey,
-            displayKey: displayKey
+            displayKey: displayKey,
+
+            origin: PresentationOrigin(.proPresenter, at: nil)
         )
 
         if case .slideShowDuration(let duration)? = doc.slideShow, duration > 0 {

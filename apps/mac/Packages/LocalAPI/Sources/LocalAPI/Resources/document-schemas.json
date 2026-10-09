@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 131,
+  "schemaVersion": 132,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1280,6 +1280,38 @@
         "sectionIds"
       ]
     },
+    "PresentationOriginSource": {
+      "type": "string",
+      "enum": [
+        "madeHere",
+        "proPresenter",
+        "planningCenterChart",
+        "planningCenterLyrics",
+        "songSelect",
+        "lyricsFile",
+        "chartFile",
+        "pastedLyrics",
+        "slidesFile",
+        "duplicate"
+      ]
+    },
+    "PresentationOrigin": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/components/schemas/PresentationOriginSource"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ]
+    },
     "PresentationKind": {
       "type": "string",
       "enum": [
@@ -1358,6 +1390,9 @@
         },
         "displayKey": {
           "type": "string"
+        },
+        "origin": {
+          "$ref": "#/components/schemas/PresentationOrigin"
         }
       },
       "required": [

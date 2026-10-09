@@ -10,6 +10,8 @@ struct ImportLyricsSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+
+    @State private var loadedFrom: PresentationOrigin?
     @State private var title = ""
     @State private var linesPerSlide = 2
 
@@ -19,6 +21,8 @@ struct ImportLyricsSheet: View {
     @State private var showingChordLines = false
 
     @State private var preview: Preview?
+
+    @State private var browsing: SongSite?
 
     private var themeId: String { model.slideBuilding.lyricsImportThemeId ?? "" }
 
@@ -57,6 +61,10 @@ struct ImportLyricsSheet: View {
             HStack {
                 Text("Import Lyrics")
                     .font(.headline)
+
+                Button("SongSelect…") { browsing = .songSelect }
+                    .controlSize(.small)
+                    .help("Sign in to SongSelect here, find the song and download it — its words and chords land in the paste")
                 Spacer()
                 if let format = preview?.format {
                     Text(Self.formatCaption(format))
@@ -77,6 +85,13 @@ struct ImportLyricsSheet: View {
                 .padding(12)
         }
         .frame(minWidth: 940, minHeight: 600)
+        .sheet(item: $browsing) { site in
+            SongSiteBrowser(site: site, start: site.home) { chart, filename in
+                text = chart
+                loadedFrom = PresentationOrigin(.songSelect, detail: filename)
+                if title.isEmpty, !Self.namesItsTitle(chart) { title = (filename as NSString).deletingPathExtension }
+            }
+        }
         .task(id: input) {
             let input = input
             let built = await Task.detached(priority: .userInitiated) { Self.build(input) }.value
@@ -192,6 +207,7 @@ struct ImportLyricsSheet: View {
     private var footer: some View {
         HStack(spacing: 14) {
             Button("Load File…", action: loadFile)
+                .help("A lyrics or ChordPro file, or a chord chart PDF")
             TextField("Title (optional — SongSelect and ChordPro carry their own)", text: $title)
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 200)
@@ -241,17 +257,27 @@ struct ImportLyricsSheet: View {
         )
     }
 
+    static func namesItsTitle(_ text: String) -> Bool {
+        LyricTextImporter.normalize(text).title != nil
+    }
+
     private func loadFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
+        panel.allowedContentTypes = [.plainText, .pdf]
             + ["cho", "chopro", "crd", "chordpro"].compactMap { UTType(filenameExtension: $0) }
         panel.begin { response in
-            guard response == .OK, let url = panel.url,
-                  let contents = try? String(contentsOf: url, encoding: .utf8)
-            else { return }
+            guard response == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
             Task { @MainActor in
-                text = contents
-                if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
+                let contents = await Task.detached { ChordChartPDF.importText(from: data, filename: url.lastPathComponent) }.value
+                if let contents {
+                    text = contents
+                    loadedFrom = PresentationOrigin(
+                        url.pathExtension.lowercased() == "pdf" ? .chartFile : .lyricsFile,
+                        detail: url.lastPathComponent)
+                    if title.isEmpty, !Self.namesItsTitle(contents) { title = url.deletingPathExtension().lastPathComponent }
+                } else {
+                    NSSound.beep()
+                }
             }
         }
     }
@@ -264,7 +290,8 @@ struct ImportLyricsSheet: View {
             linesPerSlide: linesPerSlide,
             themeId: themeId,
             themeSlideName: design,
-            lyricLines: lyricLines
+            lyricLines: lyricLines,
+            origin: loadedFrom ?? PresentationOrigin(.pastedLyrics)
         )
         dismiss()
         if let id { onImported(id) }
