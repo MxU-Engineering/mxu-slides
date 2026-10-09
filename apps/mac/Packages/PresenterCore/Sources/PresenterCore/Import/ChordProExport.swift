@@ -32,12 +32,24 @@ public enum ChordProExport {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    public static func fileName(for presentation: Presentation) -> String {
+    public enum FileFormat: String, CaseIterable, Sendable {
+        case plainText = "txt"
+        case chordPro = "cho"
+
+        public var label: String {
+            switch self {
+            case .plainText: "Plain Text (.txt)"
+            case .chordPro: "ChordPro (.cho)"
+            }
+        }
+    }
+
+    public static func fileName(for presentation: Presentation, format: FileFormat = .plainText) -> String {
         let name = presentation.name
             .components(separatedBy: CharacterSet(charactersIn: "/:\\"))
             .joined(separator: "-")
             .trimmingCharacters(in: .whitespaces)
-        return (name.isEmpty ? "Song" : name) + ".cho"
+        return (name.isEmpty ? "Song" : name) + "." + format.rawValue
     }
 
     struct Block: Equatable {

@@ -45,7 +45,8 @@ struct ChordProExportTests {
         #expect(text.contains("{start_of_verse: Verse 1}\n[G]Amazing [Cmaj7]grace how [G]sweet the sound\nThat [G]saved a [D]wretch [G]like me\n\nI once was lost\nWas blind\n{end_of_verse}"))
         #expect(text.contains("{start_of_part: Free Worship}\n[G][D]\n{end_of_part}"))
         #expect(text.contains("{start_of_chorus: Chorus}\n[G]My chains are gone\n{end_of_chorus}"))
-        #expect(ChordProExport.fileName(for: presentation) == "Amazing Grace.cho")
+        #expect(ChordProExport.fileName(for: presentation) == "Amazing Grace.txt", "plain text by default")
+        #expect(ChordProExport.fileName(for: presentation, format: .chordPro) == "Amazing Grace.cho")
     }
 
     @Test func reimportingTheExportRebuildsTheSameSong() {
