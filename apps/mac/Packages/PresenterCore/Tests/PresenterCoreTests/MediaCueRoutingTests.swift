@@ -81,12 +81,23 @@ private func item(_ kind: MediaKind, _ classification: MediaClassification) -> M
     #expect(slide.background == CueMedia.droppedAsNewSlide(for: item(.image, .background)))
 }
 
-@Test func droppedMediaDeckIsOneSlidePerItemInOrder() throws {
+@Test func oneDroppedFileIsAMediaRowLikeALibraryDrop() throws {
+    let drop = try #require(RunOrderMediaDrop([item(.image, .foreground)]))
+    #expect(drop.row.itemKind == .media)
+    #expect(drop.row.refId == "m1")
+    #expect(drop.row.name == "Item")
+    guard case .media = drop else { Issue.record("one file makes no presentation"); return }
+}
+
+@Test func severalDroppedFilesAreOnePresentationASlideEach() throws {
     var second = item(.video, .foreground)
     second.id = "m2"
-    let deck = try #require(Presentation.droppedMedia([item(.image, .foreground), second]))
+    let drop = try #require(RunOrderMediaDrop([item(.image, .foreground), second]))
+    guard case .presentation(let deck, let row) = drop else {
+        Issue.record("several files make a presentation"); return
+    }
     #expect(deck.slides.map(\.background?.mediaId) == ["m1", "m2"])
-    #expect(deck.name == "Untitled Presentation", "several files: the operator names it")
-    #expect(Presentation.droppedMedia([item(.image, .foreground)])?.name == "Item", "one file names the deck")
-    #expect(Presentation.droppedMedia([]) == nil)
+    #expect(row.itemKind == .presentation)
+    #expect(row.refId == deck.id)
+    #expect(RunOrderMediaDrop([]) == nil)
 }

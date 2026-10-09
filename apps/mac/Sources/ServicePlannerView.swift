@@ -146,7 +146,7 @@ struct RunOrderList: View {
                 let fileURLs = Self.draggedFileURLs()
                 if !fileURLs.isEmpty {
                     DiagnosticsStore.shared.note("runOrder.insert.files", detail: "\(fileURLs.count)")
-                    Task { await model.insertPresentation(fromFiles: fileURLs, service: serviceID, beforeItemID: anchorID) }
+                    Task { await model.insertDroppedMedia(fromFiles: fileURLs, service: serviceID, beforeItemID: anchorID) }
                 }
                 for provider in providers where fileURLs.isEmpty {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
@@ -219,7 +219,7 @@ struct RunOrderList: View {
                 return false
             } else if !fileURLs.isEmpty {
                 DiagnosticsStore.shared.note("runOrder.emptyDrop.files", detail: "\(fileURLs.count)")
-                Task { await model.insertPresentation(fromFiles: fileURLs, service: serviceID, beforeItemID: nil) }
+                Task { await model.insertDroppedMedia(fromFiles: fileURLs, service: serviceID, beforeItemID: nil) }
                 return true
             } else {
                 var added = false

@@ -3029,22 +3029,23 @@ final class AppModel {
     }
 
     @discardableResult
-    func insertPresentation(
+    func insertDroppedMedia(
         fromFiles urls: [URL], service serviceID: String, beforeItemID: String?
     ) async -> Bool {
         let imported = await importFiles(urls)
-        if let presentation = Presentation.droppedMedia(imported.compactMap { media($0) }) {
+        if let drop = RunOrderMediaDrop(imported.compactMap { media($0) }) {
+            if case .presentation(let deck, _) = drop {
 
-            _ = try? await createInDrive(presentation).value
-            let item = ServiceItem(
-                id: UUID().uuidString, itemKind: .presentation, name: presentation.name, refId: presentation.id)
+                _ = try? await createInDrive(deck).value
+            }
+            let row = drop.row
             updateService(serviceID) { service in
                 let index = beforeItemID.flatMap { id in
                     service.items.firstIndex { $0.id == id }
                 } ?? service.items.count
-                service.items.insert(item, at: index)
+                service.items.insert(row, at: index)
             }
-            markUsed(presentation.id)
+            markUsed(row.refId)
             return true
         } else {
             return false
