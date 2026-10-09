@@ -103,7 +103,7 @@ public enum PDFGlyphReader {
         }
         let overall = coverage(rows: 0..<height, columns: 0..<width)
         let stem = coverage(rows: 0..<height, columns: 0..<width / 4)
-        let rightOfStemUp = coverage(rows: 0..<height * 35 / 100, columns: width * 3 / 10..<width)
+        let rightOfStemUp = coverage(rows: 0..<height / 4, columns: width * 3 / 10..<width)
         if overall > 0.8 || overall < 0.12 {
             return nil
         } else if stem > 0.25, rightOfStemUp < 0.04 {

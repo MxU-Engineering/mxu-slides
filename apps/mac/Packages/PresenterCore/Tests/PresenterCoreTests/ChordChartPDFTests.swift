@@ -50,6 +50,12 @@ struct ChordChartPDFTests {
             #expect(PDFGlyphReader.accidental(of: try Self.symbolPath("♭", font: fontName)) == "b")
         }
         #expect(PDFGlyphReader.accidental(of: CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 4, height: 4), transform: nil)) == nil)
+
+        let flat = CGMutablePath()
+        flat.addRect(CGRect(x: 0, y: 0, width: 0.6, height: 5.1))
+        flat.addEllipse(in: CGRect(x: 0.6, y: 0, width: 2.1, height: 3.6))
+        flat.addEllipse(in: CGRect(x: 1.1, y: 0.8, width: 1.0, height: 2.0))
+        #expect(PDFGlyphReader.accidental(of: flat) == "b")
     }
 
     @Test(arguments: [
