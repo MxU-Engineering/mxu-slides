@@ -1110,7 +1110,7 @@ struct SlideEditorView: View {
         .clipped()
 
         .sheet(isPresented: $showingChords) {
-            ChordEditorSheet(model: model.appModel, presentationID: model.presentation.id)
+            ChordEditorSheet(model: model.appModel, render: render, presentationID: model.presentation.id)
         }
         .confirmationDialog(
             "Apply \(pendingThemeID.flatMap { appModel.entry($0)?.name } ?? "this theme") to every slide?",
@@ -1222,6 +1222,13 @@ struct SlideEditorView: View {
             .popover(isPresented: $showingBackgroundFill, arrowEdge: .bottom) {
                 PresentationBackgroundPopover(model: model)
             }
+
+            Button {
+                model.appModel.exportPresentation(model.presentation, render: render)
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .help("Export — an MxU Slides file, a PDF, slide images, or a song's ChordPro text")
         }
     }
 
@@ -1241,15 +1248,12 @@ struct SlideEditorView: View {
     @ViewBuilder
     private func presentationMenu(_ model: SlideEditorModel) -> some View {
         if !model.isThemeEditor, !model.isSingleComposition {
-
-            let isSong = ChordProExport.isSong(model.presentation)
             Menu {
                 Button("Reflow…") { showingReflow = true }
                 Button("Arrangement…") { showingArrangement = true }
                 Button("Chord Chart…") { showingChords = true }
-                if isSong {
-                    Button("Export ChordPro…") { model.appModel.exportChordPro(model.presentation) }
-                }
+
+                Button("Export…") { model.appModel.exportPresentation(model.presentation, render: render) }
                 Divider()
                 Menu("Theme") { themeItems(model) }
                 if !model.presentation.themeId.isEmpty {

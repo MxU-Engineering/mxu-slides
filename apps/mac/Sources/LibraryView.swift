@@ -116,7 +116,7 @@ struct LibrarySidebar: View {
             MediaSettingsSheet(model: model, mediaID: target.id)
         }
         .sheet(item: $chordEditTarget) { entry in
-            ChordEditorSheet(model: model, presentationID: entry.id)
+            ChordEditorSheet(model: model, render: render, presentationID: entry.id)
         }
         .sheet(isPresented: $creatingFolder) {
             NewFolderSheet(model: model, entry: nil, parentPath: realPath(folderPath ?? []))
@@ -500,7 +500,13 @@ struct LibrarySidebar: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard acceptsImport else { return false }
-            Task { await model.importFiles(urls) }
+
+            let presentations = urls.filter(AppModel.isPresentationFile)
+            let files = urls.filter { !AppModel.isPresentationFile($0) }
+            Task {
+                if !presentations.isEmpty { await model.importPresentationFiles(presentations) }
+                if !files.isEmpty { await model.importFiles(files) }
+            }
             return true
         }
     }
@@ -1038,7 +1044,7 @@ struct LibrarySidebar: View {
                 DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
             }
             Button("Edit Chords…") { chordEditTarget = entry }
-            Button("Export ChordPro…") { model.exportChordPro(presentationID: entry.id) }
+            Button("Export…") { model.exportPresentation(presentationID: entry.id, render: render) }
         }
         if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
             Menu("Move to Folder") {
@@ -1333,6 +1339,8 @@ struct LibraryCommands: Commands {
             Button("Import ProPresenter Workspace…") { presentWorkspaceImport?() }
                 .disabled(presentWorkspaceImport == nil || runOnly)
             Button("Import PowerPoint…") { importPowerPoint() }
+                .disabled(model == nil || runOnly)
+            Button("Import MxU Slides Presentation…") { model?.presentPresentationFileImport() }
                 .disabled(model == nil || runOnly)
             Divider()
             Button("Export Library Backup…") { exportBackup() }
