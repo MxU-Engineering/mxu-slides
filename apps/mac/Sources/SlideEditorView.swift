@@ -1245,6 +1245,7 @@ struct SlideEditorView: View {
                 Button("Reflow…") { showingReflow = true }
                 Button("Arrangement…") { showingArrangement = true }
                 Button("Chord Chart…") { showingChords = true }
+                Button("Export ChordPro…") { model.appModel.exportChordPro(model.presentation) }
                 Divider()
                 Menu("Theme") { themeItems(model) }
                 if !model.presentation.themeId.isEmpty {

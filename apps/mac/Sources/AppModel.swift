@@ -3034,14 +3034,15 @@ final class AppModel {
     @discardableResult
     func importLyrics(
         text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2,
-        themeId: String = "", themeSlideName: String = "Lyrics"
+        themeId: String = "", themeSlideName: String = "Lyrics", lyricLines: Set<String> = []
     ) -> String? {
         let presentation = LyricTextImporter.makePresentation(
             text,
             fallbackTitle: fallbackTitle,
             themeId: themeId,
             themeSlideName: themeSlideName,
-            linesPerSlide: linesPerSlide
+            linesPerSlide: linesPerSlide,
+            lyricLines: lyricLines
         )
         createInDrive(presentation)
         lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"

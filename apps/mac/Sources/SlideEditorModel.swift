@@ -1887,17 +1887,7 @@ final class SlideEditorModel {
     }
 
     var reflowSeedText: String {
-        if let source = presentation.reflowSource, !source.isEmpty { return source }
-        return slideGroups.compactMap { group -> String? in
-            let stanzas = group.slides
-                .compactMap { slide in slide.objects.first { $0.objectKind == .text }?.text }
-                .filter { !$0.isEmpty }
-            guard !stanzas.isEmpty else { return nil }
-            let body = stanzas.joined(separator: "\n\n")
-            guard let section = group.section else { return body }
-            return "\(section.name)\n\(body)"
-        }
-        .joined(separator: "\n\n")
+        ChordProExport.reflowSeed(for: presentation)
     }
 
     func applyReflow(text: String, linesPerSlide: Int) {

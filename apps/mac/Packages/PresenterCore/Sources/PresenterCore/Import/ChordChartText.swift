@@ -9,8 +9,20 @@ enum ChordChartText {
         var musicKey: String?
     }
 
-    static func inlined(_ text: String) -> Inlined {
+    static func inlined(_ text: String, lyricLines: Set<String> = []) -> Inlined {
         let lines = text.components(separatedBy: "\n").map(expandingTabs)
+        func chords(_ line: String) -> [(column: Int, symbol: String)]? {
+            lyricLines.contains(line.trimmingCharacters(in: .whitespaces)) ? nil : chordTokens(in: line)
+        }
+        func isLyric(_ line: String) -> Bool {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !trimmed.isEmpty
+                && chords(line) == nil
+                && labeledChordLine(line) == nil
+                && keyLine(line) == nil
+                && Reflow.labelName(of: trimmed) == nil
+                && !(trimmed.hasPrefix("{") && trimmed.hasSuffix("}"))
+        }
         var out: [String] = []
         var chordCount = 0
         var musicKey: String?
@@ -19,11 +31,12 @@ enum ChordChartText {
             let line = lines[index]
             if let key = keyLine(line) {
                 musicKey = musicKey ?? key
-            } else if let (label, chords) = labeledChordLine(line) {
+            } else if !lyricLines.contains(line.trimmingCharacters(in: .whitespaces)),
+                      let (label, chords) = labeledChordLine(line) {
                 chordCount += chords.count
                 out.append(label)
                 out.append(chordOnly(chords))
-            } else if let chords = chordTokens(in: line) {
+            } else if let chords = chords(line) {
                 chordCount += chords.count
                 if index + 1 < lines.count, isLyric(lines[index + 1]) {
                     out.append(merging(chords, into: lines[index + 1]))
@@ -40,6 +53,18 @@ enum ChordChartText {
             return Inlined(text: out.joined(separator: "\n"), chordCount: chordCount, musicKey: musicKey)
         } else {
             return Inlined(text: text, chordCount: 0, musicKey: nil)
+        }
+    }
+
+    static func chordLines(in text: String) -> [String] {
+        var seen: Set<String> = []
+        return text.components(separatedBy: "\n").map(expandingTabs).compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if (chordTokens(in: line) != nil || labeledChordLine(line) != nil), seen.insert(trimmed).inserted {
+                return trimmed
+            } else {
+                return nil
+            }
         }
     }
 
@@ -102,16 +127,6 @@ enum ChordChartText {
         keyLineRegex.firstMatch(in: line.trimmingCharacters(in: .whitespaces))
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .flatMap { ChordMath.parseKey($0) != nil ? $0 : nil }
-    }
-
-    private static func isLyric(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        return !trimmed.isEmpty
-            && chordTokens(in: line) == nil
-            && labeledChordLine(line) == nil
-            && keyLine(line) == nil
-            && Reflow.labelName(of: trimmed) == nil
-            && !(trimmed.hasPrefix("{") && trimmed.hasSuffix("}"))
     }
 
     static func merging(_ chords: [(column: Int, symbol: String)], into lyric: String) -> String {

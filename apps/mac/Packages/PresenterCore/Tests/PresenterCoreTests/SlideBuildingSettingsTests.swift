@@ -131,16 +131,18 @@ import Testing
     }
 
     @Test func theReadersUseTheChurchDocument() throws {
-        let text = try source("LibraryView.swift")
-        #expect(!text.contains("\"makeSlides.designMap\""), "LibraryView.swift reads this Mac's design map")
-        #expect(!text.contains("LyricsImportDefaults"), "LibraryView.swift reads this Mac's theme")
+        for name in ["LibraryView.swift", "ImportLyricsSheet.swift"] {
+            let text = try source(name)
+            #expect(!text.contains("\"makeSlides.designMap\""), "\(name) reads this Mac's design map")
+            #expect(!text.contains("LyricsImportDefaults"), "\(name) reads this Mac's theme")
+        }
     }
 
     @Test func lyricImportsBuildOnThePickedDesignAndAReflowKeepsIt() throws {
-        let text = try source("LibraryView.swift")
-        #expect(text.contains("slideBuilding.lyricsDesign"), "LibraryView.swift reads the church's lyric design")
-        #expect(text.contains("themeSlideName: design"), "LibraryView.swift builds on it")
-        #expect(text.contains("LyricsThemeChooser.lyrics("), "LibraryView.swift picks it in the explorer")
+        let text = try source("ImportLyricsSheet.swift")
+        #expect(text.contains("slideBuilding.lyricsDesign"), "ImportLyricsSheet.swift reads the church's lyric design")
+        #expect(text.contains("themeSlideName: design"), "ImportLyricsSheet.swift builds on it")
+        #expect(text.contains("LyricsThemeChooser.lyrics("), "ImportLyricsSheet.swift picks it in the explorer")
         #expect(try source("SlideEditorModel.swift").contains("themeSlideName: Reflow.lyricDesign(of: presentation.slides)"))
     }
 }

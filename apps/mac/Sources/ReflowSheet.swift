@@ -85,7 +85,8 @@ struct ReflowPreview: View {
                             .foregroundStyle(.tertiary)
                     }
                     ForEach(Array(section.slides.enumerated()), id: \.offset) { _, slide in
-                        Text(slide)
+
+                        Text(ChordMath.extract(slide).text)
                             .font(.callout)
                             .lineLimit(4)
                             .frame(maxWidth: .infinity, alignment: .leading)

@@ -90,6 +90,10 @@ struct ChordEditorSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            Button("Export ChordPro…") {
+                if let presentation = model.presentation(presentationID) { model.exportChordPro(presentation) }
+            }
+            .help("Save this song as a ChordPro file, chords as edited here")
             Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }

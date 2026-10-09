@@ -1038,6 +1038,7 @@ struct LibrarySidebar: View {
                 DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
             }
             Button("Edit Chords…") { chordEditTarget = entry }
+            Button("Export ChordPro…") { model.exportChordPro(presentationID: entry.id) }
         }
         if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
             Menu("Move to Folder") {
@@ -1580,111 +1581,6 @@ private struct EntryRow: View {
 }
 
 extension LibraryIndex.Entry: @retroactive Identifiable {}
-
-private struct ImportLyricsSheet: View {
-    let model: AppModel
-    let render: RenderContext?
-    let onImported: (String) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
-    @State private var title = ""
-    @State private var linesPerSlide = 2
-
-    private var themeId: String { model.slideBuilding.lyricsImportThemeId ?? "" }
-
-    private var design: String { model.slideBuilding.lyricsDesign }
-
-    private var detected: LyricTextFormat? {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : LyricTextImporter.detectFormat(text)
-    }
-
-    var body: some View {
-        let detected = detected
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Import Lyrics")
-                .font(.headline)
-            TextEditor(text: $text)
-
-                .font(detected == .chordChart ? .body.monospaced() : .body)
-                .frame(minWidth: 420, minHeight: 240)
-                .overlay(alignment: .topLeading) {
-                    if text.isEmpty {
-                        Text("Paste lyrics or a chord chart — SongSelect, ChordPro, and chords above the words are detected automatically")
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 8)
-                            .padding(.leading, 5)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-            HStack {
-                Button("Load File…", action: loadFile)
-                if let detected {
-                    Text(formatCaption(detected))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            HStack(spacing: 16) {
-                TextField("Title (optional — SongSelect and ChordPro carry their own)", text: $title)
-                    .textFieldStyle(.roundedBorder)
-                Stepper("Lines per slide: \(linesPerSlide)", value: $linesPerSlide, in: 1...8)
-                    .fixedSize()
-            }
-            HStack {
-                LyricsThemeChooser.lyrics(model, render: render)
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Import", action: importNow)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(16)
-        .frame(width: 520)
-    }
-
-    private func formatCaption(_ format: LyricTextFormat) -> String {
-        switch format {
-        case .songSelect: return "Detected: SongSelect lyrics — CCLI number will be stamped"
-        case .chordPro: return "Detected: ChordPro — chords stripped for slides, kept for charts"
-        case .chordChart: return "Detected: chord chart — chords above the words become the song's chords"
-        case .plainText: return "Plain text — blank lines split slides, labels make sections"
-        }
-    }
-
-    private func loadFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
-            + ["cho", "chopro", "crd", "chordpro"].compactMap { UTType(filenameExtension: $0) }
-        panel.begin { response in
-            guard response == .OK, let url = panel.url,
-                  let contents = try? String(contentsOf: url, encoding: .utf8)
-            else { return }
-            Task { @MainActor in
-                text = contents
-                if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
-            }
-        }
-    }
-
-    private func importNow() {
-        let fallback = title.trimmingCharacters(in: .whitespaces)
-        let id = model.importLyrics(
-            text: text,
-            fallbackTitle: fallback.isEmpty ? nil : fallback,
-            linesPerSlide: linesPerSlide,
-            themeId: themeId,
-            themeSlideName: design
-        )
-        dismiss()
-        if let id { onImported(id) }
-    }
-}
 
 private struct NewFolderSheet: View {
     let model: AppModel
