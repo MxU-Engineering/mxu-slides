@@ -72,3 +72,21 @@ private func item(_ kind: MediaKind, _ classification: MediaClassification) -> M
         }
     }
 }
+
+@Test func droppedMediaSlideCarriesTheNewSlideCue() {
+    let slide = Slide.droppedMedia(item(.image, .background), sectionId: "s1")
+    #expect(slide.name == "Item")
+    #expect(slide.objects.isEmpty)
+    #expect(slide.sectionId == "s1")
+    #expect(slide.background == CueMedia.droppedAsNewSlide(for: item(.image, .background)))
+}
+
+@Test func droppedMediaDeckIsOneSlidePerItemInOrder() throws {
+    var second = item(.video, .foreground)
+    second.id = "m2"
+    let deck = try #require(Presentation.droppedMedia([item(.image, .foreground), second]))
+    #expect(deck.slides.map(\.background?.mediaId) == ["m1", "m2"])
+    #expect(deck.name == "Untitled Presentation", "several files: the operator names it")
+    #expect(Presentation.droppedMedia([item(.image, .foreground)])?.name == "Item", "one file names the deck")
+    #expect(Presentation.droppedMedia([]) == nil)
+}

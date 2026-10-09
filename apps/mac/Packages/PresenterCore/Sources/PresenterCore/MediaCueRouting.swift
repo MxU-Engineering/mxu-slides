@@ -34,3 +34,28 @@ extension CueMedia {
             loops: item.mediaKind == .video ? false : nil, classification: .foreground)
     }
 }
+
+extension Slide {
+
+    public static func droppedMedia(_ item: MediaItem, sectionId: String? = nil) -> Slide {
+        Slide(
+            id: UUID().uuidString, name: item.name, objects: [],
+            background: CueMedia.droppedAsNewSlide(for: item), sectionId: sectionId)
+    }
+}
+
+extension Presentation {
+
+    public static func droppedMedia(_ items: [MediaItem]) -> Presentation? {
+        if let first = items.first {
+
+            Presentation(
+                id: UUID().uuidString,
+                name: items.count == 1 ? first.name : "Untitled Presentation",
+                presentationKind: .deck, themeId: "",
+                slides: items.map { Slide.droppedMedia($0) })
+        } else {
+            nil
+        }
+    }
+}

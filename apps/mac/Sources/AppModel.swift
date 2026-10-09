@@ -3032,6 +3032,17 @@ final class AppModel {
     }
 
     @discardableResult
+    func createPresentation(fromFiles urls: [URL]) async -> String? {
+        let imported = await importFiles(urls)
+        if let presentation = Presentation.droppedMedia(imported.compactMap { media($0) }) {
+            createInDrive(presentation)
+            return presentation.id
+        } else {
+            return nil
+        }
+    }
+
+    @discardableResult
     func importLyrics(
         text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2,
         themeId: String = "", themeSlideName: String = "Lyrics", lyricLines: Set<String> = []

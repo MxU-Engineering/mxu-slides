@@ -342,8 +342,16 @@ struct SlideEditorView: View {
                         .tag(slide.id)
                 }
             }
-            .onInsert(of: [.plainText, .text]) { index, providers in
-                for provider in providers {
+            .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
+
+                let fileURLs = (NSPasteboard(name: .drag).readObjects(
+                    forClasses: [NSURL.self],
+                    options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+                if !fileURLs.isEmpty {
+                    DiagnosticsStore.shared.note("editor.insert.files", detail: "\(fileURLs.count)")
+                    insertListFiles(model, rows: rows, index: index, urls: fileURLs)
+                }
+                for provider in providers where fileURLs.isEmpty {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
                         Task { @MainActor in
@@ -473,13 +481,25 @@ struct SlideEditorView: View {
             return
         }
 
-        let beforeID: String?
-        switch anchor {
-        case .slide(let slide): beforeID = slide.id
-        case .header: beforeID = firstSlideID(rows, from: index)
-        case nil: beforeID = nil
+        _ = model.insertMediaSlide(mediaID: payload, beforeSlideID: mediaAnchorID(rows, index: index))
+    }
+
+    private func insertListFiles(
+        _ model: SlideEditorModel, rows: [SlideListRow], index: Int, urls: [URL]
+    ) {
+        let beforeID = mediaAnchorID(rows, index: index)
+        Task { @MainActor in
+            let imported = await appModel.importFiles(urls)
+            _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: beforeID)
         }
-        _ = model.insertMediaSlide(mediaID: payload, beforeSlideID: beforeID)
+    }
+
+    private func mediaAnchorID(_ rows: [SlideListRow], index: Int) -> String? {
+        switch rows.indices.contains(index) ? rows[index] : nil {
+        case .slide(let slide): slide.id
+        case .header: firstSlideID(rows, from: index)
+        case nil: nil
+        }
     }
 
     private func firstSlideID(_ rows: [SlideListRow], from index: Int) -> String? {
@@ -560,10 +580,9 @@ struct SlideEditorView: View {
         Task { @MainActor in
 
             let imported = await appModel.importFiles(urls)
-            guard let first = imported.first else { return }
             if insertZone {
-                _ = model.insertMediaSlide(mediaID: first, beforeSlideID: slideID)
-            } else {
+                _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: slideID)
+            } else if let first = imported.first {
                 _ = model.setDroppedBackground(mediaID: first, onSlide: slideID)
             }
         }
