@@ -57,6 +57,18 @@ public enum PresentationExport {
         }
     }
 
+    public static func fileName(
+        for presentation: Presentation, format: Format, typed: String?
+    ) -> String {
+        if let typed, !typed.isEmpty {
+            let known = Format.allCases.compactMap(\.fileExtension).map { "." + $0 }
+            let base = known.first { typed.lowercased().hasSuffix($0) }.map { String(typed.dropLast($0.count)) } ?? typed
+            return base + (format.fileExtension.map { "." + $0 } ?? "")
+        } else {
+            return fileName(for: presentation, format: format)
+        }
+    }
+
     public static func imageFileNames(labels: [String?]) -> [String] {
         let digits = max(2, String(labels.count).count)
         return labels.enumerated().map { index, label in

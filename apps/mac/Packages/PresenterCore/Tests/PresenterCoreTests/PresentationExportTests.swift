@@ -19,6 +19,15 @@ struct PresentationExportTests {
         #expect(PresentationExport.fileName(for: deck, format: .chordPro) == "Sunday- 9-14.cho")
     }
 
+    @Test func thePanelOpensOnTheDecksNameAndKeepsATypedOne() {
+        let deck = Presentation(id: "d", name: "Amazing Grace", presentationKind: .song, themeId: "", slides: [])
+        #expect(PresentationExport.fileName(for: deck, format: .pdf, typed: nil) == "Amazing Grace.pdf")
+        #expect(PresentationExport.fileName(for: deck, format: .pdf, typed: "") == "Amazing Grace.pdf")
+        #expect(PresentationExport.fileName(for: deck, format: .slidesFile, typed: "Sunday.pdf") == "Sunday.mxuslides")
+        #expect(PresentationExport.fileName(for: deck, format: .images, typed: "Sunday.cho") == "Sunday")
+        #expect(PresentationExport.fileName(for: deck, format: .plainText, typed: "Sunday") == "Sunday.txt")
+    }
+
     @Test func imageNamesSortInFinderAndCarryTheLabel() {
         #expect(PresentationExport.imageFileNames(labels: ["Verse 1", nil, "A/B", " "]) == [
             "01 Verse 1.png", "02.png", "03 A-B.png", "04.png",

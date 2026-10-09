@@ -114,6 +114,8 @@ final class ExportOptionsAccessory: NSObject {
     private weak var panel: NSSavePanel?
     private let presentation: Presentation
 
+    private var named = false
+
     init(panel: NSSavePanel, presentation: Presentation, formats: [PresentationExport.Format]) {
         self.panel = panel
         self.presentation = presentation
@@ -164,13 +166,9 @@ final class ExportOptionsAccessory: NSObject {
         mediaCheckbox.isHidden = !format.rendersSlides
         panel?.allowedContentTypes = format.fileExtension.flatMap { UTType(filenameExtension: $0) }.map { [$0] } ?? []
 
-        let current = panel?.nameFieldStringValue ?? ""
-        let known = formats.compactMap(\.fileExtension).map { "." + $0 }
-        let base = current.isEmpty
-            ? nil
-            : known.first { current.lowercased().hasSuffix($0) }.map { String(current.dropLast($0.count)) } ?? current
-        panel?.nameFieldStringValue = base.map { $0 + (format.fileExtension.map { "." + $0 } ?? "") }
-            ?? PresentationExport.fileName(for: presentation, format: format)
+        panel?.nameFieldStringValue = PresentationExport.fileName(
+            for: presentation, format: format, typed: named ? panel?.nameFieldStringValue : nil)
+        named = true
     }
 
     @objc private func formatChanged() {
