@@ -139,10 +139,16 @@ struct RunOrderList: View {
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
                 }
             }
-            .onInsert(of: [.plainText, .text]) { index, providers in
+            .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
                 guard !runOnly else { return }
                 let anchorID = visible.indices.contains(index) ? visible[index].id : nil
-                for provider in providers {
+
+                let fileURLs = Self.draggedFileURLs()
+                if !fileURLs.isEmpty {
+                    DiagnosticsStore.shared.note("runOrder.insert.files", detail: "\(fileURLs.count)")
+                    Task { await model.insertPresentation(fromFiles: fileURLs, service: serviceID, beforeItemID: anchorID) }
+                }
+                for provider in providers where fileURLs.isEmpty {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
                         Task { @MainActor in
@@ -204,13 +210,31 @@ struct RunOrderList: View {
                         : StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
         .padding(.vertical, 6)
-        .dropDestination(for: String.self) { payloads, _ in
-            var added = false
-            for payload in payloads where !runOnly && model.addServiceItem(serviceID, refID: payload) {
-                added = true
+
+        .onDrop(of: [.plainText, .fileURL], isTargeted: $emptyDropTargeted) { _ in
+            let fileURLs = Self.draggedFileURLs()
+            let payloads = NSPasteboard(name: .drag).pasteboardItems?
+                .compactMap { $0.string(forType: .string) } ?? []
+            if runOnly {
+                return false
+            } else if !fileURLs.isEmpty {
+                DiagnosticsStore.shared.note("runOrder.emptyDrop.files", detail: "\(fileURLs.count)")
+                Task { await model.insertPresentation(fromFiles: fileURLs, service: serviceID, beforeItemID: nil) }
+                return true
+            } else {
+                var added = false
+                for payload in payloads where model.addServiceItem(serviceID, refID: payload) {
+                    added = true
+                }
+                return added
             }
-            return added
-        } isTargeted: { emptyDropTargeted = $0 }
+        }
+    }
+
+    private static func draggedFileURLs() -> [URL] {
+        (NSPasteboard(name: .drag).readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
     private func marqueeBegan(_ modifiers: NSEvent.ModifierFlags) {

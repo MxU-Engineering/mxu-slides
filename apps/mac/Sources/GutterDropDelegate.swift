@@ -1,4 +1,5 @@
 import AppKit
+import PresenterCore
 import SlideScene
 import SwiftUI
 
