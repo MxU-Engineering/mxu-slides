@@ -46,6 +46,11 @@ final class SlideImageExport {
 
     var canvas: CGSize { SlideSceneBuilder.canvasSize(for: bundle.presentation) }
 
+    private enum Backdrop: Sendable {
+        case checker
+        case color(CGColor)
+    }
+
     func tileBackground(for slide: Slide) -> CGColor {
         if let theme = bundle.themes[bundle.presentation.themeId(for: slide)],
            let color = ColorHex.color(theme.backgroundColorHex) {
@@ -55,7 +60,7 @@ final class SlideImageExport {
         }
     }
 
-    func image(of item: Item, width: Int) async -> CGImage? {
+    func image(of item: Item, width: Int, transparent: Bool? = nil) async -> CGImage? {
         let slide = item.slide
         let theme = bundle.themes[bundle.presentation.themeId(for: slide)]
         var built = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
@@ -84,7 +89,7 @@ final class SlideImageExport {
         }
         let height = max(1, Int((CGFloat(width) * canvas.height / max(1, canvas.width)).rounded()))
         let compositor = render.compositor
-        let transparent = !includeMedia
+        let transparent = transparent ?? !includeMedia
         return await withCheckedContinuation { continuation in
             Self.renderQueue.async {
                 let frame = try? compositor.renderFrame(
@@ -186,13 +191,15 @@ final class SlideImageExport {
             aspect: canvas.width / max(1, canvas.height))
 
         let width = min(Int(canvas.width), Int((sheet.tileSize.width * 3).rounded()))
+        let checker = UserDefaults.standard.object(forKey: "slideGrid.transparencyGrid") as? Bool ?? true
         var tiles: [Tile] = []
         for (index, item) in items.enumerated() {
             progress(index, items.count)
-            let background = tileBackground(for: item.slide)
-            if let image = await image(of: item, width: width),
+            let backdrop = checker ? Backdrop.checker : .color(tileBackground(for: item.slide))
+
+            if let image = await image(of: item, width: width, transparent: true),
                let flat = await Task.detached(priority: .userInitiated, operation: {
-                   Self.jpegBacked(image, over: background)
+                   Self.jpegBacked(image, over: backdrop)
                }).value {
                 tiles.append(Tile(image: flat, caption: item.label.map { "\(index + 1)  \($0)" } ?? "\(index + 1)"))
             }
@@ -204,14 +211,21 @@ final class SlideImageExport {
         }.value
     }
 
-    private nonisolated static func jpegBacked(_ image: CGImage, over background: CGColor) -> CGImage? {
+    private nonisolated static func jpegBacked(_ image: CGImage, over backdrop: Backdrop) -> CGImage? {
         let frame = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let context = CGContext(
             data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        context?.setFillColor(background)
-        context?.fill(frame)
+        if let context {
+            switch backdrop {
+            case .checker:
+                StationThumbnailExporter.drawChecker(in: context, frame: frame)
+            case .color(let color):
+                context.setFillColor(color)
+                context.fill(frame)
+            }
+        }
         context?.draw(image, in: frame)
         let data = NSMutableData()
         if let flat = context?.makeImage(),
