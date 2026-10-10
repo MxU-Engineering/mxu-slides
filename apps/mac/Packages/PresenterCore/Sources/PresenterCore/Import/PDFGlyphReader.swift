@@ -123,6 +123,8 @@ public enum PDFGlyphReader {
         var unicode: [Int: String] = [:]
         var hasUnicodeMap = false
 
+        var macRoman = false
+
         init(_ dictionary: CGPDFDictionaryRef) {
             var subtype: UnsafePointer<CChar>?
             CGPDFDictionaryGetName(dictionary, "Subtype", &subtype)
@@ -144,6 +146,13 @@ public enum PDFGlyphReader {
                 }
             } else {
                 readSimpleWidths(dictionary)
+                var encoding: UnsafePointer<CChar>?
+                var encodingDictionary: CGPDFDictionaryRef?
+                if !CGPDFDictionaryGetName(dictionary, "Encoding", &encoding),
+                   CGPDFDictionaryGetDictionary(dictionary, "Encoding", &encodingDictionary), let encodingDictionary {
+                    CGPDFDictionaryGetName(encodingDictionary, "BaseEncoding", &encoding)
+                }
+                macRoman = encoding.map { String(cString: $0) } == "MacRomanEncoding"
             }
             var toUnicode: CGPDFStreamRef?
             if CGPDFDictionaryGetStream(dictionary, "ToUnicode", &toUnicode), let toUnicode {
@@ -203,7 +212,7 @@ public enum PDFGlyphReader {
             } else {
 
                 let byte = UInt8(truncatingIfNeeded: code)
-                return String(bytes: [byte], encoding: .windowsCP1252) ?? ""
+                return String(bytes: [byte], encoding: macRoman ? .macOSRoman : .windowsCP1252) ?? ""
             }
         }
 

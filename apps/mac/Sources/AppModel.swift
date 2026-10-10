@@ -3160,6 +3160,19 @@ final class AppModel {
     }
 
     @discardableResult
+    func importMessageNotes(
+        _ parsed: MessageNotes.Parsed, fallbackTitle: String? = nil, themeId: String = "", style: String? = nil,
+        origin: PresentationOrigin = PresentationOrigin(.messageNotes)
+    ) -> String? {
+        var presentation = MessageNotes.makePresentation(
+            parsed, fallbackTitle: fallbackTitle, themeId: themeId, theme: theme(themeId), style: style)
+        presentation.origin = origin
+        createInDrive(presentation)
+        lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"
+        return presentation.id
+    }
+
+    @discardableResult
     func importProPresenter(
         urls: [URL], onDocument: ((URL) -> Void)? = nil
     ) async -> [ProPresenterImporter.DocumentSummary] {
