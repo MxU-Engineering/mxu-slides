@@ -79,7 +79,7 @@ That rewrites `PresenterCore/Sources/PresenterCore/Generated/Models.swift` and `
 
 With Settings › Network & API › Draw from iPad enabled, the app serves a small drawing page on port 6981. Open the address shown there in Safari on an iPad on the same network, enter the PIN, and draw with Apple Pencil: strokes appear on the program output, so they also reach NDI, DeckLink, and recordings. The iPad shows a live preview of the program that refreshes when the slide changes.
 
-Slides and combos can control the ink with the Clear Ink, Hide Ink, and Show Ink actions. The relay, stroke model, and page live in `apps/mac/Packages/LocalAPI/Sources/LocalAPI/Ink`; the page is a self-contained `Resources/ink.html`.
+Clear All also clears the ink. Slides and combos can control it individually with the Clear Ink, Hide Ink, and Show Ink actions. The relay, stroke model, and page live in `apps/mac/Packages/LocalAPI/Sources/LocalAPI/Ink`; the page is a self-contained `Resources/ink.html`.
 
 ### Local API
 

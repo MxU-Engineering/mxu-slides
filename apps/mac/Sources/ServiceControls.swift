@@ -1318,6 +1318,7 @@ final class ServiceControls {
         if includeAudio { audio.stop() }
 
         signage?.clearAllChannels()
+        ink?.clear()
 
         if state.liveSlide == nil {
             liveContextID = nil
