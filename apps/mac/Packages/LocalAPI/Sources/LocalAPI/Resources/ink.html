@@ -21,6 +21,7 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; }
 #loginErr { color: #ff6b61; min-height: 1.4em; }
 
 #stage { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; overflow: hidden; }
+#stage.flush::after, #stage.noborder::after { display: none; }
 #stage::after { content: ''; position: absolute; inset: 0; border: 2px solid rgba(255,255,255,.7); outline: 1px solid rgba(0,0,0,.6); outline-offset: -2px; pointer-events: none; z-index: 5; }
 #video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill; background: #000; }
 #ink { position: absolute; inset: 0; transition: opacity .25s; }
@@ -85,6 +86,7 @@ let view = { w: 16, h: 9 };
 let reg = { x: 0, y: 0, w: 1, h: 1 }; // drawable region, as a fraction of the program output
 let strokes = [], hidden = false, dpr = 1;
 const active = new Map();
+let borderless = store.get('borderless', false);
 let penIndex = store.get('pen', 0), sizeMul = store.get('size', 1);
 const CUSTOM = PENS.findIndex(p => p.custom);
 PENS[CUSTOM].color = store.get('customColor', PENS[CUSTOM].color);
@@ -179,6 +181,11 @@ function layout() {
   const r = (view.w * reg.w) / (view.h * reg.h);
   let w = innerWidth, h = w / r;
   if (h > innerHeight) { h = innerHeight; w = h * r; }
+  // Same shape as the screen (within 4%): fill it edge to edge, no letterbox and no frame.
+  const fills = Math.abs(innerWidth / innerHeight - r) / r < 0.04;
+  if (fills) { w = innerWidth; h = innerHeight; }
+  stage.classList.toggle('flush', fills);
+  stage.classList.toggle('noborder', borderless);
   stage.style.width = w + 'px'; stage.style.height = h + 'px';
   dpr = window.devicePixelRatio || 1;
   for (const c of [committed, live]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
@@ -275,6 +282,7 @@ function buildBar() {
     cmdBtn('🗑', 'Clear', () => send({ t: 'cmd', c: 'clear' })),
     cmdBtn('👁', 'Hide / show drawing', () => send({ t: 'cmd', c: hidden ? 'show' : 'hide' })),
     (penBtn = cmdBtn('✋', '', () => { penOnly = !penOnly; store.set('penOnly', penOnly); syncPenBtn(); })),
+    cmdBtn('▢', 'Show / hide the frame around the drawing area', () => { borderless = !borderless; store.set('borderless', borderless); layout(); }),
     cmdBtn('⛶', 'Fullscreen', () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }),
     cmdBtn('✕', 'Hide toolbar', () => showBar(false)));
   setPen(penIndex); syncPenBtn();
