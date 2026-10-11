@@ -195,40 +195,44 @@ struct ImportMessageNotesSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 14) {
-            Button("Load File…", action: loadFile)
-                .help("A Word document, RTF, PDF or text file. A Word document's bold and underlines are kept: unbolded lines stay off the screen, underlined words stay underlined")
-            TextField("Title (optional — the first line names it)", text: $title)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 180)
-            LyricsThemeChooser(
-                appModel: model, render: render, themeId: themeId
-            ) { [model] themeId, _ in
-                model.updateSlideBuilding { $0.messageNotesThemeId = themeId.isEmpty ? nil : themeId }
-            }
-            if styles.count > 1 {
-                Picker("Style", selection: Binding(get: { style ?? styles[0] }, set: { storedStyle = $0 })) {
-                    ForEach(styles, id: \.self) { style in
-                        Text(style.isEmpty ? "Unfiled" : style).tag(style)
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                Button("Load File…", action: loadFile)
+                    .help("A Word document, RTF, PDF or text file. A Word document's bold and underlines are kept: unbolded lines stay off the screen, underlined words stay underlined")
+                TextField("Title (optional — the first line names it)", text: $title)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 180, maxWidth: .infinity)
+                LyricsThemeChooser(
+                    appModel: model, render: render, themeId: themeId
+                ) { [model] themeId, _ in
+                    model.updateSlideBuilding { $0.messageNotesThemeId = themeId.isEmpty ? nil : themeId }
                 }
-                .fixedSize()
-                .help("The theme folder the Point, Verse and Quote designs come from — full slides, or thirds over the camera")
-            }
-            Toggle("A verse per slide", isOn: $versePerSlide)
-                .fixedSize()
-                .help("Split a passage like John 3:16-18 into one slide per verse. Verse numbers in the text mark the breaks; without them the passage breaks at sentences and each slide keeps the whole reference")
-            if mixesBold {
-                Toggle("Bold lines only", isOn: $boldOnly)
+                if styles.count > 1 {
+                    Picker("Style", selection: Binding(get: { style ?? styles[0] }, set: { storedStyle = $0 })) {
+                        ForEach(styles, id: \.self) { style in
+                            Text(style.isEmpty ? "Unfiled" : style).tag(style)
+                        }
+                    }
                     .fixedSize()
-                    .help("For notes where only the bold lines belong on screen: unbolded lines are left off as slide notes. Scripture and quotes still make slides")
+                    .help("The theme folder the Point, Verse and Quote designs come from — full slides, or thirds over the camera")
+                }
             }
-            Spacer()
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Import", action: importNow)
-                .keyboardShortcut(.defaultAction)
-                .disabled(isEmpty)
+            HStack(spacing: 14) {
+                Toggle("A verse per slide", isOn: $versePerSlide)
+                    .fixedSize()
+                    .help("Split a passage like John 3:16-18 into one slide per verse. Verse numbers in the text mark the breaks; without them the passage breaks at sentences and each slide keeps the whole reference")
+                if mixesBold {
+                    Toggle("Bold lines only", isOn: $boldOnly)
+                        .fixedSize()
+                        .help("For notes where only the bold lines belong on screen: unbolded lines are left off as slide notes. Scripture and quotes still make slides")
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Import", action: importNow)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isEmpty)
+            }
         }
     }
 
