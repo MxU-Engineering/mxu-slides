@@ -487,6 +487,13 @@ struct AppSettingsView: View {
                 control: AnyView(InkPortField(ink: ink))
             ),
             SettingsRowSpec(
+                id: "ink.area", category: .api,
+                title: "Drawable area",
+                caption: "The part of the program output the iPad can draw on. The iPad shows only this part, so you can draw on a side third and leave the rest clear.",
+                keywords: "ink draw area region third half side portion crop ipad",
+                control: AnyView(InkAreaPicker(ink: ink))
+            ),
+            SettingsRowSpec(
                 id: "ink.connect", category: .api,
                 title: "Draw address and PIN",
                 caption: "Open this address on the iPad, or scan the code, then enter the PIN. Drawing appears on the program output, including NDI, DeckLink, and recordings.",

@@ -31,6 +31,23 @@ struct InkPortField: View {
     }
 }
 
+struct InkAreaPicker: View {
+    let ink: InkController
+
+    var body: some View {
+        Picker("", selection: Binding(
+            get: { ink.area },
+            set: { ink.setArea($0) }
+        )) {
+            ForEach(InkDrawArea.allCases) { area in
+                Text(area.title).tag(area)
+            }
+        }
+        .labelsHidden()
+        .frame(width: 150)
+    }
+}
+
 struct InkConnectRow: View {
     let ink: InkController
 

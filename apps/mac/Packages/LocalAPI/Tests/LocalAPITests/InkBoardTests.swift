@@ -160,3 +160,22 @@ import Testing
         #expect(base[offset] == 0)
     }
 }
+
+@Suite struct InkRegionTests {
+    @Test func clampsPointsIntoTheRegion() {
+        let region = InkRegion(x: 2.0 / 3.0, y: 0, width: 1.0 / 3.0, height: 1)
+        let out = region.clamp([0.1, 0.5, 0.8, 2])
+        #expect(abs(out[0] - 2.0 / 3.0) < 1e-9)
+        #expect(out[1] == 0.5)
+        #expect(out[2] == 0.8)
+        #expect(out[3] == 1)
+    }
+
+    @Test func constructionKeepsTheRegionInsideTheOutput() {
+        let region = InkRegion(x: 0.9, y: -1, width: 0.5, height: 5)
+        #expect(region.x + region.width <= 1.0000001)
+        #expect(region.y == 0)
+        #expect(region.height == 1)
+        #expect(InkRegion(x: 0, y: 0, width: .nan, height: 1).isFull)
+    }
+}

@@ -22,7 +22,7 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; }
 
 #stage { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; overflow: hidden; }
 #stage::after { content: ''; position: absolute; inset: 0; border: 2px solid rgba(255,255,255,.7); outline: 1px solid rgba(0,0,0,.6); outline-offset: -2px; pointer-events: none; z-index: 5; }
-#video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; background: #000; }
+#video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill; background: #000; }
 #ink { position: absolute; inset: 0; transition: opacity .25s; }
 #ink.hidden { opacity: 0; }
 #ink canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
@@ -82,6 +82,7 @@ const store = {
 // ---------- state ----------
 let ws = null, myId = null, pin = '', authedOnce = false, retry = null, strokeSeq = 0;
 let view = { w: 16, h: 9 };
+let reg = { x: 0, y: 0, w: 1, h: 1 }; // drawable region, as a fraction of the program output
 let strokes = [], hidden = false, dpr = 1;
 const active = new Map();
 let penIndex = store.get('pen', 0), sizeMul = store.get('size', 1);
@@ -100,15 +101,16 @@ function drawStroke(ctx, s, preview) {
   ctx.save();
   ctx.lineCap = s.cap; ctx.lineJoin = 'round';
   ctx.strokeStyle = ctx.fillStyle = s.c;
-  ctx.globalAlpha = s.a; ctx.lineWidth = s.w * W;
+  const SW = W / reg.w;
+  ctx.globalAlpha = s.a; ctx.lineWidth = s.w * SW;
   if (s.e) {
     if (preview) { ctx.strokeStyle = ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.35; }
     else ctx.globalCompositeOperation = 'destination-out';
   }
-  if (s.g) { ctx.shadowColor = s.c; ctx.shadowBlur = s.g * W; }
-  const X = i => p[2 * i] * W, Y = i => p[2 * i + 1] * H;
+  if (s.g) { ctx.shadowColor = s.c; ctx.shadowBlur = s.g * SW; }
+  const X = i => (p[2 * i] - reg.x) / reg.w * W, Y = i => (p[2 * i + 1] - reg.y) / reg.h * H;
   if (n === 1) {
-    ctx.beginPath(); ctx.arc(X(0), Y(0), s.w * W / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(X(0), Y(0), s.w * SW / 2, 0, Math.PI * 2); ctx.fill();
   } else {
     ctx.beginPath(); ctx.moveTo(X(0), Y(0));
     for (let i = 1; i < n - 1; i++) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
@@ -118,15 +120,16 @@ function drawStroke(ctx, s, preview) {
   ctx.restore();
 }
 
-function eraseSegment(s, a, b) { // a, b: [x, y] normalized
-  const W = cctx.canvas.width, H = cctx.canvas.height;
+function eraseSegment(s, a, b) { // a, b: [x, y] in program-output coordinates
+  const W = cctx.canvas.width, H = cctx.canvas.height, SW = W / reg.w;
+  const px = v => (v - reg.x) / reg.w * W, py = v => (v - reg.y) / reg.h * H;
   cctx.save();
   cctx.globalCompositeOperation = 'destination-out';
   cctx.lineCap = cctx.lineJoin = 'round';
-  cctx.lineWidth = s.w * W; cctx.fillStyle = cctx.strokeStyle = '#000';
+  cctx.lineWidth = s.w * SW; cctx.fillStyle = cctx.strokeStyle = '#000';
   cctx.beginPath();
-  if (b) { cctx.moveTo(a[0] * W, a[1] * H); cctx.lineTo(b[0] * W, b[1] * H); cctx.stroke(); }
-  else { cctx.arc(a[0] * W, a[1] * H, s.w * W / 2, 0, Math.PI * 2); cctx.fill(); }
+  if (b) { cctx.moveTo(px(a[0]), py(a[1])); cctx.lineTo(px(b[0]), py(b[1])); cctx.stroke(); }
+  else { cctx.arc(px(a[0]), py(a[1]), s.w * SW / 2, 0, Math.PI * 2); cctx.fill(); }
   cctx.restore();
 }
 
@@ -173,12 +176,13 @@ function strokeEnd(id) {
 
 // ---------- layout ----------
 function layout() {
-  const r = view.w / view.h;
+  const r = (view.w * reg.w) / (view.h * reg.h);
   let w = innerWidth, h = w / r;
   if (h > innerHeight) { h = innerHeight; w = h * r; }
   stage.style.width = w + 'px'; stage.style.height = h + 'px';
   dpr = window.devicePixelRatio || 1;
   for (const c of [committed, live]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  Object.assign(video.style, { width: 100 / reg.w + '%', height: 100 / reg.h + '%', left: -reg.x / reg.w * 100 + '%', top: -reg.y / reg.h * 100 + '%' });
   redraw();
 }
 addEventListener('resize', layout);
@@ -189,7 +193,7 @@ function setHidden(h) { hidden = h; $('ink').classList.toggle('hidden', h); }
 function pt(e) {
   const r = stage.getBoundingClientRect();
   const c = v => Math.min(1, Math.max(0, Math.round(v * 1e4) / 1e4));
-  return [c((e.clientX - r.left) / r.width), c((e.clientY - r.top) / r.height)];
+  return [c(reg.x + (e.clientX - r.left) / r.width * reg.w), c(reg.y + (e.clientY - r.top) / r.height * reg.h)];
 }
 
 const pointers = new Map(); // pointerId -> stroke id
@@ -289,8 +293,13 @@ function showFrame(blob) {
 // ---------- connection ----------
 function banner(msg) { $('banner').hidden = !msg; $('banner').textContent = msg || ''; }
 
+function setRegion(r) {
+  const ok = r && r.w > 0 && r.h > 0;
+  reg = ok ? { x: r.x, y: r.y, w: r.w, h: r.h } : { x: 0, y: 0, w: 1, h: 1 };
+}
+
 function onState(m) {
-  view = m.view; bg = m.bg;
+  view = m.view; setRegion(m.region);
   strokes = []; active.clear();
   for (const s of m.strokes) {
     const o = { id: s.id, c: s.c, w: s.w, a: s.a, cap: s.cap, g: s.g || 0, e: s.e, p: s.p };
@@ -314,6 +323,7 @@ function onMessage(m) {
       break;
     case 'state': onState(m); break;
     case 'view': view = { w: m.w, h: m.h }; layout(); break;
+    case 'region': setRegion(m); layout(); break;
     case 'hidden': setHidden(m.v); break;
     case 'ss': strokeStart(m); break;
     case 'sp': strokePoints(m); break;

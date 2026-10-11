@@ -121,4 +121,28 @@ import Testing
         #expect(server.snapshot.strokes.isEmpty)
         await server.stop()
     }
+
+    @Test func strokesAreConfinedToTheDrawRegion() async throws {
+        let (server, port, task) = try await start()
+        defer { task.cancel() }
+        server.setRegion(InkRegion(x: 2.0 / 3.0, y: 0, width: 1.0 / 3.0, height: 1))
+
+        let a = Client(port: port)
+        try await a.send(["t": "login", "pin": "4242"])
+        let idA = try await a.next(type: "auth")["id"] as? String ?? ""
+        let state = try await a.next(type: "state")
+        let region = state["region"] as? [String: Any]
+        #expect(abs((region?["w"] as? Double ?? 0) - 1.0 / 3.0) < 1e-9)
+
+        try await a.send([
+            "t": "ss", "id": "\(idA).1", "c": "#ff3b30", "w": 0.01, "a": 1, "cap": "round",
+            "g": 0, "e": 0, "p": [0.1, 0.5],
+        ])
+        try await a.send(["t": "se", "id": "\(idA).1"])
+        try await a.send(["t": "cmd", "c": "hide"])
+        _ = try await a.next(type: "hidden")
+        let x = server.snapshot.strokes.first?.points.first ?? 0
+        #expect(abs(x - 2.0 / 3.0) < 1e-9)
+        await server.stop()
+    }
 }

@@ -32,6 +32,7 @@ public final class InkRelayServer: @unchecked Sendable {
     private var pin: String
     private var board = InkBoard()
     private var view = (w: 16.0, h: 9.0)
+    private var region = InkRegion.full
     private var lastFrame: Data?
     private var viewers: [String: Viewer] = [:]
     private var failures: [String: Failure] = [:]
@@ -111,6 +112,21 @@ public final class InkRelayServer: @unchecked Sendable {
             return true
         }
         if changed { broadcast(["t": "view", "w": width, "h": height], except: nil) }
+    }
+
+    public var drawRegion: InkRegion { lock.withLock { region } }
+
+    public func setRegion(_ next: InkRegion) {
+        let changed: Bool = lock.withLock {
+            guard region != next else { return false }
+            region = next
+            return true
+        }
+        if changed {
+            broadcast(
+                ["t": "region", "x": next.x, "y": next.y, "w": next.width, "h": next.height],
+                except: nil)
+        }
     }
 
     public func sendFrame(jpeg: Data) {
@@ -230,7 +246,8 @@ public final class InkRelayServer: @unchecked Sendable {
         guard let type = message["t"] as? String else { return }
         switch type {
         case "ss":
-            guard let stroke = Self.stroke(from: message, viewer: id) else { return }
+            guard var stroke = Self.stroke(from: message, viewer: id) else { return }
+            stroke.points = drawRegion.clamp(stroke.points)
             mutate { board in
                 guard board.begin(stroke) else { return nil }
                 var out = message
@@ -242,7 +259,7 @@ public final class InkRelayServer: @unchecked Sendable {
             guard let strokeID = message["id"] as? String, strokeID.hasPrefix(id + "."),
                   let raw = message["p"] as? [Any]
             else { return }
-            let points = raw.compactMap { ($0 as? NSNumber)?.doubleValue }
+            let points = drawRegion.clamp(raw.compactMap { ($0 as? NSNumber)?.doubleValue })
             mutate { board in
                 guard let added = board.append(id: strokeID, points: points) else { return nil }
                 return (["t": "sp", "id": strokeID, "p": added], id)
@@ -311,6 +328,7 @@ public final class InkRelayServer: @unchecked Sendable {
         }
         return [
             "t": "state", "view": ["w": view.w, "h": view.h],
+            "region": ["x": region.x, "y": region.y, "w": region.width, "h": region.height],
             "hidden": board.hidden, "strokes": strokes,
         ]
     }

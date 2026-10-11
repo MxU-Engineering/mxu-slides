@@ -9,12 +9,41 @@ import QuartzCore
 import RenderEngine
 import UniformTypeIdentifiers
 
+enum InkDrawArea: String, CaseIterable, Identifiable {
+    case full, leftThird, centerThird, rightThird, leftHalf, rightHalf
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .full: "Full screen"
+        case .leftThird: "Left third"
+        case .centerThird: "Center third"
+        case .rightThird: "Right third"
+        case .leftHalf: "Left half"
+        case .rightHalf: "Right half"
+        }
+    }
+
+    var region: InkRegion {
+        switch self {
+        case .full: .full
+        case .leftThird: InkRegion(x: 0, y: 0, width: 1.0 / 3, height: 1)
+        case .centerThird: InkRegion(x: 1.0 / 3, y: 0, width: 1.0 / 3, height: 1)
+        case .rightThird: InkRegion(x: 2.0 / 3, y: 0, width: 1.0 / 3, height: 1)
+        case .leftHalf: InkRegion(x: 0, y: 0, width: 0.5, height: 1)
+        case .rightHalf: InkRegion(x: 0.5, y: 0, width: 0.5, height: 1)
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class InkController {
     static let enabledKey = "ink.enabled"
     static let portKey = "ink.port"
     static let pinKey = "ink.pin"
+    static let areaKey = "ink.area"
     static let defaultPort: UInt16 = 6981
     static let sourceID = "ink::program"
     private static let itemID = "ink-program"
@@ -24,6 +53,8 @@ final class InkController {
     private(set) var running = false
     private(set) var lastError: String?
     private(set) var viewerCount = 0
+
+    private(set) var area: InkDrawArea = .full
 
     private(set) var isVisible = false
 
@@ -41,6 +72,8 @@ final class InkController {
 
     init(render: RenderContext) {
         self.render = render
+        area = UserDefaults.standard.string(forKey: Self.areaKey)
+            .flatMap(InkDrawArea.init(rawValue:)) ?? .full
         let rasterizer = rasterizer
         render.media.registerLiveSource(
             id: Self.sourceID,
@@ -58,6 +91,13 @@ final class InkController {
             UserDefaults.standard.set(newValue, forKey: Self.enabledKey)
             newValue ? start() : stop()
         }
+    }
+
+    func setArea(_ next: InkDrawArea) {
+        guard next != area else { return }
+        area = next
+        UserDefaults.standard.set(next.rawValue, forKey: Self.areaKey)
+        server?.setRegion(next.region)
     }
 
     var port: UInt16 {
@@ -124,6 +164,7 @@ final class InkController {
         server.onViewerCountChange = { [weak self] count in
             Task { @MainActor in self?.viewersChanged(count) }
         }
+        server.setRegion(area.region)
         self.server = server
         running = true
         syncCanvas()
