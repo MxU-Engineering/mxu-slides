@@ -1805,7 +1805,7 @@ struct SlideTile: View {
     private func badgeGlyph(_ kind: SlideActionKind) -> GlyphKind {
         switch kind {
         case .switchOutputPreset: .screens
-        case .clearLayer, .clearAll, .clearAudio, .clearSignage: .clear
+        case .clearLayer, .clearAll, .clearAudio, .clearSignage, .clearInk, .hideInk, .showInk: .clear
         case .fireMedia: .media
         case .fireAlert, .dismissAlert: .alerts
         case .timerStart, .timerPause, .timerReset, .timerConfigure: .timers
@@ -1902,6 +1902,9 @@ func slideActionLabel(
     case .clearAll: "Clear All"
     case .clearAudio: "Clear Music"
     case .clearSignage: "Clear Signage"
+    case .clearInk: "Clear Ink"
+    case .hideInk: "Hide Ink"
+    case .showInk: "Show Ink"
     case .fireMedia: "Fire Media: \(entryName(action.mediaId))"
     case .fireAlert: "Fire Alert: \(entryName(action.alertId))"
     case .dismissAlert: "Dismiss Alert"

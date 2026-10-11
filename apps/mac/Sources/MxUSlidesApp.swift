@@ -78,6 +78,7 @@ struct MxUSlidesApp: App {
     @State private var presentLayout = PresentLayoutController()
 
     @State private var localAPI: LocalAPIController?
+    @State private var ink: InkController?
 
     @State private var actionRouter: ActionRouter?
 
@@ -145,9 +146,13 @@ struct MxUSlidesApp: App {
                 appModel: model, controls: controls
             )
             _mediaPlaylists = State(initialValue: mediaPlaylistController)
+            let inkController = InkController(render: render)
+            controls.ink = inkController
+            _ink = State(initialValue: inkController)
             let router = ActionRouter(
                 model: model, controls: controls, presets: presets,
-                confidenceMonitor: confidence, signage: signageController
+                confidenceMonitor: confidence, signage: signageController,
+                ink: inkController
             )
             controls.actionRouter = router
             _actionRouter = State(initialValue: router)
@@ -262,7 +267,7 @@ struct MxUSlidesApp: App {
             } else {
                 AppSettingsView(
                     model: appModel, controls: controls, layout: presentLayout,
-                    api: localAPI)
+                    api: localAPI, ink: ink)
             }
         }
 

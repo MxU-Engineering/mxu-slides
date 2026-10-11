@@ -9,6 +9,9 @@ extension SlideActionKind {
         case .clearAll: "Clear All"
         case .clearAudio: "Clear Music"
         case .clearSignage: "Clear Signage"
+        case .clearInk: "Clear Ink"
+        case .hideInk: "Hide Ink"
+        case .showInk: "Show Ink"
         case .switchOutputPreset: "Switch Output Preset"
         case .fireMedia: "Fire Media"
         case .fireAlert: "Fire Alert"
@@ -448,7 +451,7 @@ struct ActionParameterFields: View {
                 }
             }
             repeatPicker(action)
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .clearAudio, .clearSignage, .clearInk, .hideInk, .showInk, .dismissAlert:
             EmptyView()
         }
     }
@@ -706,6 +709,11 @@ struct AddActionMenuItems: View {
 
             Button("Clear Music") { add(make(.clearAudio)) }
             Button("Clear Signage") { add(make(.clearSignage)) }
+        }
+        Menu("Ink") {
+            Button("Clear Ink") { add(make(.clearInk)) }
+            Button("Hide Ink") { add(make(.hideInk)) }
+            Button("Show Ink") { add(make(.showInk)) }
         }
         Button("Fire Media\u{2026}") { add(make(.fireMedia)) }
         Button("Fire Presentation") { add(make(.firePresentation)) }
