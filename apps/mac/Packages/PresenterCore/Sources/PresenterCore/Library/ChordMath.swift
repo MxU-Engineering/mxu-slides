@@ -254,7 +254,8 @@ public enum ChordMath {
             while lines.count <= lineIndex { lines.append("") }
             var line = lines[lineIndex]
 
-            for placement in placements.sorted(by: { ($0.column, $0.symbol) > ($1.column, $1.symbol) }) {
+            let ordered = placements.enumerated().sorted { ($0.element.column, $0.offset) > ($1.element.column, $1.offset) }
+            for placement in ordered.map(\.element) {
                 let column = min(max(0, placement.column), line.count)
                 let at = line.index(line.startIndex, offsetBy: column)
                 line.insert(contentsOf: "[\(placement.symbol)]", at: at)

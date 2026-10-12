@@ -1887,22 +1887,14 @@ final class SlideEditorModel {
     }
 
     var reflowSeedText: String {
-        if let source = presentation.reflowSource, !source.isEmpty { return source }
-        return slideGroups.compactMap { group -> String? in
-            let stanzas = group.slides
-                .compactMap { slide in slide.objects.first { $0.objectKind == .text }?.text }
-                .filter { !$0.isEmpty }
-            guard !stanzas.isEmpty else { return nil }
-            let body = stanzas.joined(separator: "\n\n")
-            guard let section = group.section else { return body }
-            return "\(section.name)\n\(body)"
-        }
-        .joined(separator: "\n\n")
+        ChordProExport.reflowSeed(for: presentation)
     }
 
     func applyReflow(text: String, linesPerSlide: Int) {
         guard !isThemeEditor else { return }
-        let built = Reflow.build(from: text, linesPerSlide: linesPerSlide)
+        let built = Reflow.build(
+            from: text, linesPerSlide: linesPerSlide,
+            themeSlideName: Reflow.lyricDesign(of: presentation.slides))
         guard !built.slides.isEmpty else { return }
         selectedObjectIDs = []
         previewFrames = [:]
@@ -2038,23 +2030,26 @@ final class SlideEditorModel {
 
     @discardableResult
     func insertMediaSlide(mediaID: String, beforeSlideID: String?) -> Bool {
-        guard !isThemeEditor,
-            let item = appModel.media(mediaID)
-        else { return false }
-        let slide = Slide(
-            id: UUID().uuidString, name: item.name, objects: [],
-            background: CueMedia.droppedAsNewSlide(for: item))
-        updateDocument { presentation in
-            var inserted = slide
-            let index = beforeSlideID.flatMap { id in
-                presentation.slides.firstIndex { $0.id == id }
-            } ?? presentation.slides.count
-            let neighbor = index < presentation.slides.count
-                ? presentation.slides[index] : presentation.slides.last
-            inserted.sectionId = neighbor?.sectionId
-            presentation.slides.insert(inserted, at: index)
+        insertMediaSlides(mediaIDs: [mediaID], beforeSlideID: beforeSlideID)
+    }
+
+    func insertMediaSlides(mediaIDs: [String], beforeSlideID: String?) -> Bool {
+        let items = isThemeEditor ? [] : mediaIDs.compactMap { appModel.media($0) }
+        if items.isEmpty {
+            return false
+        } else {
+            updateDocument { presentation in
+                let index = beforeSlideID.flatMap { id in
+                    presentation.slides.firstIndex { $0.id == id }
+                } ?? presentation.slides.count
+                let neighbor = index < presentation.slides.count
+                    ? presentation.slides[index] : presentation.slides.last
+                presentation.slides.insert(
+                    contentsOf: items.map { Slide.droppedMedia($0, sectionId: neighbor?.sectionId) },
+                    at: index)
+            }
+            return true
         }
-        return true
     }
 
     func removeBackground() {

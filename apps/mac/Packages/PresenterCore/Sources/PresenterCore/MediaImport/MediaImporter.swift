@@ -35,13 +35,13 @@ public struct MediaImporter {
 
     public func importFiles(at urls: [URL], placement: LibraryHome.Placement = .unplaced) async -> [Result] {
         var results: [Result] = []
-        for url in expandDirectories(urls) {
+        for url in Self.files(in: urls) {
             results.append(await importOne(url, placement: placement))
         }
         return results
     }
 
-    private func expandDirectories(_ urls: [URL]) -> [URL] {
+    public static func files(in urls: [URL]) -> [URL] {
         urls.flatMap { url -> [URL] in
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
@@ -51,7 +51,18 @@ public struct MediaImporter {
             let children = (try? FileManager.default.contentsOfDirectory(
                 at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
             )) ?? []
-            return expandDirectories(children.sorted { $0.lastPathComponent < $1.lastPathComponent })
+            return files(in: children.sorted { $0.lastPathComponent < $1.lastPathComponent })
+        }
+    }
+
+    public static func libraryKind(of url: URL) -> DocumentKind? {
+        let type = UTType(filenameExtension: url.pathExtension) ?? .data
+        return if type.conforms(to: .image) || type.conforms(to: .movie) || type.conforms(to: .video) {
+            .media
+        } else if type.conforms(to: .audio) {
+            .audio
+        } else {
+            nil
         }
     }
 

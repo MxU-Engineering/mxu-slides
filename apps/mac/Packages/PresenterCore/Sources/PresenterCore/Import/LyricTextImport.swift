@@ -3,6 +3,8 @@ import Foundation
 public enum LyricTextFormat: String, Sendable, Equatable {
     case songSelect
     case chordPro
+
+    case chordChart
     case plainText
 }
 
@@ -17,9 +19,19 @@ public enum LyricTextImporter {
         public var musicKey: String?
 
         public var body: String
+
+        public var extraLabels: [String] = []
     }
 
-    public static func detectFormat(_ text: String) -> LyricTextFormat {
+    public static func chordChartLines(_ text: String) -> [String] {
+        ChordChartText.chordLines(in: unified(text))
+    }
+
+    static func unified(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    public static func detectFormat(_ text: String, lyricLines: Set<String> = []) -> LyricTextFormat {
         if ccliSongNumberRegex.firstMatch(in: text) != nil { return .songSelect }
         var directiveHits = 0
         var chordLineHits = 0
@@ -28,8 +40,15 @@ public enum LyricTextImporter {
             if chordProDirectiveRegex.wholeMatch(trimmed) { directiveHits += 1 }
             if inlineChordRegex.firstMatch(in: trimmed) != nil { chordLineHits += 1 }
         }
-        if directiveHits >= 1 || chordLineHits >= 2 { return .chordPro }
-        return .plainText
+        if directiveHits >= 1 {
+            return .chordPro
+        } else if ChordChartText.inlined(unified(text), lyricLines: lyricLines).chordCount >= 2 {
+            return .chordChart
+        } else if chordLineHits >= 2 {
+            return .chordPro
+        } else {
+            return .plainText
+        }
     }
 
     public static func makePresentation(
@@ -38,11 +57,15 @@ public enum LyricTextImporter {
         id: String = UUID().uuidString,
         folder: String? = nil,
         themeId: String = "",
-        linesPerSlide: Int = 2
+        themeSlideName: String = "Lyrics",
+        linesPerSlide: Int = 2,
+        lyricLines: Set<String> = []
     ) -> Presentation {
-        let normalized = normalize(text)
+        let normalized = normalize(text, lyricLines: lyricLines)
         let built = Reflow.build(
-            Reflow.parse(normalized.body, linesPerSlide: linesPerSlide).openingOnBlank()
+            Reflow.parse(normalized.body, linesPerSlide: linesPerSlide, extraLabels: normalized.extraLabels)
+                .openingOnBlank(),
+            themeSlideName: themeSlideName
         )
         var slides = built.slides
         if slides.isEmpty {
@@ -65,13 +88,21 @@ public enum LyricTextImporter {
         )
     }
 
-    public static func normalize(_ text: String) -> Normalized {
-        let unified = text
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        switch detectFormat(unified) {
-        case .songSelect: return normalizeSongSelect(unified)
+    public static func normalize(_ text: String, lyricLines: Set<String> = []) -> Normalized {
+        let unified = unified(text)
+
+        let chart = ChordChartText.inlined(unified, lyricLines: lyricLines)
+        switch detectFormat(unified, lyricLines: lyricLines) {
+        case .songSelect:
+            var normalized = normalizeSongSelect(chart.text)
+            normalized.musicKey = chart.musicKey
+            return normalized
         case .chordPro: return normalizeChordPro(unified)
+        case .chordChart:
+            var normalized = normalizeChordPro(ChordChartText.titled(chart.text))
+            normalized.format = .chordChart
+            normalized.musicKey = normalized.musicKey ?? chart.musicKey
+            return normalized
         case .plainText:
             return Normalized(format: .plainText, body: unified.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -127,10 +158,12 @@ public enum LyricTextImporter {
         var hasCCLI = false
         var musicKey: String?
         var body: [String] = []
+        var extraLabels: [String] = []
 
         func appendLabel(_ label: String) {
             if body.last?.isEmpty == false { body.append("") }
             body.append(label)
+            if Reflow.labelName(of: label) == nil, !extraLabels.contains(label) { extraLabels.append(label) }
         }
 
         for rawLine in text.components(separatedBy: "\n") {
@@ -166,6 +199,9 @@ public enum LyricTextImporter {
                     appendLabel(directive.value ?? "Verse")
                 case "start_of_bridge", "sob":
                     appendLabel(directive.value ?? "Bridge")
+                case "start_of_part":
+
+                    if let value = directive.value { appendLabel(value) }
                 case "key":
 
                     if let value = directive.value, ChordMath.parseKey(value) != nil {
@@ -194,7 +230,8 @@ public enum LyricTextImporter {
             ccli: hasCCLI ? ccli : nil,
             chordProSource: text,
             musicKey: musicKey,
-            body: body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            body: body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+            extraLabels: extraLabels
         )
     }
 

@@ -151,8 +151,13 @@ import Foundation
 
     @discardableResult
     public func delete(kind: DocumentKind, id: String, origin: ChangeOrigin = .deleted) throws -> LibraryBatch {
+        try delete([SyncLedger.Key(kind: kind, id: id)], origin: origin)
+    }
+
+    @discardableResult
+    public func delete(_ documents: [SyncLedger.Key], origin: ChangeOrigin = .deleted) throws -> LibraryBatch {
         try publishing {
-            try removeDocument(kind: kind, id: id, origin: origin)
+            try removeDocuments(documents, origin: origin)
         }
     }
 
@@ -603,8 +608,18 @@ import Foundation
             let updatedAt = LibraryIndexMirror.indexDate(Date())
             try index.upsert(
                 id: value.id, kind: key.kind, subkind: value.indexSubkind, name: value.name,
-                text: value.indexText, updatedAt: updatedAt, ccli: value.indexCCLI, folderId: value.indexFolderId)
-            mirror.upsert(id: value.id, kind: key.kind, subkind: value.indexSubkind, name: value.name, updatedAt: updatedAt)
+                text: value.indexText, updatedAt: updatedAt, ccli: value.indexCCLI, folderId: value.indexFolderId,
+                origin: value.indexOrigin)
+            mirror.upsert(
+                id: value.id, kind: key.kind, subkind: value.indexSubkind, name: value.name, updatedAt: updatedAt,
+                origin: value.indexOrigin)
+        }
+        if let service = value as? Service {
+            for use in Library.usageStamps(of: service) {
+                let date = LibraryIndexMirror.indexDate(use.date)
+                try index.touchUsage(id: use.id, at: date)
+                mirror.touchUsage(id: use.id, at: date)
+            }
         }
     }
 
@@ -623,18 +638,35 @@ import Foundation
     }
 
     func removeDocument(kind: DocumentKind, id: String, origin: ChangeOrigin) throws {
+        try removeDocuments([SyncLedger.Key(kind: kind, id: id)], origin: origin)
+    }
+
+    func removeDocuments(_ keys: [SyncLedger.Key], origin: ChangeOrigin) throws {
         let (store, index) = try opened()
-        let key = SyncLedger.Key(kind: kind, id: id)
-        let syncedUnder = origin == .deleted ? namespace(of: key) : nil
-        try store.delete(kind: kind, id: id)
-        replicas.remove(kind: kind, id: id)
-        valueCache.remove(key)
-        endEditorSessions(key)
-        pendingChanges.append(DocumentChange(kind: kind, id: id, origin: origin, value: nil, syncedUnder: syncedUnder))
-        try index.remove(id: id)
-        mirror.remove(id: id)
-        sync.removeAll(id: id)
-        forgetHeads(id: id)
+        var removed: [String] = []
+        var failure: (any Error)?
+        for key in keys where failure == nil {
+            let syncedUnder = origin == .deleted ? namespace(of: key) : nil
+            do {
+                try store.delete(kind: key.kind, id: key.id)
+                replicas.remove(kind: key.kind, id: key.id)
+                valueCache.remove(key)
+                endEditorSessions(key)
+                pendingChanges.append(DocumentChange(kind: key.kind, id: key.id, origin: origin, value: nil, syncedUnder: syncedUnder))
+                removed.append(key.id)
+            } catch {
+                failure = error
+            }
+        }
+        try index.remove(ids: removed)
+        for id in removed {
+            mirror.remove(id: id)
+            sync.removeAll(id: id)
+            forgetHeads(id: id)
+        }
+        if let failure {
+            throw failure
+        }
     }
 
     func noteHeads(_ heads: [String], key: SyncLedger.Key) throws {

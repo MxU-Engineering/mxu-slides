@@ -342,8 +342,16 @@ struct SlideEditorView: View {
                         .tag(slide.id)
                 }
             }
-            .onInsert(of: [.plainText, .text]) { index, providers in
-                for provider in providers {
+            .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
+
+                let fileURLs = (NSPasteboard(name: .drag).readObjects(
+                    forClasses: [NSURL.self],
+                    options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+                if !fileURLs.isEmpty {
+                    DiagnosticsStore.shared.note("editor.insert.files", detail: "\(fileURLs.count)")
+                    insertListFiles(model, rows: rows, index: index, urls: fileURLs)
+                }
+                for provider in providers where fileURLs.isEmpty {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
                         Task { @MainActor in
@@ -473,13 +481,25 @@ struct SlideEditorView: View {
             return
         }
 
-        let beforeID: String?
-        switch anchor {
-        case .slide(let slide): beforeID = slide.id
-        case .header: beforeID = firstSlideID(rows, from: index)
-        case nil: beforeID = nil
+        _ = model.insertMediaSlide(mediaID: payload, beforeSlideID: mediaAnchorID(rows, index: index))
+    }
+
+    private func insertListFiles(
+        _ model: SlideEditorModel, rows: [SlideListRow], index: Int, urls: [URL]
+    ) {
+        let beforeID = mediaAnchorID(rows, index: index)
+        Task { @MainActor in
+            let imported = await appModel.importFiles(urls)
+            _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: beforeID)
         }
-        _ = model.insertMediaSlide(mediaID: payload, beforeSlideID: beforeID)
+    }
+
+    private func mediaAnchorID(_ rows: [SlideListRow], index: Int) -> String? {
+        switch rows.indices.contains(index) ? rows[index] : nil {
+        case .slide(let slide): slide.id
+        case .header: firstSlideID(rows, from: index)
+        case nil: nil
+        }
     }
 
     private func firstSlideID(_ rows: [SlideListRow], from index: Int) -> String? {
@@ -560,10 +580,9 @@ struct SlideEditorView: View {
         Task { @MainActor in
 
             let imported = await appModel.importFiles(urls)
-            guard let first = imported.first else { return }
             if insertZone {
-                _ = model.insertMediaSlide(mediaID: first, beforeSlideID: slideID)
-            } else {
+                _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: slideID)
+            } else if let first = imported.first {
                 _ = model.setDroppedBackground(mediaID: first, onSlide: slideID)
             }
         }
@@ -1110,7 +1129,7 @@ struct SlideEditorView: View {
         .clipped()
 
         .sheet(isPresented: $showingChords) {
-            ChordEditorSheet(model: model.appModel, presentationID: model.presentation.id)
+            ChordEditorSheet(model: model.appModel, render: render, presentationID: model.presentation.id)
         }
         .confirmationDialog(
             "Apply \(pendingThemeID.flatMap { appModel.entry($0)?.name } ?? "this theme") to every slide?",
@@ -1222,6 +1241,13 @@ struct SlideEditorView: View {
             .popover(isPresented: $showingBackgroundFill, arrowEdge: .bottom) {
                 PresentationBackgroundPopover(model: model)
             }
+
+            Button {
+                model.appModel.exportPresentation(model.presentation, render: render)
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .help("Export — an MxU Slides file, a PDF, slide images, or a song's ChordPro text")
         }
     }
 
@@ -1245,6 +1271,8 @@ struct SlideEditorView: View {
                 Button("Reflow…") { showingReflow = true }
                 Button("Arrangement…") { showingArrangement = true }
                 Button("Chord Chart…") { showingChords = true }
+
+                Button("Export…") { model.appModel.exportPresentation(model.presentation, render: render) }
                 Divider()
                 Menu("Theme") { themeItems(model) }
                 if !model.presentation.themeId.isEmpty {
@@ -1543,6 +1571,8 @@ struct LibraryPickerSheet: View {
     var kinds: [DocumentKind]? = nil
 
     var onImportMedia: ((LibraryHome.Placement) -> Void)? = nil
+
+    var render: RenderContext? = nil
     let onPick: (LibraryIndex.Entry) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -1552,6 +1582,8 @@ struct LibraryPickerSheet: View {
     @State private var scope: DocumentKind?
 
     @State private var queryHits: [LibraryIndex.Entry] = []
+
+    @State private var proPresenterIDs: Set<String> = []
     @FocusState private var searchFocused: Bool
 
     private var activeKind: DocumentKind { scope ?? kinds?.first ?? kind }
@@ -1605,6 +1637,15 @@ struct LibraryPickerSheet: View {
                 }
             } else {
                 List(entries, id: \.id) { entry in
+                    if entry.kind == .presentation {
+                        LibraryPickerDeckRow(
+                            appModel: appModel, render: render, entry: entry,
+                            proPresenterIDs: proPresenterIDs
+                        ) {
+                            onPick(entry)
+                            dismiss()
+                        }
+                    } else {
                     Button {
                         onPick(entry)
                         dismiss()
@@ -1633,6 +1674,7 @@ struct LibraryPickerSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    }
                 }
             }
             Divider()
@@ -1653,8 +1695,13 @@ struct LibraryPickerSheet: View {
             }
             .padding(10)
         }
-        .frame(width: 480, height: 420)
+        .frame(width: 560, height: 460)
         .onAppear { searchFocused = true }
+        .task {
+            if kinds?.contains(.presentation) == true || kind == .presentation {
+                proPresenterIDs = await appModel.proPresenterImportIDs()
+            }
+        }
         .task(id: query) {
             queryHits = await appModel.search(query).map(\.entry)
         }

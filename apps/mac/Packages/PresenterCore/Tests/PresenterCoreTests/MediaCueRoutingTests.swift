@@ -72,3 +72,41 @@ private func item(_ kind: MediaKind, _ classification: MediaClassification) -> M
         }
     }
 }
+
+@Test func droppedMediaSlideCarriesTheNewSlideCue() {
+    let slide = Slide.droppedMedia(item(.image, .background), sectionId: "s1")
+    #expect(slide.name == "Item")
+    #expect(slide.objects.isEmpty)
+    #expect(slide.sectionId == "s1")
+    #expect(slide.background == CueMedia.droppedAsNewSlide(for: item(.image, .background)))
+}
+
+@Test func oneDroppedFileIsAMediaRowLikeALibraryDrop() throws {
+    let drop = try #require(RunOrderMediaDrop([item(.image, .foreground)]))
+    #expect(drop.row.itemKind == .media)
+    #expect(drop.row.refId == "m1")
+    #expect(drop.row.name == "Item")
+    guard case .media = drop else { Issue.record("one file makes no presentation"); return }
+}
+
+@Test func severalDroppedFilesAreOnePresentationASlideEach() throws {
+    var second = item(.video, .foreground)
+    second.id = "m2"
+    let drop = try #require(RunOrderMediaDrop([item(.image, .foreground), second]))
+    guard case .presentation(let deck, let row) = drop else {
+        Issue.record("several files make a presentation"); return
+    }
+    #expect(deck.slides.map(\.background?.mediaId) == ["m1", "m2"])
+    #expect(row.itemKind == .presentation)
+    #expect(row.refId == deck.id)
+    #expect(RunOrderMediaDrop([]) == nil)
+}
+
+@Test func severalLibraryMediaDraggedTogetherAreOneBatch() {
+    var second = item(.video, .foreground)
+    second.id = "m2"
+    let library = ["m1": item(.image, .foreground), "m2": second]
+    #expect(RunOrderMediaDrop.libraryBatch(["m1", "m2"]) { library[$0] }.map(\.id) == ["m1", "m2"])
+    #expect(RunOrderMediaDrop.libraryBatch(["m1"]) { library[$0] }.isEmpty, "one item keeps its media row")
+    #expect(RunOrderMediaDrop.libraryBatch(["m1", "deck"]) { library[$0] }.isEmpty, "a mix adds per item")
+}

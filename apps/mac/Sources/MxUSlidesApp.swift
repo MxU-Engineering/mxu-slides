@@ -57,6 +57,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            PresentationFileOpener.open(urls)
+        }
+    }
 }
 
 @main
@@ -102,6 +108,8 @@ struct MxUSlidesApp: App {
 
         SheetWatchRecorder.shared.activate()
 
+        FocusWatchRecorder.shared.activate()
+
         FeedbackController.shared.activate()
 
         UserDefaults.standard.register(defaults: [
@@ -114,6 +122,7 @@ struct MxUSlidesApp: App {
 
         UserDefaults.standard.set(AppMode.present.rawValue, forKey: "appMode")
         let model = AppModel()
+        PresentationFileOpener.model = model
         #if DEBUG || MXU_PERF_HOOKS
 
         PerfHooks.start(model: model)

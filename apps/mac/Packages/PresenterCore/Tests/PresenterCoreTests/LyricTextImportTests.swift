@@ -90,6 +90,14 @@ struct LyricTextImportTests {
         #expect(!normalized.body.contains("SongSelect"))
     }
 
+    @Test func importBuildsEverySlideOnThePickedDesign() {
+        let presentation = LyricTextImporter.makePresentation(
+            songSelectText, themeId: "sunday", themeSlideName: "Lyrics (Lower Third)", linesPerSlide: 2)
+        #expect(presentation.themeId == "sunday")
+        #expect(presentation.slides.allSatisfy { $0.themeSlideName == "Lyrics (Lower Third)" }, "the opening blank too")
+        #expect(LyricTextImporter.makePresentation(songSelectText).slides.allSatisfy { $0.themeSlideName == "Lyrics" })
+    }
+
     @Test func songSelectImportBuildsSectionedPresentation() {
         let presentation = LyricTextImporter.makePresentation(songSelectText, linesPerSlide: 2)
         #expect(presentation.name == "Amazing Grace (My Chains Are Gone)")

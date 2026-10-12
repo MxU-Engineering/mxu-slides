@@ -456,6 +456,31 @@ private final class ActorPark: Sendable {
         #expect(try await deleted.value.changes.map(\.origin) == [.deleted])
     }
 
+    @MainActor @Test func aMassDeleteLandsAsOneBatch() async throws {
+        let root = makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = LibraryClient(rootURL: root)
+        let side = TableReadSide()
+        client.readSide = side
+        try await client.start().value
+        let ids = (0..<40).map { "c\($0)" }
+        _ = try await client.bulkWrite(ids.map { combo($0, "Combo \($0)") } + [combo("kept", "Kept")]).value
+        let before = side.batches.count
+
+        let deleted = client.delete(ids.map { SyncLedger.Key(kind: .actionCombo, id: $0) })
+        #expect(ids.allSatisfy { side.combos.value($0) == nil }, "every value drops at once")
+        let batch = try await deleted.value
+        #expect(batch.changes.map(\.id) == ids)
+        #expect(batch.changes.allSatisfy { $0.origin == .deleted && $0.value == nil })
+        #expect(batch.snapshot.entries(of: .actionCombo).map(\.id) == ["kept"])
+        try await until { client.lastAppliedSequence == batch.sequence }
+        #expect(side.batches.count == before + 1, "one batch for the whole delete")
+        #expect(client.snapshot.entries(of: .actionCombo).map(\.id) == ["kept"])
+        let onDisk = try await onLibraryActor { try sqlSnapshot(root, generation: batch.snapshot.generation) }
+        #expect(onDisk == batch.snapshot)
+        #expect(try await onLibraryActor(reading: root) { try $0.store.ids(of: .actionCombo) } == ["kept"])
+    }
+
     @MainActor @Test func aRefusedEditTellsTheReadSideAndPublishesNothing() async throws {
         let root = makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

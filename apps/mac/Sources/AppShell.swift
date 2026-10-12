@@ -373,6 +373,8 @@ struct ShellView: View {
     @AppStorage(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
 
     @State private var shellWidth: CGFloat = 1480
+
+    @State private var isFullScreen = false
     @State private var draftRightRailWidth: Double?
 
     @State private var rightRailDragStartWidth: Double?
@@ -404,6 +406,10 @@ struct ShellView: View {
     }
 
     static let headerHeight: CGFloat = 52
+
+    static func trafficLightSlot(fullScreen: Bool) -> CGFloat {
+        fullScreen ? 10 : 94
+    }
 
     static let minSidebarWidth: CGFloat = 272
 
@@ -461,7 +467,7 @@ struct ShellView: View {
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
-                Color.clear.frame(width: 94)
+                Color.clear.frame(width: Self.trafficLightSlot(fullScreen: isFullScreen))
                 sidebarToggle
 
                 if mode == .present, !sidebarVisible {
@@ -524,7 +530,7 @@ struct ShellView: View {
         )
         .onPreferenceChange(ShellWidthKey.self) { shellWidth = $0 }
         .background(BasePlane())
-        .background(WindowChromeConfigurator())
+        .background(WindowChromeConfigurator(isFullScreen: $isFullScreen))
         .ignoresSafeArea(.container, edges: .top)
 
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
@@ -1644,18 +1650,62 @@ private struct TitlebarBehavior: NSViewRepresentable {
 }
 
 private struct WindowChromeConfigurator: NSViewRepresentable {
+    @Binding var isFullScreen: Bool
+
+    final class Coordinator {
+        weak var window: NSWindow?
+        var observers: [NSObjectProtocol] = []
+
+        deinit {
+            observers.forEach(NotificationCenter.default.removeObserver)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { Self.configure(view.window) }
+        DispatchQueue.main.async { attach(view.window, context.coordinator) }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        Self.configure(nsView.window)
+        attach(nsView.window, context.coordinator)
     }
 
-    private static func configure(_ window: NSWindow?) {
-        guard let window else { return }
+    private func attach(_ window: NSWindow?, _ coordinator: Coordinator) {
+        if let window {
+            Self.configure(window)
+            if coordinator.window !== window {
+                coordinator.observers.forEach(NotificationCenter.default.removeObserver)
+                coordinator.window = window
+                let binding = $isFullScreen
+                let center = NotificationCenter.default
+                coordinator.observers = [
+                    center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { _ in
+                        MainActor.assumeIsolated {
+                            Self.showToolbar(in: window, fullScreen: true)
+                            binding.wrappedValue = true
+                        }
+                    },
+                    center.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { _ in
+                        MainActor.assumeIsolated {
+                            Self.showToolbar(in: window, fullScreen: false)
+                            binding.wrappedValue = false
+                        }
+                    },
+                ]
+
+                let fullScreen = window.styleMask.contains(.fullScreen)
+                Self.showToolbar(in: window, fullScreen: fullScreen)
+                if isFullScreen != fullScreen {
+                    DispatchQueue.main.async { binding.wrappedValue = fullScreen }
+                }
+            }
+        }
+    }
+
+    private static func configure(_ window: NSWindow) {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .none
@@ -1663,6 +1713,12 @@ private struct WindowChromeConfigurator: NSViewRepresentable {
             window.toolbar = NSToolbar(identifier: "shell-chrome")
         }
         window.toolbarStyle = .unified
+    }
+
+    private static func showToolbar(in window: NSWindow, fullScreen: Bool) {
+        if let toolbar = window.toolbar, toolbar.isVisible == fullScreen {
+            toolbar.isVisible = !fullScreen
+        }
     }
 }
 

@@ -56,6 +56,8 @@ final class EditorInteractionNSView: NSView {
     private var textOverlay: OverlayTextView?
     private var overlayObjectID: String?
 
+    private var inspectorFieldObserver: NSObjectProtocol?
+
     var chordState = ChordCanvasState()
 
     init(model: SlideEditorModel) {
@@ -202,6 +204,40 @@ final class EditorInteractionNSView: NSView {
         overlay.removeFromSuperview()
         textOverlay = nil
         overlayObjectID = nil
+        stopWatchingInspectorField()
+    }
+
+    private func settleCanvasEditFocus() {
+        Task { @MainActor [weak self] in
+            self?.keepOrEndCanvasEditing()
+        }
+    }
+
+    private func keepOrEndCanvasEditing() {
+        stopWatchingInspectorField()
+        let responder = window?.firstResponder
+        if let overlay = textOverlay, responder !== overlay {
+            if let field = responder as? NSTextView, field.isFieldEditor {
+                inspectorFieldObserver = NotificationCenter.default.addObserver(
+                    forName: NSText.didEndEditingNotification, object: field, queue: nil
+                ) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.keepOrEndCanvasEditing()
+                    }
+                }
+            } else {
+
+                model.endCanvasTextEdit()
+                tearDownOverlay()
+            }
+        }
+    }
+
+    private func stopWatchingInspectorField() {
+        if let observer = inspectorFieldObserver {
+            NotificationCenter.default.removeObserver(observer)
+            inspectorFieldObserver = nil
+        }
     }
 
     private func endCanvasEditing() {
@@ -1235,8 +1271,7 @@ extension EditorInteractionNSView: NSTextViewDelegate {
     }
 
     func textDidEndEditing(_ notification: Notification) {
-
-        endCanvasEditing()
+        settleCanvasEditFocus()
     }
 
     func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {

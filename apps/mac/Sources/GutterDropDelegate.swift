@@ -1,4 +1,5 @@
 import AppKit
+import PresenterCore
 import SlideScene
 import SwiftUI
 
@@ -243,5 +244,52 @@ struct CanvasDropDelegate: DropDelegate {
         }
         DiagnosticsStore.shared.note("editor.canvasDrop.noPayload")
         return false
+    }
+}
+
+struct GridGapDropDelegate: DropDelegate {
+    let enabled: Bool
+
+    let dropStarted: () -> Void
+
+    let spot: (CGPoint) -> SlideGridDrop.Spot
+    let setTarget: (SlideGridDrop.Spot?) -> Void
+    let performText: (String, Int) -> Bool
+    let performFiles: ([URL], Int) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        enabled && info.hasItemsConforming(to: [.plainText, .fileURL])
+            && !GutterDropDelegate.forcesInsert(payload: NSPasteboard(name: .drag).string(forType: .string))
+    }
+
+    func dropEntered(info: DropInfo) { setTarget(spot(info.location)) }
+    func dropExited(info: DropInfo) { setTarget(nil) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        setTarget(spot(info.location))
+        return DropProposal(operation: .copy)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let index = spot(info.location).insertionIndex
+        dropStarted()
+        DiagnosticsStore.shared.note("grid.gapDrop", detail: "before \(index)")
+        let dragPasteboard = NSPasteboard(name: .drag)
+        let fileURLs = (dragPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        if !enabled {
+            return false
+        } else if !fileURLs.isEmpty {
+            DiagnosticsStore.shared.note("grid.gapDrop.files", detail: "\(fileURLs.count)")
+            performFiles(fileURLs, index)
+            return true
+        } else if let text = dragPasteboard.string(forType: .string), !text.isEmpty {
+            DiagnosticsStore.shared.note("grid.gapDrop.pasteboard", detail: String(text.prefix(40)))
+            return performText(text, index)
+        } else {
+            DiagnosticsStore.shared.note("grid.gapDrop.noPayload")
+            return false
+        }
     }
 }

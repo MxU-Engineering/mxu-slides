@@ -210,7 +210,7 @@ final class SheetWatchRecorder {
         return SheetWatch.shortName(typeDescriptions: descriptions, fallback: fallback) + size
     }
 
-    private static func hostName(of window: NSWindow) -> String {
+    static func hostName(of window: NSWindow) -> String {
         if let identifier = window.identifier?.rawValue, !identifier.isEmpty {
             identifier
         } else if !window.title.isEmpty {

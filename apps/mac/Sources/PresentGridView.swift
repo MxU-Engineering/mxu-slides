@@ -582,6 +582,8 @@ struct SlideGridBody: View {
                     NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
                 }
                 .gesture(marqueeGesture)
+
+                .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
             let aspect = SlideGridMetrics.tileAspect(for: presentation)
             let cell = self.cell
             if buildsRowsNearView {
@@ -1302,7 +1304,7 @@ struct SlideGridBody: View {
             return true
         }
         if insertZone {
-            return insertMediaSlide(mediaID: payload, beforeIndex: index)
+            return insertMediaSlides(mediaIDs: [payload], beforeIndex: index)
         }
         return model.setSlideBackground(
             presentationID: presentation.id, slideID: slide.id, mediaID: payload)
@@ -1369,30 +1371,74 @@ struct SlideGridBody: View {
         Task { @MainActor in
 
             let imported = await model.importFiles(urls)
-            guard let first = imported.first else { return }
             if insertZone {
-                _ = insertMediaSlide(mediaID: first, beforeIndex: index)
-            } else {
+                _ = insertMediaSlides(mediaIDs: imported, beforeIndex: index)
+            } else if let first = imported.first {
                 _ = model.setSlideBackground(
                     presentationID: presentation.id, slideID: slideID, mediaID: first)
             }
         }
     }
 
-    private func insertMediaSlide(mediaID: String, beforeIndex index: Int) -> Bool {
-        guard let item = model.media(mediaID) else { return false }
-        let media = CueMedia.droppedAsNewSlide(for: item)
-        let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : nil
+    private func gapDropDelegate(enabled: Bool) -> GridGapDropDelegate {
+        GridGapDropDelegate(
+            enabled: enabled,
+            dropStarted: {
+                dropSettleUntil = Date().addingTimeInterval(0.6)
+                dropTargetIndex = nil
+                dropTargetAfterIndex = nil
+
+                Task { @MainActor in
+                    dropTargetIndex = nil
+                    dropTargetAfterIndex = nil
+                }
+            },
+            spot: { location in
+                SlideGridDrop.spot(
+                    at: CGPoint(x: location.x - marqueeMargin, y: location.y - marqueeMargin),
+                    tileFrames: tileFrames, count: slides.count, rowGap: SlideGridMetrics.spacing)
+            },
+            setTarget: { spot in
+                switch Date() >= dropSettleUntil ? spot : nil {
+                case .before(let index)?:
+                    dropTargetIndex = index
+                    dropTargetAfterIndex = nil
+                case .after(let index)?:
+                    dropTargetIndex = nil
+                    dropTargetAfterIndex = index
+                case nil:
+                    dropTargetIndex = nil
+                    dropTargetAfterIndex = nil
+                }
+            },
+            performText: { payload, index in
+                !runOnly && insertMediaSlides(mediaIDs: [payload], beforeIndex: index)
+            },
+            performFiles: { urls, index in
+                if !runOnly {
+                    Task { @MainActor in
+                        let imported = await model.importFiles(urls)
+                        _ = insertMediaSlides(mediaIDs: imported, beforeIndex: index)
+                    }
+                }
+            }
+        )
+    }
+
+    private func insertMediaSlides(mediaIDs: [String], beforeIndex index: Int) -> Bool {
+        let items = mediaIDs.compactMap { model.media($0) }
+        let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : slides.last?.sectionId
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
-        let slide = Slide(
-            id: UUID().uuidString,
-            name: item.name,
-            objects: [],
-            background: media,
-            sectionId: anchorSection)
-        model.insertSlide(presentation.id, slide: slide, afterSlideID: afterID)
-        return true
+        if items.isEmpty {
+            return false
+        } else {
+            model.insertSlides(
+                presentation.id,
+                slides: items.map { Slide.droppedMedia($0, sectionId: anchorSection) },
+                afterSlideID: afterID)
+            return true
+        }
     }
 
     private func dropSlide(_ payload: String, before target: Slide) -> Bool {

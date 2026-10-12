@@ -98,7 +98,7 @@ import Testing
             let end = made.range(of: "\n    }\n")?.lowerBound ?? made.endIndex
             #expect(made[..<end].contains("createInDrive(") && !made[..<end].contains("client.create("), "\(signature) must file its item in the Drive")
         }
-        #expect(try body(of: "func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {", in: app)
+        #expect(try body(of: "func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {", in: app, length: 4000)
             .contains("placement: placement ?? newPlacement"))
         for signature in ["func importProPresenter(", "func importProPresenterThemes(", "func importProPresenterPlaylists(", "func importPowerPoint("] {
             #expect(try body(of: signature, in: app).contains("placement"), "\(signature) must land in the Drive")

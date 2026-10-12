@@ -39,7 +39,13 @@ struct ThemeExplorerView: View {
     let looks: [ThemeLook]?
     var emptyHint = "Make a theme in the Library first."
 
+    var currentBadge = "This deck"
+
+    var currentDesign: String?
+
     var onPickTheme: ((Theme) -> Void)?
+    var pickThemeVerb = "Apply"
+    var pickThemeHelp = "Each slide keeps its kind of design (a verse stays a verse) in this theme. Or pick one design below for every slide."
     let onPickDesign: (_ themeId: String, _ design: Slide) -> Void
 
     @State private var place = ThemeExplorer.Place.themes
@@ -69,9 +75,9 @@ struct ThemeExplorerView: View {
             }
             Spacer()
             if let onPickTheme, let theme = placeTheme {
-                Button("Apply \u{201C}\(theme.name)\u{201D}") { onPickTheme(theme) }
+                Button("\(pickThemeVerb) \u{201C}\(theme.name)\u{201D}") { onPickTheme(theme) }
                     .buttonStyle(.borderedProminent)
-                    .help("Each slide keeps its kind of design (a verse stays a verse) in this theme. Or pick one design below for every slide.")
+                    .help(pickThemeHelp)
             }
             TextField("Search themes and designs", text: $query)
                 .textFieldStyle(.roundedBorder)
@@ -193,7 +199,7 @@ struct ThemeExplorerView: View {
         return card(
             title: look.theme.name,
             caption: count == 1 ? "1 design" : "\(count) designs",
-            badge: look.theme.id == deckThemeId ? "This deck" : nil,
+            badge: look.theme.id == deckThemeId ? currentBadge : nil,
             systemImage: "chevron.right"
         ) {
             preview(look.theme.slides?.first, in: look)
@@ -215,7 +221,7 @@ struct ThemeExplorerView: View {
     }
 
     private func designCard(_ design: Slide, in look: ThemeLook, caption: String?) -> some View {
-        card(title: design.name, caption: caption, badge: nil, systemImage: nil) {
+        card(title: design.name, caption: caption, badge: isCurrent(design, in: look) ? currentBadge : nil, systemImage: nil) {
             preview(design, in: look)
         } action: {
             onPickDesign(look.theme.id, design)
@@ -272,6 +278,14 @@ struct ThemeExplorerView: View {
             )
         } else {
             Color.secondary.opacity(0.1)
+        }
+    }
+
+    private func isCurrent(_ design: Slide, in look: ThemeLook) -> Bool {
+        if let currentDesign, look.theme.id == deckThemeId {
+            look.theme.slides?.first { $0.name.caseInsensitiveCompare(currentDesign) == .orderedSame }?.id == design.id
+        } else {
+            false
         }
     }
 

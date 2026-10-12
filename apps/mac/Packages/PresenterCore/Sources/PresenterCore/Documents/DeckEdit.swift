@@ -235,6 +235,7 @@ struct DeckField {
             optional(\.musicKey, "musicKey"),
             optional(\.autoAdvance, "autoAdvance"),
             optional(\.displayKey, "displayKey"),
+            optional(\.origin, "origin"),
         ]
     }
 }

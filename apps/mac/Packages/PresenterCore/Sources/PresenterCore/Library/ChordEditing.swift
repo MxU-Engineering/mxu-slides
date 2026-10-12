@@ -8,6 +8,7 @@ public enum ChordEditing {
                 var style = revealed.textStyle ?? TextStyle()
                 style.showChords = true
                 style.chordNotation = .chords
+                style.autoShrink = true
                 revealed.textStyle = style
                 return revealed
             } else {

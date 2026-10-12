@@ -19,12 +19,31 @@ public extension SlideBuildingSettings {
         document ?? defaults
     }
 
-    var isUnset: Bool { designMap == nil && messageNotesThemeId == nil && lyricsImportThemeId == nil }
+    var isUnset: Bool {
+        designMap == nil && messageNotesThemeId == nil && lyricsImportThemeId == nil && lyricsImportDesign == nil
+    }
+
+    var lyricsDesign: String {
+        lyricsImportDesign.flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultLyricsDesign
+    }
+
+    static let defaultLyricsDesign = "Lyrics"
+
+    mutating func setLyricsLook(themeId: String, design: String?) {
+        let themeChanged = themeId != (lyricsImportThemeId ?? "")
+        lyricsImportThemeId = themeId.isEmpty ? nil : themeId
+        if let design {
+            lyricsImportDesign = design.isEmpty || themeId.isEmpty ? nil : design
+        } else if themeChanged {
+            lyricsImportDesign = nil
+        }
+    }
 
     mutating func fillUnset(from own: SlideBuildingSettings) {
         if designMap == nil { designMap = own.designMap }
         if messageNotesThemeId == nil { messageNotesThemeId = own.messageNotesThemeId }
         if lyricsImportThemeId == nil { lyricsImportThemeId = own.lyricsImportThemeId }
+        if lyricsImportDesign == nil { lyricsImportDesign = own.lyricsImportDesign }
     }
 }
 

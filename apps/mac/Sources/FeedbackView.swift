@@ -7,6 +7,8 @@ struct FeedbackView: View {
     @State private var feedback = FeedbackController.shared
     @State private var message = ""
 
+    @FocusState private var noteFocused: Bool
+
     private var isWorking: Bool {
         if case .working = feedback.phase { true } else { false }
     }
@@ -24,6 +26,8 @@ struct FeedbackView: View {
                 .font(.body)
                 .frame(minHeight: 120)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                .focused($noteFocused)
+                .onAppear { DispatchQueue.main.async { noteFocused = true } }
             DisclosureGroup("What is included") {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Your note, this Mac's summary below, and the last 7 days of MxU Slides diagnostics: activity breadcrumbs (these can include file and song names), performance samples, and macOS crash reports for this app. No slides, media or passwords.")
