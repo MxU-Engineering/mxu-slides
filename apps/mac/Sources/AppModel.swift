@@ -358,6 +358,7 @@ final class AppModel {
         migrateStreamDestinations(prepared)
         try backfillContentIndex(prepared, rootURL: root)
         try backfillCCLIIndex(prepared, rootURL: root)
+        try backfillOriginIndex(prepared, rootURL: root)
         try seedConfidenceStarters(prepared, rootURL: root)
         try seedChordsStarter(prepared, rootURL: root)
         try seedStarterPacks(prepared, rootURL: root)
@@ -561,6 +562,15 @@ final class AppModel {
         let marker = rootURL.appendingPathComponent(".reindexed-ccli1")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         try prepared.rebuildIndex()
+        FileManager.default.createFile(atPath: marker.path, contents: nil)
+    }
+
+    @LibraryActor private static func backfillOriginIndex(_ prepared: Library, rootURL: URL) throws {
+        let marker = rootURL.appendingPathComponent(".reindexed-origin2")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        try prepared.rebuildIndex()
+
+        try prepared.seedUsageFromServices()
         FileManager.default.createFile(atPath: marker.path, contents: nil)
     }
 
@@ -971,7 +981,8 @@ final class AppModel {
         createInDrive(Presentation(
             id: id, name: name,
             presentationKind: .deck, themeId: "",
-            slides: [Slide(id: UUID().uuidString, name: "", objects: [])]
+            slides: [Slide(id: UUID().uuidString, name: "", objects: [])],
+            origin: PresentationOrigin(.madeHere)
         ))
         return id
     }
@@ -2037,7 +2048,11 @@ final class AppModel {
         }
         let newID = UUID().uuidString
         switch entry.kind {
-        case .presentation: copy(Presentation.self) { $0.id = newID; $0.name += " Copy" }
+        case .presentation: copy(Presentation.self) {
+            $0.origin = PresentationOrigin(.duplicate, detail: "of \($0.name)")
+            $0.id = newID
+            $0.name += " Copy"
+        }
         case .service: copy(Service.self) { $0.id = newID; $0.name += " Copy" }
         case .theme: copy(Theme.self) { $0.id = newID; $0.name += " Copy" }
         case .media: copy(MediaItem.self) { $0.id = newID; $0.name += " Copy" }
@@ -2136,7 +2151,8 @@ final class AppModel {
         var presentation = Presentation(
             id: UUID().uuidString, name: name.isEmpty ? "Slides" : name, presentationKind: .deck,
             themeId: themeId, folder: folder?.isEmpty == false ? folder : nil,
-            slides: slides.isEmpty ? [Slide(id: UUID().uuidString, name: "", objects: [])] : slides
+            slides: slides.isEmpty ? [Slide(id: UUID().uuidString, name: "", objects: [])] : slides,
+            origin: PresentationOrigin(.madeHere, detail: "Make Slides")
         )
         presentation.sections = sections.isEmpty ? nil : sections
         presentation.arrangements = arrangement.map { [$0] }
@@ -3126,9 +3142,10 @@ final class AppModel {
     @discardableResult
     func importLyrics(
         text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2,
-        themeId: String = "", themeSlideName: String = "Lyrics", lyricLines: Set<String> = []
+        themeId: String = "", themeSlideName: String = "Lyrics", lyricLines: Set<String> = [],
+        origin: PresentationOrigin = PresentationOrigin(.pastedLyrics)
     ) -> String? {
-        let presentation = LyricTextImporter.makePresentation(
+        var presentation = LyricTextImporter.makePresentation(
             text,
             fallbackTitle: fallbackTitle,
             themeId: themeId,
@@ -3136,6 +3153,7 @@ final class AppModel {
             linesPerSlide: linesPerSlide,
             lyricLines: lyricLines
         )
+        presentation.origin = origin
         createInDrive(presentation)
         lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"
         return presentation.id
@@ -3201,6 +3219,11 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    func proPresenterImportIDs() async -> Set<String> {
+        let ledger = try? await client.loadValue(ImportLedger.self, id: ImportLedger.wellKnownID)
+        return Set((ledger?.entries ?? []).map(\.docId))
     }
 
     func importProPresenterThemes(urls: [URL]) async -> [ProThemeImportSummary] {

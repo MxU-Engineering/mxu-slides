@@ -109,7 +109,7 @@ struct RunOrderList: View {
                 Text("This renames the item in the library too — everywhere it's used.")
             }
             .sheet(isPresented: $addingFromLibrary) {
-                LibrarySearchSheet(model: model, serviceID: serviceID)
+                LibrarySearchSheet(model: model, serviceID: serviceID, render: render)
             }
             .mediaCueSheets(model: model, state: mediaMenuState)
         } else {
@@ -851,12 +851,14 @@ struct ServiceItemDetailView: View {
 struct LibrarySearchSheet: View {
     let model: AppModel
     let serviceID: String
+    var render: RenderContext? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var scopes: Set<LibrarySection> = []
 
     @State private var searchHits: [LibraryIndex.Hit] = []
+    @State private var proPresenterIDs: Set<String> = []
     @FocusState private var fieldFocused: Bool
 
     private var addableTabs: [LibrarySection] { [.presentations, .media] }
@@ -903,8 +905,9 @@ struct LibrarySearchSheet: View {
             Divider()
             resultsList
         }
-        .frame(width: 380, height: 420)
+        .frame(width: 480, height: 460)
         .onAppear { fieldFocused = true }
+        .task { proPresenterIDs = await model.proPresenterImportIDs() }
         .task(id: searchText) {
             searchHits = await model.search(searchText)
         }
@@ -914,6 +917,14 @@ struct LibrarySearchSheet: View {
     private var resultsList: some View {
         let hits = results
         List(hits, id: \.entry.id) { hit in
+            if hit.entry.kind == .presentation {
+                LibraryPickerDeckRow(
+                    appModel: model, render: render, entry: hit.entry,
+                    proPresenterIDs: proPresenterIDs, snippet: hit.snippet, accessory: "plus.circle"
+                ) {
+                    model.addServiceItem(serviceID, refID: hit.entry.id)
+                }
+            } else {
             Button {
                 model.addServiceItem(serviceID, refID: hit.entry.id)
             } label: {
@@ -945,6 +956,7 @@ struct LibrarySearchSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            }
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)

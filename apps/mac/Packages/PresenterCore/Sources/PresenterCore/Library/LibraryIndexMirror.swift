@@ -6,6 +6,7 @@ struct LibraryIndexMirror {
         var subkind: String
         var name: String
         var updatedAt: Date
+        var origin: String
 
         var sequence: Int
     }
@@ -22,7 +23,7 @@ struct LibraryIndexMirror {
         for entry in entries {
             rows[entry.id] = Row(
                 kind: entry.kind, subkind: entry.subkind, name: entry.name,
-                updatedAt: entry.updatedAt, sequence: nextSequence)
+                updatedAt: entry.updatedAt, origin: entry.origin, sequence: nextSequence)
             nextSequence += 1
         }
         self.areas = areas
@@ -36,11 +37,11 @@ struct LibraryIndexMirror {
 
     var count: Int { rows.count }
 
-    mutating func upsert(id: String, kind: DocumentKind, subkind: String, name: String, updatedAt: Date) {
+    mutating func upsert(id: String, kind: DocumentKind, subkind: String, name: String, updatedAt: Date, origin: String = "") {
         if let existing = rows[id] {
-            rows[id] = Row(kind: kind, subkind: subkind, name: name, updatedAt: updatedAt, sequence: existing.sequence)
+            rows[id] = Row(kind: kind, subkind: subkind, name: name, updatedAt: updatedAt, origin: origin, sequence: existing.sequence)
         } else {
-            rows[id] = Row(kind: kind, subkind: subkind, name: name, updatedAt: updatedAt, sequence: nextSequence)
+            rows[id] = Row(kind: kind, subkind: subkind, name: name, updatedAt: updatedAt, origin: origin, sequence: nextSequence)
             nextSequence += 1
         }
     }
@@ -70,7 +71,7 @@ struct LibraryIndexMirror {
         let entries = ordered.map { id, row in
             LibraryIndex.Entry(
                 id: id, kind: row.kind, subkind: row.subkind, name: row.name,
-                updatedAt: row.updatedAt, lastUsedAt: usage[id])
+                updatedAt: row.updatedAt, lastUsedAt: usage[id], origin: row.origin)
         }
         return IndexSnapshot(entries: entries, areas: areas, generation: generation)
     }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 131,
+  "schemaVersion": 132,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1582,6 +1582,40 @@
         }
       ]
     },
+    "PresentationOriginSource": {
+      "kind": "enum",
+      "cases": [
+        "madeHere",
+        "proPresenter",
+        "planningCenterChart",
+        "planningCenterLyrics",
+        "songSelect",
+        "lyricsFile",
+        "chartFile",
+        "pastedLyrics",
+        "slidesFile",
+        "duplicate"
+      ]
+    },
+    "PresentationOrigin": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "source",
+          "type": "PresentationOriginSource"
+        },
+        {
+          "name": "detail",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
     "PresentationKind": {
       "kind": "enum",
       "cases": [
@@ -1685,6 +1719,11 @@
         {
           "name": "displayKey",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "origin",
+          "type": "PresentationOrigin",
           "optional": true
         }
       ]

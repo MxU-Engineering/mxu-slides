@@ -1571,6 +1571,8 @@ struct LibraryPickerSheet: View {
     var kinds: [DocumentKind]? = nil
 
     var onImportMedia: ((LibraryHome.Placement) -> Void)? = nil
+
+    var render: RenderContext? = nil
     let onPick: (LibraryIndex.Entry) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -1580,6 +1582,8 @@ struct LibraryPickerSheet: View {
     @State private var scope: DocumentKind?
 
     @State private var queryHits: [LibraryIndex.Entry] = []
+
+    @State private var proPresenterIDs: Set<String> = []
     @FocusState private var searchFocused: Bool
 
     private var activeKind: DocumentKind { scope ?? kinds?.first ?? kind }
@@ -1633,6 +1637,15 @@ struct LibraryPickerSheet: View {
                 }
             } else {
                 List(entries, id: \.id) { entry in
+                    if entry.kind == .presentation {
+                        LibraryPickerDeckRow(
+                            appModel: appModel, render: render, entry: entry,
+                            proPresenterIDs: proPresenterIDs
+                        ) {
+                            onPick(entry)
+                            dismiss()
+                        }
+                    } else {
                     Button {
                         onPick(entry)
                         dismiss()
@@ -1661,6 +1674,7 @@ struct LibraryPickerSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    }
                 }
             }
             Divider()
@@ -1681,8 +1695,13 @@ struct LibraryPickerSheet: View {
             }
             .padding(10)
         }
-        .frame(width: 480, height: 420)
+        .frame(width: 560, height: 460)
         .onAppear { searchFocused = true }
+        .task {
+            if kinds?.contains(.presentation) == true || kind == .presentation {
+                proPresenterIDs = await appModel.proPresenterImportIDs()
+            }
+        }
         .task(id: query) {
             queryHits = await appModel.search(query).map(\.entry)
         }

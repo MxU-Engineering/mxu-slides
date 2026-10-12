@@ -22,6 +22,7 @@ struct ChordEditingTests {
 
         #expect(revealed[0].textStyle?.showChords == true)
         #expect(revealed[0].textStyle?.chordNotation == .chords, "edit what's stored, not a transform")
+        #expect(revealed[0].textStyle?.autoShrink == true, "chord rows fit the box, not push words out of it")
         #expect(revealed[1] == plain)
         #expect(revealed[2] == linked)
     }

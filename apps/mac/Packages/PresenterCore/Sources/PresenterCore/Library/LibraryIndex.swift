@@ -12,19 +12,22 @@ import SQLite3
 
         public let lastUsedAt: Date?
 
-        public init(id: String, kind: DocumentKind, subkind: String, name: String, updatedAt: Date, lastUsedAt: Date?) {
+        public let origin: String
+
+        public init(id: String, kind: DocumentKind, subkind: String, name: String, updatedAt: Date, lastUsedAt: Date?, origin: String = "") {
             self.id = id
             self.kind = kind
             self.subkind = subkind
             self.name = name
             self.updatedAt = updatedAt
             self.lastUsedAt = lastUsedAt
+            self.origin = origin
         }
 
         public init<E: DocumentEntity>(pending value: E, at date: Date = Date()) {
             self.init(
                 id: value.id, kind: E.documentKind, subkind: value.indexSubkind, name: value.name,
-                updatedAt: date, lastUsedAt: nil)
+                updatedAt: date, lastUsedAt: nil, origin: value.indexOrigin)
         }
     }
 
@@ -71,6 +74,7 @@ import SQLite3
         try addColumn("entities", "ccli_title", "TEXT")
 
         try addColumn("entities", "folder_id", "TEXT NOT NULL DEFAULT ''")
+        try addColumn("entities", "origin", "TEXT NOT NULL DEFAULT ''")
         try exec("CREATE INDEX IF NOT EXISTS entities_kind_name ON entities(kind, name)")
 
         if try scalarInt("PRAGMA user_version") < 2 {
@@ -428,23 +432,26 @@ import SQLite3
 
     public func upsert(
         id: String, kind: DocumentKind, subkind: String = "", name: String,
-        text: String = "", updatedAt: Date = Date(), ccli: IndexCCLI = .none, folderId: String = ""
+        text: String = "", updatedAt: Date = Date(), ccli: IndexCCLI = .none, folderId: String = "",
+        origin: String = ""
     ) throws {
         writeGeneration += 1
         try exec("BEGIN IMMEDIATE")
         do {
             try run(
-                "INSERT INTO entities (id, kind, subkind, name, updated_at, ccli_number, ccli_title, folder_id) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+                "INSERT INTO entities (id, kind, subkind, name, updated_at, ccli_number, ccli_title, folder_id, origin) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                     "ON CONFLICT(id) DO UPDATE SET kind = excluded.kind, subkind = excluded.subkind, " +
                     "name = excluded.name, updated_at = excluded.updated_at, " +
-                    "ccli_number = excluded.ccli_number, ccli_title = excluded.ccli_title, folder_id = excluded.folder_id",
+                    "ccli_number = excluded.ccli_number, ccli_title = excluded.ccli_title, folder_id = excluded.folder_id, " +
+                    "origin = excluded.origin",
                 binds: [
                     .text(id), .text(kind.rawValue), .text(subkind), .text(name),
                     .real(updatedAt.timeIntervalSince1970),
                     ccli.number.map(Bind.int) ?? .null,
                     ccli.title.map(Bind.text) ?? .null,
                     .text(folderId),
+                    .text(origin),
                 ]
             )
             try run("DELETE FROM entities_fts WHERE id = ?", binds: [.text(id)])
@@ -529,7 +536,7 @@ import SQLite3
     }
 
     private static let entryColumns =
-        "e.id, e.kind, e.subkind, e.name, e.updated_at, u.last_used_at"
+        "e.id, e.kind, e.subkind, e.name, e.updated_at, u.last_used_at, e.origin"
     private static let entryFrom = "FROM entities e LEFT JOIN usage u ON u.id = e.id"
 
     public struct MatchKey: Equatable, Sendable {
@@ -632,7 +639,7 @@ import SQLite3
                 let nameText = sqlite3_column_text(stmt, 3),
                 let kind = DocumentKind(rawValue: String(cString: kindText))
             else { continue }
-            let snippetText = sqlite3_column_text(stmt, 6).map { String(cString: $0) } ?? ""
+            let snippetText = sqlite3_column_text(stmt, 7).map { String(cString: $0) } ?? ""
             hits.append(Hit(
                 entry: Entry(
                     id: String(cString: idText),
@@ -641,7 +648,8 @@ import SQLite3
                     name: String(cString: nameText),
                     updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
                     lastUsedAt: sqlite3_column_type(stmt, 5) == SQLITE_NULL
-                        ? nil : Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5))
+                        ? nil : Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5)),
+                    origin: sqlite3_column_text(stmt, 6).map { String(cString: $0) } ?? ""
                 ),
                 snippet: snippetText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil : snippetText
@@ -738,7 +746,8 @@ import SQLite3
                     name: String(cString: nameText),
                     updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
                     lastUsedAt: sqlite3_column_type(stmt, 5) == SQLITE_NULL
-                        ? nil : Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5))
+                        ? nil : Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5)),
+                    origin: sqlite3_column_text(stmt, 6).map { String(cString: $0) } ?? ""
                 ))
             case SQLITE_DONE:
                 return results
