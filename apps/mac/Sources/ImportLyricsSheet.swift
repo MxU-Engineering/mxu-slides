@@ -22,8 +22,6 @@ struct ImportLyricsSheet: View {
 
     @State private var preview: Preview?
 
-    @State private var browsing: SongSite?
-
     private var themeId: String { model.slideBuilding.lyricsImportThemeId ?? "" }
 
     private var design: String { model.slideBuilding.lyricsDesign }
@@ -61,10 +59,6 @@ struct ImportLyricsSheet: View {
             HStack {
                 Text("Import Lyrics")
                     .font(.headline)
-
-                Button("SongSelect…") { browsing = .songSelect }
-                    .controlSize(.small)
-                    .help("Sign in to SongSelect here, find the song and download it — its words and chords land in the paste")
                 Spacer()
                 if let format = preview?.format {
                     Text(Self.formatCaption(format))
@@ -85,13 +79,6 @@ struct ImportLyricsSheet: View {
                 .padding(12)
         }
         .frame(minWidth: 940, minHeight: 600)
-        .sheet(item: $browsing) { site in
-            SongSiteBrowser(site: site, start: site.home) { chart, filename in
-                text = chart
-                loadedFrom = PresentationOrigin(.songSelect, detail: filename)
-                if title.isEmpty, !Self.namesItsTitle(chart) { title = (filename as NSString).deletingPathExtension }
-            }
-        }
         .task(id: input) {
             let input = input
             let built = await Task.detached(priority: .userInitiated) { Self.build(input) }.value
