@@ -10,18 +10,41 @@ struct LivePanel: View {
     let controls: ServiceControls?
     let layout: PresentLayoutController?
 
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.runOnly) private var runOnly
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @State private var previewHovering = false
 
     @AppStorage("preview.screenTarget") private var previewTarget = ""
+    @AppStorage("preview.extraTargets") private var extraTargetsRaw = ""
 
     var body: some View {
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                livePreview
+            VStack(alignment: .leading, spacing: 10) {
+                if let render {
+                    PreviewTile(render: render, target: resolvedTarget(previewTarget, render)?.id)
+                    let extras = extraTargets
+                    ForEach(Array(extras.enumerated()), id: \.offset) { index, stored in
+                        let resolved = resolvedTarget(stored, render)
+                        HStack(spacing: 6) {
+                            Spacer()
+                            PreviewTargetMenu(render: render, resolved: resolved) {
+                                setExtraTarget($0, at: index)
+                            }
+                            Button {
+                                removeExtra(at: index)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 20, height: 20)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove this preview")
+                        }
+                        PreviewTile(render: render, target: resolved?.id)
+                    }
+                    addPreviewButton(render)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
@@ -30,138 +53,201 @@ struct LivePanel: View {
         .scrollContentBackground(.hidden)
         .safeAreaInset(edge: .top, spacing: 0) {
             SidebarSectionHeader("Output Preview", glyph: .media) {
-                screenPicker
+                if let render {
+                    PreviewTargetMenu(render: render, resolved: resolvedTarget(previewTarget, render)) {
+                        previewTarget = $0
+                    }
+                }
             }
         }
     }
 
-    @ViewBuilder
-    private var livePreview: some View {
-
-        if let render {
-            let resolved = resolvedTarget(render)
-            LiveSceneView(render: render, screenTargetID: resolved?.id)
-                .aspectRatio(
-                    PreviewTargets.aspect(
-                        of: resolved?.id, render: render,
-                        layoutAspects: confidenceMonitor?.previewAspects ?? [:]),
-                    contentMode: .fit)
-                .modifier(PreviewedLayoutKeeper(target: resolved?.id))
+    private func addPreviewButton(_ render: RenderContext) -> some View {
+        Button {
+            addExtra(render)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle.standard(CornerStandard.element))
-                .overlay {
-                    RoundedRectangle.standard(CornerStandard.element)
-                        .strokeBorder(Color.separator.opacity(0.6), lineWidth: 1)
-                }
+                .frame(height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            Color.primary.opacity(0.05),
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
+        .help("Add another preview below — watch several screens at once")
+    }
 
-                .overlay(alignment: .topTrailing) {
-                    if previewHovering, !runOnly {
-                        Button {
-                            popOutPreview()
-                        } label: {
-                            Image(systemName: "arrow.up.forward.square")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .padding(4)
-                                .background(.black.opacity(0.45), in: RoundedRectangle.standard(CornerStandard.element))
-                                .padding(5)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Open this screen's preview in its own window")
+    private var extraTargets: [String] {
+        guard let data = extraTargetsRaw.data(using: .utf8),
+              let targets = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return targets
+    }
+
+    private func storeExtraTargets(_ targets: [String]) {
+        extraTargetsRaw = (try? JSONEncoder().encode(targets))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
+    private func addExtra(_ render: RenderContext) {
+        let extras = extraTargets
+        let shown = Set(([previewTarget] + extras).compactMap { resolvedTarget($0, render)?.id })
+        let choices = PreviewTargets.screens(render).map(\.id)
+            + (confidenceMonitor?.previewLayoutChoices ?? []).map(\.id)
+        storeExtraTargets(extras + [choices.first { !shown.contains($0) } ?? ""])
+    }
+
+    private func setExtraTarget(_ target: String, at index: Int) {
+        var extras = extraTargets
+        guard extras.indices.contains(index) else { return }
+        extras[index] = target
+        storeExtraTargets(extras)
+    }
+
+    private func removeExtra(at index: Int) {
+        var extras = extraTargets
+        guard extras.indices.contains(index) else { return }
+        extras.remove(at: index)
+        storeExtraTargets(extras)
+    }
+
+    private func resolvedTarget(_ stored: String, _ render: RenderContext) -> (id: String, name: String)? {
+        PreviewTargets.resolve(
+            stored, render: render,
+            layouts: confidenceMonitor?.previewLayoutChoices ?? [])
+    }
+
+}
+
+struct PreviewTile: View {
+    let render: RenderContext
+    let target: String?
+
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.runOnly) private var runOnly
+    @Environment(\.confidenceMonitor) private var confidenceMonitor
+    @State private var hovering = false
+
+    var body: some View {
+        LiveSceneView(render: render, screenTargetID: target)
+            .aspectRatio(
+                PreviewTargets.aspect(
+                    of: target, render: render,
+                    layoutAspects: confidenceMonitor?.previewAspects ?? [:]),
+                contentMode: .fit)
+            .modifier(PreviewedLayoutKeeper(target: target))
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle.standard(CornerStandard.element))
+            .overlay {
+                RoundedRectangle.standard(CornerStandard.element)
+                    .strokeBorder(Color.separator.opacity(0.6), lineWidth: 1)
+            }
+
+            .overlay(alignment: .topTrailing) {
+                if hovering, !runOnly {
+                    Button {
+                        popOut()
+                    } label: {
+                        Image(systemName: "arrow.up.forward.square")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(4)
+                            .background(.black.opacity(0.45), in: RoundedRectangle.standard(CornerStandard.element))
+                            .padding(5)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .help("Open this screen's preview in its own window")
                 }
-                .onHover { previewHovering = $0 }
-                .contextMenu {
-                    if !runOnly {
-                        Button("Open in Window") { popOutPreview() }
+            }
+            .onHover { hovering = $0 }
+            .contextMenu {
+                if !runOnly {
+                    Button("Open in Window") { popOut() }
 
-                        let screens = PreviewTargets.screens(render)
-                        let layouts = confidenceMonitor?.previewLayoutChoices ?? []
-                        if screens.count + layouts.count > 1 {
-                            Menu("Open Preview Window") {
-                                ForEach(screens, id: \.id) { screen in
-                                    Button(screen.name) {
-                                        openWindow(id: "preview", value: screen.id)
-                                    }
+                    let screens = PreviewTargets.screens(render)
+                    let layouts = confidenceMonitor?.previewLayoutChoices ?? []
+                    if screens.count + layouts.count > 1 {
+                        Menu("Open Preview Window") {
+                            ForEach(screens, id: \.id) { screen in
+                                Button(screen.name) {
+                                    openWindow(id: "preview", value: screen.id)
                                 }
-                                if !layouts.isEmpty {
-                                    Divider()
-                                    ForEach(layouts, id: \.id) { layout in
-                                        Button(layout.name) {
-                                            openWindow(id: "preview", value: layout.id)
-                                        }
+                            }
+                            if !layouts.isEmpty {
+                                Divider()
+                                ForEach(layouts, id: \.id) { layout in
+                                    Button(layout.name) {
+                                        openWindow(id: "preview", value: layout.id)
                                     }
                                 }
                             }
                         }
                     }
                 }
-        }
+            }
     }
 
-    private func popOutPreview() {
-        guard let render else { return }
-        let target = resolvedTarget(render)?.id ?? ""
-        openWindow(id: "preview", value: target)
+    private func popOut() {
+        openWindow(id: "preview", value: target ?? "")
     }
+}
 
-    private func resolvedTarget(_ render: RenderContext) -> (id: String, name: String)? {
-        PreviewTargets.resolve(
-            previewTarget, render: render,
-            layouts: confidenceMonitor?.previewLayoutChoices ?? [])
-    }
+struct PreviewTargetMenu: View {
+    let render: RenderContext
+    let resolved: (id: String, name: String)?
+    let onPick: (String) -> Void
 
-    @ViewBuilder
-    private var screenPicker: some View {
-        if let render {
-            let screens = PreviewTargets.screens(render)
-            let layouts = confidenceMonitor?.previewLayoutChoices ?? []
-            let resolved = resolvedTarget(render)
-            Menu {
-                Section("Screens") {
-                    ForEach(screens, id: \.id) { screen in
-                        Toggle(screen.name, isOn: Binding(
-                            get: { resolved?.id == screen.id },
-                            set: { _ in previewTarget = screen.id }
+    @Environment(\.confidenceMonitor) private var confidenceMonitor
+
+    var body: some View {
+        let screens = PreviewTargets.screens(render)
+        let layouts = confidenceMonitor?.previewLayoutChoices ?? []
+        Menu {
+            Section("Screens") {
+                ForEach(screens, id: \.id) { screen in
+                    Toggle(screen.name, isOn: Binding(
+                        get: { resolved?.id == screen.id },
+                        set: { _ in onPick(screen.id) }
+                    ))
+                }
+            }
+
+            if !layouts.isEmpty {
+                Section("Layouts") {
+                    ForEach(layouts, id: \.id) { layout in
+                        Toggle(layout.name, isOn: Binding(
+                            get: { resolved?.id == layout.id },
+                            set: { _ in onPick(layout.id) }
                         ))
                     }
                 }
-
-                if !layouts.isEmpty {
-                    Section("Layouts") {
-                        ForEach(layouts, id: \.id) { layout in
-                            Toggle(layout.name, isOn: Binding(
-                                get: { resolved?.id == layout.id },
-                                set: { _ in previewTarget = layout.id }
-                            ))
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(resolved?.name ?? "No Screens")
-                        .font(.caption)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 7, weight: .semibold))
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .frame(height: 20)
-                .contentShape(Rectangle())
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .disabled(screens.isEmpty && layouts.isEmpty)
-
-            .headerItemBackground()
-            .help("Which screen or layout this preview shows — every screen composites its own view via the active preset")
+        } label: {
+            HStack(spacing: 4) {
+                Text(resolved?.name ?? "No Screens")
+                    .font(.caption)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .contentShape(Rectangle())
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(screens.isEmpty && layouts.isEmpty)
+        .headerItemBackground()
+        .help("Which screen or layout this preview shows — every screen composites its own view via the active preset")
     }
-
 }
 
 struct LiveSceneView: NSViewRepresentable {
