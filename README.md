@@ -75,6 +75,12 @@ That rewrites `PresenterCore/Sources/PresenterCore/Generated/Models.swift` and `
 
 `apps/mac/scripts/release-dmg.sh` builds, Developer ID-signs, notarizes, and staples a DMG. It expects a `notarization-profile` entry in your Keychain (`xcrun notarytool store-credentials`), the NDI SDK's redistributable license file, and the ProPresenter types from `apps/mac/scripts/generate-propresenter-proto.sh`.
 
+### Draw from iPad
+
+With Settings › Network & API › Draw from iPad enabled, the app serves a small drawing page on port 6981. Open the address shown there in Safari on an iPad on the same network, enter the PIN, and draw with Apple Pencil: strokes appear on the program output, so they also reach NDI, DeckLink, and recordings. The iPad shows a live preview of the program that refreshes when the slide changes.
+
+The drawable area can be limited to a third or half of the output (Settings › Drawable area); the iPad then shows only that part. Clear All also clears the ink. Slides and combos can control it individually with the Clear Ink, Hide Ink, and Show Ink actions. The relay, stroke model, and page live in `apps/mac/Packages/LocalAPI/Sources/LocalAPI/Ink`; the page is a self-contained `Resources/ink.html`.
+
 ### Local API
 
 With Settings › Local API enabled, the app serves a REST and WebSocket API on port 6980, authenticated by scoped bearer tokens created in the same pane. `GET /v1/status` returns the live slide; `scripts/*.mjs` show it driving a show. The route table and OpenAPI document live in `apps/mac/Packages/LocalAPI`.

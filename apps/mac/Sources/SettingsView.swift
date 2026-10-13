@@ -10,6 +10,8 @@ struct AppSettingsView: View {
 
     var api: LocalAPIController?
 
+    var ink: InkController?
+
     @State private var pinFlow: PinFlow?
 
     @State private var entering: RunOnlyEntry?
@@ -396,6 +398,7 @@ struct AppSettingsView: View {
             control: AnyView(NDINetworkScopeControl())
         ))
         rows.append(contentsOf: apiRows)
+        rows.append(contentsOf: inkRows)
         return rows
     }
 
@@ -462,6 +465,40 @@ struct AppSettingsView: View {
                 caption: "A browsable page of every endpoint with descriptions and copyable examples — served by this Mac, works offline.",
                 keywords: "api reference docs documentation openapi explorer examples endpoints developer",
                 control: AnyView(LocalAPIContractRow(api: api))
+            ),
+        ]
+    }
+
+    private var inkRows: [SettingsRowSpec] {
+        guard let ink else { return [] }
+        return [
+            SettingsRowSpec(
+                id: "ink.enabled", category: .api,
+                title: "Draw from iPad",
+                caption: "Lets an iPad on this network draw on the program output with Apple Pencil. Open the address below in Safari on the iPad and enter the PIN.",
+                keywords: "ink draw drawing pencil ipad annotate telestrator markup sketch whiteboard",
+                control: AnyView(InkEnableToggle(ink: ink))
+            ),
+            SettingsRowSpec(
+                id: "ink.port", category: .api,
+                title: "Draw port",
+                caption: "Changing the port restarts the draw server.",
+                keywords: "ink draw port number network ipad",
+                control: AnyView(InkPortField(ink: ink))
+            ),
+            SettingsRowSpec(
+                id: "ink.area", category: .api,
+                title: "Drawable area",
+                caption: "The part of the program output the iPad can draw on. The iPad shows only this part, so you can draw on a side third and leave the rest clear.",
+                keywords: "ink draw area region third half side portion crop ipad",
+                control: AnyView(InkAreaPicker(ink: ink))
+            ),
+            SettingsRowSpec(
+                id: "ink.connect", category: .api,
+                title: "Draw address and PIN",
+                caption: "Open this address on the iPad, or scan the code, then enter the PIN. Drawing appears on the program output, including NDI, DeckLink, and recordings.",
+                keywords: "ink draw address pin qr code ipad connect",
+                control: AnyView(InkConnectRow(ink: ink))
             ),
         ]
     }

@@ -1642,6 +1642,9 @@ public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable 
     case clearAll
     case clearAudio
     case clearSignage
+    case clearInk
+    case hideInk
+    case showInk
     case switchOutputPreset
     case fireMedia
     case fireAlert

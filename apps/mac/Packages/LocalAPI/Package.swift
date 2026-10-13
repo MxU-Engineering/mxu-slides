@@ -19,7 +19,8 @@ let package = Package(
                 .product(name: "FlyingFox", package: "FlyingFox")
             ],
             resources: [
-                .copy("Resources/document-schemas.json")
+                .copy("Resources/document-schemas.json"),
+                .copy("Resources/ink.html")
             ]
         ),
         .testTarget(name: "LocalAPITests", dependencies: ["LocalAPI"]),
