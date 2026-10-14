@@ -427,6 +427,7 @@ public extension MessageNotes {
         themeId: String = "",
         theme: Theme? = nil,
         style: String? = nil,
+        kindThemes: [Kind: Theme] = [:],
         newID: () -> String = { UUID().uuidString }
     ) -> Presentation {
         var slides: [Slide] = []
@@ -439,8 +440,11 @@ public extension MessageNotes {
                     slides[slides.count - 1].notes = joined(slides[slides.count - 1].notes, block.text)
                 }
             } else {
+                let own = kindThemes[block.kind].flatMap { $0.id == themeId ? nil : $0 }
+                let ownStyle = own.map { styles(in: $0).contains(style ?? "") ? style : nil } ?? style
                 var slide = slide(
-                    for: block, design: design(for: block.kind, in: theme, style: style), newID: newID)
+                    for: block, design: design(for: block.kind, in: own ?? theme, style: ownStyle), newID: newID)
+                slide.themeId = own?.id
                 for note in waiting.reversed() { slide.notes = joined(note, slide.notes) }
                 waiting = []
                 slides.append(slide)

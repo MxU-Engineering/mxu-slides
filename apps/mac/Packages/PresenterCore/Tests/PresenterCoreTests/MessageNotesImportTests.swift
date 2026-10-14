@@ -117,6 +117,19 @@ private func box(_ presentation: Presentation, _ slide: Int, _ name: String) -> 
     presentation.slides[slide].objects.first { $0.name == name }
 }
 
+@Test func eachKindCanTakeItsOwnTheme() {
+    let deck = StarterPack.cleanGeometric.makeTheme()
+    guard let other = StarterPack.allCases.map({ $0.makeTheme() }).first(where: { $0.id != deck.id }) else { return }
+    let presentation = MessageNotes.makePresentation(
+        MessageNotes.parse(outline), themeId: deck.id, theme: deck, kindThemes: [.scripture: other, .point: deck])
+    let parsed = MessageNotes.parse(outline)
+    let kinds = parsed.blocks.filter { $0.kind != .skip }.map(\.kind)
+    #expect(kinds.count == presentation.slides.count)
+    for (kind, slide) in zip(kinds, presentation.slides) {
+        #expect(slide.themeId == (kind == .scripture ? other.id : nil))
+    }
+}
+
 @Test func slidesLandOnTheMatchingDesigns() {
     let presentation = built()
     #expect(presentation.name == "Abba and Kiss")

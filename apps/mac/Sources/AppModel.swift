@@ -3162,10 +3162,12 @@ final class AppModel {
     @discardableResult
     func importMessageNotes(
         _ parsed: MessageNotes.Parsed, fallbackTitle: String? = nil, themeId: String = "", style: String? = nil,
+        kindThemeIds: [MessageNotes.Kind: String] = [:],
         origin: PresentationOrigin = PresentationOrigin(.messageNotes)
     ) -> String? {
         var presentation = MessageNotes.makePresentation(
-            parsed, fallbackTitle: fallbackTitle, themeId: themeId, theme: theme(themeId), style: style)
+            parsed, fallbackTitle: fallbackTitle, themeId: themeId, theme: theme(themeId), style: style,
+            kindThemes: kindThemeIds.compactMapValues { theme($0) })
         presentation.origin = origin
         createInDrive(presentation)
         lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"
