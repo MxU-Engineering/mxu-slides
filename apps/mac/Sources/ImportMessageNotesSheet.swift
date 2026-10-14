@@ -36,8 +36,7 @@ struct ImportMessageNotesSheet: View {
     @State private var revealingPointIndices: Set<Int> = []
     @State private var imageMediaIDs: [Int: [String]] = [:]
     @State private var blankSlideImageMediaIDs: [Int: [String]] = [:]
-    @State private var designOverrides: [Int: String] = [:]
-    @State private var fontSizes: [Int: Double] = [:]
+    @State private var removedSlideIndices: Set<Int> = []
     @State private var showAdvanceOptions = false
 
     @State private var boldOnly = false
@@ -65,8 +64,7 @@ struct ImportMessageNotesSheet: View {
         var blankSlideAfterSlots: Set<Int>
         var removedBlankSlideAfterSlots: Set<Int>
         var removedBlankSlideSlots: Set<Int>
-        var designOverrides: [Int: String]
-        var fontSizes: [Int: Double]
+        var removedSlideIndices: Set<Int>
         var imageMediaIDs: [Int: [String]]
         var blankSlideImageMediaIDs: [Int: [String]]
         var boldOnly: Bool
@@ -129,7 +127,7 @@ struct ImportMessageNotesSheet: View {
             blankSlideAfterSlots: blankSlideAfterSlots,
             removedBlankSlideAfterSlots: removedBlankSlideAfterSlots,
             removedBlankSlideSlots: removedBlankSlideSlots,
-            designOverrides: designOverrides, fontSizes: fontSizes, imageMediaIDs: imageMediaIDs,
+            removedSlideIndices: removedSlideIndices, imageMediaIDs: imageMediaIDs,
             blankSlideImageMediaIDs: blankSlideImageMediaIDs,
             boldOnly: boldOnly && mixesBold)
     }
@@ -178,8 +176,6 @@ struct ImportMessageNotesSheet: View {
         .onChange(of: blankSlideAtBeginning) { _, _ in clearBlankSlideSelections() }
         .onChange(of: blankSlidesBetweenSlides) { _, _ in clearBlankSlideSelections() }
         .onChange(of: keepScripturePassagesTogether) { _, _ in clearBlankSlideSelections() }
-        .onChange(of: themeId) { _, _ in designOverrides = [:] }
-        .onChange(of: storedStyle) { _, _ in designOverrides = [:] }
         .task(id: input) {
             let input = input
             await model.themesFilled([input.themeId] + Array(input.kindThemes.values))
@@ -268,8 +264,7 @@ struct ImportMessageNotesSheet: View {
         revealingPointIndices = []
         imageMediaIDs = [:]
         blankSlideImageMediaIDs = [:]
-        designOverrides = [:]
-        fontSizes = [:]
+        removedSlideIndices = []
         clearBlankSlideSelections()
     }
 
@@ -292,6 +287,26 @@ struct ImportMessageNotesSheet: View {
         let slot = followingContent?.sourceIndices.first ?? preview.parsed.blocks.count
         addedBlankSlideSlots.insert(slot)
         removedBlankSlideSlots.remove(slot)
+    }
+
+    private func canRemove(_ item: Preview.Item) -> Bool {
+        item.isBlank ? item.blankSlideSlot != nil : !item.sourceIndices.isEmpty
+    }
+
+    private func removeSlide(_ item: Preview.Item) {
+        if item.isBlank, let slot = item.blankSlideSlot {
+            if item.isAdditionalBlankAfter {
+                removedBlankSlideAfterSlots.insert(slot)
+            } else {
+                removedBlankSlideSlots.insert(slot)
+            }
+        } else {
+            removedSlideIndices.formUnion(item.sourceIndices)
+        }
+    }
+
+    private func canAddBlank(after item: Preview.Item) -> Bool {
+        !item.isAdditionalBlankAfter && (!item.isBlank || item.blankSlideSlot != nil)
     }
 
     private func revealBinding(for item: Preview.Item) -> Binding<Bool> {
@@ -323,6 +338,21 @@ struct ImportMessageNotesSheet: View {
                                     ImportSlideThumbnail(
                                         model: model, render: render, slide: item.slide, theme: itemTheme, showChords: false,
                                         cacheKey: Self.cacheKey(item.slide, themeId: itemThemeId, themeStamp: stamp))
+                                        .overlay(alignment: .topLeading) {
+                                            if canRemove(item) {
+                                                SlideBadgeButton(
+                                                    systemImage: "minus.circle.fill", tint: .red,
+                                                    help: "Remove this slide from the import"
+                                                ) { removeSlide(item) }
+                                                .offset(x: -7, y: -7)
+                                            }
+                                        }
+                                        .overlay(alignment: .trailing) {
+                                            if canAddBlank(after: item) {
+                                                BlankSlideGap { addBlankSlide(afterItemAt: offset) }
+                                                    .offset(x: 15)
+                                            }
+                                        }
                                     Text(item.caption)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
@@ -344,19 +374,6 @@ struct ImportMessageNotesSheet: View {
                                         .disabled(imageKey(for: item) == nil)
                                         Spacer(minLength: 0)
                                     }
-                                    if let blankSlideSlot = item.blankSlideSlot {
-                                        Button(role: .destructive) {
-                                            if item.isAdditionalBlankAfter {
-                                                removedBlankSlideAfterSlots.insert(blankSlideSlot)
-                                            } else {
-                                                removedBlankSlideSlots.insert(blankSlideSlot)
-                                            }
-                                        } label: {
-                                            Label("Delete this blank slide", systemImage: "trash")
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .help("Remove only this blank slide from the imported presentation.")
-                                    }
                                     if let imageID = imageIDs(for: item).first {
                                         HStack(spacing: 5) {
                                             Image(systemName: "photo")
@@ -376,20 +393,8 @@ struct ImportMessageNotesSheet: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                     }
-                                    if !item.isBlank {
-                                        slideControls(for: item, theme: itemTheme)
-                                    }
-                                    if !item.isAdditionalBlankAfter,
-                                       !item.isBlank || item.blankSlideSlot != nil {
-                                        Button {
-                                            addBlankSlide(afterItemAt: offset)
-                                        } label: {
-                                            Label("Add blank slide after", systemImage: "plus.rectangle.on.rectangle")
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .help("Insert a blank slide immediately after this slide, including after an image on a blank slide.")
-                                    }
                                 }
+                                .zIndex(Double(preview.items.count - offset))
                                 .dropDestination(for: URL.self) { urls, _ in
                                     guard imageKey(for: item) != nil, !urls.isEmpty else { return false }
                                     importImages(urls, for: item)
@@ -521,7 +526,7 @@ struct ImportMessageNotesSheet: View {
     ) -> Preview {
         let parsed = MessageNotes.parse(
             input.text, hints: input.hints, overrides: input.overrides, boldOnly: input.boldOnly)
-        let made = parsed.splittingVerses()
+        let made = parsed.splittingVerses().removingBlocks(at: input.removedSlideIndices)
         let groups = MessageNotes.slideGroups(
             in: made.blocks, revealingPointIndices: input.revealingPointIndices,
             includeTitleSlide: false)
@@ -537,8 +542,6 @@ struct ImportMessageNotesSheet: View {
             made, id: "message-notes-import-preview", themeId: input.themeId, theme: theme, style: input.style,
             kindThemes: kindThemes,
             revealingPointIndices: input.revealingPointIndices,
-            fontSizes: input.fontSizes,
-            designOverrides: input.designOverrides,
             showVerseNumbers: input.showVerseNumbers, includeTitleSlide: false,
             blankSlidesBetweenSlides: input.blankSlidesBetweenSlides,
             keepScripturePassagesTogether: input.keepScripturePassagesTogether,
@@ -630,47 +633,6 @@ struct ImportMessageNotesSheet: View {
                 kind: .skip, blankSlideSlot: nil))
         }
         return Preview(parsed: parsed, presentation: presentation, items: items)
-    }
-
-    @ViewBuilder
-    private func slideControls(for item: Preview.Item, theme: Theme?) -> some View {
-        if let index = item.sourceIndices.first {
-            let designs = MessageNotes.designNames(for: item.kind, in: theme, style: style)
-            if !designs.isEmpty {
-                Picker("Design", selection: designBinding(for: index)) {
-                    Text("Theme default").tag("")
-                    ForEach(designs, id: \.self) { name in Text(name).tag(name) }
-                }
-                .controlSize(.small)
-                .help("Choose this slide's theme design, or use the theme's automatic choice.")
-            }
-            Picker("Font size", selection: fontSizeBinding(for: index)) {
-                Text("Theme default").tag(0.0)
-                ForEach([36.0, 42, 48, 54, 60, 66, 72, 80, 88], id: \.self) { size in
-                    Text("\(Int(size)) pt").tag(size)
-                }
-            }
-            .controlSize(.small)
-            .help("Set this slide's text size. More typography controls are available in the Object inspector.")
-        }
-    }
-
-    private func designBinding(for index: Int) -> Binding<String> {
-        Binding(
-            get: { designOverrides[index] ?? "" },
-            set: { value in
-                if value.isEmpty { designOverrides.removeValue(forKey: index) }
-                else { designOverrides[index] = value }
-            })
-    }
-
-    private func fontSizeBinding(for index: Int) -> Binding<Double> {
-        Binding(
-            get: { fontSizes[index] ?? 0 },
-            set: { value in
-                if value == 0 { fontSizes.removeValue(forKey: index) }
-                else { fontSizes[index] = value }
-            })
     }
 
     static func cacheKey(_ slide: Slide, themeId: String, themeStamp: Double) -> String {
@@ -785,14 +747,12 @@ struct ImportMessageNotesSheet: View {
         let fallback = title.trimmingCharacters(in: .whitespaces)
         let parsed = MessageNotes.parse(text, hints: hints, overrides: overrides, boldOnly: boldOnly && mixesBold)
         let id = model.importMessageNotes(
-            parsed.splittingVerses(),
+            parsed.splittingVerses().removingBlocks(at: removedSlideIndices),
             fallbackTitle: fallback.isEmpty ? nil : fallback,
             themeId: themeId,
             style: style,
             kindThemeIds: kindThemeIds,
             revealingPointIndices: revealingPointIndices,
-            fontSizes: fontSizes,
-            designOverrides: designOverrides,
             showVerseNumbers: showVerseNumbers,
             blankSlidesBetweenSlides: blankSlidesBetweenSlides,
             keepScripturePassagesTogether: keepScripturePassagesTogether,
@@ -807,5 +767,44 @@ struct ImportMessageNotesSheet: View {
         )
         dismiss()
         if let id { onImported(id) }
+    }
+}
+
+private struct SlideBadgeButton: View {
+    let systemImage: String
+    let tint: Color
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, tint)
+                .font(.system(size: 17))
+                .background(Circle().fill(.white).padding(2))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+private struct BlankSlideGap: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            if hovering {
+                SlideBadgeButton(
+                    systemImage: "plus.circle.fill", tint: .green,
+                    help: "Add a blank slide here", action: action)
+            }
+        }
+        .frame(width: 26)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
     }
 }

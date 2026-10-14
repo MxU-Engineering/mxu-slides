@@ -130,6 +130,17 @@ private func box(_ presentation: Presentation, _ slide: Int, _ name: String) -> 
     }
 }
 
+@Test func aRemovedSlideLeavesTheOthersAndTheirOrder() {
+    let theme = StarterPack.cleanGeometric.makeTheme()
+    let parsed = MessageNotes.parse(outline).splittingVerses()
+    let full = MessageNotes.makePresentation(parsed, themeId: theme.id, theme: theme)
+    let index = parsed.blocks.firstIndex { $0.kind == .point }!
+    let trimmed = MessageNotes.makePresentation(
+        parsed.removingBlocks(at: [index]), themeId: theme.id, theme: theme)
+    #expect(trimmed.slides.count == full.slides.count - 1)
+    #expect(!trimmed.slides.contains { $0.objects.contains { $0.text == parsed.blocks[index].text } })
+}
+
 @Test func slidesLandOnTheMatchingDesigns() {
     let presentation = built()
     #expect(presentation.name == "Abba and Kiss")

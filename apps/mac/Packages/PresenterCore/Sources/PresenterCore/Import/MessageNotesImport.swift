@@ -865,6 +865,19 @@ public extension MessageNotes.Parsed {
         result.blocks = blocks.flatMap(MessageNotes.verses(of:))
         return result
     }
+
+    func removingBlocks(at indices: Set<Int>) -> MessageNotes.Parsed {
+        guard !indices.isEmpty else { return self }
+        var result = self
+        for index in indices where result.blocks.indices.contains(index) && result.blocks[index].kind != .skip {
+            result.blocks[index].kind = .skip
+            result.blocks[index].text = ""
+            result.blocks[index].detail = nil
+            result.blocks[index].cues = []
+            result.blocks[index].underlined = []
+        }
+        return result
+    }
 }
 
 extension MessageNotes {
