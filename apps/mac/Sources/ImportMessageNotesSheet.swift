@@ -32,7 +32,7 @@ struct ImportMessageNotesSheet: View {
     @State private var blankSlideAfterSlots: Set<Int> = []
     @State private var removedBlankSlideAfterSlots: Set<Int> = []
     @State private var removedBlankSlideSlots: Set<Int> = []
-    @State private var revealingPointIndices: Set<Int> = []
+    @AppStorage("messageNotesCombinePoints") private var combineAdjacentPoints = false
     @State private var imageMediaIDs: [Int: [String]] = [:]
     @State private var blankSlideImageMediaIDs: [Int: [String]] = [:]
     @State private var removedSlideIndices: Set<Int> = []
@@ -54,7 +54,7 @@ struct ImportMessageNotesSheet: View {
         var kindThemes: [String: String] = [:]
         var kindStamps: [String: Double] = [:]
         var kindStyles: [String: String] = [:]
-        var revealingPointIndices: Set<Int>
+        var combineAdjacentPoints: Bool
         var showVerseNumbers: Bool
         var blankSlidesBetweenSlides: Bool
         var keepScripturePassagesTogether: Bool
@@ -134,7 +134,7 @@ struct ImportMessageNotesSheet: View {
                 chosen.map { ($0.value, model.entry($0.value)?.updatedAt.timeIntervalSince1970 ?? 0) },
                 uniquingKeysWith: { first, _ in first }),
             kindStyles: Dictionary(uniqueKeysWithValues: kindStyles.map { ($0.key.rawValue, $0.value) }),
-            revealingPointIndices: revealingPointIndices,
+            combineAdjacentPoints: combineAdjacentPoints,
             showVerseNumbers: showVerseNumbers,
             blankSlidesBetweenSlides: blankSlidesBetweenSlides,
             keepScripturePassagesTogether: keepScripturePassagesTogether,
@@ -281,7 +281,6 @@ struct ImportMessageNotesSheet: View {
     }
 
     private func clearSlideOptions() {
-        revealingPointIndices = []
         imageMediaIDs = [:]
         blankSlideImageMediaIDs = [:]
         removedSlideIndices = []
@@ -329,24 +328,12 @@ struct ImportMessageNotesSheet: View {
         !item.isAdditionalBlankAfter && (!item.isBlank || item.blankSlideSlot != nil)
     }
 
-    private func revealBinding(for item: Preview.Item) -> Binding<Bool> {
-        Binding(
-            get: { item.sourceIndices.allSatisfy(revealingPointIndices.contains) },
-            set: { isSelected in
-                if isSelected {
-                    revealingPointIndices.formUnion(item.sourceIndices)
-                } else {
-                    revealingPointIndices.subtract(item.sourceIndices)
-                }
-            })
-    }
-
     private var previewPane: some View {
         Group {
             if let preview, !isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Turn on “Combine adjacent points” for each point you want on a shared slide; each point appears on its own click. Drop images onto any slide, including blank slides, or use Add image.")
+                        Text("Hover a slide to add an image, or drop images onto it. Use the red minus to remove a slide and the green plus between slides to add a blank one.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], alignment: .leading, spacing: 10) {
@@ -367,6 +354,14 @@ struct ImportMessageNotesSheet: View {
                                                 .offset(x: -7, y: -7)
                                             }
                                         }
+                                        .overlay {
+                                            if imageKey(for: item) != nil {
+                                                SlideImageHover(
+                                                    imageCount: imageIDs(for: item).count,
+                                                    add: { chooseImage(for: item) },
+                                                    remove: { removeImages(for: item) })
+                                            }
+                                        }
                                         .overlay(alignment: .trailing) {
                                             if canAddBlank(after: item) {
                                                 BlankSlideGap { addBlankSlide(afterItemAt: offset) }
@@ -377,42 +372,6 @@ struct ImportMessageNotesSheet: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
-                                    if item.isPoint {
-                                        Toggle("Combine adjacent points", isOn: revealBinding(for: item))
-                                            .toggleStyle(.switch)
-                                            .controlSize(.mini)
-                                            .font(.caption2)
-                                            .help("Select adjacent point slides to combine them. Each selected point will appear on a separate click.")
-                                    }
-                                    HStack {
-                                        Button {
-                                            chooseImage(for: item)
-                                        } label: {
-                                            Label("Add image…", systemImage: "photo.badge.plus")
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .disabled(imageKey(for: item) == nil)
-                                        Spacer(minLength: 0)
-                                    }
-                                    if let imageID = imageIDs(for: item).first {
-                                        HStack(spacing: 5) {
-                                            Image(systemName: "photo")
-                                            Text(imageIDs(for: item).count > 1
-                                                 ? "\(imageIDs(for: item).count) images"
-                                                 : model.media(imageID)?.name ?? "Attached image")
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Button {
-                                                removeImages(for: item)
-                                            } label: {
-                                                Image(systemName: "xmark.circle.fill")
-                                            }
-                                            .buttonStyle(.plain)
-                                            .help("Remove images from this slide")
-                                        }
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                    }
                                 }
                                 .zIndex(Double(preview.items.count - offset))
                                 .dropDestination(for: URL.self) { urls, _ in
@@ -471,6 +430,8 @@ struct ImportMessageNotesSheet: View {
                         Toggle("Bold lines only", isOn: $boldOnly)
                             .help("Leave unbolded lines off screen as slide notes. Scripture and quotes still make slides.")
                     }
+                    Toggle("Combine adjacent points", isOn: $combineAdjacentPoints)
+                        .help("Put runs of consecutive points on one slide; each point appears on its own click.")
                     Toggle("Blank slide between each slide", isOn: $blankSlidesBetweenSlides)
                         .help("Insert an empty slide between unrelated generated content slides.")
                     Toggle("Keep scripture passages together", isOn: $keepScripturePassagesTogether)
@@ -574,11 +535,12 @@ struct ImportMessageNotesSheet: View {
         let parsed = MessageNotes.parse(
             input.text, hints: input.hints, overrides: input.overrides, boldOnly: input.boldOnly)
         let made = parsed.splittingVerses().removingBlocks(at: input.removedSlideIndices)
+        let revealing = input.combineAdjacentPoints ? made.pointIndices() : []
         let groups = MessageNotes.slideGroups(
-            in: made.blocks, revealingPointIndices: input.revealingPointIndices,
+            in: made.blocks, revealingPointIndices: revealing,
             includeTitleSlide: false)
         let blankSlots = MessageNotes.blankSlideSlots(
-            in: made.blocks, revealingPointIndices: input.revealingPointIndices,
+            in: made.blocks, revealingPointIndices: revealing,
             includeTitleSlide: false,
             blankSlidesBetweenSlides: input.blankSlidesBetweenSlides,
             keepScripturePassagesTogether: input.keepScripturePassagesTogether,
@@ -588,7 +550,7 @@ struct ImportMessageNotesSheet: View {
         let presentation = MessageNotes.makePresentation(
             made, id: "message-notes-import-preview", themeId: input.themeId, theme: theme,
             kindThemes: kindThemes, kindStyles: kindStyles,
-            revealingPointIndices: input.revealingPointIndices,
+            revealingPointIndices: revealing,
             showVerseNumbers: input.showVerseNumbers, includeTitleSlide: false,
             blankSlidesBetweenSlides: input.blankSlidesBetweenSlides,
             keepScripturePassagesTogether: input.keepScripturePassagesTogether,
@@ -793,13 +755,14 @@ struct ImportMessageNotesSheet: View {
     private func importNow() {
         let fallback = title.trimmingCharacters(in: .whitespaces)
         let parsed = MessageNotes.parse(text, hints: hints, overrides: overrides, boldOnly: boldOnly && mixesBold)
+        let prepared = parsed.splittingVerses().removingBlocks(at: removedSlideIndices)
         let id = model.importMessageNotes(
-            parsed.splittingVerses().removingBlocks(at: removedSlideIndices),
+            prepared,
             fallbackTitle: fallback.isEmpty ? nil : fallback,
             themeId: themeId,
             kindThemeIds: kindThemeIds,
             kindStyles: kindStyles,
-            revealingPointIndices: revealingPointIndices,
+            revealingPointIndices: combineAdjacentPoints ? prepared.pointIndices() : [],
             showVerseNumbers: showVerseNumbers,
             blankSlidesBetweenSlides: blankSlidesBetweenSlides,
             keepScripturePassagesTogether: keepScripturePassagesTogether,
@@ -851,6 +814,35 @@ private struct BlankSlideGap: View {
         }
         .frame(width: 26)
         .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+    }
+}
+
+private struct SlideImageHover: View {
+    let imageCount: Int
+    let add: () -> Void
+    let remove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            if hovering {
+                VStack(spacing: 6) {
+                    Button(action: add) {
+                        Label("Add image…", systemImage: "photo.badge.plus")
+                    }
+                    if imageCount > 0 {
+                        Button(role: .destructive, action: remove) {
+                            Label(imageCount > 1 ? "Remove \(imageCount) images" : "Remove image", systemImage: "xmark.circle")
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
     }

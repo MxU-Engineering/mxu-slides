@@ -868,6 +868,10 @@ public extension MessageNotes.Parsed {
         return result
     }
 
+    func pointIndices() -> Set<Int> {
+        Set(blocks.indices.filter { blocks[$0].kind == .point })
+    }
+
     func removingBlocks(at indices: Set<Int>) -> MessageNotes.Parsed {
         guard !indices.isEmpty else { return self }
         var result = self
