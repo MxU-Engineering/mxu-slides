@@ -14,7 +14,7 @@ public enum MessageNotesFile {
         }
     }
 
-    public static let extensions = ["docx", "doc", "rtf", "odt", "txt", "text", "md", "pdf"]
+    public static let extensions = ["docx", "doc", "pages", "pptx", "rtf", "odt", "txt", "text", "md", "pdf"]
 
     public static func load(_ data: Data, filename: String) -> Loaded? {
         let ext = (filename as NSString).pathExtension.lowercased()
@@ -22,7 +22,9 @@ public enum MessageNotesFile {
         let documentTypes: [String: NSAttributedString.DocumentType] = [
             "docx": .officeOpenXML, "doc": .docFormat, "rtf": .rtf, "odt": .openDocument,
         ]
-        if let type = documentTypes[ext] {
+        if ext == "pages" || ext == "pptx" {
+            loaded = nil
+        } else if let type = documentTypes[ext] {
             loaded = (try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil))
                 .map(read)
         } else if ext == "pdf" || data.starts(with: Array("%PDF".utf8)) {
@@ -32,6 +34,77 @@ public enum MessageNotesFile {
                 .map { Loaded(text: $0) }
         }
         return loaded.flatMap { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+    }
+
+    public static func loadPages(at url: URL) throws -> Loaded {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mxu-pages-import-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let pdfURL = directory.appendingPathComponent("export.pdf")
+        let sourcePath = appleScriptString(url.path)
+        let outputPath = appleScriptString(pdfURL.path)
+        let script = """
+        tell application id "com.apple.iWork.Pages"
+            set importedDocument to open POSIX file \(sourcePath)
+            try
+                export importedDocument to POSIX file \(outputPath) as PDF
+            on error errorMessage number errorNumber
+                try
+                    close importedDocument saving no
+                end try
+                error errorMessage number errorNumber
+            end try
+            close importedDocument saving no
+        end tell
+        """
+        let appleScript = NSAppleScript(source: script)
+        var errorInfo: NSDictionary?
+
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing { url.stopAccessingSecurityScopedResource() }
+        }
+        guard let appleScript else {
+            throw NSError(
+                domain: "MessageNotesFile.PagesImport", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Could not prepare the Pages document for import."])
+        }
+        _ = appleScript.executeAndReturnError(&errorInfo)
+        if let errorInfo {
+            let detail = errorInfo["NSAppleScriptErrorMessage"] as? String
+            let errorNumber = errorInfo["NSAppleScriptErrorNumber"] as? Int
+            let message: String
+            if errorNumber == -1743 {
+                message = "Allow MxU Slides to control Pages in System Settings > Privacy & Security > Automation, then try again."
+            } else {
+                message = detail.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? "Pages couldn't export this document. Make sure Pages is installed and allow MxU Slides to control it."
+            }
+            throw NSError(
+                domain: "MessageNotesFile.PagesImport", code: errorNumber ?? 1,
+                userInfo: [NSLocalizedDescriptionKey: message])
+        }
+
+        let data = try Data(contentsOf: pdfURL)
+        guard data.starts(with: Array("%PDF".utf8)),
+              let loaded = load(data, filename: "pages-export.pdf")
+        else {
+            throw NSError(
+                domain: "MessageNotesFile.PagesImport", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "The Pages document did not contain readable text."])
+        }
+        return loaded
+    }
+
+    private static func appleScriptString(_ value: String) -> String {
+        let lines = value.components(separatedBy: .newlines).map { line in
+            let escaped = line.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"" + escaped + "\""
+        }
+        return lines.joined(separator: " & return & ")
     }
 
     public static func read(_ rich: NSAttributedString) -> Loaded {

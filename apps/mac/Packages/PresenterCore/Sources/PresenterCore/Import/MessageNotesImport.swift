@@ -30,6 +30,8 @@ public enum MessageNotes {
 
         public var detail: String?
 
+        public var passageReference: String? = nil
+
         public var cues: [String] = []
         public var underlined: [String] = []
     }
@@ -50,24 +52,31 @@ public enum MessageNotes {
     ) -> Parsed {
         struct Line {
             var text: String
+            var source: String
             var adjacent: Bool
         }
         var lines: [Line] = []
         var gap = true
         for raw in LyricTextImporter.unified(text).components(separatedBy: "\n") {
-            let trimmed = raw.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty {
+            let source = raw.trimmingCharacters(in: .whitespaces)
+            if source.isEmpty {
                 gap = true
             } else {
-                lines.append(Line(text: trimmed, adjacent: !gap))
+                let normalized = source.replacingOccurrences(of: "\u{00a0}", with: " ")
+                lines.append(Line(
+                    text: markdownEmphasis.stringByReplacingMatches(
+                        in: normalized, range: NSRange(normalized.startIndex..., in: normalized), withTemplate: "$2"),
+                    source: source, adjacent: !gap))
                 gap = false
             }
         }
-        let boldMatters = boldOnly && lines.contains { hints[$0.text]?.bold == true }
+        let boldMatters = boldOnly && lines.contains { hints[$0.source]?.bold == true }
 
         let spaced = lines.dropFirst().count { !$0.adjacent } * 2 >= lines.count - 1
         func read(_ line: Line) -> Reading {
-            reading(line.text, hint: hints[line.text], boldMatters: boldMatters, forced: overrides[line.text])
+            reading(
+                line.text, source: line.source, hint: hints[line.source],
+                boldMatters: boldMatters, forced: overrides[line.source])
         }
 
         var blocks: [Block] = []
@@ -78,9 +87,9 @@ public enum MessageNotes {
             let first = lines[index]
             var held = 1
             while spaced, !blocks.isEmpty, held < 4, current.block.kind == .point, current.ordinary,
-                  overrides[first.text] == nil, index + 1 < lines.count, lines[index + 1].adjacent,
-                  overrides[lines[index + 1].text] == nil,
-                  hints[first.text]?.bold == hints[lines[index + 1].text]?.bold {
+                  overrides[first.source] == nil, index + 1 < lines.count, lines[index + 1].adjacent,
+                  overrides[lines[index + 1].source] == nil,
+                  hints[first.source]?.bold == hints[lines[index + 1].source]?.bold {
                 let next = read(lines[index + 1])
                 guard next.block.kind == .point, next.ordinary,
                       current.block.text.count + next.block.text.count < longestPoint
@@ -91,15 +100,16 @@ public enum MessageNotes {
                 held += 1
                 index += 1
             }
-            if held == 1, index + 1 < lines.count, lines[index + 1].adjacent, overrides[lines[index + 1].text] == nil {
+            if held == 1, index + 1 < lines.count, lines[index + 1].adjacent,
+               overrides[lines[index + 1].source] == nil {
                 let next = read(lines[index + 1])
 
                 if current.block.kind == .scripture, current.block.text.isEmpty, next.ordinary, !blocks.isEmpty {
                     current.block.text = next.body
                     current.block.cues += next.block.cues
                     index += 1
-                } else if current.ordinary, overrides[lines[index].text] == nil,
-                          let reference = trailingReferenceLine(lines[index + 1].text) {
+                } else if current.ordinary, overrides[lines[index].source] == nil,
+                          let reference = trailingReferenceLine(lines[index + 1].text, followingText: current.body) {
                     current.block.kind = .scripture
                     current.block.text = current.body
                     current.block.detail = reference
@@ -110,7 +120,8 @@ public enum MessageNotes {
             if current.block.kind == .scripture, !current.block.text.isEmpty,
                let range = current.block.detail.flatMap(verseRange.groups(in:)),
                let low = Int(range[1]), let high = Int(range[2]) {
-                while index + 1 < lines.count, lines[index + 1].adjacent, overrides[lines[index + 1].text] == nil,
+                while index + 1 < lines.count, lines[index + 1].adjacent,
+                      overrides[lines[index + 1].source] == nil,
                       let number = leadingNumber.groups(in: lines[index + 1].text).flatMap({ Int($0[0]) }),
                       number > low, number <= high {
                     current.block.text += " " + lines[index + 1].text
@@ -126,6 +137,12 @@ public enum MessageNotes {
                let number = Int(verse), let numbered = numberedVerses(in: current.block.text, first: number, last: number),
                numbered.count == 1 {
                 current.block.text = numbered[0]
+            }
+            if current.block.kind == .scripture, current.block.text.isEmpty,
+               let reference = current.block.detail,
+               attachTrailingPassage(reference: reference, to: &blocks, ordinary: &ordinary) {
+                index += 1
+                continue
             }
             blocks.append(current.block)
             ordinary.append(current.ordinary)
@@ -172,7 +189,9 @@ public enum MessageNotes {
         var body: String
     }
 
-    static func reading(_ line: String, hint: Hint?, boldMatters: Bool, forced: Kind?) -> Reading {
+    static func reading(
+        _ line: String, source: String? = nil, hint: Hint?, boldMatters: Bool, forced: Kind?
+    ) -> Reading {
         var rest = strippingBullet(line)
         var cues: [String] = []
         while let lead = leadingAside.groups(in: rest), !ScriptureReference.isReferenceLine(lead[0]) {
@@ -183,7 +202,7 @@ public enum MessageNotes {
         func made(_ kind: Kind, _ text: String, detail: String? = nil, ordinary: Bool = false) -> Reading {
             Reading(
                 block: Block(
-                    source: line, kind: kind, text: text, detail: detail,
+                    source: source ?? line, kind: kind, text: text, detail: detail,
                     cues: kind == .skip ? [] : cues,
                     underlined: kind == .point || kind == .title ? underlined.filter { $0.count > 1 } : []),
                 ordinary: ordinary, body: rest)
@@ -267,9 +286,18 @@ public enum MessageNotes {
     }
 
     static func scripture(in line: String) -> (reference: String?, verse: String)? {
-        let bare = line.trimmingCharacters(in: CharacterSet(charactersIn: "()[]–—- "))
+        let quotePairs: [Character: Character] = ["\"": "\"", "“": "”", "‘": "’", "«": "»"]
+        if let first = line.first, let last = line.last, quotePairs[first] == last, line.count > 1 {
+            let quoted = String(line.dropFirst().dropLast())
+            if let scripture = scripture(in: quoted) { return scripture }
+        }
+        let bare = line.trimmingCharacters(in: CharacterSet(charactersIn: "()[]–—- \"“”‘’«»"))
         if ScriptureReference.isReferenceLine(bare) {
             return (bare, "")
+        }
+        if let numberAndReference = leadingVerseReference.groups(in: line),
+           ScriptureReference.isReferenceLine(numberAndReference[1]) {
+            return (numberAndReference[1], numberAndReference[0])
         }
         let found = ScriptureReference.matches(in: line)
         if line.hasPrefix("("), let lead = found.first, line.index(after: line.startIndex) == lead.range.lowerBound {
@@ -304,10 +332,42 @@ public enum MessageNotes {
         return nil
     }
 
-    static func trailingReferenceLine(_ line: String) -> String? {
-        guard let first = line.first, first == "(" || separators.contains(first) else { return nil }
-        let bare = line.trimmingCharacters(in: CharacterSet(charactersIn: "()[]–—- "))
-        return ScriptureReference.isReferenceLine(bare) ? bare : nil
+    private static func attachTrailingPassage(
+        reference: String, to blocks: inout [Block], ordinary: inout [Bool]
+    ) -> Bool {
+        guard let range = verseRange.groups(in: reference),
+              let firstVerse = Int(range[1]), let lastVerse = Int(range[2]), lastVerse > firstVerse
+        else { return false }
+        var expected = lastVerse
+        var matchedIndices: [Int] = []
+        for index in blocks.indices.reversed() {
+            guard ordinary[index], blocks[index].kind == .point || blocks[index].kind == .skip,
+                  let verse = leadingVerseReference.groups(in: blocks[index].text),
+                  Int(verse[0]) == expected else { break }
+            blocks[index].kind = .scripture
+            blocks[index].detail = String(expected)
+            blocks[index].text = verse[1].trimmingCharacters(in: .whitespaces)
+            ordinary[index] = false
+            matchedIndices.append(index)
+            if expected == firstVerse { break }
+            expected -= 1
+        }
+        guard !matchedIndices.isEmpty else { return false }
+        blocks[matchedIndices[0]].passageReference = reference
+        return true
+    }
+
+    static func trailingReferenceLine(_ line: String, followingText: String) -> String? {
+        let bare = line.trimmingCharacters(in: CharacterSet(charactersIn: "()[]–—- \"“”‘’«» "))
+        guard ScriptureReference.isReferenceLine(bare) else { return nil }
+        if let first = line.first, first == "(" || separators.contains(first) {
+            return bare
+        }
+        if line == bare,
+           (followingText.count >= 40 || leadingVerseNumber.groups(in: followingText) != nil) {
+            return bare
+        }
+        return nil
     }
 
     static func quotation(in line: String) -> (text: String, source: String?)? {
@@ -351,6 +411,9 @@ public enum MessageNotes {
         #"^(?:pictures?|pics?|photos?|images?|videos?|clips?|graphics?|slides?)\s*(?:of|from|[:–—-])\s"#, caseInsensitive: true)
     private static let dated = GroupRegex(#"(\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b)"#)
     private static let leadingNumber = GroupRegex(#"^[\[(]?(\d{1,3})[\])]?\.?\s*[\p{L}“"‘]"#)
+    private static let leadingVerseNumber = GroupRegex(#"^\s*\d{1,3}(?:\s+|$)"#)
+    private static let leadingVerseReference = GroupRegex(#"^\s*(\d{1,3})\s+(.+?)\s*$"#)
+    private static let markdownEmphasis = try! NSRegularExpression(pattern: #"([*_]{1,3})(.+?)\1"#)
     static let singleVerse = GroupRegex(#"\d\s*[:.]\s*(\d+)[a-c]?(?:\s*\(?[A-Za-z]+\)?)?$"#)
     private static let serviceLine = GroupRegex(
         #"^(?:introduction|intro|conclusion|illustration|story|transition|next steps?|offering(?: moment)?|giving|tithes?(?: (?:and|&) offerings?)?|campus connect|announcements?|welcome|worship(?: set)?|response(?: song)?|communion|baptisms?|closing(?: prayer| song)?|opening prayer|prayer|dismissal|dismiss|benediction|invitation|altar call|video|bumper)\s*(?:$|[–—:/~-])"#,
@@ -384,6 +447,15 @@ public extension MessageNotes {
             ?? (kind == .point ? nil : best(.point, among: inStyle))
             ?? best(kind, among: designs)
             ?? best(.point, among: designs)
+    }
+
+    static func designNames(for kind: Kind, in theme: Theme?, style: String?) -> [String] {
+        let designs = theme?.slides ?? []
+        let folder = style ?? styles(in: theme).first ?? ""
+        let matching = designs.filter { score($0, kind) > 0 }
+        let preferred = matching.filter { ($0.folder ?? "") == folder }
+        let otherDesigns = matching.filter { ($0.folder ?? "") != folder }
+        return (preferred + otherDesigns).map(\.name)
     }
 
     internal static func score(_ design: Slide, _ kind: Kind) -> Int {
@@ -428,11 +500,35 @@ public extension MessageNotes {
         theme: Theme? = nil,
         style: String? = nil,
         kindThemes: [Kind: Theme] = [:],
+        revealingPointIndices: Set<Int> = [],
+        fontSizes: [Int: Double] = [:],
+        designOverrides: [Int: String] = [:],
+        showVerseNumbers: Bool = true,
+        includeTitleSlide: Bool = true,
+        blankSlidesBetweenSlides: Bool = false,
+        keepScripturePassagesTogether: Bool = true,
+        blankSlideAtBeginning: Bool = false,
+        additionalBlankSlideSlots: Set<Int> = [],
+        blankSlideAfterSlots: Set<Int> = [],
+        removedBlankSlideAfterSlots: Set<Int> = [],
+        removedBlankSlideSlots: Set<Int> = [],
+        imageMediaIDs: [Int: [String]] = [:],
+        blankSlideImageMediaIDs: [Int: [String]] = [:],
         newID: () -> String = { UUID().uuidString }
     ) -> Presentation {
         var slides: [Slide] = []
+        if blankSlideAtBeginning, !removedBlankSlideSlots.contains(-1) {
+            slides.append(Slide(
+                id: newID(), name: "", objects: imageObjects(blankSlideImageMediaIDs[-1] ?? [], newID: newID)))
+            if blankSlideAfterSlots.contains(-1), !removedBlankSlideAfterSlots.contains(-1) {
+                slides.append(Slide(id: newID(), name: "", objects: []))
+            }
+        }
         var waiting: [String] = []
-        for block in parsed.blocks {
+        var previousContentBlock: Block?
+        for prepared in preparedBlocks(parsed.blocks, revealingPointIndices: revealingPointIndices) {
+            var block = prepared.block
+            if block.kind == .title, !includeTitleSlide { continue }
             if block.kind == .skip {
                 if slides.isEmpty {
                     waiting.append(block.text)
@@ -440,14 +536,48 @@ public extension MessageNotes {
                     slides[slides.count - 1].notes = joined(slides[slides.count - 1].notes, block.text)
                 }
             } else {
+                normalizeVerseNumber(&block)
                 let own = kindThemes[block.kind].flatMap { $0.id == themeId ? nil : $0 }
+                let source = own ?? theme
                 let ownStyle = own.map { styles(in: $0).contains(style ?? "") ? style : nil } ?? style
                 var slide = slide(
-                    for: block, design: design(for: block.kind, in: own ?? theme, style: ownStyle), newID: newID)
+                    for: block,
+                    design: prepared.sourceIndices.first.flatMap { index in
+                        designOverrides[index].flatMap { name in source?.slides?.first { $0.name == name } }
+                    } ?? design(for: block.kind, in: source, style: ownStyle),
+                    pointReveals: prepared.pointReveals,
+                    fontSize: prepared.sourceIndices.first.flatMap { fontSizes[$0] },
+                    showVerseNumbers: showVerseNumbers,
+                    newID: newID)
                 slide.themeId = own?.id
+                let slot = prepared.sourceIndices.first ?? -2
+                let automaticBlank = blankSlidesBetweenSlides && previousContentBlock != nil
+                    && !(keepScripturePassagesTogether && continuesScripturePassage(from: previousContentBlock, to: block))
+                if (automaticBlank || additionalBlankSlideSlots.contains(slot)),
+                   !removedBlankSlideSlots.contains(slot) {
+                    slides.append(Slide(
+                        id: newID(), name: "",
+                        objects: imageObjects(blankSlideImageMediaIDs[slot] ?? [], newID: newID)))
+                    if blankSlideAfterSlots.contains(slot), !removedBlankSlideAfterSlots.contains(slot) {
+                        slides.append(Slide(id: newID(), name: "", objects: []))
+                    }
+                }
+                let imageIDs = prepared.sourceIndices.flatMap { imageMediaIDs[$0] ?? [] }
+                slide.objects.insert(contentsOf: imageObjects(imageIDs, newID: newID), at: 0)
                 for note in waiting.reversed() { slide.notes = joined(note, slide.notes) }
                 waiting = []
                 slides.append(slide)
+                previousContentBlock = block
+            }
+        }
+        if additionalBlankSlideSlots.contains(parsed.blocks.count),
+           !removedBlankSlideSlots.contains(parsed.blocks.count) {
+            slides.append(Slide(
+                id: newID(), name: "",
+                objects: imageObjects(blankSlideImageMediaIDs[parsed.blocks.count] ?? [], newID: newID)))
+            if blankSlideAfterSlots.contains(parsed.blocks.count),
+               !removedBlankSlideAfterSlots.contains(parsed.blocks.count) {
+                slides.append(Slide(id: newID(), name: "", objects: []))
             }
         }
         if slides.isEmpty {
@@ -462,12 +592,136 @@ public extension MessageNotes {
         )
     }
 
+    public static func blankSlideSlots(
+        in blocks: [Block],
+        revealingPointIndices: Set<Int> = [],
+        includeTitleSlide: Bool = true,
+        blankSlidesBetweenSlides: Bool,
+        keepScripturePassagesTogether: Bool,
+        blankSlideAtBeginning: Bool,
+        additionalBlankSlideSlots: Set<Int> = []
+    ) -> Set<Int> {
+        var slots = additionalBlankSlideSlots
+        if blankSlideAtBeginning { slots.insert(-1) }
+        guard blankSlidesBetweenSlides else { return slots }
+        var previous: Block?
+        for prepared in preparedBlocks(blocks, revealingPointIndices: revealingPointIndices) {
+            let block = prepared.block
+            if block.kind == .skip || (block.kind == .title && !includeTitleSlide) { continue }
+            if previous != nil,
+               !(keepScripturePassagesTogether && continuesScripturePassage(from: previous, to: block)),
+               let sourceIndex = prepared.sourceIndices.first {
+                slots.insert(sourceIndex)
+            }
+            previous = block
+        }
+        return slots
+    }
+
+    private struct PreparedBlock {
+        var block: Block
+        var sourceIndices: [Int]
+        var pointReveals: [String]? = nil
+    }
+
+    static func slideGroups(
+        in blocks: [Block], revealingPointIndices: Set<Int>, includeTitleSlide: Bool = true
+    ) -> [[Int]] {
+        blockGroups(in: blocks, revealingPointIndices: revealingPointIndices)
+            .filter {
+                let kind = blocks[$0[0]].kind
+                return kind != .skip && (includeTitleSlide || kind != .title)
+            }
+    }
+
+    private static func blockGroups(
+        in blocks: [Block], revealingPointIndices: Set<Int>
+    ) -> [[Int]] {
+        var groups: [[Int]] = []
+        var index = 0
+        while index < blocks.count {
+            guard blocks[index].kind == .point, revealingPointIndices.contains(index) else {
+                groups.append([index])
+                index += 1
+                continue
+            }
+            var end = index + 1
+            while end < blocks.count, blocks[end].kind == .point, revealingPointIndices.contains(end) { end += 1 }
+            groups.append(Array(index..<end))
+            index = end
+        }
+        return groups
+    }
+
+    private static func preparedBlocks(
+        _ blocks: [Block], revealingPointIndices: Set<Int>
+    ) -> [PreparedBlock] {
+        blockGroups(in: blocks, revealingPointIndices: revealingPointIndices).map { indices in
+            let run = indices.map { blocks[$0] }
+            if run.count > 1, run.allSatisfy({ $0.kind == .point }) {
+                var block = run[0]
+                let pointTexts = run.map { point in
+                    point.detail.map { "\($0): \(point.text)" } ?? point.text
+                }
+                block.text = pointTexts.joined(separator: "\n")
+                block.detail = nil
+                block.cues = run.flatMap(\.cues)
+                block.underlined = run.flatMap(\.underlined)
+                return PreparedBlock(block: block, sourceIndices: indices, pointReveals: pointTexts)
+            }
+            return PreparedBlock(block: run[0], sourceIndices: indices)
+        }
+    }
+
     private static func joined(_ first: String?, _ second: String?) -> String? {
         let parts = [first, second].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
-    internal static func slide(for block: Block, design: Slide?, newID: () -> String) -> Slide {
+    private static func continuesScripturePassage(from previous: Block?, to current: Block) -> Bool {
+        guard let previous, previous.kind == .scripture, current.kind == .scripture else { return false }
+        if let previousVerse = previous.detail.flatMap(Int.init),
+           let currentVerse = current.detail.flatMap(Int.init) {
+            return currentVerse == previousVerse + 1
+        }
+        guard let previousReference = previous.passageReference ?? previous.detail,
+              let currentReference = current.passageReference ?? current.detail else { return false }
+        let previousNormalized = previousReference.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”‘’«»()[] "))
+        let currentNormalized = currentReference.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”‘’«»()[] "))
+        if previousNormalized.caseInsensitiveCompare(currentNormalized) == .orderedSame { return true }
+        let fullRange = GroupRegex(#"^(.*?\d+\s*[:.]\s*)(\d+)(?:\s*[-–—]\s*(\d+))?(?:\s*\(?[A-Za-z]+\)?)?$"#)
+        if let previousParts = fullRange.groups(in: previousNormalized),
+           let currentParts = fullRange.groups(in: currentNormalized),
+           previousParts[0].trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(
+               currentParts[0].trimmingCharacters(in: .whitespaces)) == .orderedSame,
+           let previousVerse = Int(previousParts[1]), let currentVerse = Int(currentParts[1]) {
+            let previousEnd = Int(previousParts[2].isEmpty ? previousParts[1] : previousParts[2]) ?? previousVerse
+            let currentEnd = Int(currentParts[2].isEmpty ? currentParts[1] : currentParts[2]) ?? currentVerse
+            if previousVerse <= currentEnd + 1 && currentVerse <= previousEnd + 1 { return true }
+        }
+        return false
+    }
+
+    private static func normalizeVerseNumber(_ block: inout Block) {
+        guard block.kind == .scripture, let reference = block.detail,
+              let range = verseRange.groups(in: reference),
+              let first = Int(range[1]), let last = Int(range[2]),
+              let number = Int(block.text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              number >= first, number <= last
+        else { return }
+        block.passageReference = reference
+        block.detail = String(number)
+        block.text = ""
+    }
+
+    internal static func slide(
+        for block: Block,
+        design: Slide?,
+        pointReveals: [String]? = nil,
+        fontSize: Double? = nil,
+        showVerseNumbers: Bool = true,
+        newID: () -> String
+    ) -> Slide {
         let roles: (name: String, primary: [String], secondary: [String])
         switch block.kind {
         case .scripture:
@@ -481,11 +735,13 @@ public extension MessageNotes {
         }
         var text = block.text
         var detail = block.detail ?? ""
-        if block.kind == .scripture, text.isEmpty {
-            text = detail
-            detail = ""
+        if block.kind == .scripture, let verseNumber = block.detail,
+           verseNumber.allSatisfy(\.isNumber) {
+            if showVerseNumbers {
+                text = text.isEmpty ? verseNumber : "\(verseNumber) \(text)"
+            }
+            detail = block.passageReference ?? ""
         }
-
         let placeholders = (design?.objects ?? []).filter { $0.objectKind == .text }
         let fillable = placeholders.filter { !isDecoration($0) }
         func pick(_ names: [String], from boxes: [SlideObject]) -> SlideObject? {
@@ -504,7 +760,10 @@ public extension MessageNotes {
         if block.kind == .quote, !placeholders.contains(where: isDecoration) {
             text = "“\(text)”"
         }
-        if secondary == nil, !detail.isEmpty, block.kind != .point {
+        if secondary == nil, !detail.isEmpty, block.kind == .scripture {
+            text += (text.isEmpty ? "" : "\n") + detail
+            detail = ""
+        } else if secondary == nil, !detail.isEmpty, block.kind != .point {
             text += "\n" + (block.kind == .quote ? "– " : "") + detail
         }
 
@@ -515,8 +774,17 @@ public extension MessageNotes {
                 if placeholder.id == primary.id {
                     box.text = text
                     box.styleRuns = underlines(block.underlined, in: text)
+                    if let fontSize { box.textStyle = TextStyle(fontSize: fontSize) }
+                    if let pointReveals { box.animationSteps = pointAnimationSteps(pointReveals, newID: newID) }
                 } else if placeholder.id == secondary?.id {
                     box.text = detail
+                    if block.kind == .scripture, let top = primary.y {
+                        box.x = primary.x ?? placeholder.x
+                        let belowVerse = top + (primary.height ?? 0) + 48
+                        let designedPosition = placeholder.y ?? belowVerse
+                        box.y = max(designedPosition, belowVerse)
+                        box.width = primary.width ?? placeholder.width
+                    }
                 } else if isDecoration(placeholder) {
                     box.text = placeholder.text
                 }
@@ -525,6 +793,8 @@ public extension MessageNotes {
         } else {
             var box = SlideObject(id: newID(), objectKind: .text, name: roles.name, text: text)
             box.styleRuns = underlines(block.underlined, in: text)
+            if let fontSize { box.textStyle = TextStyle(fontSize: fontSize) }
+            if let pointReveals { box.animationSteps = pointAnimationSteps(pointReveals, newID: newID) }
             objects = [box]
         }
 
@@ -532,6 +802,38 @@ public extension MessageNotes {
         slide.adoptActions(of: design)
         slide.notes = block.cues.isEmpty ? nil : block.cues.joined(separator: "\n")
         return slide
+    }
+
+    private static func imageObjects(_ mediaIDs: [String], newID: () -> String) -> [SlideObject] {
+        let columns = max(1, Int(ceil(sqrt(Double(mediaIDs.count)))))
+        let rows = max(1, Int(ceil(Double(mediaIDs.count) / Double(columns))))
+        let tileWidth = 1920.0 / Double(columns)
+        let tileHeight = 1080.0 / Double(rows)
+        return mediaIDs.enumerated().map { index, mediaID in
+            let column = index % columns
+            let row = index / columns
+            return SlideObject(
+                id: newID(), objectKind: .shape, name: "Imported Image", text: "",
+                x: Double(column) * tileWidth, y: Double(row) * tileHeight,
+                width: tileWidth, height: tileHeight, opacity: mediaIDs.count == 1 ? 0.4 : 1,
+                fill: ObjectFill(fillKind: .media, mediaId: mediaID, mediaScaleMode: .fill))
+        }
+    }
+
+    private static func pointAnimationSteps(
+        _ points: [String], newID: () -> String
+    ) -> [AnimationStep] {
+        var line = 0
+        return points.map { point in
+            let parts = point.components(separatedBy: "\n")
+            let ranges = parts.enumerated().compactMap { offset, part in
+                part.isEmpty ? nil : AnimationRange(line: line + offset, column: 0, length: part.count)
+            }
+            line += parts.count
+            return AnimationStep(
+                id: newID(), kind: .in, animation: .fade, trigger: .onClick,
+                durationSeconds: 0.25, ranges: ranges)
+        }
     }
 
     private static func isDecoration(_ placeholder: SlideObject) -> Bool {
@@ -574,15 +876,21 @@ extension MessageNotes {
         else { return [block] }
         let pieces: [(text: String, reference: String)]
         if let numbered = numberedVerses(in: block.text, first: first, last: last) {
-            pieces = numbered.enumerated().map { ($1, parts[0] + String(first + $0) + parts[3]) }
+            pieces = numbered.enumerated().map { ($1, String(first + $0)) }
         } else {
-            pieces = sentenceGroups(in: block.text, count: last - first + 1).map { ($0, reference) }
+            let groups = sentenceGroups(in: block.text, count: last - first + 1)
+            if groups.count == last - first + 1 {
+                pieces = groups.enumerated().map { ($1, String(first + $0)) }
+            } else {
+                pieces = groups.map { ($0, reference) }
+            }
         }
         guard pieces.count > 1 else { return [block] }
         return pieces.enumerated().map { index, piece in
             var part = block
             part.text = piece.text
             part.detail = piece.reference
+            part.passageReference = index == pieces.count - 1 && piece.reference != reference ? reference : nil
             part.cues = index == 0 ? block.cues : []
             return part
         }

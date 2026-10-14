@@ -148,6 +148,14 @@ struct PPTXImporterTests {
         #expect(((try? await library.index.entries(of: .media)) ?? []).count == 1)
     }
 
+    @Test func extractsSlideTextForMessageNotesImport() throws {
+        let pptxURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).pptx")
+        defer { try? FileManager.default.removeItem(at: pptxURL) }
+        try makeDeck(at: pptxURL)
+
+        #expect(try PPTXNotesExtractor.extractText(from: pptxURL) == "Hello glass")
+    }
+
     @Test func legacyPPTIsRefusedWithGuidance() async throws {
         let library = try await makeLibrary()
         let importer = try PPTXImporter(client: await started(library))

@@ -114,6 +114,10 @@ struct SlideEditorView: View {
                     appModel.pendingEditorSlideID = nil
                     model?.selectSlide(slideID)
                 }
+                if let objectID = appModel.pendingEditorObjectID {
+                    appModel.pendingEditorObjectID = nil
+                    model?.selectObject(id: objectID)
+                }
             } else {
                 built?.endSession()
             }
