@@ -126,6 +126,7 @@ final class AppModel {
     private var stashedEditorEntryID: String?
 
     var pendingEditorSlideID: String?
+    var pendingEditorObjectID: String?
 
     var libraryFindPending = false
 
@@ -3153,6 +3154,53 @@ final class AppModel {
             linesPerSlide: linesPerSlide,
             lyricLines: lyricLines
         )
+        presentation.origin = origin
+        createInDrive(presentation)
+        lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"
+        return presentation.id
+    }
+
+    @discardableResult
+    func importMessageNotes(
+        _ parsed: MessageNotes.Parsed, fallbackTitle: String? = nil, themeId: String = "", style: String? = nil,
+        kindThemeIds: [MessageNotes.Kind: String] = [:],
+        kindStyles: [MessageNotes.Kind: String] = [:],
+        revealingPointIndices: Set<Int> = [], fontSizes: [Int: Double] = [:],
+        designOverrides: [Int: String] = [:],
+        showVerseNumbers: Bool = true,
+        blankSlidesBetweenSlides: Bool = false, keepScripturePassagesTogether: Bool = true,
+        blankSlideAtBeginning: Bool = false,
+        additionalBlankSlideSlots: Set<Int> = [],
+        blankSlideAfterSlots: Set<Int> = [],
+        removedBlankSlideAfterSlots: Set<Int> = [],
+        extraBlankSlides: [Int: Int] = [:],
+        removedBlankSlideSlots: Set<Int> = [],
+        imageMediaIDs: [Int: [String]] = [:],
+        blankSlideImageMediaIDs: [Int: [String]] = [:],
+        origin: PresentationOrigin = PresentationOrigin(.messageNotes)
+    ) -> String? {
+        var presentation = MessageNotes.makePresentation(
+            parsed, fallbackTitle: fallbackTitle, themeId: themeId, theme: theme(themeId), style: style,
+            kindThemes: kindThemeIds.compactMapValues { theme($0) },
+            kindStyles: kindStyles,
+            revealingPointIndices: revealingPointIndices, fontSizes: fontSizes,
+            designOverrides: designOverrides,
+            showVerseNumbers: showVerseNumbers, includeTitleSlide: false,
+            blankSlidesBetweenSlides: blankSlidesBetweenSlides,
+            keepScripturePassagesTogether: keepScripturePassagesTogether,
+            blankSlideAtBeginning: blankSlideAtBeginning,
+            additionalBlankSlideSlots: additionalBlankSlideSlots,
+            blankSlideAfterSlots: blankSlideAfterSlots,
+            removedBlankSlideAfterSlots: removedBlankSlideAfterSlots,
+            extraBlankSlides: extraBlankSlides,
+            removedBlankSlideSlots: removedBlankSlideSlots,
+            imageMediaIDs: imageMediaIDs,
+            blankSlideImageMediaIDs: blankSlideImageMediaIDs)
+        if let slide = presentation.slides.first(where: { $0.objects.contains(where: { $0.objectKind == .text }) }),
+           let object = slide.objects.first(where: { $0.objectKind == .text }) {
+            pendingEditorSlideID = slide.id
+            pendingEditorObjectID = object.id
+        }
         presentation.origin = origin
         createInDrive(presentation)
         lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"

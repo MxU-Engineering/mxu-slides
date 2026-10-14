@@ -81,6 +81,7 @@ targets:
         MXUGitCommit: "$(MXU_GIT_COMMIT)"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         LSApplicationCategoryType: public.app-category.video
+        NSAppleEventsUsageDescription: "MxU Slides uses Pages to convert imported Apple Pages documents to readable text."
         NSLocalNetworkUsageDescription: "MxU Slides uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac."
         NSCameraUsageDescription: "MxU Slides shows cameras and capture devices on your screens as live video inputs."
         NSMicrophoneUsageDescription: "MxU Slides can include a capture device's audio when it is used as a live input."
