@@ -3164,6 +3164,7 @@ final class AppModel {
     func importMessageNotes(
         _ parsed: MessageNotes.Parsed, fallbackTitle: String? = nil, themeId: String = "", style: String? = nil,
         kindThemeIds: [MessageNotes.Kind: String] = [:],
+        kindStyles: [MessageNotes.Kind: String] = [:],
         revealingPointIndices: Set<Int> = [], fontSizes: [Int: Double] = [:],
         designOverrides: [Int: String] = [:],
         showVerseNumbers: Bool = true,
@@ -3180,6 +3181,7 @@ final class AppModel {
         var presentation = MessageNotes.makePresentation(
             parsed, fallbackTitle: fallbackTitle, themeId: themeId, theme: theme(themeId), style: style,
             kindThemes: kindThemeIds.compactMapValues { theme($0) },
+            kindStyles: kindStyles,
             revealingPointIndices: revealingPointIndices, fontSizes: fontSizes,
             designOverrides: designOverrides,
             showVerseNumbers: showVerseNumbers, includeTitleSlide: false,

@@ -141,6 +141,21 @@ private func box(_ presentation: Presentation, _ slide: Int, _ name: String) -> 
     #expect(!trimmed.slides.contains { $0.objects.contains { $0.text == parsed.blocks[index].text } })
 }
 
+@Test func eachKindCanTakeItsOwnStyleFolder() {
+    let theme = StarterPack.cleanGeometric.makeTheme()
+    let parsed = MessageNotes.parse(outline).splittingVerses()
+    let styles = MessageNotes.styles(in: theme)
+    guard styles.count > 1 else { return }
+    let presentation = MessageNotes.makePresentation(
+        parsed, themeId: theme.id, theme: theme, style: styles[0], kindStyles: [.scripture: styles[1]])
+    let folders = Dictionary(uniqueKeysWithValues: (theme.slides ?? []).map { ($0.name + "|" + ($0.folder ?? ""), $0) })
+    let kinds = parsed.blocks.filter { $0.kind != .skip }.map(\.kind)
+    for (kind, slide) in zip(kinds, presentation.slides) where kind == .scripture {
+        let design = (theme.slides ?? []).first { $0.name == slide.themeSlideName && ($0.folder ?? "") == styles[1] }
+        #expect(design != nil || folders.isEmpty)
+    }
+}
+
 @Test func slidesLandOnTheMatchingDesigns() {
     let presentation = built()
     #expect(presentation.name == "Abba and Kiss")

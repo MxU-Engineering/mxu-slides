@@ -22,8 +22,7 @@ struct ImportMessageNotesSheet: View {
     @State private var overrides: [String: MessageNotes.Kind] = [:]
     @State private var loadedFrom: PresentationOrigin?
     @State private var title = ""
-    @AppStorage("messageNotesStyle") private var storedStyle = ""
-    @AppStorage("messageNotesKindThemes") private var storedKindThemes = ""
+    @AppStorage("messageNotesKindLooks") private var storedKindLooks = ""
     @State private var choosingKindThemes = false
     @AppStorage("messageNotesShowVerseNumbers") private var showVerseNumbers = true
     @AppStorage("messageNotesBlankSlidesBetween") private var blankSlidesBetweenSlides = false
@@ -54,7 +53,7 @@ struct ImportMessageNotesSheet: View {
         var themeStamp: Double
         var kindThemes: [String: String] = [:]
         var kindStamps: [String: Double] = [:]
-        var style: String?
+        var kindStyles: [String: String] = [:]
         var revealingPointIndices: Set<Int>
         var showVerseNumbers: Bool
         var blankSlidesBetweenSlides: Bool
@@ -87,25 +86,42 @@ struct ImportMessageNotesSheet: View {
         var items: [Item]
     }
 
-    private var styles: [String] { MessageNotes.styles(in: model.theme(themeId)) }
-
-    private var style: String? { styles.contains(storedStyle) ? storedStyle : nil }
+    struct KindLook: Codable, Equatable {
+        var theme: String
+        var style: String?
+    }
 
     static let themedKinds: [MessageNotes.Kind] = [.title, .point, .scripture, .quote]
 
+    private var kindLooks: [String: KindLook] {
+        storedKindLooks.data(using: .utf8).flatMap { try? JSONDecoder().decode([String: KindLook].self, from: $0) } ?? [:]
+    }
+
+    private func look(for kind: MessageNotes.Kind) -> KindLook? {
+        guard let look = kindLooks[kind.rawValue] else { return nil }
+        return look.theme.isEmpty || look.theme == themeId || model.entry(look.theme) != nil ? look : nil
+    }
+
     private var kindThemeIds: [MessageNotes.Kind: String] {
-        let stored = storedKindThemes.data(using: .utf8).flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
         var chosen: [MessageNotes.Kind: String] = [:]
         for kind in Self.themedKinds {
-            if let id = stored[kind.rawValue], !id.isEmpty, id != themeId, model.entry(id) != nil { chosen[kind] = id }
+            if let look = look(for: kind), !look.theme.isEmpty, look.theme != themeId { chosen[kind] = look.theme }
         }
         return chosen
     }
 
-    private func setKindTheme(_ kind: MessageNotes.Kind, _ id: String) {
-        var stored = storedKindThemes.data(using: .utf8).flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
-        stored[kind.rawValue] = id.isEmpty ? nil : id
-        storedKindThemes = (try? JSONEncoder().encode(stored)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    private var kindStyles: [MessageNotes.Kind: String] {
+        var chosen: [MessageNotes.Kind: String] = [:]
+        for kind in Self.themedKinds {
+            if let style = look(for: kind)?.style { chosen[kind] = style }
+        }
+        return chosen
+    }
+
+    private func setKindLook(_ kind: MessageNotes.Kind, theme: String, style: String?) {
+        var stored = kindLooks
+        stored[kind.rawValue] = KindLook(theme: theme, style: style)
+        storedKindLooks = (try? JSONEncoder().encode(stored)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
     }
 
     private var input: Input {
@@ -117,7 +133,7 @@ struct ImportMessageNotesSheet: View {
             kindStamps: Dictionary(
                 chosen.map { ($0.value, model.entry($0.value)?.updatedAt.timeIntervalSince1970 ?? 0) },
                 uniquingKeysWith: { first, _ in first }),
-            style: style,
+            kindStyles: Dictionary(uniqueKeysWithValues: kindStyles.map { ($0.key.rawValue, $0.value) }),
             revealingPointIndices: revealingPointIndices,
             showVerseNumbers: showVerseNumbers,
             blankSlidesBetweenSlides: blankSlidesBetweenSlides,
@@ -184,8 +200,12 @@ struct ImportMessageNotesSheet: View {
             for (raw, id) in input.kindThemes {
                 if let kind = MessageNotes.Kind(rawValue: raw), let own = model.theme(id) { kindThemes[kind] = own }
             }
+            var kindStyles: [MessageNotes.Kind: String] = [:]
+            for (raw, style) in input.kindStyles {
+                if let kind = MessageNotes.Kind(rawValue: raw) { kindStyles[kind] = style }
+            }
             let built = await Task.detached(priority: .userInitiated) {
-                Self.build(input, theme: theme, kindThemes: kindThemes)
+                Self.build(input, theme: theme, kindThemes: kindThemes, kindStyles: kindStyles)
             }.value
             if !Task.isCancelled { preview = built }
         }
@@ -431,15 +451,6 @@ struct ImportMessageNotesSheet: View {
                 Button("By Type…") { choosingKindThemes = true }
                     .help("Give titles, points, scriptures and quotes each their own theme")
                     .popover(isPresented: $choosingKindThemes, arrowEdge: .top) { kindThemesPopover }
-                if styles.count > 1 {
-                    Picker("Style", selection: Binding(get: { style ?? styles[0] }, set: { storedStyle = $0 })) {
-                        ForEach(styles, id: \.self) { style in
-                            Text(style.isEmpty ? "Unfiled" : style).tag(style)
-                        }
-                    }
-                    .fixedSize()
-                    .help("The theme folder the Point, Verse and Quote designs come from — full slides, or thirds over the camera")
-                }
             }
             HStack {
                 Button("Cancel") { dismiss() }
@@ -483,21 +494,56 @@ struct ImportMessageNotesSheet: View {
             Text("Theme for each kind of slide")
                 .font(.headline)
             ForEach(Self.themedKinds, id: \.self) { kind in
-                Picker(Self.name(kind), selection: Binding(
-                    get: { kindThemeIds[kind] ?? "" }, set: { setKindTheme(kind, $0) }
-                )) {
-                    Text("Same as deck theme").tag("")
-                    Divider()
-                    ForEach(themes, id: \.id) { Text($0.name).tag($0.id) }
+                HStack {
+                    Text(Self.name(kind))
+                        .frame(width: 80, alignment: .leading)
+                    kindMenu(kind, themes: themes)
                 }
-                .frame(width: 320)
             }
-            Text("A slide takes its design from that theme's Title, Point, Verse or Quote design.")
+            Text("Pick a theme, then its style where it has more than one. A slide takes its design from that theme's Title, Point, Verse or Quote design.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 320, alignment: .leading)
+                .frame(width: 380, alignment: .leading)
         }
         .padding(14)
+        .task { await model.themesFilled(themes.map(\.id)) }
+    }
+
+    private func kindMenu(_ kind: MessageNotes.Kind, themes: [LibraryIndex.Entry]) -> some View {
+        let current = look(for: kind)
+        let currentTheme = current?.theme ?? ""
+        func themeItem(id: String, name: String) -> some View {
+            let styles = MessageNotes.styles(in: model.theme(id.isEmpty ? themeId : id))
+            return Group {
+                if styles.count > 1 {
+                    Menu(name) {
+                        ForEach(styles, id: \.self) { style in
+                            Button {
+                                setKindLook(kind, theme: id, style: style)
+                            } label: {
+                                let chosen = currentTheme == id && current?.style == style
+                                Text((chosen ? "✓ " : "") + (style.isEmpty ? "Unfiled" : style))
+                            }
+                        }
+                    }
+                } else {
+                    Button((currentTheme == id ? "✓ " : "") + name) {
+                        setKindLook(kind, theme: id, style: styles.first)
+                    }
+                }
+            }
+        }
+        let deckName = model.entry(themeId)?.name ?? "None"
+        let label = currentTheme.isEmpty ? "Deck theme (\(deckName))" : model.entry(currentTheme)?.name ?? "Missing"
+        let styleLabel = current?.style.flatMap { $0.isEmpty ? nil : " › " + $0 } ?? ""
+        return Menu(label + styleLabel) {
+            themeItem(id: "", name: "Deck theme (\(deckName))")
+            Divider()
+            ForEach(themes, id: \.id) { entry in
+                themeItem(id: entry.id, name: entry.name)
+            }
+        }
+        .frame(width: 280)
     }
 
     nonisolated static func name(_ kind: MessageNotes.Kind) -> String {
@@ -522,7 +568,8 @@ struct ImportMessageNotesSheet: View {
     }
 
     nonisolated static func build(
-        _ input: Input, theme: Theme?, kindThemes: [MessageNotes.Kind: Theme] = [:]
+        _ input: Input, theme: Theme?, kindThemes: [MessageNotes.Kind: Theme] = [:],
+        kindStyles: [MessageNotes.Kind: String] = [:]
     ) -> Preview {
         let parsed = MessageNotes.parse(
             input.text, hints: input.hints, overrides: input.overrides, boldOnly: input.boldOnly)
@@ -539,8 +586,8 @@ struct ImportMessageNotesSheet: View {
             additionalBlankSlideSlots: input.addedBlankSlideSlots)
         let removedBlankSlideSlots = input.removedBlankSlideSlots.intersection(blankSlots)
         let presentation = MessageNotes.makePresentation(
-            made, id: "message-notes-import-preview", themeId: input.themeId, theme: theme, style: input.style,
-            kindThemes: kindThemes,
+            made, id: "message-notes-import-preview", themeId: input.themeId, theme: theme,
+            kindThemes: kindThemes, kindStyles: kindStyles,
             revealingPointIndices: input.revealingPointIndices,
             showVerseNumbers: input.showVerseNumbers, includeTitleSlide: false,
             blankSlidesBetweenSlides: input.blankSlidesBetweenSlides,
@@ -750,8 +797,8 @@ struct ImportMessageNotesSheet: View {
             parsed.splittingVerses().removingBlocks(at: removedSlideIndices),
             fallbackTitle: fallback.isEmpty ? nil : fallback,
             themeId: themeId,
-            style: style,
             kindThemeIds: kindThemeIds,
+            kindStyles: kindStyles,
             revealingPointIndices: revealingPointIndices,
             showVerseNumbers: showVerseNumbers,
             blankSlidesBetweenSlides: blankSlidesBetweenSlides,

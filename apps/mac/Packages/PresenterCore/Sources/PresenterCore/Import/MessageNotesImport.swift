@@ -500,6 +500,7 @@ public extension MessageNotes {
         theme: Theme? = nil,
         style: String? = nil,
         kindThemes: [Kind: Theme] = [:],
+        kindStyles: [Kind: String] = [:],
         revealingPointIndices: Set<Int> = [],
         fontSizes: [Int: Double] = [:],
         designOverrides: [Int: String] = [:],
@@ -539,7 +540,8 @@ public extension MessageNotes {
                 normalizeVerseNumber(&block)
                 let own = kindThemes[block.kind].flatMap { $0.id == themeId ? nil : $0 }
                 let source = own ?? theme
-                let ownStyle = own.map { styles(in: $0).contains(style ?? "") ? style : nil } ?? style
+                let wanted = kindStyles[block.kind] ?? style
+                let ownStyle = styles(in: source).contains(wanted ?? "") ? wanted : (own == nil ? style : nil)
                 var slide = slide(
                     for: block,
                     design: prepared.sourceIndices.first.flatMap { index in
