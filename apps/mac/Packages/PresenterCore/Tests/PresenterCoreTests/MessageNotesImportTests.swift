@@ -156,6 +156,17 @@ private func box(_ presentation: Presentation, _ slide: Int, _ name: String) -> 
     }
 }
 
+@Test func severalBlankSlidesCanSitBetweenTwoSlides() {
+    let theme = StarterPack.cleanGeometric.makeTheme()
+    let parsed = MessageNotes.parse(outline).splittingVerses()
+    let plain = MessageNotes.makePresentation(parsed, themeId: theme.id, theme: theme)
+    let slot = parsed.blocks.indices.first { parsed.blocks[$0].kind == .point }!
+    let padded = MessageNotes.makePresentation(
+        parsed, themeId: theme.id, theme: theme, additionalBlankSlideSlots: [slot],
+        blankSlideAfterSlots: [slot], extraBlankSlides: [slot: 2])
+    #expect(padded.slides.count == plain.slides.count + 4)
+}
+
 @Test func slidesLandOnTheMatchingDesigns() {
     let presentation = built()
     #expect(presentation.name == "Abba and Kiss")

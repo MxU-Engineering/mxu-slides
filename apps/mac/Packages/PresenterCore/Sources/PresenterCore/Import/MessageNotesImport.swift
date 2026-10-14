@@ -512,6 +512,7 @@ public extension MessageNotes {
         additionalBlankSlideSlots: Set<Int> = [],
         blankSlideAfterSlots: Set<Int> = [],
         removedBlankSlideAfterSlots: Set<Int> = [],
+        extraBlankSlides: [Int: Int] = [:],
         removedBlankSlideSlots: Set<Int> = [],
         imageMediaIDs: [Int: [String]] = [:],
         blankSlideImageMediaIDs: [Int: [String]] = [:],
@@ -522,6 +523,9 @@ public extension MessageNotes {
             slides.append(Slide(
                 id: newID(), name: "", objects: imageObjects(blankSlideImageMediaIDs[-1] ?? [], newID: newID)))
             if blankSlideAfterSlots.contains(-1), !removedBlankSlideAfterSlots.contains(-1) {
+                slides.append(Slide(id: newID(), name: "", objects: []))
+            }
+            for _ in 0..<(extraBlankSlides[-1] ?? 0) {
                 slides.append(Slide(id: newID(), name: "", objects: []))
             }
         }
@@ -563,6 +567,9 @@ public extension MessageNotes {
                     if blankSlideAfterSlots.contains(slot), !removedBlankSlideAfterSlots.contains(slot) {
                         slides.append(Slide(id: newID(), name: "", objects: []))
                     }
+                    for _ in 0..<(extraBlankSlides[slot] ?? 0) {
+                        slides.append(Slide(id: newID(), name: "", objects: []))
+                    }
                 }
                 let imageIDs = prepared.sourceIndices.flatMap { imageMediaIDs[$0] ?? [] }
                 slide.objects.insert(contentsOf: imageObjects(imageIDs, newID: newID), at: 0)
@@ -579,6 +586,9 @@ public extension MessageNotes {
                 objects: imageObjects(blankSlideImageMediaIDs[parsed.blocks.count] ?? [], newID: newID)))
             if blankSlideAfterSlots.contains(parsed.blocks.count),
                !removedBlankSlideAfterSlots.contains(parsed.blocks.count) {
+                slides.append(Slide(id: newID(), name: "", objects: []))
+            }
+            for _ in 0..<(extraBlankSlides[parsed.blocks.count] ?? 0) {
                 slides.append(Slide(id: newID(), name: "", objects: []))
             }
         }

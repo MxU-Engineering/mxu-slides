@@ -29,8 +29,7 @@ struct ImportMessageNotesSheet: View {
     @AppStorage("messageNotesKeepScriptureTogether") private var keepScripturePassagesTogether = true
     @AppStorage("messageNotesBlankSlideAtBeginning") private var blankSlideAtBeginning = true
     @State private var addedBlankSlideSlots: Set<Int> = []
-    @State private var blankSlideAfterSlots: Set<Int> = []
-    @State private var removedBlankSlideAfterSlots: Set<Int> = []
+    @State private var blankExtras: [Int: Int] = [:]
     @State private var removedBlankSlideSlots: Set<Int> = []
     @AppStorage("messageNotesCombinePoints") private var combineAdjacentPoints = false
     @State private var imageMediaIDs: [Int: [String]] = [:]
@@ -60,8 +59,7 @@ struct ImportMessageNotesSheet: View {
         var keepScripturePassagesTogether: Bool
         var blankSlideAtBeginning: Bool
         var addedBlankSlideSlots: Set<Int>
-        var blankSlideAfterSlots: Set<Int>
-        var removedBlankSlideAfterSlots: Set<Int>
+        var blankExtras: [Int: Int]
         var removedBlankSlideSlots: Set<Int>
         var removedSlideIndices: Set<Int>
         var imageMediaIDs: [Int: [String]]
@@ -140,8 +138,7 @@ struct ImportMessageNotesSheet: View {
             keepScripturePassagesTogether: keepScripturePassagesTogether,
             blankSlideAtBeginning: blankSlideAtBeginning,
             addedBlankSlideSlots: addedBlankSlideSlots,
-            blankSlideAfterSlots: blankSlideAfterSlots,
-            removedBlankSlideAfterSlots: removedBlankSlideAfterSlots,
+            blankExtras: blankExtras,
             removedBlankSlideSlots: removedBlankSlideSlots,
             removedSlideIndices: removedSlideIndices, imageMediaIDs: imageMediaIDs,
             blankSlideImageMediaIDs: blankSlideImageMediaIDs,
@@ -289,23 +286,26 @@ struct ImportMessageNotesSheet: View {
 
     private func clearBlankSlideSelections() {
         addedBlankSlideSlots = []
-        blankSlideAfterSlots = []
-        removedBlankSlideAfterSlots = []
+        blankExtras = [:]
         removedBlankSlideSlots = []
     }
 
     private func addBlankSlide(afterItemAt itemOffset: Int) {
         guard let preview else { return }
         let item = preview.items[itemOffset]
-        if item.isBlank, !item.isAdditionalBlankAfter, let slot = item.blankSlideSlot {
-            blankSlideAfterSlots.insert(slot)
-            removedBlankSlideAfterSlots.remove(slot)
+        if item.isBlank, let slot = item.blankSlideSlot {
+            blankExtras[slot, default: 0] += 1
             return
         }
         let followingContent = preview.items.dropFirst(itemOffset + 1).first { !$0.isBlank }
-        let slot = followingContent?.sourceIndices.first ?? preview.parsed.blocks.count
-        addedBlankSlideSlots.insert(slot)
-        removedBlankSlideSlots.remove(slot)
+        let slot = followingContent?.sourceIndices.first ?? preview.parsed.splittingVerses().blocks.count
+        let hasBlank = preview.items.contains { $0.isBlank && !$0.isAdditionalBlankAfter && $0.blankSlideSlot == slot }
+        if hasBlank {
+            blankExtras[slot, default: 0] += 1
+        } else {
+            addedBlankSlideSlots.insert(slot)
+            removedBlankSlideSlots.remove(slot)
+        }
     }
 
     private func canRemove(_ item: Preview.Item) -> Bool {
@@ -314,8 +314,8 @@ struct ImportMessageNotesSheet: View {
 
     private func removeSlide(_ item: Preview.Item) {
         if item.isBlank, let slot = item.blankSlideSlot {
-            if item.isAdditionalBlankAfter {
-                removedBlankSlideAfterSlots.insert(slot)
+            if let extras = blankExtras[slot], extras > 0 {
+                blankExtras[slot] = extras > 1 ? extras - 1 : nil
             } else {
                 removedBlankSlideSlots.insert(slot)
             }
@@ -325,7 +325,7 @@ struct ImportMessageNotesSheet: View {
     }
 
     private func canAddBlank(after item: Preview.Item) -> Bool {
-        !item.isAdditionalBlankAfter && (!item.isBlank || item.blankSlideSlot != nil)
+        !item.isBlank || item.blankSlideSlot != nil
     }
 
     private var previewPane: some View {
@@ -411,17 +411,18 @@ struct ImportMessageNotesSheet: View {
                     .help("Give titles, points, scriptures and quotes each their own theme")
                     .popover(isPresented: $choosingKindThemes, arrowEdge: .top) { kindThemesPopover }
             }
-            HStack {
+            HStack(spacing: 14) {
+                Toggle("Advanced options", isOn: $showAdvanceOptions)
+                    .toggleStyle(.switch)
+                    .controlSize(.large)
+                    .font(.headline)
+                Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Import", action: importNow)
                     .keyboardShortcut(.defaultAction)
                     .disabled(isEmpty)
             }
-            Toggle("Advanced options", isOn: $showAdvanceOptions)
-                .toggleStyle(.switch)
-                .controlSize(.large)
-                .font(.headline)
             if showAdvanceOptions {
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Verse numbers", isOn: $showVerseNumbers)
@@ -556,28 +557,29 @@ struct ImportMessageNotesSheet: View {
             keepScripturePassagesTogether: input.keepScripturePassagesTogether,
             blankSlideAtBeginning: input.blankSlideAtBeginning,
             additionalBlankSlideSlots: input.addedBlankSlideSlots,
-            blankSlideAfterSlots: input.blankSlideAfterSlots,
-            removedBlankSlideAfterSlots: input.removedBlankSlideAfterSlots,
+            blankSlideAfterSlots: Set(input.blankExtras.filter { $0.value >= 1 }.keys),
+            extraBlankSlides: input.blankExtras.compactMapValues { $0 > 1 ? $0 - 1 : nil },
             removedBlankSlideSlots: removedBlankSlideSlots,
             imageMediaIDs: input.imageMediaIDs,
             blankSlideImageMediaIDs: input.blankSlideImageMediaIDs)
         var items: [Preview.Item] = []
         var slideIndex = 0
+        func appendExtras(_ slot: Int) {
+            for _ in 0..<(input.blankExtras[slot] ?? 0) where slideIndex < presentation.slides.count {
+                items.append(Preview.Item(
+                    caption: "Blank", slide: presentation.slides[slideIndex], sourceIndices: [],
+                    isPoint: false, isBlank: true, kind: .skip, blankSlideSlot: slot,
+                    isAdditionalBlankAfter: true))
+                slideIndex += 1
+            }
+        }
         if blankSlots.contains(-1), !removedBlankSlideSlots.contains(-1),
            let blank = presentation.slides.first {
             items.append(Preview.Item(
                 caption: "Blank", slide: blank, sourceIndices: [], isPoint: false, isBlank: true,
                 kind: .skip, blankSlideSlot: -1))
             slideIndex = 1
-            if input.blankSlideAfterSlots.contains(-1),
-               !input.removedBlankSlideAfterSlots.contains(-1),
-               slideIndex < presentation.slides.count {
-                items.append(Preview.Item(
-                    caption: "Blank", slide: presentation.slides[slideIndex], sourceIndices: [],
-                    isPoint: false, isBlank: true, kind: .skip, blankSlideSlot: -1,
-                    isAdditionalBlankAfter: true))
-                slideIndex += 1
-            }
+            appendExtras(-1)
         }
         for (_, indices) in groups.enumerated() {
             let blankSlot = indices.first
@@ -588,15 +590,7 @@ struct ImportMessageNotesSheet: View {
                     sourceIndices: [], isPoint: false, isBlank: true, kind: .skip,
                     blankSlideSlot: blankSlot))
                 slideIndex += 1
-                if input.blankSlideAfterSlots.contains(blankSlot),
-                   !input.removedBlankSlideAfterSlots.contains(blankSlot),
-                   slideIndex < presentation.slides.count {
-                    items.append(Preview.Item(
-                        caption: "Blank", slide: presentation.slides[slideIndex], sourceIndices: [],
-                        isPoint: false, isBlank: true, kind: .skip, blankSlideSlot: blankSlot,
-                        isAdditionalBlankAfter: true))
-                    slideIndex += 1
-                }
+                appendExtras(blankSlot)
             }
             guard slideIndex < presentation.slides.count else { break }
             let slide = presentation.slides[slideIndex]
@@ -627,14 +621,7 @@ struct ImportMessageNotesSheet: View {
                 caption: "Blank", slide: presentation.slides[slideIndex], sourceIndices: [], isPoint: false, isBlank: true,
                 kind: .skip, blankSlideSlot: endSlot))
             slideIndex += 1
-            if input.blankSlideAfterSlots.contains(endSlot),
-               !input.removedBlankSlideAfterSlots.contains(endSlot),
-               slideIndex < presentation.slides.count {
-                items.append(Preview.Item(
-                    caption: "Blank", slide: presentation.slides[slideIndex], sourceIndices: [],
-                    isPoint: false, isBlank: true, kind: .skip, blankSlideSlot: endSlot,
-                    isAdditionalBlankAfter: true))
-            }
+            appendExtras(endSlot)
         }
         if items.isEmpty, let blank = presentation.slides.first {
             items.append(Preview.Item(
@@ -768,8 +755,8 @@ struct ImportMessageNotesSheet: View {
             keepScripturePassagesTogether: keepScripturePassagesTogether,
             blankSlideAtBeginning: blankSlideAtBeginning,
             additionalBlankSlideSlots: addedBlankSlideSlots,
-            blankSlideAfterSlots: blankSlideAfterSlots,
-            removedBlankSlideAfterSlots: removedBlankSlideAfterSlots,
+            blankSlideAfterSlots: Set(blankExtras.filter { $0.value >= 1 }.keys),
+            extraBlankSlides: blankExtras.compactMapValues { $0 > 1 ? $0 - 1 : nil },
             removedBlankSlideSlots: removedBlankSlideSlots,
             imageMediaIDs: imageMediaIDs,
             blankSlideImageMediaIDs: blankSlideImageMediaIDs,

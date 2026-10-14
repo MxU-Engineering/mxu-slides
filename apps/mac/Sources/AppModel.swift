@@ -3173,6 +3173,7 @@ final class AppModel {
         additionalBlankSlideSlots: Set<Int> = [],
         blankSlideAfterSlots: Set<Int> = [],
         removedBlankSlideAfterSlots: Set<Int> = [],
+        extraBlankSlides: [Int: Int] = [:],
         removedBlankSlideSlots: Set<Int> = [],
         imageMediaIDs: [Int: [String]] = [:],
         blankSlideImageMediaIDs: [Int: [String]] = [:],
@@ -3191,6 +3192,7 @@ final class AppModel {
             additionalBlankSlideSlots: additionalBlankSlideSlots,
             blankSlideAfterSlots: blankSlideAfterSlots,
             removedBlankSlideAfterSlots: removedBlankSlideAfterSlots,
+            extraBlankSlides: extraBlankSlides,
             removedBlankSlideSlots: removedBlankSlideSlots,
             imageMediaIDs: imageMediaIDs,
             blankSlideImageMediaIDs: blankSlideImageMediaIDs)
