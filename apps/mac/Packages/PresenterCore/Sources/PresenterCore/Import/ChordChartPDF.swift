@@ -355,28 +355,20 @@ public enum ChordChartPDF {
     static func written(sections: [Section], leading: [String]) -> [String] {
         var out = leading
 
-        var seen: [(chartName: String, name: String, content: String, lines: [String])] = []
+        var seen: [(chartName: String, name: String, content: String)] = []
         for section in sections {
-            let words = section.lines.map { ChordMath.extractLine($0).text.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }.joined(separator: "\n")
 
             let content = section.lines.map(ChordMath.extractLine)
                 .map { "\($0.text.trimmingCharacters(in: .whitespaces))|\($0.chords.map(\.symbol).joined(separator: " "))" }
                 .filter { $0 != "|" }.joined(separator: "\n")
             let sameName = seen.filter { $0.chartName.caseInsensitiveCompare(section.name) == .orderedSame }
             let earlier = sameName.first { $0.content == content }
-            let numbers = words.isEmpty || PlanLyricsImporter.followedName(of: section.name) != nil
-            let name = earlier?.name
-                ?? (numbers && !sameName.isEmpty ? numbered(section.name, taken: seen.map(\.name)) : section.name)
+            let name = earlier?.name ?? (sameName.isEmpty ? section.name : numbered(section.name, taken: seen.map(\.name)))
             if !out.isEmpty { out.append("") }
             out.append(Reflow.labelName(of: name) != nil ? name : "{start_of_part: \(name)}")
-
-            if let earlier {
-                let first = seen.first { $0.name.caseInsensitiveCompare(earlier.name) == .orderedSame }
-                if first?.content != earlier.content { out += earlier.lines }
-            } else {
+            if earlier == nil {
                 out += section.lines
-                seen.append((section.name, name, content, section.lines))
+                seen.append((section.name, name, content))
             }
         }
         return out
