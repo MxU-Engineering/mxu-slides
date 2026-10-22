@@ -450,6 +450,7 @@ final class ServiceControls {
         if handoff.wait > 0 {
             state.dismissLooks(handoff.leaving, atHostTime: CACurrentMediaTime())
             apply()
+            deferring(slide, in: presentation, why: "hand off \(handoff.wait)s")
             let settled = nextFireArrivesSettled
             pendingHandoff = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(handoff.wait))
@@ -471,6 +472,7 @@ final class ServiceControls {
                 slide: slide, in: presentation, theme: theme, arrangementId: arrangementId, contextID: contextID,
                 occurrence: occurrence, slideActions: slideActions)
         case .afterFill:
+            deferring(slide, in: presentation, why: "theme fill")
             let settled = nextFireArrivesSettled
             pendingHandoff = Task { @MainActor [weak self] in
                 await self?.appModel.themesFilled([themeID])
@@ -524,6 +526,7 @@ final class ServiceControls {
         liveOccurrence = occurrence
 
         serviceTracking?.noteItemFired(serviceItemID: contextID)
+        DiagnosticsStore.shared.note("fire.slide", detail: "\(presentation.name) › \(slide.name) actions=\(slide.actions?.count ?? 0)")
         refreshNextSlide()
         apply()
 
@@ -583,7 +586,16 @@ final class ServiceControls {
 
     private var pendingSwitch: (() -> Void)?
 
+    private func deferring(_ slide: Slide, in presentation: Presentation, why: String) {
+        cancelAutoAdvance()
+        cancelMediaAdvance()
+        DiagnosticsStore.shared.note("fire.deferred", detail: "\(presentation.name) › \(slide.name): \(why)")
+    }
+
     private func settlePending() {
+        if pendingHandoff != nil {
+            DiagnosticsStore.shared.note("fire.cancelled", detail: "pending hand off cut through by this fire or clear")
+        }
         pendingHandoff?.cancel()
         pendingHandoff = nil
         if let activate = pendingSwitch {

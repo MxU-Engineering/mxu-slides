@@ -45,6 +45,7 @@ final class ActionRouter {
         guard let actions = slide.actions, !actions.isEmpty else { return }
         let protected = SlideSceneBuilder.protectedLayers(for: slide, mediaLayer: mediaLayer)
         let effective = SlideSceneBuilder.fireActions(for: slide, protected: protected)
+        DiagnosticsStore.shared.note("actions.fire", detail: "\(slide.name) \(effective.count) step(s)")
         if effective.count < actions.count {
             DiagnosticsStore.shared.note(
                 "actions.clear.skippedOwnLayer", detail: slide.name)
@@ -69,6 +70,7 @@ final class ActionRouter {
     func mediaDidFire(_ item: MediaItem, on layer: LayerKind) {
         guard let actions = item.actions, !actions.isEmpty else { return }
         let effective = SlideSceneBuilder.fireActions(forMedia: item, on: layer)
+        DiagnosticsStore.shared.note("actions.fire", detail: "\(item.name) \(effective.count) step(s)")
         if effective.count < actions.count {
             DiagnosticsStore.shared.note(
                 "actions.clear.skippedOwnLayer", detail: item.name)
@@ -302,10 +304,25 @@ final class ActionRouter {
         performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
     }
 
+    private func label(_ action: SlideAction) -> String {
+        var parts = [action.kind.rawValue]
+        if let layer = action.layer { parts.append(layer) }
+        if let id = action.comboId ?? action.presetId ?? action.confidenceLayoutId ?? action.overlayId
+            ?? action.alertId ?? action.mediaId ?? action.presentationId ?? action.audioItemId
+            ?? action.playlistId ?? action.timerId, !id.isEmpty {
+            parts.append(model.indexEntry(id)?.name ?? id)
+        }
+        if action.kind == .midiOut {
+            parts.append("ch\(action.midiChannel ?? 1) #\(action.midiNumber ?? 0)")
+        }
+        return parts.joined(separator: " ")
+    }
+
     private func performNow(
         _ action: SlideAction, depth: Int, visited: Set<String>,
         skippingPresetSwitches: Bool, protected: Set<LayerKind>
     ) {
+        DiagnosticsStore.shared.note("actions.step", detail: label(action))
         switch action.kind {
         case .clearLayer:
             guard let layer = action.layer.flatMap(LayerKind.init(rawValue:)) else {
