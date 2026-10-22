@@ -23,6 +23,7 @@ public enum ChordChartPDF {
         metadata.title = title(of: pages.first, body: body)
 
         var rows: [Row] = []
+        var split: CGFloat?
         for (pageIndex, page) in pages.enumerated() {
             let printed = Self.printedLines(of: page)
             printed.forEach { metadata.read($0.text) }
@@ -30,7 +31,9 @@ public enum ChordChartPDF {
             let fullTitle = metadata.title.map(normalized) ?? ""
 
             var titleLeft = fullTitle
-            for row in Self.rows(of: page, index: pageIndex, body: body) {
+            let read = Self.rows(of: page, index: pageIndex, body: body, previousSplit: split)
+            split = read.split
+            for row in read.rows {
                 let isFooter = footerTop.map { row.baseline <= $0 + 0.5 } ?? false
 
                 let text = normalized(row.text)
@@ -127,7 +130,7 @@ public enum ChordChartPDF {
         return lines.map { ($0.baseline, text(of: $0.glyphs.sorted { $0.x < $1.x }).text) }
     }
 
-    static func rows(of page: PDFPageText, index pageIndex: Int, body: CGFloat) -> [Row] {
+    static func rows(of page: PDFPageText, index pageIndex: Int, body: CGFloat, previousSplit: CGFloat? = nil) -> (rows: [Row], split: CGFloat?) {
 
         let printable = page.glyphs.filter { !$0.light && (!$0.text.trimmingCharacters(in: .whitespaces).isEmpty || $0.text == " ") }
         let main = printable.filter { $0.size >= body * 0.85 }
@@ -137,8 +140,27 @@ public enum ChordChartPDF {
                          size: body * 0.7, bold: true)
             }
         }
-        let split = gutter(of: main.filter { $0.text != " " }, in: page.bounds)
-        func column(_ glyph: PDFGlyph) -> Int { split.map { glyph.x + glyph.width / 2 < $0 ? 0 : 1 } ?? 0 }
+
+        let isHeading = { (glyph: PDFGlyph) in glyph.bold && glyph.size >= body * 1.03 && glyph.text != " " }
+        let words = main.filter { $0.text != " " && !isHeading($0) }
+        let headings = main.filter(isHeading)
+
+        let split = gutter(of: words, in: page.bounds) ?? previousSplit.flatMap { split in
+            let clear = !words.contains { $0.x < split + body / 2 && $0.maxX > split - body / 2 }
+            let sides = words.contains { $0.maxX <= split } && words.contains { $0.x >= split }
+            return clear && sides ? split : nil
+        }
+        func column(_ glyph: PDFGlyph) -> Int {
+            var start = glyph
+            if isHeading(glyph) {
+                while let previous = headings.filter({
+                    abs($0.y - start.y) < body * 0.2 && $0.maxX <= start.x + 0.5 && start.x - $0.maxX < body
+                }).max(by: { $0.maxX < $1.maxX }) {
+                    start = previous
+                }
+            }
+            return split.map { start.x + start.width / 2 < $0 ? 0 : 1 } ?? 0
+        }
 
         var rows: [Row] = []
         for columnIndex in 0...(split == nil ? 0 : 1) {
@@ -168,7 +190,7 @@ public enum ChordChartPDF {
             }
             rows += columnRows.filter { $0.glyphs.contains { $0.text != " " } }
         }
-        return rows
+        return (rows, split)
     }
 
     static func gutter(of glyphs: [PDFGlyph], in bounds: CGRect) -> CGFloat? {

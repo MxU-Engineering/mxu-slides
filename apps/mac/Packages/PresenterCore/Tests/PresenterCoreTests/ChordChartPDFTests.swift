@@ -56,6 +56,27 @@ struct ChordChartPDFTests {
         """)
     }
 
+    @Test func aTitleAcrossTheGutterStillLeavesTwoColumns() {
+        let title = Self.glyphs("The Lord Will Provide (Live From Passion 2025)", y: 726)
+            .map { PDFGlyph(text: $0.text, x: $0.x, y: $0.y, width: $0.width, size: 14.75, bold: true) }
+        let page = PDFPageText(glyphs: title
+            + Self.glyphs("Seek first the kingdom", y: 600) + Self.glyphs("Everything I need", x: 330, y: 600)
+            + Self.glyphs("And its treasures", y: 570) + Self.glyphs("My Father has it", x: 330, y: 570),
+            bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+        let read = ChordChartPDF.rows(of: page, index: 0, body: 13)
+        #expect(read.rows.map(\.text) == [
+            "The Lord Will Provide (Live From Passion 2025)",
+            "Seek first the kingdom", "And its treasures", "Everything I need", "My Father has it",
+        ])
+
+        let ending = PDFPageText(glyphs: Self.glyphs("Every single time", y: 600) + Self.glyphs("The Lord will provide", y: 570)
+            + Self.glyphs("My Father has it", y: 540) + Self.glyphs("B", x: 330, y: 650),
+            bounds: page.bounds)
+        #expect(ChordChartPDF.rows(of: ending, index: 1, body: 13).split == nil)
+        #expect(ChordChartPDF.rows(of: ending, index: 1, body: 13, previousSplit: read.split).rows.map(\.text)
+            == ["Every single time", "The Lord will provide", "My Father has it", "B"])
+    }
+
     @Test func aChordOnlySectionRepeatsOnlyWithTheSameChords() {
 
         let sections: [ChordChartPDF.Section] = [
