@@ -6,16 +6,7 @@ import SwiftUI
 struct AnimationTimelinePanel: View {
     let model: SlideEditorModel
 
-    @State private var zoomGestureBase: Double?
-
-    @State private var draggingStepID: String?
-    @State private var dragTranslation: CGFloat = 0
-
-    @State private var resizingStepID: String?
-    @State private var resizeDelta: CGFloat = 0
-
-    @State private var trimmingStepID: String?
-    @State private var trimDelta: CGFloat = 0
+    @State private var blockEdit = TimelineBlockEditState()
 
     @State private var effectPickerID: DialsTarget?
 
@@ -44,9 +35,7 @@ struct AnimationTimelinePanel: View {
 
     @State private var lanesFrame: CGRect = .zero
 
-    @State private var lanesAnchor = AnchorBox()
-
-    @State private var blockPressStart: CGPoint?
+    @State private var lanesAnchor = TimelinePointerAnchor()
 
     @State private var resizeContext: (group: SceneAnimationGroup, endSeconds: Double)?
 
@@ -63,7 +52,7 @@ struct AnimationTimelinePanel: View {
 
     @State private var dragLaneOverhangX: CGFloat = 0
 
-    @State private var autoScrollTimer: Timer?
+    @State private var autoScroll = TimelineEdgeAutoScroll()
 
     @State private var laneViewportWidth: CGFloat = 0
 
@@ -160,17 +149,8 @@ struct AnimationTimelinePanel: View {
                                 }
                         }
                     )
-                    .simultaneousGesture(
-                        MagnifyGesture()
-                            .onChanged { value in
-                                let base = zoomGestureBase ?? model.timelinePointsPerSecond
-                                zoomGestureBase = base
-                                model.timelineZoomAdjusted = true
-                                model.timelinePointsPerSecond =
-                                    min(max(base * value.magnification, 24), 480)
-                            }
-                            .onEnded { _ in zoomGestureBase = nil }
-                    )
+
+                    .timelinePinchZoom(current: { model.timelinePointsPerSecond }, zoom: zoomByHand)
                 }
                 .background(
                     GeometryReader { content in
@@ -246,77 +226,62 @@ struct AnimationTimelinePanel: View {
 
     private var pointsPerSecond: CGFloat { CGFloat(model.timelinePointsPerSecond) }
 
+    private func laneMap(_ timeline: AnimationTimelineLayout.Timeline) -> TimelineMap {
+        TimelineMap(
+            segments: timeline.columns.map {
+                TimelineSegment(start: $0.start, displayDuration: $0.displayDuration, width: columnWidth($0))
+            },
+            pointsPerSecond: pointsPerSecond
+        )
+    }
+
     private func columnWidth(_ column: AnimationTimelineLayout.Column) -> CGFloat {
 
-        var width = column.duration > 0
-            ? CGFloat(column.displayDuration) * pointsPerSecond
-            : max(CGFloat(column.displayDuration) * pointsPerSecond, minColumnPoints)
+        var width = TimelineSegment.width(
+            displayDuration: column.displayDuration, hasContent: column.duration > 0,
+            pointsPerSecond: pointsPerSecond, floor: minColumnPoints
+        )
         if let context = resizeContext, context.group == column.group {
 
-            width = max(width, CGFloat(context.endSeconds) * pointsPerSecond + resizeDelta)
+            width = max(width, CGFloat(context.endSeconds) * pointsPerSecond + blockEdit.delta(.stretch))
         }
         return width
     }
 
     private func columnX(_ index: Int, in timeline: AnimationTimelineLayout.Timeline) -> CGFloat {
-        timeline.columns.prefix(index).reduce(0) { $0 + columnWidth($1) }
+        laneMap(timeline).x(ofSegment: index)
     }
 
     private func laneWidth(_ timeline: AnimationTimelineLayout.Timeline) -> CGFloat {
-        timeline.columns.reduce(0) { $0 + columnWidth($1) }
+        laneMap(timeline).width
     }
 
     private func x(ofTime t: Double, in timeline: AnimationTimelineLayout.Timeline) -> CGFloat {
-        var x: CGFloat = 0
-        for (index, column) in timeline.columns.enumerated() {
-            let width = columnWidth(column)
-            let next = index + 1 < timeline.columns.count ? timeline.columns[index + 1].start : .infinity
-            if t < next {
-                let offset = max(t - column.start, 0)
-                return x + min(CGFloat(offset) * pointsPerSecond, width)
-            }
-            x += width
-        }
-        return x
+        laneMap(timeline).x(ofTime: t)
     }
 
-    private func time(atX x: CGFloat, in timeline: AnimationTimelineLayout.Timeline)
-        -> (time: Double, group: SceneAnimationGroup)? {
-        var cursor: CGFloat = 0
-        for column in timeline.columns {
-            let width = columnWidth(column)
-            if x < cursor + width || column.group == timeline.columns.last?.group {
-                let offset = Double(max(x - cursor, 0) / pointsPerSecond)
-                return (column.start + min(offset, column.displayDuration), column.group)
-            }
-            cursor += width
-        }
-        return nil
+    private func zoomByHand(_ pointsPerSecond: Double) {
+        model.timelineZoomAdjusted = true
+        model.timelinePointsPerSecond = pointsPerSecond
     }
 
     private var previewActive: Bool { model.animationPreviewActive }
 
     private func transportRow(_ timeline: AnimationTimelineLayout.Timeline) -> some View {
         HStack(spacing: 10) {
-            Button {
-                model.setAnimationPreviewTime(0)
-            } label: {
-                Image(systemName: "backward.end.fill").frame(width: 14)
-            }
-            .buttonStyle(.plain)
-            .help("Go to the top")
-            Button {
-                if model.animationPreviewPlaying {
-                    model.stopAnimationPreview()
-                } else {
-                    model.playPreviewScope()
+            TimelineTransportButtons(
+                playing: model.animationPreviewPlaying,
+                playHelp: "Play the animation on this canvas (never on glass)",
+                stopHelp: "Stop the preview",
+                goToStart: { model.setAnimationPreviewTime(0) },
+                playOrStop: {
+                    if model.animationPreviewPlaying {
+                        model.stopAnimationPreview()
+                    } else {
+                        model.playPreviewScope()
+                    }
                 }
-            } label: {
-                Image(systemName: model.animationPreviewPlaying ? "stop.fill" : "play.fill")
-                    .frame(width: 14)
-            }
-            .buttonStyle(.plain)
-            .help(model.animationPreviewPlaying ? "Stop the preview" : "Play the animation on this canvas (never on glass)")
+            )
             Picker("Play", selection: Binding(
                 get: { model.previewScope },
                 set: { model.previewScope = $0 }
@@ -340,7 +305,7 @@ struct AnimationTimelinePanel: View {
             .foregroundStyle(model.previewRepeats ? Color.accentColor : Color.secondary)
             .help("Repeat the play scope until stopped. Off = play once.")
             Spacer()
-            PlayheadReadout(model: model, duration: timeline.duration)
+            TimelinePlayheadReadout(source: model, duration: timeline.duration)
             if previewActive {
                 Button("Done") { model.stopAnimationPreview() }
                     .controlSize(.small)
@@ -535,7 +500,7 @@ struct AnimationTimelinePanel: View {
                     .offset(x: rect.minX, y: rect.minY)
                     .opacity(marqueeRect != nil ? 1 : 0)
                     .allowsHitTesting(false)
-                PlayheadLine(model: model) { x(ofTime: $0, in: timeline) }
+                TimelinePlayheadLine(source: model) { x(ofTime: $0, in: timeline) }
                     .opacity(previewActive ? 1 : 0)
 
                 Rectangle()
@@ -553,16 +518,9 @@ struct AnimationTimelinePanel: View {
                         .onChange(of: geo.frame(in: .global)) { _, f in lanesFrame = f }
                 }
             )
-            .background(ScreenAnchorView(box: lanesAnchor))
+            .background(TimelineScreenAnchor(anchor: lanesAnchor))
             .onDrop(of: [.plainText], delegate: ObjectDropDelegate(
-                columnAt: { x in
-                    var cursor: CGFloat = 0
-                    for (index, column) in timeline.columns.enumerated() {
-                        cursor += columnWidth(column)
-                        if x < cursor { return index }
-                    }
-                    return timeline.columns.indices.last
-                },
+                columnAt: { x in laneMap(timeline).segmentIndex(atX: x) },
                 open: { objectID, columnIndex in
                     guard timeline.columns.indices.contains(columnIndex) else { return }
                     let group = timeline.columns[columnIndex].group
@@ -646,12 +604,10 @@ struct AnimationTimelinePanel: View {
                             model.timelineDraftClickAt = before
                         }
 
-                        if model.timelineDraftClickAt == nil, let press = pressLocal() {
-                            for boundary in 1..<timeline.columns.count
-                            where abs(press.x - columnX(boundary, in: timeline)) <= 13 {
-                                parkDraft(beforeColumn: boundary)
-                                return
-                            }
+                        if model.timelineDraftClickAt == nil, let press = lanesAnchor.pressLocal(),
+                           let boundary = laneMap(timeline).boundary(nearX: press.x, tolerance: 13) {
+                            parkDraft(beforeColumn: boundary)
+                            return
                         }
                         model.timelineFocusColumn = column.group
                     }
@@ -763,44 +719,18 @@ struct AnimationTimelinePanel: View {
     }
 
     private func scrubStrip(_ timeline: AnimationTimelineLayout.Timeline) -> some View {
-        ZStack(alignment: .topLeading) {
+        TimelineScrubStrip(map: laneMap(timeline)) { time, index in
+            let group = timeline.columns[index].group
 
-            ForEach(Array(timeline.columns.enumerated()), id: \.offset) { index, column in
-                let width = columnWidth(column)
-                HStack(spacing: 0) {
-                    let ticks = max(Int(column.displayDuration / 0.5), 1)
-                    ForEach(0..<ticks, id: \.self) { tick in
-                        Text(tick == 0 ? "0s" : String(format: "%.1f", Double(tick) * 0.5))
-                            .font(.system(size: 8).monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .padding(.leading, 2)
-                            .frame(width: 0.5 * pointsPerSecond, alignment: .leading)
-                            .overlay(alignment: .leading) {
-                                Rectangle().fill(.quaternary).frame(width: 0.5)
-                            }
-                            .clipped()
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(width: width, alignment: .leading)
-                .offset(x: columnX(index, in: timeline))
-            }
+            if model.timelineFocusColumn != group { model.timelineFocusColumn = group }
+            model.setAnimationPreviewTime(time)
+        } playhead: {
             if previewActive {
-                PlayheadHandle(model: model, columns: timeline.columns) { x(ofTime: $0, in: timeline) }
+                TimelinePlayheadHandle(source: model, segmentStarts: timeline.columns.map(\.start)) {
+                    x(ofTime: $0, in: timeline)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    guard let landed = time(atX: value.location.x, in: timeline) else { return }
-
-                    if model.timelineFocusColumn != landed.group { model.timelineFocusColumn = landed.group }
-                    model.setAnimationPreviewTime(landed.time)
-                }
-        )
-        .background(Color.primary.opacity(0.04))
     }
 
     private func lane(for entry: RowEntry, in timeline: AnimationTimelineLayout.Timeline) -> some View {
@@ -902,12 +832,7 @@ struct AnimationTimelinePanel: View {
     }
 
     private func columnIndex(atX x: CGFloat, in timeline: AnimationTimelineLayout.Timeline) -> Int {
-        var cursor: CGFloat = 0
-        for (index, column) in timeline.columns.enumerated() {
-            cursor += columnWidth(column)
-            if x < cursor { return index }
-        }
-        return max(timeline.columns.count - 1, 0)
+        laneMap(timeline).segmentIndex(atX: x) ?? 0
     }
 
     @ViewBuilder
@@ -979,45 +904,36 @@ struct AnimationTimelinePanel: View {
         _ block: AnimationTimelineLayout.Block, in timeline: AnimationTimelineLayout.Timeline
     ) -> some View {
         let columnIndex = timeline.columns.firstIndex { $0.group == block.group } ?? 0
-        let dragging = draggingStepID == block.stepID
+        let mode = blockEdit.mode(of: block.stepID)
 
-        let groupDragging = !dragging && draggingStepID.map {
+        let groupDragging = mode != .move && blockEdit.mode == .move && blockEdit.id.map {
             multiSelection.count > 1 && multiSelection.contains($0)
                 && multiSelection.contains(block.stepID)
         } ?? false
-        let resizing = resizingStepID == block.stepID
-        let trimming = trimmingStepID == block.stepID
-        let xPos = columnX(columnIndex, in: timeline)
-            + CGFloat(block.startOffset) * pointsPerSecond
-            + (dragging || groupDragging ? dragTranslation : 0)
-            + (trimming ? trimDelta : 0)
-        let width = max(
-            CGFloat(block.duration) * pointsPerSecond
-                + (resizing ? resizeDelta : 0)
-                - (trimming ? trimDelta : 0),
-            26
+        let span = TimelineBlockEdit.liveSpan(
+            x: columnX(columnIndex, in: timeline) + CGFloat(block.startOffset) * pointsPerSecond,
+            width: CGFloat(block.duration) * pointsPerSecond,
+            mode: groupDragging ? .move : mode,
+            delta: blockEdit.delta
         )
 
-        let liveDuration: Double = {
-            if resizing {
-                return max(((block.duration + Double(resizeDelta / pointsPerSecond)) * 20).rounded() / 20, 0.05)
-            }
-            if trimming {
-                return max(((block.duration - Double(trimDelta / pointsPerSecond)) * 20).rounded() / 20, 0.05)
-            }
-            return block.duration
-        }()
-        let adjusting = resizing || trimming
+        let liveDuration = TimelineBlockEdit.liveDuration(
+            block.duration, mode: mode, delta: blockEdit.delta, pointsPerSecond: pointsPerSecond
+        )
+        let adjusting = mode == .stretch || mode == .trim
         let selected = model.selectedAnimationStepID == block.stepID
             || multiSelection.contains(block.stepID)
         let warning = model.stepWarnings[block.stepID]
-        return HStack(spacing: 4) {
+        return TimelineBlockCard(
+            width: span.width, tint: block.kind.tint, selected: selected,
+            rampIn: block.rampIn, rampOut: block.rampOut
+        ) {
 
             if let (_, step) = model.animationStep(id: block.stepID) {
                 Text(model.animationSentence(step))
                     .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
-                Text(Self.durationLabel(liveDuration))
+                Text(TimelineBlockEdit.durationLabel(liveDuration))
                     .font(.system(size: 9, weight: adjusting ? .bold : .regular).monospacedDigit())
                     .foregroundStyle(adjusting ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
             }
@@ -1026,42 +942,7 @@ struct AnimationTimelinePanel: View {
                     .font(.system(size: 8))
                     .foregroundStyle(.orange)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 9)
-        .frame(width: width, height: 22, alignment: .leading)
-        .background(block.kind.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(selected ? Color.accentColor : block.kind.tint.opacity(0.4),
-                        lineWidth: selected ? 1.5 : 1)
-        )
-        .overlay(alignment: .leading) {
-
-            if block.rampIn { rampWedge(block.kind.tint, leading: true) }
-        }
-        .overlay(alignment: .trailing) {
-            if block.rampOut { rampWedge(block.kind.tint, leading: false) }
-        }
-        .overlay(alignment: .trailing) {
-
-            RoundedRectangle(cornerRadius: 2)
-                .fill(block.kind.tint.opacity(0.55))
-                .frame(width: 4, height: 14)
-                .padding(.trailing, 2)
-                .allowsHitTesting(false)
-                .help("Drag to change how long it runs")
-        }
-        .overlay(alignment: .leading) {
-
-            RoundedRectangle(cornerRadius: 2)
-                .fill(block.kind.tint.opacity(0.55))
-                .frame(width: 4, height: 14)
-                .padding(.leading, 2)
-                .allowsHitTesting(false)
-                .help("Drag to move where it starts; the end stays put")
-        }
-        .clipped()
         .overlay(alignment: .leading) {
 
             if block.linked {
@@ -1073,144 +954,92 @@ struct AnimationTimelinePanel: View {
             }
         }
 
-        .contentShape(Rectangle().inset(by: -4))
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear { blockFrames[block.stepID] = geo.frame(in: .global) }
-                    .onChange(of: geo.frame(in: .global)) { _, f in blockFrames[block.stepID] = f }
-            }
-        )
-        .simultaneousGesture(
-
-            DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                .onChanged { _ in
-                    guard let mouse = mouseLocal() else { return }
-                    let engaged = draggingStepID == block.stepID
-                        || resizingStepID == block.stepID
-                        || trimmingStepID == block.stepID
-                    let start = blockPressStart ?? pressLocal() ?? mouse
-                    if blockPressStart == nil { blockPressStart = start }
-                    let dx = mouse.x - start.x
-                    guard abs(dx) > 3 || engaged else { return }
-                    if !engaged {
-
-                        let frame = blockLocal(block.stepID) ?? .zero
-                        let baseWidth = max(frame.width, 26)
-                        let edgeZone = min(12, max(baseWidth / 3, 6))
-                        let local = start.x - frame.minX
-                        if local > baseWidth - edgeZone {
-                            resizingStepID = block.stepID
-                            resizeContext = (block.group, block.startOffset + block.duration)
-                        } else if local < edgeZone, baseWidth >= 34 {
-                            trimmingStepID = block.stepID
-                        } else {
-                            draggingStepID = block.stepID
-                        }
-                        DiagnosticsStore.shared.note(
-                            "timeline.block.engage",
-                            detail: "id=\(block.stepID.suffix(14)) mode=\(resizingStepID != nil ? "resize" : trimmingStepID != nil ? "trim" : "move") start=(\(Int(start.x)),\(Int(start.y))) frame=\(Int(frame.minX))..\(Int(frame.maxX))"
-                        )
-                    }
-                    if resizingStepID == block.stepID {
-                        resizeDelta = dx
-                        armAutoScroll()
-                    } else if trimmingStepID == block.stepID {
-                        trimDelta = dx
-                        armAutoScroll()
-                    } else {
-                        dragTranslation = dx
-
-                        let columnIndex = timeline.columns.firstIndex { $0.group == block.group } ?? 0
-                        let landedX = columnX(columnIndex, in: timeline)
-                            + CGFloat(block.startOffset) * pointsPerSecond + dx
-                        dragLaneOverhangX = landedX + CGFloat(block.duration) * pointsPerSecond
-                        if let boundary = newClickBoundary(at: landedX, in: timeline) {
-                            insertClickAt = boundary
-                            dropPastEdge = false
-                            dropTargetGroup = nil
-                        } else if landedX >= laneWidth(timeline) {
-                            insertClickAt = nil
-                            dropPastEdge = true
-                            dropTargetGroup = nil
-                        } else {
-                            insertClickAt = nil
-                            dropPastEdge = false
-                            var cursor: CGFloat = 0
-                            var target: SceneAnimationGroup?
-                            for column in timeline.columns {
-                                let width = columnWidth(column)
-                                if landedX < cursor + width { target = column.group; break }
-                                cursor += width
-                            }
-                            dropTargetGroup = target == block.group ? nil : target
-                        }
-                    }
-                    armAutoScroll()
+        .timelineBlockGestures(
+            id: block.stepID,
+            anchor: lanesAnchor,
+            edit: $blockEdit,
+            frames: $blockFrames,
+            frame: { blockLocal(block.stepID) },
+            engaged: { mode, start, frame in
+                if mode == .stretch {
+                    resizeContext = (block.group, block.startOffset + block.duration)
                 }
-                .onEnded { _ in
-                    let resized = resizingStepID == block.stepID
-                    let trimmed = trimmingStepID == block.stepID
-                    let dragged = draggingStepID == block.stepID
-                    let dx: CGFloat
-                    if let start = blockPressStart, let mouse = mouseLocal() {
-                        dx = mouse.x - start.x
-                    } else {
-                        dx = 0
-                    }
-                    blockPressStart = nil
-                    DiagnosticsStore.shared.note(
-                        "timeline.gesture",
-                        detail: "id=\(block.stepID.suffix(12)) dx=\(Int(dx)) resized=\(resized) trimmed=\(trimmed) dragged=\(dragged) sel=\(multiSelection.count) inSel=\(multiSelection.contains(block.stepID))"
-                    )
-                    resizingStepID = nil
-                    resizeDelta = 0
-                    resizeContext = nil
-                    trimmingStepID = nil
-                    trimDelta = 0
-                    draggingStepID = nil
-                    dragTranslation = 0
-                    dropTargetGroup = nil
+                DiagnosticsStore.shared.note(
+                    "timeline.block.engage",
+                    detail: "id=\(block.stepID.suffix(14)) mode=\(mode == .stretch ? "resize" : mode == .trim ? "trim" : "move") start=(\(Int(start.x)),\(Int(start.y))) frame=\(Int(frame.minX))..\(Int(frame.maxX))"
+                )
+            },
+            moved: { dx in
+
+                let map = laneMap(timeline)
+                let landedX = map.x(ofSegment: columnIndex)
+                    + CGFloat(block.startOffset) * pointsPerSecond + dx
+                dragLaneOverhangX = landedX + CGFloat(block.duration) * pointsPerSecond
+                if let boundary = newClickBoundary(at: landedX, in: timeline) {
+                    insertClickAt = boundary
                     dropPastEdge = false
+                    dropTargetGroup = nil
+                } else if landedX >= map.width {
                     insertClickAt = nil
-                    dragLaneOverhangX = 0
-                    stopAutoScroll()
-                    if resized {
-                        let seconds = block.duration + Double(dx / pointsPerSecond)
-                        model.resizeTimelineStep(block.stepID, duration: seconds)
-                        revealStep(block.stepID)
-                        return
-                    }
-                    if trimmed {
-                        model.trimTimelineStepStart(
-                            block.stepID,
-                            deltaSeconds: Double(dx / pointsPerSecond)
-                        )
-                        return
-                    }
-                    if dragged, abs(dx) > 3,
-                       multiSelection.count > 1, multiSelection.contains(block.stepID) {
-                        commitGroupDrag(block, translation: dx, in: timeline)
-                        revealStep(block.stepID)
-                        return
-                    }
-                    model.selectAnimationStep(block.stepID)
-                    model.timelineFocusColumn = block.group
-                    multiSelection = [block.stepID]
-                    if dragged, abs(dx) > 3 {
-                        commitDrag(block, translation: dx, in: timeline)
-                        revealStep(block.stepID)
-                    }
+                    dropPastEdge = true
+                    dropTargetGroup = nil
+                } else {
+                    insertClickAt = nil
+                    dropPastEdge = false
+                    let target = map.segmentIndex(atX: landedX).map { timeline.columns[$0].group }
+                    dropTargetGroup = target == block.group ? nil : target
                 }
-        )
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
+            },
+            autoScroll: armAutoScroll,
+            ended: { mode, dx in
+                let resized = mode == .stretch
+                let trimmed = mode == .trim
+                let dragged = mode == .move
+                DiagnosticsStore.shared.note(
+                    "timeline.gesture",
+                    detail: "id=\(block.stepID.suffix(12)) dx=\(Int(dx)) resized=\(resized) trimmed=\(trimmed) dragged=\(dragged) sel=\(multiSelection.count) inSel=\(multiSelection.contains(block.stepID))"
+                )
+                resizeContext = nil
+                dropTargetGroup = nil
+                dropPastEdge = false
+                insertClickAt = nil
+                dragLaneOverhangX = 0
+                stopAutoScroll()
+                if resized {
+                    let seconds = block.duration + Double(dx / pointsPerSecond)
+                    model.resizeTimelineStep(block.stepID, duration: seconds)
+                    revealStep(block.stepID)
+                    return
+                }
+                if trimmed {
+                    model.trimTimelineStepStart(
+                        block.stepID,
+                        deltaSeconds: Double(dx / pointsPerSecond)
+                    )
+                    return
+                }
+                if dragged, abs(dx) > 3,
+                   multiSelection.count > 1, multiSelection.contains(block.stepID) {
+                    commitGroupDrag(block, translation: dx, in: timeline)
+                    revealStep(block.stepID)
+                    return
+                }
+                model.selectAnimationStep(block.stepID)
+                model.timelineFocusColumn = block.group
+                multiSelection = [block.stepID]
+                if dragged, abs(dx) > 3 {
+                    commitDrag(block, translation: dx, in: timeline)
+                    revealStep(block.stepID)
+                }
+            },
+            doubleClicked: {
 
                 model.selectAnimationStep(block.stepID)
                 effectPickerID = DialsTarget(id: block.stepID)
             }
-        )
-        .contextMenu { blockMenu(block, in: timeline) }
+        ) {
+            blockMenu(block, in: timeline)
+        }
         .popover(item: Binding(
             get: { effectPickerID?.id == block.stepID ? effectPickerID : nil },
             set: { effectPickerID = $0 }
@@ -1224,34 +1053,13 @@ struct AnimationTimelinePanel: View {
 
         .help(warning ?? "")
 
-        .position(x: xPos + width / 2, y: blockY + 11)
+        .position(x: span.x + span.width / 2, y: blockY + 11)
         .id(block.stepID)
-    }
-
-    private func mouseLocal() -> CGPoint? {
-        guard let view = lanesAnchor.view, let window = view.window else { return nil }
-        let screenRect = window.convertToScreen(view.convert(view.bounds, to: nil))
-        let mouse = NSEvent.mouseLocation
-        return CGPoint(x: mouse.x - screenRect.minX, y: screenRect.maxY - mouse.y)
-    }
-
-    private func pressLocal() -> CGPoint? {
-        guard let view = lanesAnchor.view, let window = view.window else { return nil }
-        let screenRect = window.convertToScreen(view.convert(view.bounds, to: nil))
-        let press = lanesAnchor.lastPress
-        return CGPoint(x: press.x - screenRect.minX, y: screenRect.maxY - press.y)
     }
 
     private func blockLocal(_ id: String) -> CGRect? {
         guard let frame = blockFrames[id] else { return nil }
         return frame.offsetBy(dx: -lanesFrame.minX, dy: -lanesFrame.minY)
-    }
-
-    static func durationLabel(_ seconds: Double) -> String {
-        let tenths = (seconds * 10).rounded() / 10
-        return abs(tenths - seconds) < 0.001
-            ? String(format: "%.1fs", seconds)
-            : String(format: "%.2fs", seconds)
     }
 
     private var rowPitch: CGFloat { rowHeight + 1 }
@@ -1263,13 +1071,11 @@ struct AnimationTimelinePanel: View {
         let visible = Set(timeline.rows.flatMap(\.blocks).map(\.stepID))
         return DragGesture(minimumDistance: 6, coordinateSpace: .global)
             .onChanged { _ in
-                guard let mouse = mouseLocal() else { return }
+                guard let mouse = lanesAnchor.mouseLocal() else { return }
                 if marqueeStart == nil {
 
-                    guard !marqueeDeclined,
-                          draggingStepID == nil, resizingStepID == nil, trimmingStepID == nil
-                    else { return }
-                    let press = pressLocal() ?? mouse
+                    guard !marqueeDeclined, blockEdit.mode == nil else { return }
+                    let press = lanesAnchor.pressLocal() ?? mouse
 
                     guard press.x >= -4 else { return }
 
@@ -1363,62 +1169,30 @@ struct AnimationTimelinePanel: View {
     }
 
     private func armAutoScroll() {
-        autoScrollTick()
-        guard autoScrollTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 45, repeats: true) { _ in
-            autoScrollTick()
-        }
-
-        RunLoop.main.add(timer, forMode: .common)
-        autoScrollTimer = timer
+        autoScroll.arm { autoScrollTick() }
     }
 
     private func stopAutoScroll() {
-        autoScrollTimer?.invalidate()
-        autoScrollTimer = nil
+        autoScroll.stop()
     }
 
     private func autoScrollTick() {
-        let gestureLive = draggingStepID != nil || resizingStepID != nil
-            || trimmingStepID != nil || marqueeStart != nil
-        guard gestureLive,
-              let anchor = lanesAnchor.view,
-              let window = anchor.window,
-              let scrollView = anchor.enclosingScrollView else {
+        let gestureLive = blockEdit.mode != nil || marqueeStart != nil
+        guard gestureLive else {
             stopAutoScroll()
             return
         }
-        let inWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
-        let inClip = scrollView.contentView.convert(inWindow, from: nil)
-        let visible = scrollView.documentVisibleRect
-        let zone: CGFloat = 36
-        let step: CGFloat = 14
-        var target = visible.origin
-        let maxX = max(0, (scrollView.documentView?.frame.width ?? 0) - visible.width)
-        if inClip.x > visible.maxX - zone {
-            target.x = min(visible.origin.x + step, maxX)
-        } else if inClip.x < visible.minX + zone {
-            target.x = max(visible.origin.x - step, 0)
-        } else {
-            return
+        switch TimelineEdgeAutoScroll.nudge(lanesAnchor) {
+        case .unavailable: stopAutoScroll()
+        case .idle: return
+        case .scrolled: refreshLiveDeltas()
         }
-        guard target.x != visible.origin.x else { return }
-        scrollView.contentView.scroll(to: target)
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        refreshLiveDeltas()
     }
 
     private func refreshLiveDeltas() {
-        guard let mouse = mouseLocal() else { return }
-        if let start = blockPressStart {
-            let dx = mouse.x - start.x
-            if resizingStepID != nil {
-                resizeDelta = dx
-            } else if trimmingStepID != nil {
-                trimDelta = dx
-            } else if draggingStepID != nil {
-                dragTranslation = dx
-            }
+        guard let mouse = lanesAnchor.mouseLocal() else { return }
+        if let start = blockEdit.pressStart, blockEdit.mode != nil {
+            blockEdit.delta = mouse.x - start.x
         }
         if let start = marqueeStart {
             marqueeRect = CGRect(
@@ -1452,17 +1226,13 @@ struct AnimationTimelinePanel: View {
     private func newClickBoundary(
         at landedX: CGFloat, in timeline: AnimationTimelineLayout.Timeline
     ) -> (index: Int, x: CGFloat)? {
-        var cursor: CGFloat = 0
-        var clicksSeen = 0
-        for (index, column) in timeline.columns.enumerated() {
-            if case .click = column.group { clicksSeen += 1 }
-            cursor += columnWidth(column)
-            guard index < timeline.columns.count - 1 else { break }
-            if abs(landedX - cursor) <= 12 {
-                return (clicksSeen, cursor)
-            }
-        }
-        return nil
+        let map = laneMap(timeline)
+        guard let boundary = map.boundary(nearX: landedX, tolerance: 12) else { return nil }
+        let clicksBefore = timeline.columns.prefix(boundary).filter {
+            if case .click = $0.group { return true }
+            return false
+        }.count
+        return (clicksBefore, map.x(ofSegment: boundary))
     }
 
     private func commitGroupDrag(
@@ -1487,24 +1257,19 @@ struct AnimationTimelinePanel: View {
             )
             return
         }
-        var cursor: CGFloat = 0
-        for column in timeline.columns {
-            let width = columnWidth(column)
-            if landedX < cursor + width {
-                if column.group == block.group {
-                    model.moveTimelineSteps(
-                        multiSelection, bySeconds: Double(translation / pointsPerSecond)
-                    )
-                } else {
-                    model.moveTimelineSteps(
-                        multiSelection, into: slot(for: column.group),
-                        grabbed: block.stepID,
-                        atOffset: Double(max(landedX - cursor, 0) / pointsPerSecond)
-                    )
-                }
-                return
-            }
-            cursor += width
+        let map = laneMap(timeline)
+        guard let index = map.segmentIndex(atX: landedX) else { return }
+        let column = timeline.columns[index]
+        if column.group == block.group {
+            model.moveTimelineSteps(
+                multiSelection, bySeconds: Double(translation / pointsPerSecond)
+            )
+        } else {
+            model.moveTimelineSteps(
+                multiSelection, into: slot(for: column.group),
+                grabbed: block.stepID,
+                atOffset: Double(max(landedX - map.x(ofSegment: index), 0) / pointsPerSecond)
+            )
         }
     }
 
@@ -1527,19 +1292,14 @@ struct AnimationTimelinePanel: View {
             )
             return
         }
-        var cursor: CGFloat = 0
-        for column in timeline.columns {
-            let width = columnWidth(column)
-            if landedX < cursor + width {
-                let offset = Double(max(landedX - cursor, 0) / pointsPerSecond)
-                if column.group == block.group {
-                    model.placeTimelineStep(block.stepID, atOffset: offset)
-                } else {
-                    model.moveTimelineStep(block.stepID, into: slot(for: column.group), atOffset: offset)
-                }
-                return
-            }
-            cursor += width
+        let map = laneMap(timeline)
+        guard let index = map.segmentIndex(atX: landedX) else { return }
+        let column = timeline.columns[index]
+        let offset = Double(max(landedX - map.x(ofSegment: index), 0) / pointsPerSecond)
+        if column.group == block.group {
+            model.placeTimelineStep(block.stepID, atOffset: offset)
+        } else {
+            model.moveTimelineStep(block.stepID, into: slot(for: column.group), atOffset: offset)
         }
     }
 
@@ -1804,13 +1564,6 @@ struct AnimationTimelinePanel: View {
         }
     }
 
-    private func rampWedge(_ tint: Color, leading: Bool) -> some View {
-        Triangle(pointsUp: leading)
-            .fill(tint.opacity(0.35))
-            .frame(width: 8, height: 22)
-            .scaleEffect(x: leading ? 1 : -1)
-    }
-
     private func previewStart(
         of block: AnimationTimelineLayout.Block, in timeline: AnimationTimelineLayout.Timeline
     ) -> Double? {
@@ -1848,41 +1601,16 @@ struct AnimationTimelinePanel: View {
             .controlSize(.mini)
             .help("Taller rows")
             Spacer()
-            Button {
-                model.timelineZoomAdjusted = true
-                model.timelinePointsPerSecond = max(model.timelinePointsPerSecond / 1.3, 24)
-            } label: {
-                Image(systemName: "minus")
-            }
-            .buttonStyle(.plain)
-            .controlSize(.mini)
-            Slider(
-                value: Binding(
-                    get: { model.timelinePointsPerSecond },
-                    set: {
-                        model.timelineZoomAdjusted = true
-                        model.timelinePointsPerSecond = $0
-                    }
-                ),
-                in: 24...480
-            )
-            .controlSize(.mini)
-            .frame(width: 90)
-            Button {
-                model.timelineZoomAdjusted = true
-                model.timelinePointsPerSecond = min(model.timelinePointsPerSecond * 1.3, 480)
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.plain)
-            .controlSize(.mini)
-            Button("Fit") {
+            TimelineZoomControls(
+                pointsPerSecond: model.timelinePointsPerSecond,
+                zoom: zoomByHand,
+                fit: {
 
-                model.timelineZoomAdjusted = false
-                fitZoom(timeline)
-            }
-            .controlSize(.mini)
-            .help("Pack the whole animation into view (and keep fitting as slides change)")
+                    model.timelineZoomAdjusted = false
+                    fitZoom(timeline)
+                },
+                fitHelp: "Pack the whole animation into view (and keep fitting as slides change)"
+            )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
@@ -1891,108 +1619,14 @@ struct AnimationTimelinePanel: View {
 
     private func fitZoom(_ timeline: AnimationTimelineLayout.Timeline) {
         let seconds = timeline.columns.reduce(0.0) { $0 + $1.displayDuration }
-        guard seconds > 0, laneViewportWidth > 140 else { return }
 
-        model.timelinePointsPerSecond = min(max(Double(laneViewportWidth - 116) / seconds, 24), 480)
+        guard let fitted = TimelineZoom.fit(seconds: seconds, viewportWidth: Double(laneViewportWidth)) else { return }
+        model.timelinePointsPerSecond = fitted
     }
 
     private func autoFitIfNeeded(_ timeline: AnimationTimelineLayout.Timeline) {
         guard !model.timelineZoomAdjusted else { return }
         fitZoom(timeline)
-    }
-}
-
-private struct PlayheadReadout: View {
-    let model: SlideEditorModel
-    let duration: Double
-
-    var body: some View {
-        Text(String(format: "%.1f / %.1fs", model.animationPreviewShownTime, max(duration, 0.01)))
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
-
-            .frame(width: 84, alignment: .trailing)
-    }
-}
-
-private struct PlayheadHandle: View {
-    let model: SlideEditorModel
-    let columns: [AnimationTimelineLayout.Column]
-    let x: (Double) -> CGFloat
-
-    var body: some View {
-        let t = model.animationPreviewShownTime
-        let column = columns.last { $0.start <= t } ?? columns.first
-        let within = column.map { max(t - $0.start, 0) } ?? t
-        Text(String(format: "%.2fs", within))
-            .font(.system(size: 8.5, weight: .semibold).monospacedDigit())
-            .foregroundStyle(.white)
-
-            .frame(width: 34)
-            .padding(.vertical, 1)
-            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 3))
-            .offset(x: x(t) - 17, y: 2)
-    }
-}
-
-private struct PlayheadLine: View {
-    let model: SlideEditorModel
-    let x: (Double) -> CGFloat
-
-    var body: some View {
-        Rectangle()
-            .fill(Color.accentColor)
-            .frame(width: 1.5)
-            .offset(x: x(model.animationPreviewShownTime))
-            .allowsHitTesting(false)
-    }
-}
-
-private struct Triangle: Shape {
-    var pointsUp: Bool
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-final class AnchorBox {
-    weak var view: NSView?
-    var lastPress: NSPoint = .zero
-}
-
-private struct ScreenAnchorView: NSViewRepresentable {
-    let box: AnchorBox
-
-    final class Coordinator {
-        var monitor: Any?
-        deinit {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        box.view = view
-        let box = box
-        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown]
-        ) { event in
-            box.lastPress = NSEvent.mouseLocation
-            return event
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        box.view = nsView
     }
 }
 

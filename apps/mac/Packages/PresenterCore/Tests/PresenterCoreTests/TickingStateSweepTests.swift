@@ -11,11 +11,11 @@ import Testing
     }
 
     private let clocks: [String: [Tick]] = [
-        "AudioController.swift": [.moves(["elapsed"])],  
-        "MediaEditorView.swift": [.moves(["elapsed"])],  
-        "SlideEditorModel+Animations.swift": [.moves(["animationPreviewShownTime"])],  
-        "AnimationTimelinePanel.swift": [
-            .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the panel that owns the drag"),
+        "AudioController.swift": [.moves(["elapsed"])],
+        "MediaEditorView.swift": [.moves(["elapsed"])],
+        "SlideEditorModel+Animations.swift": [.moves(["animationPreviewShownTime"])],
+        "TimelineControls.swift": [
+            .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the timeline that owns the drag"),
         ],
         "MediaTransportController.swift": [.quiet("refresh() writes rows and rowsVersion only when a row moved")],
         "VideoInputInventory.swift": [.quiet("the 1 s connectivity poll writes the connected set only when it changes")],
@@ -35,8 +35,12 @@ import Testing
 
     private let readers: [String: (hint: String, pattern: Regex<Substring>, views: Set<String>)] = [
         "animationPreviewShownTime": (
-            "animationPreviewShownTime", /\banimationPreviewShownTime\b/,
-            ["PlayheadReadout", "PlayheadLine", "PlayheadHandle", "AnimationPreviewStrip"]
+            "animationPreviewShownTime", /\banimationPreviewShownTime\b/, ["AnimationPreviewStrip"]
+        ),
+
+        "timelinePlayheadTime": (
+            "timelinePlayheadTime", /\btimelinePlayheadTime\b/,
+            ["TimelinePlayheadReadout", "TimelinePlayheadLine", "TimelinePlayheadHandle"]
         ),
 
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
@@ -186,24 +190,27 @@ import Testing
         }
     }
 
-    @Test func timelinePanelBodyNeverReadsTheTickingTime() throws {
+    @Test func timelineBodiesNeverReadTheTickingTime() throws {
         let sweep = try SourceSweep.app()
-        let source = try #require(sweep.file("AnimationTimelinePanel.swift")).text
-        let leaves = try #require(source.range(of: "private struct PlayheadReadout: View"))
-        let panel = source[..<leaves.lowerBound]
-        let leafSection = source[leaves.lowerBound...]
+        let panel = try #require(sweep.file("AnimationTimelinePanel.swift")).text
+        let shared = try #require(sweep.file("TimelineControls.swift")).text
+        let leaves = try #require(shared.range(of: "// MARK: - Playhead leaves"))
+        let leavesEnd = shared[leaves.upperBound...].range(of: "// MARK: - ")?.lowerBound ?? shared.endIndex
+        let leafSection = shared[leaves.upperBound..<leavesEnd]
+        let outsideLeaves = shared[..<leaves.lowerBound] + shared[leavesEnd...]
         #expect(!panel.contains("animationPreviewShownTime"), "the panel body must not read the ticking time")
         #expect(
             !panel.contains("animationPreviewTime"),
             "previewActive reads the stored animationPreviewActive: a scrub moves animationPreviewTime every drag step"
         )
+        #expect(!outsideLeaves.contains("timelinePlayheadTime"), "only the playhead leaves read the ticking time")
         #expect(
             leafSection.contains(".frame(width: 84, alignment: .trailing)") && leafSection.contains(".frame(width: 34)"),
             "the ticking labels keep fixed widths: new digits must not re-lay out their rows"
         )
-        for leaf in ["PlayheadReadout", "PlayheadHandle", "PlayheadLine"] {
-            #expect(leafSection.contains("private struct \(leaf): View"))
-            #expect(panel.contains("\(leaf)(model: model"), "the panel draws the playhead through \(leaf)")
+        for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine"] {
+            #expect(leafSection.contains("struct \(leaf)<Source: TimelinePlayheadSource>: View"))
+            #expect(panel.contains("\(leaf)(source: model"), "the panel draws the playhead through \(leaf)")
         }
     }
 }
