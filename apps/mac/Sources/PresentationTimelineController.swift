@@ -54,6 +54,13 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         timer?.invalidate()
         timer = nil
         guard playing else { return }
+
+        if let controls, let deck = deck() {
+            for id in Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
+            where controls.audio.player(forAudioItem: id) != nil {
+                controls.stopAudio(audioItemID: id)
+            }
+        }
         playing = false
         recording = false
         recordingTimeline = nil
@@ -145,17 +152,42 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                     slide: slides[occurrence], in: deck, arrangementId: arrangementId,
                     contextID: itemID, occurrence: occurrence, slideActions: actions)
                 firing = false
-            case .fireOverlay(let id):
-                if let overlay = model.overlay(id) { controls.fire(overlay: overlay) }
-            case .clearOverlay(let id):
-                controls.dismissOverlay(id: id)
-            case .fireMedia(let id, _):
-                if let media = model.media(id) { controls.fire(mediaItem: media) }
-            case .clearMedia(let id):
-
-                if let layer = controls.state.liveMedia.first(where: { $0.value.mediaId == id })?.key {
-                    controls.clear(layer: layer)
+            case .fire(let lane, let id):
+                switch lane {
+                case .overlays:
+                    if let overlay = model.overlay(id) { controls.fire(overlay: overlay) }
+                case .alerts:
+                    if let preset = try? model.alertPreset(id) { controls.fire(alertPreset: preset) }
+                case .videoInput:
+                    controls.fire(liveInputId: id)
+                case .videos, .stillGraphics, .loopingVideos:
+                    if let media = model.media(id) { controls.fire(mediaItem: media) }
+                case .slide, .audio, .actions:
+                    break
                 }
+            case .clear(let lane, let id):
+
+                switch lane {
+                case .overlays:
+                    controls.dismissOverlay(id: id)
+                case .alerts:
+                    if controls.state.liveAlert?.id == id { controls.dismissAlert() }
+                case .audio:
+                    if controls.audio.player(forAudioItem: id) != nil { controls.stopAudio(audioItemID: id) }
+                case .videos, .stillGraphics, .loopingVideos, .videoInput:
+                    let engineID = lane == .videoInput ? VideoInputInventory.engineIDPrefix + id : id
+                    if let layer = controls.state.liveMedia.first(where: { $0.value.mediaId == engineID })?.key {
+                        controls.clear(layer: layer)
+                    }
+                case .slide, .actions:
+                    break
+                }
+            case .playAudio(let id, let from):
+
+                if controls.audio.player(forAudioItem: id) == nil, let item = model.audio(id) {
+                    controls.fire(audioItem: item, repeatOverride: false)
+                }
+                if from > PresentationTimelines.frame { controls.audio.player(forAudioItem: id)?.seek(to: from) }
             case .runActions(let cueID):
                 if let actions = cues.first(where: { $0.id == cueID })?.actions, !actions.isEmpty {
                     controls.actionRouter?.execute(actions)
@@ -166,10 +198,15 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     private func live() -> PresentationTimelines.Live {
-        guard let state = controls?.state else { return PresentationTimelines.Live() }
-        return PresentationTimelines.Live(
-            mediaIds: Set(state.liveMedia.values.map(\.mediaId)),
-            overlayIds: Set(state.liveOverlays.map(\.id)))
+        guard let state = controls?.state else { return [] }
+        var live = Set(state.liveMedia.values.map { cue in
+            cue.mediaId.hasPrefix(VideoInputInventory.engineIDPrefix)
+                ? String(cue.mediaId.dropFirst(VideoInputInventory.engineIDPrefix.count)) : cue.mediaId
+        })
+        live.formUnion(state.liveOverlays.map(\.id))
+        live.formUnion(state.liveAudio.compactMap(\.audioItemId))
+        if let alert = state.liveAlert { live.insert(alert.id) }
+        return live
     }
 
     func noteSlideLanded(contextID: String?, occurrence: Int?) {

@@ -8,6 +8,8 @@ final class PresentationTimelineCards {
     static let shared = PresentationTimelineCards()
     var open: Set<String> = []
     var expanded: Set<String> = []
+
+    var addedLanes: [String: Set<TimelineLane>] = [:]
 }
 
 struct PresentationTimelineButton: View {
@@ -201,7 +203,7 @@ struct PresentationTimelineStrip: View {
     }
 
     private func sections(length: Double) -> some View {
-        PresentationTimelineSectionsBar(context: context, length: length) {
+        PresentationTimelineSectionsBar(context: context, length: length, markers: true) {
             CGFloat(min(max($0 / length, 0), 1)) * width
         }
         .frame(height: 18)
@@ -224,6 +226,8 @@ struct PresentationTimelineStrip: View {
 struct PresentationTimelineSectionsBar: View {
     let context: PresentationTimelineContext
     let length: Double
+
+    var markers = false
     let x: (Double) -> CGFloat
 
     var body: some View {
@@ -233,7 +237,7 @@ struct PresentationTimelineSectionsBar: View {
             PresentationTimelines.sectionSpans($0.cues, blocks: blocks, length: length)
         } ?? []
         let ticks = (timeline?.cues ?? [])
-            .filter { $0.lane == .slides && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
+            .filter { $0.kind == .slide && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
             .map(\.at)
         let palette = context.model.groupColors
         ZStack(alignment: .leading) {
@@ -267,9 +271,30 @@ struct PresentationTimelineSectionsBar: View {
                     .position(x: x(at), y: 9)
                     .allowsHitTesting(false)
             }
+            if markers {
+                ForEach(markerSteps(timeline), id: \.key) { step in
+                    let lane = step.cue.kind ?? .actions
+                    Image(systemName: lane.symbol)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 13, height: 13)
+                        .background(lane.tint.opacity(step.out ? 0.35 : 0.9), in: Circle())
+                        .help(context.label(step.cue) + (step.out ? " ends" : ""))
+                        .position(x: x(step.at), y: 9)
+                }
+            }
             if context.isCurrent {
                 TimelinePlayheadLine(source: context.clock, x: x)
             }
+        }
+    }
+
+    private func markerSteps(_ timeline: PresentationTimeline?) -> [(key: String, cue: TimelineCue, at: Double, out: Bool)] {
+        let cues = timeline?.cues ?? []
+        return cues.filter { $0.kind != .slide && $0.kind != nil }.flatMap { cue in
+            let end = PresentationTimelines.end(of: cue, in: cues)
+            let out = (cue.kind?.clearsAtOut ?? false) && end.isFinite
+            return [(cue.id, cue, cue.at, false)] + (out ? [(cue.id + ".out", cue, end, true)] : [])
         }
     }
 }
@@ -365,9 +390,19 @@ struct PresentationTimelineLanes: View {
         var id: String { action.id }
     }
 
-    static let lanes: [TimelineLane] = [.overlays, .slides, .foregroundVideos, .background, .actions]
+    static let lanes: [TimelineLane] = TimelineLane.allCases
+
+    static let standingLanes: Set<TimelineLane> = [.slide, .loopingVideos]
     static let laneHeight: CGFloat = 26
     static let rulerHeight: CGFloat = 16
+    static let sectionsHeight: CGFloat = 18
+
+    private func visibleLanes(_ cues: [TimelineCue]) -> [TimelineLane] {
+        let added = PresentationTimelineCards.shared.addedLanes[context.item.id] ?? []
+        return Self.lanes.filter { lane in
+            Self.standingLanes.contains(lane) || added.contains(lane) || cues.contains { $0.kind == lane }
+        }
+    }
 
     var body: some View {
         let cues = context.timeline?.cues ?? []
@@ -379,27 +414,30 @@ struct PresentationTimelineLanes: View {
         let map = TimelineMap(
             segments: [TimelineSegment(start: 0, displayDuration: display, width: CGFloat(display * pps))],
             pointsPerSecond: CGFloat(pps))
+        let visible = visibleLanes(cues)
         VStack(alignment: .leading, spacing: 6) {
             toolbar(cues, pps: pps)
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Color.clear.frame(height: Self.rulerHeight)
-                    Text("Sections")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+
+                    Color.clear.frame(height: Self.rulerHeight + Self.sectionsHeight + 1)
+                    ForEach(visible, id: \.self) { lane in
+                        HStack(spacing: 2) {
+                            Text(lane.title)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            if !runOnly { addMenu(lane) }
+                        }
                         .frame(height: Self.laneHeight)
-                    ForEach(Self.lanes, id: \.self) { lane in
-                        Text(Self.name(lane))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .frame(height: Self.laneHeight)
                     }
+                    addLaneMenu(visible)
                 }
 
                 .frame(width: 104, alignment: .leading)
                 ScrollView(.horizontal) {
-                    lanes(cues, map: map)
+                    lanes(cues, visible: visible, map: map)
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
                 .timelinePinchZoom(current: { pps }, range: TimelineZoom.songRange) { pointsPerSecond = $0 }
@@ -414,7 +452,8 @@ struct PresentationTimelineLanes: View {
 
         .sheet(item: $placing) { placing in
             ActionPlacementSheet(model: context.model, draft: placing.action) { action in
-                let cue = TimelineCue(id: UUID().uuidString, lane: .actions, at: placing.at, actions: [action])
+                let cue = TimelineCue(
+                    id: UUID().uuidString, lane: TimelineLane.actions.rawValue, at: placing.at, actions: [action])
                 context.edit("Add Action") { $0.cues.append(cue) }
                 selection = cue.id
             }
@@ -444,7 +483,7 @@ struct PresentationTimelineLanes: View {
     private func toolbar(_ cues: [TimelineCue], pps: Double) -> some View {
         HStack(spacing: 8) {
             if let cue = cues.first(where: { $0.id == selection }) {
-                Text(label(cue, in: cues))
+                Text(context.label(cue))
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
                 Text(PresentationTimelines.timecode(frames: Int((cue.at * Double(PresentationTimelines.framesPerSecond)).rounded())))
@@ -464,23 +503,11 @@ struct PresentationTimelineLanes: View {
                     .help("Remove from the timeline")
                 }
             } else {
-                Text(runOnly ? "Timeline" : "Drag media, overlays or combos onto the lanes; click a cue to nudge it")
+                Text(runOnly ? "Timeline" : "Drag from the library onto the lanes, or + on a lane adds at the playhead")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
-            if !runOnly {
-
-                Menu("Add Action") {
-                    AddActionMenuItems(model: context.model, timers: router?.timerChoices ?? []) { action in
-                        placing = PlacingAction(action: action, at: context.clock.insertionTime(for: context.item.id))
-                    }
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .controlSize(.small)
-                .help("Add an action at the playhead")
-            }
             TimelineZoomControls(
                 pointsPerSecond: pps, zoom: { pointsPerSecond = $0 }, fit: { pointsPerSecond = nil },
                 fitHelp: "Fit the song to the width", range: TimelineZoom.songRange)
@@ -498,7 +525,76 @@ struct PresentationTimelineLanes: View {
         .help("Nudge \(help)")
     }
 
-    private func lanes(_ cues: [TimelineCue], map: TimelineMap) -> some View {
+    @ViewBuilder
+    private func addMenu(_ lane: TimelineLane) -> some View {
+        let model = context.model
+        let at = { context.clock.insertionTime(for: context.item.id) }
+        let block = { (id: String) in TimelineCue(id: id, lane: lane.rawValue, at: at(), duration: 10) }
+        let menu: AnyView? = switch lane {
+        case .actions:
+            AnyView(AddActionMenuItems(model: model, timers: router?.timerChoices ?? []) { action in
+                placing = PlacingAction(action: action, at: at())
+            })
+        case .overlays:
+            AnyView(ForEach(model.entries(of: .overlay), id: \.id) { entry in
+                Button(entry.name) { var cue = block(UUID().uuidString); cue.overlayId = entry.id; add(cue) }
+            })
+        case .alerts:
+            AnyView(ForEach(model.entries(of: .alertPreset), id: \.id) { entry in
+                Button(entry.name) { var cue = block(UUID().uuidString); cue.alertId = entry.id; add(cue) }
+            })
+        case .videoInput:
+            AnyView(Group {
+                let inputs = LiveInputCatalog.choices
+                if inputs.isEmpty { Button("No video inputs set up") {}.disabled(true) }
+                ForEach(inputs) { input in
+                    Button(input.name) { var cue = block(UUID().uuidString); cue.liveInputId = input.id; add(cue) }
+                }
+            })
+        case .audio:
+            AnyView(ForEach(model.entries(of: .audio), id: \.id) { entry in
+                Button(entry.name) {
+                    var cue = block(UUID().uuidString)
+                    cue.mediaId = entry.id
+                    cue.duration = model.audio(entry.id)?.durationSeconds
+                    add(cue)
+                }
+            })
+        case .slide, .videos, .stillGraphics, .loopingVideos:
+            nil
+        }
+        if let menu {
+            Menu { menu } label: { Image(systemName: "plus") }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .controlSize(.mini)
+                .help("Add to \(lane.title) at the playhead")
+        }
+    }
+
+    @ViewBuilder
+    private func addLaneMenu(_ visible: [TimelineLane]) -> some View {
+        let hidden = Self.lanes.filter { !visible.contains($0) }
+        if !hidden.isEmpty, !runOnly {
+            Menu {
+                ForEach(hidden, id: \.self) { lane in
+                    Button(lane.title) {
+                        PresentationTimelineCards.shared.addedLanes[context.item.id, default: []].insert(lane)
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Show another lane")
+            .padding(.top, 4)
+        }
+    }
+
+    private func lanes(_ cues: [TimelineCue], visible: [TimelineLane], map: TimelineMap) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             TimelineScrubStrip(
                 map: map, interval: Self.interval(Double(map.pointsPerSecond)), label: Self.clock,
@@ -511,11 +607,11 @@ struct PresentationTimelineLanes: View {
             }
             .frame(width: map.width, height: Self.rulerHeight, alignment: .topLeading)
             PresentationTimelineSectionsBar(context: context, length: context.shownLength) { map.x(ofTime: $0) }
-            .frame(width: map.width, height: Self.laneHeight, alignment: .leading)
-            .background(Color.primary.opacity(0.04))
+                .frame(width: map.width, height: Self.sectionsHeight, alignment: .leading)
+                .allowsHitTesting(false)
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Self.lanes, id: \.self) { lane in
+                    ForEach(visible, id: \.self) { lane in
                         laneRow(lane, cues, map: map)
                     }
                 }
@@ -539,7 +635,7 @@ struct PresentationTimelineLanes: View {
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
-            ForEach(cues.filter { $0.lane == lane }, id: \.id) { cue in
+            ForEach(cues.filter { $0.kind == lane }, id: \.id) { cue in
                 card(cue, cues, map: map)
             }
         }
@@ -547,26 +643,29 @@ struct PresentationTimelineLanes: View {
     }
 
     private func card(_ cue: TimelineCue, _ cues: [TimelineCue], map: TimelineMap) -> some View {
-        let isBlock = PresentationTimelines.isBlock(cue.lane)
+        let isBlock = cue.kind?.isBlock ?? false
         let left = map.x(ofTime: cue.at)
         let end = PresentationTimelines.end(of: cue, in: cues)
 
-        let next = cues.filter { $0.lane == cue.lane && $0.at > cue.at }.map(\.at).min()
+        let next = cues.filter { $0.kind == cue.kind && $0.at > cue.at }.map(\.at).min()
         let width: CGFloat = isBlock
             ? (end.isFinite ? map.x(ofTime: end) - left : max(map.width - left, TimelineBlockEdit.minimumWidth))
             : min(max((next.map { map.x(ofTime: $0) } ?? left + 90) - left - 1, 10), 90)
 
         let mode = edit.mode(of: cue.id).map { isBlock ? $0 : .move }
         let span = TimelineBlockEdit.liveSpan(x: left, width: width, mode: mode, delta: edit.delta)
-        let orphan = cue.lane == .slides && PresentationTimelines.occurrence(of: cue, in: context.blocks) == nil
+        let orphan = cue.kind == .slide && PresentationTimelines.occurrence(of: cue, in: context.blocks) == nil
+
+        let section = cue.kind == .slide ? context.presentation.sections?.first { $0.id == cue.sectionId } : nil
+        let tint = orphan ? .red : GroupColor.fill(section, palette: context.model.groupColors) ?? (cue.kind?.tint ?? .gray)
         return TimelineBlockCard(
-            width: span.width, tint: orphan ? .red : Self.tint(cue.lane), selected: selection == cue.id
+            width: span.width, tint: tint, selected: selection == cue.id
         ) {
-            Text(label(cue, in: cues))
+            Text(context.label(cue))
                 .font(.system(size: 10))
                 .lineLimit(1)
         }
-        .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : label(cue, in: cues))
+        .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : context.label(cue))
         .timelineBlockGestures(
             id: cue.id, anchor: anchor, edit: $edit, frames: $frames,
             frame: { frames[cue.id]?.offsetBy(dx: -lanesFrame.minX, dy: -lanesFrame.minY) },
@@ -582,12 +681,12 @@ struct PresentationTimelineLanes: View {
                     openEnd: map.locate(x: left + width)?.time)
             },
             doubleClicked: {
-                if cue.lane == .actions, !runOnly { editingActions = cue.id } else { context.seek(to: cue.at) }
+                if cue.kind == .actions, !runOnly { editingActions = cue.id } else { context.seek(to: cue.at) }
             }
         ) {
             Button("Go Here") { context.seek(to: cue.at) }
             if !runOnly {
-                if cue.lane == .actions {
+                if cue.kind == .actions {
                     Button("Edit Actions\u{2026}") { editingActions = cue.id }
                 }
                 Divider()
@@ -623,62 +722,36 @@ struct PresentationTimelineLanes: View {
         let cue: TimelineCue
         switch entry.kind {
         case .overlay:
-            cue = TimelineCue(id: UUID().uuidString, lane: .overlays, at: at, duration: 10, overlayId: id)
-        case .media:
-            let media = context.model.media(id)
-            let background = media?.classification == .background
+            cue = TimelineCue(id: UUID().uuidString, lane: TimelineLane.overlays.rawValue, at: at, duration: 10, overlayId: id)
+        case .alertPreset:
+            cue = TimelineCue(id: UUID().uuidString, lane: TimelineLane.alerts.rawValue, at: at, duration: 10, alertId: id)
+        case .audio:
             cue = TimelineCue(
-                id: UUID().uuidString, lane: background ? .background : .foregroundVideos, at: at,
-                duration: background ? nil : media?.durationSeconds ?? 10, mediaId: id)
+                id: UUID().uuidString, lane: TimelineLane.audio.rawValue, at: at,
+                duration: context.model.audio(id)?.durationSeconds, mediaId: id)
+        case .media:
+            guard let media = context.model.media(id) else { return false }
+
+            let layer = SlideSceneBuilder.layerKind(CueMedia.dropped(for: media).layer)
+            let lane = TimelineLane(id: layer.rawValue) ?? .videos
+            cue = TimelineCue(
+                id: UUID().uuidString, lane: lane.rawValue, at: at,
+                duration: lane == .loopingVideos ? nil : media.durationSeconds ?? 10, mediaId: id)
         case .actionCombo:
             cue = TimelineCue(
-                id: UUID().uuidString, lane: .actions, at: at,
+                id: UUID().uuidString, lane: TimelineLane.actions.rawValue, at: at,
                 actions: [SlideAction(id: UUID().uuidString, kind: .fireCombo, comboId: id)])
         default:
             return false
         }
-        context.edit("Add to Timeline") { $0.cues.append(cue) }
-        selection = cue.id
+        add(cue)
         DiagnosticsStore.shared.note("timeline.drop", detail: "\(cue.lane) at \(at)")
         return true
     }
 
-    private func label(_ cue: TimelineCue, in cues: [TimelineCue]) -> String {
-        switch cue.lane {
-        case .slides:
-            let section = context.presentation.sections?.first { $0.id == cue.sectionId }?.name
-            let index = context.blocks.first { $0.sectionId == cue.sectionId }?.slideIds.firstIndex { $0 == cue.slideId }
-            return [section, index.map { "\($0 + 1)" }].compactMap { $0 }.joined(separator: " ")
-        case .overlays:
-            return cue.overlayId.flatMap { context.model.overlay($0)?.name } ?? "Overlay"
-        case .foregroundVideos, .background, .audio:
-            return cue.mediaId.flatMap { context.model.media($0)?.name } ?? "Media"
-        case .actions:
-            let actions = cue.actions ?? []
-            guard let first = actions.first else { return "No actions" }
-            return first.kind.displayName + (actions.count > 1 ? " +\(actions.count - 1)" : "")
-        }
-    }
-
-    static func name(_ lane: TimelineLane) -> String {
-        switch lane {
-        case .overlays: "Overlays"
-        case .slides: "Slides"
-        case .foregroundVideos: "Foreground Videos"
-        case .background: "Background"
-        case .audio: "Audio"
-        case .actions: "Actions"
-        }
-    }
-
-    static func tint(_ lane: TimelineLane) -> Color {
-        switch lane {
-        case .overlays: AnimationKind.emphasis.tint
-        case .slides: AnimationKind.morph.tint
-        case .foregroundVideos: AnimationKind.out.tint
-        case .background: AnimationKind.in.tint
-        case .audio, .actions: .gray
-        }
+    private func add(_ cue: TimelineCue) {
+        context.edit("Add to Timeline") { $0.cues.append(cue) }
+        selection = cue.id
     }
 
     static func interval(_ pointsPerSecond: Double) -> Double {
@@ -688,5 +761,77 @@ struct PresentationTimelineLanes: View {
     static func clock(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+extension TimelineLane {
+    var title: String {
+        switch self {
+        case .alerts: "Alerts"
+        case .overlays: "Overlays"
+        case .slide: "Slides"
+        case .videos: "Foreground Videos"
+        case .stillGraphics: "Still Graphics"
+        case .loopingVideos: "Background Media"
+        case .videoInput: "Video Input"
+        case .audio: "Audio"
+        case .actions: "Actions"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .alerts: .yellow
+        case .overlays: AnimationKind.emphasis.tint
+        case .slide: AnimationKind.morph.tint
+        case .videos: AnimationKind.out.tint
+        case .stillGraphics: .teal
+        case .loopingVideos: AnimationKind.in.tint
+        case .videoInput: .pink
+        case .audio: .indigo
+        case .actions: .gray
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .alerts: "exclamationmark.bubble.fill"
+        case .overlays: "rectangle.bottomthird.inset.filled"
+        case .slide: "rectangle.fill"
+        case .videos: "play.rectangle.fill"
+        case .stillGraphics: "photo.fill"
+        case .loopingVideos: "film.fill"
+        case .videoInput: "video.fill"
+        case .audio: "music.note"
+        case .actions: "bolt.fill"
+        }
+    }
+}
+
+extension PresentationTimelineContext {
+
+    func label(_ cue: TimelineCue) -> String {
+        switch cue.kind {
+        case .slide:
+            let section = presentation.sections?.first { $0.id == cue.sectionId }?.name
+            let index = blocks.first { $0.sectionId == cue.sectionId }?.slideIds.firstIndex { $0 == cue.slideId }
+            return [section, index.map { "\($0 + 1)" }].compactMap { $0 }.joined(separator: " ")
+        case .overlays:
+            return cue.overlayId.flatMap { model.overlay($0)?.name } ?? "Overlay"
+        case .alerts:
+            return cue.alertId.flatMap { model.indexEntry($0)?.name } ?? "Alert"
+        case .videoInput:
+            return LiveInputCatalog.choices.first { $0.id == cue.liveInputId }?.name ?? "Video Input"
+        case .audio:
+            return cue.mediaId.flatMap { model.audio($0)?.name } ?? "Audio"
+        case .videos, .stillGraphics, .loopingVideos:
+            return cue.mediaId.flatMap { model.media($0)?.name } ?? "Media"
+        case .actions:
+            let actions = cue.actions ?? []
+            guard let first = actions.first else { return "No actions" }
+            return first.kind.displayName + (actions.count > 1 ? " +\(actions.count - 1)" : "")
+        case nil:
+            return "Unknown lane"
+        }
     }
 }

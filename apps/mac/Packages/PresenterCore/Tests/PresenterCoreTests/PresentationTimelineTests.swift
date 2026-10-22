@@ -18,8 +18,10 @@ private func slide(_ id: String, at: Double, occurrence: Int) -> TimelineCue {
 
 private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Double? = nil, ref: String) -> TimelineCue {
     TimelineCue(
-        id: id, lane: lane, at: at, duration: duration,
-        mediaId: lane == .overlays ? nil : ref, overlayId: lane == .overlays ? ref : nil)
+        id: id, lane: lane.rawValue, at: at, duration: duration,
+        mediaId: [.videos, .stillGraphics, .loopingVideos, .audio].contains(lane) ? ref : nil,
+        overlayId: lane == .overlays ? ref : nil, alertId: lane == .alerts ? ref : nil,
+        liveInputId: lane == .videoInput ? ref : nil)
 }
 
 @Test func v140PresentationDecodesWithNoTimelines() throws {
@@ -37,7 +39,7 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
         cues: [
             slide("s", at: 1.5, occurrence: 4),
             block("o", .overlays, at: 2, duration: 8, ref: "lower-third"),
-            TimelineCue(id: "x", lane: .actions, at: 3, actions: [SlideAction(id: "a1", kind: .timerStart, timerId: "t1")]),
+            TimelineCue(id: "x", lane: "actions", at: 3, actions: [SlideAction(id: "a1", kind: .timerStart, timerId: "t1")]),
         ])]
     let document = Document()
     try AutomergeEncoder(doc: document).encode(presentation)
@@ -93,68 +95,68 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     let cues = [
         slide("s1", at: 0, occurrence: 0),
         slide("s2", at: 4, occurrence: 1),
-        block("bg", .background, at: 0, ref: "motion"),
+        block("bg", .loopingVideos, at: 0, ref: "motion"),
         block("ov", .overlays, at: 2, duration: 3, ref: "lower-third"),
-        TimelineCue(id: "act", lane: .actions, at: 4.5),
-        block("fg", .foregroundVideos, at: 6, duration: 0.5, ref: "bumper"),
+        TimelineCue(id: "act", lane: "actions", at: 4.5),
+        block("fg", .videos, at: 6, duration: 0.5, ref: "bumper"),
     ]
-    var live = T.Live()
+    var live: T.Live = []
     var fired: [T.Effect] = []
     var last = -T.frame
     for tick in stride(from: 0.0, through: 7, by: 1.0 / 30) {
         let effects = T.crossing(cues, blocks: blocks, from: last, to: tick, live: live)
         for effect in effects {
-            if case .fireMedia(let id, _) = effect { live.mediaIds.insert(id) }
+            if case .fire(_, let id) = effect { live.insert(id) }
         }
         fired += effects
         last = tick
     }
     #expect(fired == [
-        .fireMedia(id: "motion", lane: .background),
+        .fire(lane: .loopingVideos, id: "motion"),
         .showSlide(occurrence: 0, actions: true),
-        .fireOverlay(id: "lower-third"),
+        .fire(lane: .overlays, id: "lower-third"),
         .showSlide(occurrence: 1, actions: true),
         .runActions(cueId: "act"),
 
-        .clearOverlay(id: "lower-third"),
-        .fireMedia(id: "bumper", lane: .foregroundVideos),
+        .clear(lane: .overlays, id: "lower-third"),
+        .fire(lane: .videos, id: "bumper"),
 
-        .clearMedia(id: "bumper"),
+        .clear(lane: .videos, id: "bumper"),
     ])
 }
 
 @Test func aPlayingBackgroundNeverRetriggers() {
 
-    let cues = [block("bg", .background, at: 1, ref: "motion")]
-    #expect(T.crossing(cues, blocks: blocks, from: 0, to: 2, live: T.Live(mediaIds: ["motion"])).isEmpty)
-    #expect(T.crossing(cues, blocks: blocks, from: 0, to: 2, live: T.Live()) == [.fireMedia(id: "motion", lane: .background)])
+    let cues = [block("bg", .loopingVideos, at: 1, ref: "motion")]
+    #expect(T.crossing(cues, blocks: blocks, from: 0, to: 2, live: ["motion"]).isEmpty)
+    #expect(T.crossing(cues, blocks: blocks, from: 0, to: 2, live: []) == [.fire(lane: .loopingVideos, id: "motion")])
 }
 
 @Test func aBackgroundHasNoOutPoint() {
 
-    let cues = [block("bg", .background, at: 0, duration: 2, ref: "motion")]
-    #expect(T.crossing(cues, blocks: blocks, from: 1, to: 3, live: T.Live(mediaIds: ["motion"])).isEmpty)
+    let cues = [block("bg", .loopingVideos, at: 0, duration: 2, ref: "motion")]
+    #expect(T.crossing(cues, blocks: blocks, from: 1, to: 3, live: ["motion"]).isEmpty)
 }
 
 @Test func slidesCrossedInOneStepShowOnlyTheLast() {
     let cues = [slide("a", at: 1, occurrence: 0), slide("b", at: 1.5, occurrence: 1)]
-    #expect(T.crossing(cues, blocks: blocks, from: 0, to: 2, live: T.Live()) == [.showSlide(occurrence: 1, actions: true)])
+    #expect(T.crossing(cues, blocks: blocks, from: 0, to: 2, live: []) == [.showSlide(occurrence: 1, actions: true)])
 }
 
 @Test func orphanedSlideCuesNeverFire() {
-    let orphan = TimelineCue(id: "o", lane: .slides, at: 1, sectionId: "gone", slideId: "x")
-    #expect(T.crossing([orphan], blocks: blocks, from: 0, to: 2, live: T.Live()).isEmpty)
-    #expect(T.landing([orphan], blocks: blocks, at: 2, live: T.Live()).isEmpty)
+    let orphan = TimelineCue(id: "o", lane: "slide", at: 1, sectionId: "gone", slideId: "x")
+    #expect(T.crossing([orphan], blocks: blocks, from: 0, to: 2, live: []).isEmpty)
+    #expect(T.landing([orphan], blocks: blocks, at: 2, live: []).isEmpty)
 }
 
 @Test func aJumpShowsTheSlideWithoutItsActionsAndNeverRunsActions() {
     let cues = [
         slide("s1", at: 0, occurrence: 0),
         slide("s2", at: 10, occurrence: 1),
-        TimelineCue(id: "act", lane: .actions, at: 9),
+        TimelineCue(id: "act", lane: "actions", at: 9),
     ]
-    #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live()) == [.showSlide(occurrence: 1, actions: false)])
-    #expect(T.landing(cues, blocks: blocks, at: 5, live: T.Live()) == [.showSlide(occurrence: 0, actions: false)])
+    #expect(T.landing(cues, blocks: blocks, at: 12, live: []) == [.showSlide(occurrence: 1, actions: false)])
+    #expect(T.landing(cues, blocks: blocks, at: 5, live: []) == [.showSlide(occurrence: 0, actions: false)])
 }
 
 @Test func aJumpFiresTheOverlaysItLandsInAndClearsTheRest() {
@@ -163,29 +165,29 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
         block("b", .overlays, at: 10, duration: 5, ref: "lyrics-bug"),
     ]
 
-    #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live(overlayIds: ["title"]))
-        == [.clearOverlay(id: "title"), .fireOverlay(id: "lyrics-bug")])
+    #expect(T.landing(cues, blocks: blocks, at: 12, live: ["title"])
+        == [.clear(lane: .overlays, id: "title"), .fire(lane: .overlays, id: "lyrics-bug")])
 
-    #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live(overlayIds: ["lyrics-bug", "hand-fired"])).isEmpty)
+    #expect(T.landing(cues, blocks: blocks, at: 12, live: ["lyrics-bug", "hand-fired"]).isEmpty)
 }
 
 @Test func aJumpFiresABackgroundOnlyWhenItIsADifferentOne() {
     let cues = [
-        block("one", .background, at: 0, ref: "blue"),
-        block("two", .background, at: 30, ref: "red"),
+        block("one", .loopingVideos, at: 0, ref: "blue"),
+        block("two", .loopingVideos, at: 30, ref: "red"),
     ]
 
-    #expect(T.landing(cues, blocks: blocks, at: 20, live: T.Live(mediaIds: ["blue"])).isEmpty)
-    #expect(T.landing(cues, blocks: blocks, at: 40, live: T.Live(mediaIds: ["blue"])) == [.fireMedia(id: "red", lane: .background)])
+    #expect(T.landing(cues, blocks: blocks, at: 20, live: ["blue"]).isEmpty)
+    #expect(T.landing(cues, blocks: blocks, at: 40, live: ["blue"]) == [.fire(lane: .loopingVideos, id: "red")])
 }
 
 @Test func aJumpFiresAForegroundVideoOnlyInsideItsBlock() {
-    let cues = [block("fg", .foregroundVideos, at: 10, duration: 5, ref: "bumper")]
-    #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live()) == [.fireMedia(id: "bumper", lane: .foregroundVideos)])
-    #expect(T.landing(cues, blocks: blocks, at: 16, live: T.Live()).isEmpty)
-    #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live(mediaIds: ["bumper"])).isEmpty)
+    let cues = [block("fg", .videos, at: 10, duration: 5, ref: "bumper")]
+    #expect(T.landing(cues, blocks: blocks, at: 12, live: []) == [.fire(lane: .videos, id: "bumper")])
+    #expect(T.landing(cues, blocks: blocks, at: 16, live: []).isEmpty)
+    #expect(T.landing(cues, blocks: blocks, at: 12, live: ["bumper"]).isEmpty)
 
-    #expect(T.landing(cues, blocks: blocks, at: 16, live: T.Live(mediaIds: ["bumper"])) == [.clearMedia(id: "bumper")])
+    #expect(T.landing(cues, blocks: blocks, at: 16, live: ["bumper"]) == [.clear(lane: .videos, id: "bumper")])
 }
 
 @Test func reRecordingReplacesOnlyTheSlideCuesAfterIt() {
@@ -219,14 +221,14 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
 
     #expect(T.edited(overlay, in: cues, mode: .trim, by: 10).at == T.snappedToFrame(6 - T.frame))
 
-    let open = block("v", .foregroundVideos, at: 2, ref: "clip")
+    let open = block("v", .videos, at: 2, ref: "clip")
     #expect(T.edited(open, in: [open], mode: .stretch, by: -10, openEnd: 30).duration == 18)
 
     #expect(T.edited(point, in: cues, mode: .stretch, by: 1).at == 4)
 }
 
 @Test func lengthIsTheLastEndUnlessSet() {
-    let cues = [slide("s", at: 3, occurrence: 0), block("o", .overlays, at: 4, duration: 6, ref: "x"), block("b", .background, at: 12, ref: "y")]
+    let cues = [slide("s", at: 3, occurrence: 0), block("o", .overlays, at: 4, duration: 6, ref: "x"), block("b", .loopingVideos, at: 12, ref: "y")]
     var timeline = PresentationTimeline(id: "t", timecodeEnabled: false, timecodeStart: 0, cues: cues)
     #expect(T.length(timeline) == 12)
     timeline.length = 90
@@ -254,4 +256,49 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     #expect(T.suggestedStart(length: mine.length, avoiding: [songA, songB], id: "me") == 3 * hour)
 
     #expect(T.suggestedStart(length: mine.length, avoiding: [T.Window(id: "me", start: hour, length: 10)], id: "me") == hour)
+}
+
+@Test func laneIdsReadV141SpellingsAndKeepUnknownOnesQuiet() {
+
+    #expect(TimelineLane(id: "slides") == .slide)
+    #expect(TimelineLane(id: "foregroundVideos") == .videos)
+    #expect(TimelineLane(id: "background") == .loopingVideos)
+    #expect(TimelineLane(id: "videoInput") == .videoInput)
+    let unknown = TimelineCue(id: "x", lane: "customLayer7", at: 1, mediaId: "m")
+    #expect(unknown.kind == nil)
+    #expect(T.crossing([unknown], blocks: blocks, from: 0, to: 2, live: []).isEmpty)
+    #expect(T.landing([unknown], blocks: blocks, at: 1.5, live: []).isEmpty)
+}
+
+@Test func everyLayerLaneFiresAndComesDownAtItsOutPoint() {
+
+    let cues = [
+        block("a", .alerts, at: 1, duration: 2, ref: "welcome"),
+        block("s", .stillGraphics, at: 1, duration: 2, ref: "logo"),
+        block("i", .videoInput, at: 1, duration: 2, ref: "camera-1"),
+    ]
+    let effects = T.crossing(cues, blocks: blocks, from: 0, to: 4, live: [])
+    #expect(effects == [
+        .fire(lane: .alerts, id: "welcome"), .fire(lane: .stillGraphics, id: "logo"), .fire(lane: .videoInput, id: "camera-1"),
+        .clear(lane: .alerts, id: "welcome"), .clear(lane: .stillGraphics, id: "logo"), .clear(lane: .videoInput, id: "camera-1"),
+    ])
+
+    #expect(T.landing(cues, blocks: blocks, at: 2, live: ["camera-1"])
+        == [.fire(lane: .alerts, id: "welcome"), .fire(lane: .stillGraphics, id: "logo")])
+    #expect(T.landing(cues, blocks: blocks, at: 5, live: ["welcome", "camera-1"])
+        == [.clear(lane: .alerts, id: "welcome"), .clear(lane: .videoInput, id: "camera-1")])
+}
+
+@Test func aBackingTrackFollowsThePlayhead() {
+
+    let cues = [block("t", .audio, at: 2, duration: 180, ref: "track")]
+    let started = T.crossing(cues, blocks: blocks, from: 1.99, to: 2.02, live: [])
+    guard case .playAudio("track", let from)? = started.first, started.count == 1 else {
+        Issue.record("the track starts once: \(started)")
+        return
+    }
+    #expect(abs(from - 0.02) < 0.001)
+    #expect(T.crossing(cues, blocks: blocks, from: 181, to: 183, live: ["track"]) == [.clear(lane: .audio, id: "track")])
+    #expect(T.landing(cues, blocks: blocks, at: 62, live: ["track"]) == [.playAudio(id: "track", from: 60)])
+    #expect(T.landing(cues, blocks: blocks, at: 190, live: ["track"]) == [.clear(lane: .audio, id: "track")])
 }

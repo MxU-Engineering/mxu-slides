@@ -10,6 +10,30 @@ public struct TimelinePlayedBlock: Equatable, Sendable {
     }
 }
 
+public enum TimelineLane: String, CaseIterable, Sendable {
+    case alerts, overlays, slide, videos, stillGraphics, loopingVideos, videoInput, audio, actions
+
+    public init?(id: String) {
+        switch id {
+        case "slides": self = .slide
+        case "foregroundVideos": self = .videos
+        case "background": self = .loopingVideos
+        default: self.init(rawValue: id)
+        }
+    }
+
+    public var isBlock: Bool { self != .slide && self != .actions }
+
+    public var clearsAtOut: Bool { isBlock && self != .loopingVideos }
+}
+
+extension TimelineCue {
+
+    public var kind: TimelineLane? { TimelineLane(id: lane) }
+
+    public var contentId: String? { mediaId ?? overlayId ?? alertId ?? liveInputId }
+}
+
 public struct TimelineSlideAnchor: Equatable, Sendable {
     public var sectionId: String?
     public var sectionOccurrence: Int
@@ -60,7 +84,7 @@ public enum PresentationTimelines {
     }
 
     public static func occurrence(of cue: TimelineCue, in blocks: [TimelinePlayedBlock]) -> Int? {
-        guard cue.lane == .slides, let slideId = cue.slideId else { return nil }
+        guard cue.kind == .slide, let slideId = cue.slideId else { return nil }
         let wanted = cue.sectionOccurrence ?? 0
         var index = 0
         var seen: [String?: Int] = [:]
@@ -77,21 +101,14 @@ public enum PresentationTimelines {
 
     public static func slideCue(id: String, at: Double, anchor: TimelineSlideAnchor) -> TimelineCue {
         TimelineCue(
-            id: id, lane: .slides, at: at, sectionId: anchor.sectionId,
+            id: id, lane: TimelineLane.slide.rawValue, at: at, sectionId: anchor.sectionId,
             sectionOccurrence: anchor.sectionOccurrence, slideId: anchor.slideId)
     }
 
-    public static func isBlock(_ lane: TimelineLane) -> Bool {
-        switch lane {
-        case .slides, .actions: false
-        case .overlays, .foregroundVideos, .background, .audio: true
-        }
-    }
-
     public static func end(of cue: TimelineCue, in cues: [TimelineCue]) -> Double {
-        guard isBlock(cue.lane) else { return cue.at }
+        guard cue.kind?.isBlock ?? false else { return cue.at }
         if let duration = cue.duration { return cue.at + max(duration, 0) }
-        return cues.filter { $0.lane == cue.lane && $0.id != cue.id && $0.at > cue.at }.map(\.at).min() ?? .infinity
+        return cues.filter { $0.kind == cue.kind && $0.id != cue.id && $0.at > cue.at }.map(\.at).min() ?? .infinity
     }
 
     public static func contentEnd(_ cues: [TimelineCue]) -> Double {
@@ -130,27 +147,19 @@ public enum PresentationTimelines {
         return spans
     }
 
-    public struct Live: Equatable, Sendable {
-        public var mediaIds: Set<String>
-        public var overlayIds: Set<String>
-
-        public init(mediaIds: Set<String> = [], overlayIds: Set<String> = []) {
-            self.mediaIds = mediaIds
-            self.overlayIds = overlayIds
-        }
-    }
+    public typealias Live = Set<String>
 
     public enum Effect: Equatable, Sendable {
 
         case showSlide(occurrence: Int, actions: Bool)
-        case fireOverlay(id: String)
 
-        case clearOverlay(id: String)
-        case fireMedia(id: String, lane: TimelineLane)
+        case fire(lane: TimelineLane, id: String)
 
-        case clearMedia(id: String)
+        case clear(lane: TimelineLane, id: String)
 
         case runActions(cueId: String)
+
+        case playAudio(id: String, from: Double)
     }
 
     public static func crossing(
@@ -160,34 +169,32 @@ public enum PresentationTimelines {
         let crossed: (Double) -> Bool = { $0 > from && $0 <= to }
         var timed: [(time: Double, order: Int, effect: Effect)] = []
         var lastSlide: (at: Double, occurrence: Int)?
-        var liveMedia = live.mediaIds
+        var live = live
         for cue in cues.sorted(by: { $0.at < $1.at }) {
-            switch cue.lane {
-            case .slides:
+            guard let lane = cue.kind else { continue }
+            switch lane {
+            case .slide:
                 if crossed(cue.at), let occurrence = occurrence(of: cue, in: blocks) {
                     lastSlide = (cue.at, occurrence)
-                }
-            case .overlays:
-                guard let id = cue.overlayId else { continue }
-                if crossed(cue.at) { timed.append((cue.at, 1, .fireOverlay(id: id))) }
-                let end = end(of: cue, in: cues)
-                if crossed(end) { timed.append((end, 0, .clearOverlay(id: id))) }
-            case .foregroundVideos:
-                guard let id = cue.mediaId else { continue }
-                if crossed(cue.at) { timed.append((cue.at, 1, .fireMedia(id: id, lane: .foregroundVideos))) }
-                let end = end(of: cue, in: cues)
-                if crossed(end) { timed.append((end, 0, .clearMedia(id: id))) }
-            case .background:
-
-                if crossed(cue.at), let id = cue.mediaId, !liveMedia.contains(id) {
-                    liveMedia.insert(id)
-                    timed.append((cue.at, 1, .fireMedia(id: id, lane: .background)))
                 }
             case .actions:
                 if crossed(cue.at) { timed.append((cue.at, 1, .runActions(cueId: cue.id))) }
             case .audio:
+                guard let id = cue.contentId else { continue }
+                if crossed(cue.at) { timed.append((cue.at, 1, .playAudio(id: id, from: to - cue.at))) }
+                let end = end(of: cue, in: cues)
+                if crossed(end) { timed.append((end, 0, .clear(lane: lane, id: id))) }
+            case .loopingVideos:
 
-                continue
+                if crossed(cue.at), let id = cue.contentId, !live.contains(id) {
+                    live.insert(id)
+                    timed.append((cue.at, 1, .fire(lane: lane, id: id)))
+                }
+            case .alerts, .overlays, .videos, .stillGraphics, .videoInput:
+                guard let id = cue.contentId else { continue }
+                if crossed(cue.at) { timed.append((cue.at, 1, .fire(lane: lane, id: id))) }
+                let end = end(of: cue, in: cues)
+                if crossed(end) { timed.append((end, 0, .clear(lane: lane, id: id))) }
             }
         }
         if let lastSlide {
@@ -205,42 +212,43 @@ public enum PresentationTimelines {
         let holds: (TimelineCue) -> Bool = { $0.at <= position && position < end(of: $0, in: cues) }
 
         let slide = cues
-            .filter { $0.lane == .slides && $0.at <= position }
+            .filter { $0.kind == .slide && $0.at <= position }
             .sorted { $0.at < $1.at }
             .compactMap { occurrence(of: $0, in: blocks) }
             .last
         if let slide { effects.append(.showSlide(occurrence: slide, actions: false)) }
-        let overlays = cues.filter { $0.lane == .overlays && $0.overlayId != nil }
-        let holding = Set(overlays.filter(holds).compactMap(\.overlayId))
-        for id in Set(overlays.compactMap(\.overlayId)).sorted() where !holding.contains(id) && live.overlayIds.contains(id) {
-            effects.append(.clearOverlay(id: id))
-        }
-        for cue in overlays.sorted(by: { $0.at < $1.at }) where holds(cue) {
-            if let id = cue.overlayId, !live.overlayIds.contains(id), !effects.contains(.fireOverlay(id: id)) {
-                effects.append(.fireOverlay(id: id))
-            }
-        }
 
-        let videos = cues.filter { $0.lane == .foregroundVideos && $0.mediaId != nil }
-        let playing = Set(videos.filter(holds).compactMap(\.mediaId))
-        for id in Set(videos.compactMap(\.mediaId)).sorted() where !playing.contains(id) && live.mediaIds.contains(id) {
-            effects.append(.clearMedia(id: id))
+        let tracks = cues.filter { $0.kind == .audio && $0.contentId != nil }
+        let track = tracks.filter(holds).max { $0.at < $1.at }
+        for id in Set(tracks.compactMap(\.contentId)).sorted() where id != track?.contentId && live.contains(id) {
+            effects.append(.clear(lane: .audio, id: id))
         }
-        for lane in [TimelineLane.foregroundVideos, .background] {
-            let held = cues.filter { $0.lane == lane && holds($0) }.max { $0.at < $1.at }
-            if let id = held?.mediaId, !live.mediaIds.contains(id) {
-                effects.append(.fireMedia(id: id, lane: lane))
+        if let track, let id = track.contentId {
+            effects.append(.playAudio(id: id, from: position - track.at))
+        }
+        for lane in TimelineLane.allCases where lane.isBlock && lane != .audio {
+            let blocks = cues.filter { $0.kind == lane && $0.contentId != nil }.sorted { $0.at < $1.at }
+            let held = blocks.filter(holds)
+            let showing = lane == .overlays ? held : Array(held.suffix(1))
+            let up = Set(showing.compactMap(\.contentId))
+            if lane.clearsAtOut {
+                for id in Set(blocks.compactMap(\.contentId)).sorted() where !up.contains(id) && live.contains(id) {
+                    effects.append(.clear(lane: lane, id: id))
+                }
+            }
+            for id in showing.compactMap(\.contentId) where !live.contains(id) && !effects.contains(.fire(lane: lane, id: id)) {
+                effects.append(.fire(lane: lane, id: id))
             }
         }
         return effects
     }
 
     public static func recording(_ cues: [TimelineCue], from start: Double) -> [TimelineCue] {
-        cues.filter { $0.lane != .slides || $0.at < start - frame / 2 }
+        cues.filter { $0.kind != .slide || $0.at < start - frame / 2 }
     }
 
     public static func recorded(_ cue: TimelineCue, into cues: [TimelineCue]) -> [TimelineCue] {
-        var next = cues.filter { !($0.lane == .slides && abs($0.at - cue.at) < frame) }
+        var next = cues.filter { !($0.kind == .slide && abs($0.at - cue.at) < frame) }
         next.append(cue)
         return next.sorted { $0.at < $1.at }
     }
@@ -255,7 +263,7 @@ public enum PresentationTimelines {
         _ cue: TimelineCue, in cues: [TimelineCue], mode: TimelineBlockEdit.Mode, by seconds: Double,
         openEnd: Double? = nil
     ) -> TimelineCue {
-        guard isBlock(cue.lane), mode != .move else { return moved(cue, by: seconds) }
+        guard cue.kind?.isBlock ?? false, mode != .move else { return moved(cue, by: seconds) }
         var end = end(of: cue, in: cues)
         if !end.isFinite, let openEnd { end = openEnd }
         guard end.isFinite else { return mode == .trim ? moved(cue, by: seconds) : cue }

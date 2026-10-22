@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 141,
+  "schemaVersion": 142,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1319,17 +1319,6 @@
         "deck"
       ]
     },
-    "TimelineLane": {
-      "type": "string",
-      "enum": [
-        "overlays",
-        "slides",
-        "foregroundVideos",
-        "background",
-        "audio",
-        "actions"
-      ]
-    },
     "TimelineCue": {
       "type": "object",
       "properties": {
@@ -1337,7 +1326,7 @@
           "type": "string"
         },
         "lane": {
-          "$ref": "#/components/schemas/TimelineLane"
+          "type": "string"
         },
         "at": {
           "type": "number"
@@ -1358,6 +1347,12 @@
           "type": "string"
         },
         "overlayId": {
+          "type": "string"
+        },
+        "alertId": {
+          "type": "string"
+        },
+        "liveInputId": {
           "type": "string"
         },
         "actions": {

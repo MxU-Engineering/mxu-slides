@@ -879,18 +879,9 @@ public enum PresentationKind: String, Codable, Sendable, CaseIterable, Equatable
     case deck
 }
 
-public enum TimelineLane: String, Codable, Sendable, CaseIterable, Equatable {
-    case overlays
-    case slides
-    case foregroundVideos
-    case background
-    case audio
-    case actions
-}
-
 public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
     public var id: String
-    public var lane: TimelineLane
+    public var lane: String
     public var at: Double
     public var duration: Double?
     public var sectionId: String?
@@ -898,9 +889,11 @@ public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
     public var slideId: String?
     public var mediaId: String?
     public var overlayId: String?
+    public var alertId: String?
+    public var liveInputId: String?
     public var actions: [SlideAction]?
 
-    public init(id: String, lane: TimelineLane, at: Double, duration: Double? = nil, sectionId: String? = nil, sectionOccurrence: Int? = nil, slideId: String? = nil, mediaId: String? = nil, overlayId: String? = nil, actions: [SlideAction]? = nil) {
+    public init(id: String, lane: String, at: Double, duration: Double? = nil, sectionId: String? = nil, sectionOccurrence: Int? = nil, slideId: String? = nil, mediaId: String? = nil, overlayId: String? = nil, alertId: String? = nil, liveInputId: String? = nil, actions: [SlideAction]? = nil) {
         self.id = id
         self.lane = lane
         self.at = at
@@ -910,6 +903,8 @@ public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
         self.slideId = slideId
         self.mediaId = mediaId
         self.overlayId = overlayId
+        self.alertId = alertId
+        self.liveInputId = liveInputId
         self.actions = actions
     }
 }

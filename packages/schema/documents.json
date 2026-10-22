@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 141,
+  "schemaVersion": 142,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1623,17 +1623,6 @@
         "deck"
       ]
     },
-    "TimelineLane": {
-      "kind": "enum",
-      "cases": [
-        "overlays",
-        "slides",
-        "foregroundVideos",
-        "background",
-        "audio",
-        "actions"
-      ]
-    },
     "TimelineCue": {
       "kind": "record",
       "fields": [
@@ -1643,7 +1632,7 @@
         },
         {
           "name": "lane",
-          "type": "TimelineLane"
+          "type": "string"
         },
         {
           "name": "at",
@@ -1676,6 +1665,16 @@
         },
         {
           "name": "overlayId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alertId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
           "type": "string",
           "optional": true
         },
