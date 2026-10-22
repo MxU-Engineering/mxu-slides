@@ -76,6 +76,11 @@ public enum ProDocumentMapper {
             else { continue }
             slides.append(slide)
         }
+        if let canvas {
+            for (size, count) in state.offCanvasSlides.sorted(by: { $0.key < $1.key }) {
+                state.warn("\(count) slide(s) are \(size), not the deck's \(canvas.width)×\(canvas.height) — they keep Pro's coordinates")
+            }
+        }
         if slides.isEmpty {
             slides = [Slide(id: UUID().uuidString, name: "", objects: [])]
         }
@@ -244,6 +249,8 @@ public enum ProDocumentMapper {
 
         var inputBook = ProInputPlanBook()
 
+        var offCanvasSlides: [String: Int] = [:]
+
         mutating func warn(_ message: String) {
             if !warnings.contains(message) { warnings.append(message) }
         }
@@ -406,8 +413,13 @@ public enum ProDocumentMapper {
                 : docTransition)
 
         let base = slideType.presentation.baseSlide
-        if canvas == nil, base.hasSize, base.size.width > 0 {
-            canvas = (Int(base.size.width), Int(base.size.height))
+        if base.hasSize, base.size.width > 0 {
+            let size = (width: Int(base.size.width), height: Int(base.size.height))
+            if let canvas {
+                if canvas != size { state.offCanvasSlides["\(size.width)×\(size.height)", default: 0] += 1 }
+            } else {
+                canvas = size
+            }
         }
 
         var objects: [SlideObject] = []

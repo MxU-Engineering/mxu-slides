@@ -122,7 +122,7 @@ private struct DeckPeek: View {
                             hideScopedBackgrounds: false, legibleText: false,
                             contentStamp: "peek-\(entry.updatedAt.timeIntervalSince1970)"
                         )
-                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .aspectRatio(SlideGridMetrics.tileAspect(for: presentation), contentMode: .fit)
                         .clipShape(.rect(cornerRadius: CornerStandard.element, style: .continuous))
                     }
                 }

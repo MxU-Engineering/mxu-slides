@@ -1793,7 +1793,7 @@ struct SlideTile: View {
                                 slide: page, presentation: presentation, theme: look.theme,
                                 arrangementId: nil, hideScopedBackgrounds: false, legibleText: false,
                                 contentStamp: "pages|\(slide.id)|\(look.id)|\(index)")
-                            .frame(width: 160, height: 90)
+                            .frame(width: 90 * SlideGridMetrics.tileAspect(for: presentation), height: 90)
                             .clipShape(RoundedRectangle.standard(CornerStandard.element))
                             Text("Page \(index + 1)").font(.caption2).foregroundStyle(.secondary)
                         }
@@ -2048,6 +2048,8 @@ struct SlideThumbnailView: View {
                 posterLayer(mediaId: id)
             }
         }
+
+        .aspectRatio(SlideGridMetrics.tileAspect(for: presentation), contentMode: .fit)
         .overlay(alignment: .bottomLeading) {
 
             if source?.source == .slide(slide.id) {

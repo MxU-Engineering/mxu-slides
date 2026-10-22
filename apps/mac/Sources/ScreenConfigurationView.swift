@@ -730,6 +730,20 @@ private struct ScreenDetail: View {
             .controlSize(.small)
             .fixedSize()
             .help("Render cadence — match the venue or stream rate")
+            if outputs.role(forScreen: screen.id) == .audience {
+
+                Picker("", selection: Binding(
+                    get: { outputs.scaleMode(forScreen: screen.id) },
+                    set: { outputs.setScaleMode($0, forScreen: screen.id) }
+                )) {
+                    Text("Fit Slides").tag(OutputScaleMode.fit)
+                    Text("Fill Slides").tag(OutputScaleMode.fill)
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .fixedSize()
+                .help("When a presentation is a different shape than this screen: Fit shows the whole slide with its background filling the sides; Fill covers the screen and crops the edges")
+            }
             Spacer()
             Picker("", selection: Binding(
                 get: { outputs.role(forScreen: screen.id) },

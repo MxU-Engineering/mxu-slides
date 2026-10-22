@@ -44,11 +44,13 @@ struct ProDocumentMapperTests {
         return element
     }
 
-    private func slideCue(id: String, name: String = "", elements: [RVData_Slide.Element]) -> RVData_Cue {
+    private func slideCue(
+        id: String, name: String = "", elements: [RVData_Slide.Element], size: (Double, Double) = (1920, 1080)
+    ) -> RVData_Cue {
         var slide = RVData_Slide()
         slide.elements = elements
-        slide.size.width = 1920
-        slide.size.height = 1080
+        slide.size.width = size.0
+        slide.size.height = size.1
 
         var presentationSlide = RVData_PresentationSlide()
         presentationSlide.baseSlide = slide
@@ -101,6 +103,20 @@ struct ProDocumentMapperTests {
         doc.ccli.publisher = "Test Publisher"
         doc.ccli.copyrightYear = 2018
         return doc
+    }
+
+    @Test func nonWideDocumentKeepsItsCanvas() {
+        var doc = songDocument()
+        doc.cues = [
+            slideCue(id: "CUE-V1", elements: [textElement(id: "EL-1", rtfText: "Line one")], size: (1024, 768)),
+            slideCue(id: "CUE-V2", elements: [textElement(id: "EL-2", rtfText: "Line two")], size: (1024, 768)),
+            slideCue(id: "CUE-C1", elements: [textElement(id: "EL-3", rtfText: "Chorus")], size: (1920, 1080)),
+        ]
+        let mapped = ProDocumentMapper.map(doc, fallbackName: "Song")
+        #expect(mapped.presentation.canvasWidth == 1024)
+        #expect(mapped.presentation.canvasHeight == 768)
+        #expect(mapped.presentation.slides[0].objects.first?.width == 1744)
+        #expect(mapped.warnings.contains { $0.contains("1 slide(s) are 1920×1080") })
     }
 
     @Test func groupHotKeysImportAsNormalizedLetters() {

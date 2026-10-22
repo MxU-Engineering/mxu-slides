@@ -1516,6 +1516,51 @@ final class AppModel {
         }
     }
 
+    func setCanvasSize(of presentationIDs: [String], width: Int, height: Int) {
+        let stored = SlideSceneBuilder.storedCanvas(width: width, height: height)
+        let befores = CanvasBefores()
+        for id in presentationIDs {
+            withDeck(id) { [weak self] deck in
+                if let self, let deck, (deck.canvasWidth, deck.canvasHeight) != stored {
+                    befores.sizes[id] = (deck.canvasWidth, deck.canvasHeight)
+                    writeCanvas(id, width: stored.width, height: stored.height)
+                }
+            }
+        }
+        moveUndo.registerMove(
+            label: "Resolution",
+            undo: { [weak self] in
+                let ids = befores.sizes.keys.filter { self?.presentationExists($0) == true }
+                for id in ids {
+                    let size = befores.sizes[id]!
+                    self?.writeCanvas(id, width: size.width, height: size.height)
+                }
+                return !ids.isEmpty
+            },
+            redo: { [weak self] in
+                let ids = befores.sizes.keys.filter { self?.presentationExists($0) == true }
+                for id in ids { self?.writeCanvas(id, width: stored.width, height: stored.height) }
+                return !ids.isEmpty
+            }
+        )
+    }
+
+    private final class CanvasBefores {
+        var sizes: [String: (width: Int?, height: Int?)] = [:]
+    }
+
+    private func writeCanvas(_ id: String, width: Int?, height: Int?) {
+        updatePresentation(id, scope: "field", value: {
+            $0.canvasWidth = width
+            $0.canvasHeight = height
+        }) {
+            try $0.updateFields([
+                .init(\.canvasWidth, key: "canvasWidth", to: width),
+                .init(\.canvasHeight, key: "canvasHeight", to: height),
+            ])
+        }
+    }
+
     private func journalSlideEdit(_ presentationID: String, label: String, before: [Slide], after: [Slide]) {
         moveUndo.registerEdit(
             key: "\(label):\(presentationID):\(before.map(\.id).joined(separator: ","))", label: label,

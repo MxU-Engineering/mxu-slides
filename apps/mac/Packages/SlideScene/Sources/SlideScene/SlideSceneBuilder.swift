@@ -15,6 +15,25 @@ public enum SlideSceneBuilder {
         return CGSize(width: width, height: height)
     }
 
+    public static let canvasPresets: [(label: String, width: Int, height: Int)] = [
+        ("1080p (1920×1080)", 1920, 1080),
+        ("4K UHD (3840×2160)", 3840, 2160),
+        ("720p (1280×720)", 1280, 720),
+        ("4:3 (1024×768)", 1024, 768),
+        ("4:3 (1440×1080)", 1440, 1080),
+        ("16:10 (1920×1200)", 1920, 1200),
+        ("Vertical (1080×1920)", 1080, 1920),
+        ("Square (1080×1080)", 1080, 1080),
+    ]
+
+    public static func storedCanvas(width: Int, height: Int) -> (width: Int?, height: Int?) {
+        if width == Int(canvasSize.width), height == Int(canvasSize.height) {
+            (nil, nil)
+        } else {
+            (width, height)
+        }
+    }
+
     public static func defaultFrame(
         for kind: SlideObjectKind, in canvas: CGSize = canvasSize
     ) -> CGRect {

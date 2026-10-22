@@ -1991,15 +1991,10 @@ final class SlideEditorModel {
 
     func setCanvasSize(width: Int, height: Int) {
         guard width > 0, height > 0 else { return }
+        let stored = SlideSceneBuilder.storedCanvas(width: width, height: height)
         updateDocument { presentation in
-            if width == Int(SlideSceneBuilder.canvasSize.width),
-                height == Int(SlideSceneBuilder.canvasSize.height) {
-                presentation.canvasWidth = nil
-                presentation.canvasHeight = nil
-            } else {
-                presentation.canvasWidth = width
-                presentation.canvasHeight = height
-            }
+            presentation.canvasWidth = stored.width
+            presentation.canvasHeight = stored.height
         }
     }
 

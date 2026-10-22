@@ -212,6 +212,8 @@ final class RenderContext {
 
         var role: String?
 
+        var scaleMode: String?
+
         var adjustments: OutputAdjustments?
 
         var videoDelayFrames: Int?
@@ -250,6 +252,7 @@ final class RenderContext {
                 deviceDisplayUUID: outputs.placeholderDevices[screen.id],
                 deviceDisplayName: outputs.placeholderDeviceNames[screen.id],
                 role: outputs.screenRoles[screen.id]?.rawValue,
+                scaleMode: outputs.scaleModes[screen.id]?.rawValue,
                 adjustments: outputs.outputAdjustments[screen.id],
                 videoDelayFrames: outputs.videoDelays[screen.id],
                 masks: outputs.screenMasks[screen.id],
@@ -292,6 +295,9 @@ final class RenderContext {
             )
             if let role = config.role.flatMap(ScreenRole.init(rawValue:)) {
                 outputs.setRole(role, forScreen: config.id)
+            }
+            if let mode = config.scaleMode.flatMap(OutputScaleMode.init(rawValue:)) {
+                outputs.setScaleMode(mode, forScreen: config.id)
             }
             if let adjustments = config.adjustments {
                 outputs.setAdjustments(adjustments, forScreen: config.id)

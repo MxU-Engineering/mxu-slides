@@ -282,13 +282,7 @@ struct SlideObjectInspector: View {
         )
     }
 
-    private static let canvasPresets: [(label: String, width: Int, height: Int)] = [
-        ("1080p (1920×1080)", 1920, 1080),
-        ("4K UHD (3840×2160)", 3840, 2160),
-        ("720p (1280×720)", 1280, 720),
-        ("Vertical (1080×1920)", 1080, 1920),
-        ("Square (1080×1080)", 1080, 1080),
-    ]
+    private static let canvasPresets = SlideSceneBuilder.canvasPresets
 
     private var canvasIsCustom: Bool {
         if canvasCustomChosen { return true }

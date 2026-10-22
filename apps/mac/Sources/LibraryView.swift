@@ -37,6 +37,7 @@ struct LibrarySidebar: View {
     @State private var mediaSettingsTarget: MediaSettingsTarget?
     @State private var newFolderTarget: LibraryIndex.Entry?
     @State private var chordEditTarget: LibraryIndex.Entry?
+    @State private var resolutionTarget: PresentationResolutionSheet.Target?
 
     @State private var pendingApplyTheme: PendingDeckTheme?
     @State private var creatingFolder = false
@@ -124,6 +125,9 @@ struct LibrarySidebar: View {
         }
         .sheet(item: $chordEditTarget) { entry in
             ChordEditorSheet(model: model, render: render, presentationID: entry.id)
+        }
+        .sheet(item: $resolutionTarget) { target in
+            PresentationResolutionSheet(model: model, target: target)
         }
         .sheet(isPresented: $creatingFolder) {
             NewFolderSheet(model: model, entry: nil, parentPath: realPath(folderPath ?? []))
@@ -962,6 +966,10 @@ struct LibrarySidebar: View {
                 }
             }
         }
+        let decks = batch.filter { $0.kind == .presentation }
+        if !decks.isEmpty, !runOnly {
+            Button("Resolution…") { resolutionTarget = .init(ids: decks.map(\.id)) }
+        }
         if !tracks.isEmpty {
             Button("Show in Finder") { showInFinder(tracks) }
         }
@@ -1051,6 +1059,9 @@ struct LibrarySidebar: View {
                 DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
             }
             Button("Edit Chords…") { chordEditTarget = entry }
+            if !runOnly {
+                Button("Resolution…") { resolutionTarget = .init(ids: [entry.id]) }
+            }
             Button("Export…") { model.exportPresentation(presentationID: entry.id, render: render) }
         }
         if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
