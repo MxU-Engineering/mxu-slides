@@ -121,3 +121,15 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(made.first { $0.name == "Keys" }?.mono == nil)
     #expect(made.first { $0.name == "Bass" }?.mono == nil)
 }
+
+@Test func aSongShowsOnlyTheTracksItHasStemsOnAndTheOnesAddedToIt() {
+    let channels = (1 ... 10).map { TrackChannel(id: "eg\($0)", name: "Electric Guitar \($0)") }
+        + [TrackChannel(id: "click", name: "Click", role: "click")]
+    let cues = [stem("eg2"), stem("click"), stem("gone"),
+                TimelineCue(id: "s", lane: TimelineLane.slide.rawValue, at: 0)]
+    let rows = TimelineTracks.rows(channels: channels, cues: cues, added: ["eg7"])
+
+    #expect(rows.map(\.id) == ["eg2", "eg7", "click", "gone"])
+    #expect(rows.last?.name == "Removed channel")
+    #expect(TimelineTracks.rows(channels: channels, cues: [], added: []).isEmpty)
+}

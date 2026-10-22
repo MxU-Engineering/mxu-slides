@@ -14,6 +14,8 @@ final class PresentationTimelineCards {
     var addedLanes: [String: Set<TimelineLane>] = [:]
 
     var addedTracks: Set<String> = []
+
+    var addedTrackRows: [String: Set<String>] = [:]
 }
 
 struct PresentationTimelineButton: View {
@@ -553,6 +555,8 @@ struct PresentationTimelineLanes: View {
 
     @AppStorage("timeline.tracksExpanded") private var tracksExpanded = false
 
+    @State private var newTrackName: String?
+
     private struct PlacingAction: Identifiable {
         var action: SlideAction
         var at: Double
@@ -998,9 +1002,25 @@ struct PresentationTimelineLanes: View {
     }
 
     private func trackChannels(_ cues: [TimelineCue]) -> [TrackChannel] {
-        let channels = context.model.trackChannels
-        let lost = Set(TimelineTracks.stems(cues).compactMap(\.trackChannelId)).subtracting(channels.map(\.id))
-        return channels + lost.sorted().map { TrackChannel(id: $0, name: "Removed channel") }
+        TimelineTracks.rows(
+            channels: context.model.trackChannels, cues: cues,
+            added: PresentationTimelineCards.shared.addedTrackRows[context.item.id] ?? [])
+    }
+
+    private func addTrackRow(_ channel: String) {
+        let cards = PresentationTimelineCards.shared
+        cards.addedTracks.insert(context.item.id)
+        cards.addedTrackRows[context.item.id, default: []].insert(channel)
+        tracksExpanded = true
+    }
+
+    private func makeTrack(named name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let role = TimelineTracks.role(forName: trimmed)
+        let made = TrackChannel(id: UUID().uuidString, name: trimmed, role: role == .music ? nil : role.rawValue)
+        context.model.updateTrackChannels { $0.channels.append(made) }
+        addTrackRow(made.id)
     }
 
     private func trackRow(atY y: CGFloat?, visible: [TimelineLane], cues: [TimelineCue]) -> TrackRow? {
@@ -1013,6 +1033,9 @@ struct PresentationTimelineLanes: View {
 
     private func trackLabels(_ cues: [TimelineCue]) -> some View {
         let stems = TimelineTracks.stems(cues)
+        let rows = trackChannels(cues)
+
+        let addable = context.model.trackChannels.filter { channel in !rows.contains { $0.id == channel.id } }
         return VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 2) {
                 Button {
@@ -1029,11 +1052,20 @@ struct PresentationTimelineLanes: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help(tracksExpanded ? "Fold the track channels into one row" : "Show every track channel")
+                .help(tracksExpanded ? "Fold this song's tracks into one row" : "Show this song's tracks")
                 Spacer(minLength: 0)
                 if !runOnly {
                     Menu {
                         Button("Add Stems\u{2026}") { addStems() }
+                        Divider()
+
+                        Menu("Add Track") {
+                            ForEach(addable) { channel in
+                                Button(channel.name) { addTrackRow(channel.id) }
+                            }
+                            if !addable.isEmpty { Divider() }
+                            Button("New Track\u{2026}") { newTrackName = "" }
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -1041,12 +1073,22 @@ struct PresentationTimelineLanes: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .controlSize(.mini)
-                    .help("Add a song's stems at the playhead; each lands on the channel its name says")
+                    .help("Add a song's stems at the playhead (each lands on the channel its name says), or a blank track to drop one stem onto")
+                    .popover(isPresented: Binding(get: { newTrackName != nil }, set: { if !$0 { newTrackName = nil } })) {
+                        TextField("Track name", text: Binding(get: { newTrackName ?? "" }, set: { newTrackName = $0 }))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                            .padding(10)
+                            .onSubmit {
+                                makeTrack(named: newTrackName ?? "")
+                                newTrackName = nil
+                            }
+                    }
                 }
             }
             .frame(height: Self.laneHeight)
             if tracksExpanded {
-                ForEach(trackChannels(cues)) { channel in
+                ForEach(rows) { channel in
                     HStack(spacing: 3) {
                         Text(channel.name)
                             .font(.caption2)

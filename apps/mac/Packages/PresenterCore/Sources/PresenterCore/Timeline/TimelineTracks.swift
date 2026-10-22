@@ -181,6 +181,16 @@ public extension TimelineTracks {
     }
 }
 
+public extension TimelineTracks {
+
+    static func rows(channels: [TrackChannel], cues: [TimelineCue], added: Set<String>) -> [TrackChannel] {
+        let used = Set(stems(cues).compactMap(\.trackChannelId))
+        let shown = used.union(added)
+        let lost = used.subtracting(channels.map(\.id)).sorted().map { TrackChannel(id: $0, name: "Removed channel") }
+        return channels.filter { shown.contains($0.id) } + lost
+    }
+}
+
 public extension TrackChannel {
     var trackRole: TimelineTracks.Role { role.flatMap(TimelineTracks.Role.init(rawValue:)) ?? .music }
 }
