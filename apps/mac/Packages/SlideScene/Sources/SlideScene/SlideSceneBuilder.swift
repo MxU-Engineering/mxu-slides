@@ -241,6 +241,20 @@ public enum SlideSceneBuilder {
         return scene
     }
 
+    public static func withoutLayerMedia(_ scene: RenderScene, keep: (String) -> Bool) -> RenderScene {
+        var scene = scene
+        for layer in scene.layers.indices where scene.layers[layer].kind != .slide {
+            scene.layers[layer].items.removeAll { item in
+                if case .media(let id, _, _) = item.content {
+                    !keep(id)
+                } else {
+                    false
+                }
+            }
+        }
+        return scene
+    }
+
     public static func placeholder(in themeSlide: Slide) -> SlideObject? {
         themeSlide.objects.first { $0.objectKind == .text }
     }

@@ -2038,6 +2038,8 @@ struct SlideThumbnailView: View {
 
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
 
+    @State private var shown = ThumbnailStore.ShownFrame()
+
     private var updatedStamp: String {
         contentStamp
             ?? "\(model.entry(presentation.id)?.updatedAt.timeIntervalSince1970 ?? 0)"
@@ -2121,6 +2123,7 @@ struct SlideThumbnailView: View {
             cacheKey: "\(identity)|\(updatedStamp)",
             identity: identity,
             pixelWidth: pixelWidth,
+            shown: shown,
             mediaEffects: { model.mediaSceneEffects(id: $0) }
         )
         if let image {

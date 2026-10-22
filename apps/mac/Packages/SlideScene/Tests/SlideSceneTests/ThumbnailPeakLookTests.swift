@@ -62,4 +62,29 @@ struct ThumbnailPeakLookTests {
         #expect(SlideSceneBuilder.lookKey(for: chosen, theme: theme.scoped(toSlideFolder: "Side Thirds")) != side)
         #expect(SlideSceneBuilder.lookKey(for: noteSlide, theme: nil) == "|")
     }
+
+    @Test func withoutLayerMediaKeepsOnlySlideMediaAndPlaceholders() {
+        var slide = Slide(id: "s", name: "", objects: [
+            SlideObject(id: "m", objectKind: .media, name: "Logo", text: "", mediaId: "logo")
+        ])
+        slide.background = CueMedia(mediaId: "motion", mode: nil, layer: .loopingVideos, loops: true)
+        var camera = noteSlide
+        camera.background = CueMedia(mediaId: "input::cam", mode: nil, layer: .loopingVideos, loops: nil)
+        let canvas = CGSize(width: 1920, height: 1080)
+        let keep: (String) -> Bool = { $0.hasPrefix("input::") }
+        func mediaIDs(_ scene: RenderScene) -> Set<String> {
+            Set(scene.layers.flatMap(\.items).compactMap {
+                switch $0.content {
+                case .media(let id, _, _): id
+                case .shape(let style): if case .media(let id, _, _) = style.fill { id } else { nil }
+                default: nil
+                }
+            })
+        }
+        let built = SlideSceneBuilder.scene(for: slide, theme: nil, canvasSize: canvas)
+        #expect(mediaIDs(built) == ["motion", "logo"])
+        #expect(mediaIDs(SlideSceneBuilder.withoutLayerMedia(built, keep: keep)) == ["logo"])
+        let input = SlideSceneBuilder.scene(for: camera, theme: nil, canvasSize: canvas)
+        #expect(mediaIDs(SlideSceneBuilder.withoutLayerMedia(input, keep: keep)) == ["input::cam"])
+    }
 }

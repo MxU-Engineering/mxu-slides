@@ -72,15 +72,22 @@ final class ThumbnailStore {
         cacheKey baseKey: String,
         identity: String? = nil,
         pixelWidth: Int = ThumbnailResolution.base,
+        shown: ShownFrame? = nil,
         mediaEffects: (String) -> [SceneEffect] = { _ in [] }
     ) -> CGImage? {
         let large = pixelWidth > ThumbnailResolution.base
         let cacheKey = large ? "\(baseKey)|w\(pixelWidth)" : baseKey
+        let shownKey = "\(cacheKey)|\(mediaFilesGeneration)"
 
         _ = thumbStillsVersion
         _ = contentsVersion
         _ = placeholdersReady
-        if let hit = contents.object(forKey: cacheKey as NSString) { return hit.image }
+        if let hit = contents.object(forKey: cacheKey as NSString) {
+            shown?.hold(hit.image, key: shownKey)
+            return hit.image
+        }
+
+        if let image = shown?.image(for: shownKey) { return image }
         guard let compositor = render?.compositor else { return nil }
 
         let provisional = provisionalContents[cacheKey]
@@ -88,15 +95,18 @@ final class ThumbnailStore {
             $0.stillsVersion != thumbStillsVersion || $0.placeholdersReady != placeholdersReady
         } ?? true
         guard provisionalStale, !contentsInFlight.contains(cacheKey) else {
-            return provisional?.image ?? lastFrame(identity)
+            return provisional?.image ?? lastFrame(identity) ?? shown?.image
         }
 
         var usedPlaceholder = false
         var pendingStill = false
 
-        let built = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
-            for: slide, theme: theme, canvasSize: canvas, animationContext: .settled
-        ))
+        let built = SlideSceneBuilder.withoutLayerMedia(
+            SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
+                for: slide, theme: theme, canvasSize: canvas, animationContext: .settled
+            )),
+            keep: { LiveInputPlaceholder.remap($0) != nil }
+        )
 
             .applyingMediaEffects(mediaEffects)
 
@@ -146,7 +156,22 @@ final class ThumbnailStore {
                 )
             }
         }
-        return provisional?.image ?? lastFrame(identity)
+        return provisional?.image ?? lastFrame(identity) ?? shown?.image
+    }
+
+    @MainActor
+    final class ShownFrame {
+        private var key: String?
+        private(set) var image: CGImage?
+
+        func hold(_ image: CGImage, key: String) {
+            self.key = key
+            self.image = image
+        }
+
+        func image(for key: String) -> CGImage? {
+            self.key == key ? image : nil
+        }
     }
 
     private let lastFrames = boundedCache()
