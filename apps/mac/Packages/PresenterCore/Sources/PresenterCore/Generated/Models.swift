@@ -2597,3 +2597,33 @@ public struct TrackChannelList: Codable, Sendable, Equatable, Identifiable {
         self.channels = channels
     }
 }
+
+public struct TrackSetStem: Codable, Sendable, Equatable {
+    public var audioId: String
+    public var name: String
+    public var channelId: String?
+
+    public init(audioId: String, name: String, channelId: String? = nil) {
+        self.audioId = audioId
+        self.name = name
+        self.channelId = channelId
+    }
+}
+
+public struct TrackSet: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var stems: [TrackSetStem]
+    public var key: String?
+    public var tempo: Double?
+    public var source: String?
+
+    public init(id: String, name: String, stems: [TrackSetStem], key: String? = nil, tempo: Double? = nil, source: String? = nil) {
+        self.id = id
+        self.name = name
+        self.stems = stems
+        self.key = key
+        self.tempo = tempo
+        self.source = source
+    }
+}

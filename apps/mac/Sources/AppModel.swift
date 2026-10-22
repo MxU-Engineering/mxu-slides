@@ -46,7 +46,6 @@ enum LibrarySection: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .presentations: "Slides"
-        case .audio: "Music"
         default: rawValue
         }
     }
@@ -591,7 +590,13 @@ final class AppModel {
     }
 
     func entries(in section: LibrarySection) -> [LibraryIndex.Entry] {
-        Self.inSectionOrder(listedSnapshot.entries(of: section.kind), section)
+        var entries = listedSnapshot.entries(of: section.kind)
+
+        if section == .audio {
+            let stems = TrackSets.stemIDs(resident.trackSets.values)
+            if !stems.isEmpty { entries.removeAll { stems.contains($0.id) } }
+        }
+        return Self.inSectionOrder(entries, section)
     }
 
     func entries(of kind: DocumentKind) -> [LibraryIndex.Entry] {
@@ -1843,7 +1848,7 @@ final class AppModel {
         case .midiDevice: modify(MIDIDevice.self, id: entry.id) { $0.name = trimmed }
         case .streamDestination: modify(StreamDestination.self, id: entry.id) { $0.name = trimmed }
         case .note: return
-        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList: break
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: break
         }
 
         let oldName = entry.name
@@ -2166,7 +2171,7 @@ final class AppModel {
         case .note: break 
 
         case .streamDestination: copy(StreamDestination.self) { $0.id = newID; $0.name += " Copy" }
-        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList: break
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: break
         }
     }
 
@@ -2829,6 +2834,48 @@ final class AppModel {
         updateWellKnown(
             TrackChannelList.self, id: TrackChannelList.wellKnownID, failure: "trackChannels.saveFailed",
             orMake: { TrackChannelList(id: TrackChannelList.wellKnownID, channels: []) }, mutate)
+    }
+
+    var trackSets: [TrackSet] {
+        resident.trackSets.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func trackSet(_ id: String) -> TrackSet? {
+        resident.trackSets.value(id)
+    }
+
+    @discardableResult
+    func updateTrackSet(_ id: String, _ mutate: @escaping @Sendable (inout TrackSet) -> Void) -> Task<LibraryBatch, any Error> {
+        let written = client.modify(TrackSet.self, id: id, mutate)
+        Task {
+            if case .failure(let error) = await written.result {
+                DiagnosticsStore.shared.note("trackSet.saveFailed", detail: "\(error)")
+            }
+        }
+        return written
+    }
+
+    func deleteTrackSet(_ set: TrackSet) {
+        client.delete([SyncLedger.Key(kind: .trackSet, id: set.id)]
+            + set.stems.map { SyncLedger.Key(kind: .audio, id: $0.audioId) })
+        DiagnosticsStore.shared.note("trackSet.delete", detail: "\(set.name), \(set.stems.count) stems")
+    }
+
+    func importTrackSet(_ urls: [URL], song: String) async -> (set: TrackSet, stems: [TimelineStemImport])? {
+        let stems = await importStems(urls, song: song)
+        guard !stems.isEmpty else { return nil }
+        if let existing = TrackSets.existing(withStems: stems.map(\.audioID), in: resident.trackSets.values) {
+            let known = Dictionary(existing.stems.map { ($0.audioId, $0.channelId) }, uniquingKeysWith: { first, _ in first })
+            return (existing, stems.map { var stem = $0; stem.channelId = known[$0.audioID] ?? nil; return stem })
+        }
+        let download = TrackSets.download(forFiles: urls.map(\.path))
+        let set = TrackSet(
+            id: UUID().uuidString, name: TrackSets.name(song: song, key: download.key, tempo: download.tempo),
+            stems: stems.map { TrackSetStem(audioId: $0.audioID, name: ($0.fileName as NSString).deletingPathExtension) },
+            key: download.key, tempo: download.tempo, source: download.key == nil ? nil : "MultiTracks")
+        client.create(set, area: .team)
+        DiagnosticsStore.shared.note("trackSet.make", detail: "\(set.name), \(set.stems.count) stems")
+        return (set, stems)
     }
 
     func importStems(_ urls: [URL], song: String) async -> [TimelineStemImport] {

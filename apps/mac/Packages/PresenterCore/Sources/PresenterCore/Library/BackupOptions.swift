@@ -49,7 +49,7 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
     public static func section(for kind: DocumentKind) -> BackupSection {
         switch kind {
         case .presentation, .importLedger: .presentations
-        case .media, .audio: .media
+        case .media, .audio, .trackSet: .media
         case .theme: .themes
         case .overlay: .overlays
         case .alertPreset: .alerts

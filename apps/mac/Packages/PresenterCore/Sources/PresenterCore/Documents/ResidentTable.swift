@@ -323,6 +323,7 @@ public final class ResidentLibrary {
     public let serviceLinkRules: ResidentDocuments<ServiceLinkRules>
     public let slideBuildingSettings: ResidentDocuments<SlideBuildingSettings>
     public let trackChannelLists: ResidentDocuments<TrackChannelList>
+    public let trackSets: ResidentDocuments<TrackSet>
     public let outputPresets: ResidentDocuments<OutputPreset>
     public let midiDevices: ResidentDocuments<MIDIDevice>
 
@@ -334,7 +335,7 @@ public final class ResidentLibrary {
         .scheduleTrigger, .confidenceLayout, .schedulerBoard,
         .controlBoard, .groupPalette, .effectPresetBoard,
         .animationPresetBoard, .serviceLinkRules, .slideBuildingSettings, .outputPreset, .midiDevice,
-        .trackChannelList,
+        .trackChannelList, .trackSet,
     ]
 
     public convenience init(store: DocumentStore, epochs: DocumentKindVersions, fills: DocumentKindVersions) {
@@ -364,13 +365,14 @@ public final class ResidentLibrary {
         outputPresets = .init(source: source, epochs: epochs, fills: fills)
         midiDevices = .init(source: source, epochs: epochs, fills: fills)
         trackChannelLists = .init(source: source, epochs: epochs, fills: fills)
+        trackSets = .init(source: source, epochs: epochs, fills: fills)
         all = [
             media, audio, themes, services, playlists, overlays,
             alertPresets, streamPresets, streamDestinations, actionCombos,
             scheduleTriggers, confidenceLayouts, schedulerBoards,
             controlBoards, groupPalettes, effectPresetBoards,
             animationPresetBoards, serviceLinkRules, slideBuildingSettings, outputPresets, midiDevices,
-            trackChannelLists,
+            trackChannelLists, trackSets,
         ]
     }
 

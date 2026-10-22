@@ -711,6 +711,9 @@ struct PresentationTimelineLanes: View {
     @ViewBuilder
     private func addMenu(_ lane: TimelineLane) -> some View {
         let model = context.model
+
+        let stems = lane == .audio ? TrackSets.stemIDs(model.trackSets) : []
+        let musicEntries = lane == .audio ? model.entries(of: .audio).filter { !stems.contains($0.id) } : []
         let at = { context.clock.insertionTime(for: context.item.id) }
         let block = { (id: String) in TimelineCue(id: id, lane: lane.rawValue, at: at(), duration: 10) }
         let menu: AnyView? = switch lane {
@@ -735,7 +738,7 @@ struct PresentationTimelineLanes: View {
                 }
             })
         case .audio:
-            AnyView(ForEach(model.entries(of: .audio), id: \.id) { entry in
+            AnyView(ForEach(musicEntries, id: \.id) { entry in
                 Button(entry.name) {
                     var cue = block(UUID().uuidString)
                     cue.mediaId = entry.id
@@ -946,7 +949,17 @@ struct PresentationTimelineLanes: View {
 
     private func drop(_ payloads: [String], at time: Double, track: TrackRow? = nil) -> Bool {
         DiagnosticsStore.shared.note("timeline.drop.offered", detail: payloads.first ?? "none")
-        guard !runOnly, let id = payloads.first, let entry = context.model.indexEntry(id) else { return false }
+        guard !runOnly, let id = payloads.first else { return false }
+
+        if let set = context.model.trackSet(id) {
+            placeStems(set.stems.map { stem in
+                TimelineStemImport(
+                    fileName: stem.name, audioID: stem.audioId,
+                    seconds: context.model.audio(stem.audioId)?.durationSeconds, channelId: stem.channelId)
+            }, at: PresentationTimelines.snappedToFrame(time), set: set.id)
+            return true
+        }
+        guard let entry = context.model.indexEntry(id) else { return false }
         let at = PresentationTimelines.snappedToFrame(time)
         let cue: TimelineCue
         switch entry.kind {
@@ -1154,18 +1167,32 @@ struct PresentationTimelineLanes: View {
             guard response == .OK else { return }
             let urls = panel.urls
             Task { @MainActor in
-                let stems = await context.model.importStems(urls, song: context.presentation.name)
-                placeStems(stems, at: at)
+
+                guard let made = await context.model.importTrackSet(urls, song: context.presentation.name) else { return }
+                placeStems(made.stems, at: at, set: made.set.id)
             }
         }
     }
 
-    private func placeStems(_ stems: [TimelineStemImport], at: Double, channel: String? = nil) {
+    private func placeStems(_ stems: [TimelineStemImport], at: Double, channel: String? = nil, set: String? = nil) {
         guard !stems.isEmpty else { return }
         let channels = context.model.trackChannels
         var made: [TrackChannel] = []
+        var landed: [String: String] = [:]
+        let ids = Set(stems.map(\.audioID))
         context.edit("Add Stems") { timeline in
             made = TimelineTracks.place(stems, at: at, channel: channel, channels: channels, into: &timeline.cues)
+            for cue in TimelineTracks.stems(timeline.cues) where ids.contains(cue.mediaId ?? "") {
+                landed[cue.mediaId ?? ""] = cue.trackChannelId
+            }
+        }
+        if let set, !landed.isEmpty {
+            let channelsByStem = landed
+            context.model.updateTrackSet(set) { trackSet in
+                for index in trackSet.stems.indices {
+                    if let id = channelsByStem[trackSet.stems[index].audioId] { trackSet.stems[index].channelId = id }
+                }
+            }
         }
         if !made.isEmpty {
             let adding = made

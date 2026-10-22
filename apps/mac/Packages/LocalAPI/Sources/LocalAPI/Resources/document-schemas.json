@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 146,
+  "schemaVersion": 147,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -4058,6 +4058,55 @@
       "required": [
         "id",
         "channels"
+      ]
+    },
+    "TrackSetStem": {
+      "type": "object",
+      "properties": {
+        "audioId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "channelId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audioId",
+        "name"
+      ]
+    },
+    "TrackSet": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "stems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TrackSetStem"
+          }
+        },
+        "key": {
+          "type": "string"
+        },
+        "tempo": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "stems"
       ]
     }
   }

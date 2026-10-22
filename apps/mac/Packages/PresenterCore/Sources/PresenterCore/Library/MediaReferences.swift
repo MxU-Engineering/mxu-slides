@@ -30,6 +30,12 @@ public enum MediaReferences {
             if let id = section.background?.mediaId { out.insert(id) }
         }
         for slide in presentation.slides { out.formUnion(ids(in: slide)) }
+        for timeline in presentation.timelines ?? [] {
+            for cue in timeline.cues {
+                if let id = cue.mediaId { out.insert(id) }
+                out.formUnion(ids(inActions: cue.actions))
+            }
+        }
         return out
     }
 

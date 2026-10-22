@@ -30,6 +30,7 @@ public final class DocumentKindVersions {
     private var font = 0
     private var workspaceSettings = 0
     private var trackChannelList = 0
+    private var trackSet = 0
 
     @ObservationIgnored private var unobserved: [DocumentKind: Int] = [:]
 
@@ -69,6 +70,7 @@ public final class DocumentKindVersions {
         case .font: font
         case .workspaceSettings: workspaceSettings
         case .trackChannelList: trackChannelList
+        case .trackSet: trackSet
         }
     }
 
@@ -103,6 +105,7 @@ public final class DocumentKindVersions {
         case .font: font += 1
         case .workspaceSettings: workspaceSettings += 1
         case .trackChannelList: trackChannelList += 1
+        case .trackSet: trackSet += 1
         }
     }
 

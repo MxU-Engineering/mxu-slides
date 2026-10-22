@@ -29,6 +29,7 @@ public enum DocumentKind: String, CaseIterable, Sendable {
     case font
     case workspaceSettings
     case trackChannelList
+    case trackSet
 
     public var opensInEditor: Bool {
         switch self {
@@ -70,6 +71,7 @@ public enum DocumentKind: String, CaseIterable, Sendable {
         case .font: "font-files"
         case .workspaceSettings: "workspace-settings"
         case .trackChannelList: "track-channels"
+        case .trackSet: "track-sets"
         }
     }
 }
@@ -309,6 +311,10 @@ extension TrackChannelList: DocumentEntity {
 public extension TrackChannelList {
 
     static let wellKnownID = "track-channels"
+}
+
+extension TrackSet: DocumentEntity {
+    public static var documentKind: DocumentKind { .trackSet }
 }
 
 extension FontFile: DocumentEntity {

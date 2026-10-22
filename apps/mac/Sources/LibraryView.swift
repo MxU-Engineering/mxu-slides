@@ -41,6 +41,8 @@ struct LibrarySidebar: View {
     @State private var creatingFolder = false
     @State private var importingLyrics = false
     @State private var searchText = ""
+
+    @AppStorage("library.audioTab") private var audioTab = 0
     @FocusState private var searchFocused: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.runOnly) private var runOnly
@@ -67,8 +69,15 @@ struct LibrarySidebar: View {
         VStack(spacing: 0) {
             headerRow
             sectionPicker
+            if model.selectedSection == .audio, searchText.isEmpty {
+                ChipPicker(options: [(0, "Music"), (1, "Tracks")], selection: $audioTab)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+            }
             Divider()
-            if searchText.isEmpty {
+            if searchText.isEmpty, model.selectedSection == .audio, audioTab == 1 {
+                TrackSetList(model: model)
+            } else if searchText.isEmpty {
                 entryList
             } else {
                 searchResults
@@ -366,8 +375,10 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private var searchResults: some View {
+
+        let stems = TrackSets.stemIDs(model.trackSets)
         let hits = searchHits.filter { hit in
-            guard let section = section(for: hit.entry) else { return false }
+            guard let section = section(for: hit.entry), !stems.contains(hit.entry.id) else { return false }
             return (searchScopes.isEmpty || searchScopes.contains(section))
                 && model.showFiltersAdmit(id: hit.entry.id, kind: hit.entry.kind)
         }
@@ -1113,7 +1124,7 @@ struct LibrarySidebar: View {
         case .midiDevice: nil
         case .streamDestination: nil
         case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette,
-            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList: nil
+            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: nil
         }
     }
 

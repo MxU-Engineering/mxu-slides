@@ -10,7 +10,7 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
         case .presentation, .service, .theme, .media, .audio, .playlist, .overlay,
              .alertPreset, .actionCombo, .scheduleTrigger, .confidenceLayout, .groupPalette,
              .effectPresetBoard, .animationPresetBoard, .serviceLinkRules, .note, .slideBuildingSettings, .font,
-             .trackChannelList:
+             .trackChannelList, .trackSet:
             .team
         case .outputPreset, .controlBoard, .schedulerBoard, .midiDevice,
              .streamDestination, .streamRecordPreset, .stationSettings, .workspaceSettings:
@@ -21,7 +21,7 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
     }
 
     public static func everyComputerHolds(_ kind: DocumentKind) -> Bool {
-        kind == .slideBuildingSettings || kind == .font || kind == .trackChannelList
+        kind == .slideBuildingSettings || kind == .font || kind == .trackChannelList || kind == .trackSet
     }
 
     public static func kinds(in scope: SyncScope) -> [DocumentKind] {
@@ -58,6 +58,7 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
         case .font: FontFile.self
         case .workspaceSettings: WorkspaceSettings.self
         case .trackChannelList: TrackChannelList.self
+        case .trackSet: TrackSet.self
         }
     }
 }

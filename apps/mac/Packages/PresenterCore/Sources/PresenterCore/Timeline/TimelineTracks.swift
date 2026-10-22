@@ -96,11 +96,12 @@ public enum TimelineTracks {
     }
 
     public static func assign(
-        fileNames: [String], to channels: [TrackChannel], newID: () -> String = { UUID().uuidString }
+        fileNames: [String], to channels: [TrackChannel], taken: Set<String> = [],
+        newID: () -> String = { UUID().uuidString }
     ) -> (channels: [TrackChannel], assignments: [String: String]) {
         var channels = channels
         var assignments: [String: String] = [:]
-        var used: Set<String> = []
+        var used = taken
         let split = fileNames.map(numbered)
         let prefix = fileNames.count > 1 ? commonPrefix(split.map(\.words)) : 0
         for (index, fileName) in fileNames.enumerated() {
@@ -152,8 +153,11 @@ public struct TimelineStemImport: Equatable, Sendable {
 
     public var channels: Int?
 
-    public init(fileName: String, audioID: String, seconds: Double?, channels: Int? = nil) {
+    public var channelId: String?
+
+    public init(fileName: String, audioID: String, seconds: Double?, channels: Int? = nil, channelId: String? = nil) {
         self.fileName = fileName; self.audioID = audioID; self.seconds = seconds; self.channels = channels
+        self.channelId = channelId
     }
 }
 
@@ -163,7 +167,14 @@ public extension TimelineTracks {
         _ stems: [TimelineStemImport], at: Double, channel: String? = nil, channels: [TrackChannel],
         into cues: inout [TimelineCue], newID: () -> String = { UUID().uuidString }
     ) -> [TrackChannel] {
-        var result = assign(fileNames: stems.map(\.fileName), to: channels, newID: newID)
+
+        let known = Set(channels.map(\.id))
+        var kept: [String: String] = [:]
+        for stem in stems { if let id = stem.channelId, known.contains(id) { kept[stem.fileName] = id } }
+        var result = assign(
+            fileNames: stems.map(\.fileName).filter { kept[$0] == nil }, to: channels,
+            taken: Set(kept.values), newID: newID)
+        result.assignments.merge(kept) { _, keep in keep }
         if let channel, stems.count == 1 {
             result = (channels, [stems[0].fileName: channel])
         }
