@@ -2001,7 +2001,7 @@ struct SlideThumbnailView: View {
             slideID: slide.id, presentation: presentation,
             arrangementId: arrangementId, stamp: updatedStamp, model: model
         )
-        let shown = hideScopedBackgrounds ? carried.filter { declaredMediaIDs.contains($0.value) } : carried
+        let shown = hideScopedBackgrounds ? SlideSceneBuilder.declaredOnly(carried, slide: slide) : carried
 
         let missing = SlideSceneBuilder.fireMediaPosterIDs(slide: slide) { model.media($0).map { ($0.mediaKind, $0.classification) } }
             .below.filter { model.media($0) == nil }
@@ -2035,12 +2035,6 @@ struct SlideThumbnailView: View {
                     .tileHelp("This slide sets the background")
             }
         }
-    }
-
-    private var declaredMediaIDs: Set<String> {
-        var ids = Set((slide.actions ?? []).filter { $0.kind == .fireMedia }.compactMap(\.mediaId))
-        if let own = slide.background?.mediaId, !own.isEmpty { ids.insert(own) }
-        return ids
     }
 
     private var themeBackground: Color {
