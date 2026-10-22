@@ -615,6 +615,9 @@ struct PresentationTimelineLanes: View {
     @State private var rangeStart: Double?
 
     @FocusState private var lanesFocused: Bool
+    @State private var editingMap = false
+
+    @State private var pendingMap: SongMapImport?
 
     struct UnmatchedStems: Identifiable {
         let id = UUID()
@@ -731,6 +734,11 @@ struct PresentationTimelineLanes: View {
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
+
+        .task(id: mapKey) {
+            context.clock.layOutFromMap(presentationID: context.presentation.id, arrangementId: context.item.arrangementId)
+        }
+        .sheet(isPresented: $editingMap) { SongMapSheet(context: context) { editingMap = false } }
         .sheet(item: $unmatched) { pending in
             UnmatchedStemsSheet(plan: pending.plan, channels: context.model.trackChannels) { resolution in
                 unmatched = nil
@@ -1586,6 +1594,10 @@ struct PresentationTimelineLanes: View {
                             }
                         }
 
+                        Divider()
+                        Button(context.presentation.songMap == nil ? "Section Map\u{2026}" : "Section Map (\(context.presentation.songMap?.sections.count ?? 0))\u{2026}") {
+                            editingMap = true
+                        }
                         if hasTracks {
                             Divider()
                             Button("Set Up Outputs\u{2026}") { settingUpOutputs = true }
@@ -1708,6 +1720,7 @@ struct PresentationTimelineLanes: View {
             let urls = panel.urls
             let joining = joiningSet(urls)
             Task { @MainActor in
+                pendingMap = await SongMapImport.find(urls)
 
                 guard let made = await context.model.importTrackSet(urls, song: context.presentation.name, joining: joining) else { return }
                 placeStems(made.stems, at: at, set: made.set.id)
@@ -1722,6 +1735,7 @@ struct PresentationTimelineLanes: View {
         let at = PresentationTimelines.snappedToFrame(time)
         let joining = joiningSet(urls)
         Task { @MainActor in
+            pendingMap = urls.count == 1 && !urls[0].hasDirectoryPath ? nil : await SongMapImport.find(urls)
             guard let made = await context.model.importTrackSet(urls, song: context.presentation.name, joining: joining) else { return }
             placeStems(made.stems, at: at, channel: made.stems.count == 1 ? channel : nil, set: made.set.id)
         }
@@ -1763,6 +1777,28 @@ struct PresentationTimelineLanes: View {
         }
         DiagnosticsStore.shared.note(
             "timeline.stems", detail: "\(stems.count) at \(at), \(resolution.made.count) new channels, \(resolution.remembered.count) remembered")
+        if let found = pendingMap {
+            pendingMap = nil
+            makeMap(found, at: at)
+        }
+    }
+
+    private func makeMap(_ found: SongMapImport, at: Double) {
+        guard let deck = context.model.presentation(context.presentation.id),
+              let recording = PresentationTimelines.timeline(for: context.item.arrangementId, in: deck)?.cues else { return }
+        var map = SongMap(recording: recording, sections: [], source: "multitracks")
+        let sections = SongMaps.sections(from: found.set, bpm: found.bpm, offset: at, recordingEnd: SongMaps.recordingEnd(map))
+        map.sections = SongMaps.linked(sections, to: deck.sections ?? [])
+        context.model.updatePresentationField(deck.id, \.songMap, key: "songMap", to: map, undoLabel: "Import Audio")
+        context.clock.layOutFromMap(presentationID: deck.id, arrangementId: context.item.arrangementId)
+        DiagnosticsStore.shared.note(
+            "timeline.songMap.import", detail: "\(map.sections.count) sections, \(map.sections.filter { $0.sectionId != nil }.count) linked")
+    }
+
+    private var mapKey: String {
+        guard let map = context.presentation.songMap else { return "" }
+        return context.blocks.map { $0.sectionId ?? "-" }.joined(separator: ",") + "|"
+            + map.sections.map { "\($0.id)@\($0.start)>\($0.sectionId ?? "")" }.joined(separator: ",")
     }
 
     static func interval(_ pointsPerSecond: Double) -> Double {

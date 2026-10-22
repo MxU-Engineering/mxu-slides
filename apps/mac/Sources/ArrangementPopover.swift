@@ -118,6 +118,18 @@ struct ArrangementPopover: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if let map = model.presentation.songMap {
+                let missing = SongMaps.missing(
+                    map, blocks: SlideSceneBuilder.timelineBlocks(for: model.presentation, arrangementId: arrangement.id),
+                    names: Dictionary(model.sections.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }))
+                if !missing.isEmpty {
+                    Label("\(missing.joined(separator: ", ")) \(missing.count == 1 ? "has" : "have") no audio in this song's tracks", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

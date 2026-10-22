@@ -238,6 +238,7 @@ struct DeckField {
             optional(\.displayKey, "displayKey"),
             optional(\.origin, "origin"),
             optional(\.timelines, "timelines"),
+            optional(\.songMap, "songMap"),
         ]
     }
 }

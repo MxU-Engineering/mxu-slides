@@ -80,6 +80,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         handingOver: Bool = false
     ) {
 
+        layOutFromMap(presentationID: presentation.id, arrangementId: arrangementId)
+
         var crossfade: Double?
         if SongTransitions.manualJumpCrossfades(
             anotherSong: self.itemID != itemID, playing: playing, stemsSounding: tracksSong != nil || stemsTail,

@@ -938,14 +938,58 @@ public struct PresentationTimeline: Codable, Sendable, Equatable, Identifiable {
     public var timecodeStart: Int
     public var length: Double?
     public var cues: [TimelineCue]
+    public var mapLayout: [SongMapBlock]?
 
-    public init(id: String, arrangementId: String? = nil, timecodeEnabled: Bool, timecodeStart: Int, length: Double? = nil, cues: [TimelineCue]) {
+    public init(id: String, arrangementId: String? = nil, timecodeEnabled: Bool, timecodeStart: Int, length: Double? = nil, cues: [TimelineCue], mapLayout: [SongMapBlock]? = nil) {
         self.id = id
         self.arrangementId = arrangementId
         self.timecodeEnabled = timecodeEnabled
         self.timecodeStart = timecodeStart
         self.length = length
         self.cues = cues
+        self.mapLayout = mapLayout
+    }
+}
+
+public struct SongMap: Codable, Sendable, Equatable {
+    public var recording: [TimelineCue]
+    public var sections: [AudioSection]
+    public var source: String?
+
+    public init(recording: [TimelineCue], sections: [AudioSection], source: String? = nil) {
+        self.recording = recording
+        self.sections = sections
+        self.source = source
+    }
+}
+
+public struct AudioSection: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var start: Double
+    public var sectionId: String?
+
+    public init(id: String, name: String, start: Double, sectionId: String? = nil) {
+        self.id = id
+        self.name = name
+        self.start = start
+        self.sectionId = sectionId
+    }
+}
+
+public struct SongMapBlock: Codable, Sendable, Equatable {
+    public var sectionId: String?
+    public var occurrence: Int
+    public var start: Double
+    public var length: Double
+    public var audioSectionIds: [String]
+
+    public init(sectionId: String? = nil, occurrence: Int, start: Double, length: Double, audioSectionIds: [String]) {
+        self.sectionId = sectionId
+        self.occurrence = occurrence
+        self.start = start
+        self.length = length
+        self.audioSectionIds = audioSectionIds
     }
 }
 
@@ -973,8 +1017,9 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var displayKey: String?
     public var origin: PresentationOrigin?
     public var timelines: [PresentationTimeline]?
+    public var songMap: SongMap?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil, timelines: [PresentationTimeline]? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil, timelines: [PresentationTimeline]? = nil, songMap: SongMap? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -998,6 +1043,7 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.displayKey = displayKey
         self.origin = origin
         self.timelines = timelines
+        self.songMap = songMap
     }
 }
 

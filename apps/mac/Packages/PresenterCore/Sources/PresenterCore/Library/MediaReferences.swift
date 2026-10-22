@@ -36,6 +36,12 @@ public enum MediaReferences {
                 out.formUnion(ids(inActions: cue.actions))
             }
         }
+        if let recording = presentation.songMap?.recording {
+            for cue in recording {
+                if let id = cue.mediaId { out.insert(id) }
+                out.formUnion(ids(inActions: cue.actions))
+            }
+        }
         return out
     }
 
