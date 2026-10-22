@@ -155,6 +155,8 @@ struct RunOnlyEntrySheet: View {
     @State private var confirmation = ""
     @State private var problem: String?
 
+    @FocusState private var pinFocused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Enter Run-Only Mode")
@@ -184,6 +186,7 @@ struct RunOnlyEntrySheet: View {
                     .foregroundStyle(.secondary)
                 SecureField("Passcode", text: $pin)
                     .textFieldStyle(.roundedBorder)
+                    .focused($pinFocused)
                 SecureField("Repeat passcode", text: $confirmation)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { submit() }
@@ -202,7 +205,10 @@ struct RunOnlyEntrySheet: View {
         }
         .padding(20)
         .frame(width: 360)
-        .onAppear { chosen = Set(initial) }
+        .onAppear {
+            chosen = Set(initial)
+            pinFocused = needsPIN
+        }
     }
 
     private func submit() {

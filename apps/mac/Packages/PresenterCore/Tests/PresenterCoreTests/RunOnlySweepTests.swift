@@ -133,6 +133,21 @@ import Testing
         #expect(settings.contains("Button(\"Change Passcode…\") { pinFlow = .change }"))
     }
 
+    @Test func everyPasscodeViewFocusesAField() throws {
+        let sweep = try SourceSweep.app()
+        let gate = try #require(sweep.file("RunOnlyGate.swift"))
+        let views = Set(gate.codeLines.indices.compactMap { line in
+            gate.code(line).contains("SecureField(") ? gate.enclosingType(of: line) : nil
+        })
+        #expect(!views.isEmpty)
+        for view in views {
+            let start = try #require(gate.codeLines.firstIndex { $0.contains("struct \(view):") })
+            let body = gate.codeLines[gate.block(from: start)].joined(separator: "\n")
+            #expect(body.contains("@FocusState"), "\(view) never focuses its passcode field")
+            #expect(body.contains(".focused("), "\(view) never focuses its passcode field")
+        }
+    }
+
     @Test func everyWindowSceneIsPlaced() throws {
         let sweep = try SourceSweep.app()
         let app = try #require(sweep.file("MxUSlidesApp.swift"))
