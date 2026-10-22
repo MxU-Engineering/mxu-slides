@@ -42,6 +42,15 @@ import Testing
         #expect(glyphs.contains("model.actionCombo($0).iconName"))
     }
 
+    @Test func tileBadgesAreLegible() throws {
+        let grid = try source("PresentGridView.swift")
+        #expect(grid.contains("ForEach(Array(actions.prefix(3)), id: \\.id) { action in\n                            Glyph(kind: GlyphKind(action: action, model: model), size: 12)\n                                .foregroundStyle(.secondary)"))
+        #expect(grid.contains("Text(\"+\\(actionBadges.count - 3)\")"))
+
+        #expect(grid.contains(".font(.system(size: 10, weight: .semibold).monospacedDigit())\n                        .foregroundStyle(isLive ? Color.white : Color.primary)"))
+        #expect(grid.contains("Glyph(kind: .timers, size: 12)\n                        .foregroundStyle(.secondary)"))
+    }
+
     @Test func combosCanUseTheLightIconAndSeeEachGlyph() throws {
         let combos = try source("Modules/ActionCombosModule.swift")
         #expect(combos.contains("(.light, \"Light\")"))

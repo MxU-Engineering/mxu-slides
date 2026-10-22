@@ -1710,12 +1710,12 @@ struct SlideTile: View {
 
                 if stepCount > 0 {
                     Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
-                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(isLive ? Color.white : Color.secondary)
-                        .padding(.horizontal, 4)
+                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(isLive ? Color.white : Color.primary)
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 1)
                         .background(
-                            (isLive ? Color.green : Color(.sRGB, white: 0.5).opacity(0.25)),
+                            (isLive ? Color.green : Color(.sRGB, white: 0.5).opacity(0.45)),
                             in: Capsule()
                         )
                         .tileHelp(isLive
@@ -1724,34 +1724,34 @@ struct SlideTile: View {
                 } else if hasAnySteps {
 
                     Image(systemName: "sparkles")
-                        .font(.system(size: 8))
+                        .font(.system(size: 11))
                         .foregroundStyle(isLive ? Color.green : Color.secondary)
                         .tileHelp("Animation plays on this slide when it fires, with no extra clicks. This includes steps an output's routed theme adds.")
                 }
                 Spacer(minLength: 4)
 
                 if let advance = slide.autoAdvance {
-                    Glyph(kind: .timers, size: 9)
-                        .foregroundStyle(.tertiary)
+                    Glyph(kind: .timers, size: 12)
+                        .foregroundStyle(.secondary)
                         .tileHelp(autoAdvanceSummary(advance))
                 }
 
                 if !actionBadges.isEmpty {
                     let actions = slide.actions ?? []
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
 
-                        ForEach(Array(actions.prefix(4)), id: \.id) { action in
-                            Glyph(kind: GlyphKind(action: action, model: model), size: 9)
-                                .foregroundStyle(.tertiary)
+                        ForEach(Array(actions.prefix(3)), id: \.id) { action in
+                            Glyph(kind: GlyphKind(action: action, model: model), size: 12)
+                                .foregroundStyle(.secondary)
                                 .tileHelp(slideActionLabel(
                                     action, model: model,
                                     timers: actionRouter?.timerChoices ?? [],
                                     confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
                         }
-                        if actionBadges.count > 4 {
-                            Text("+\(actionBadges.count - 4)")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(.tertiary)
+                        if actionBadges.count > 3 {
+                            Text("+\(actionBadges.count - 3)")
+                                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                                .foregroundStyle(.secondary)
                                 .tileHelp(actionSummary)
                         }
                     }
