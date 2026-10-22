@@ -1,3 +1,4 @@
+import AVFoundation
 import AudioEngine
 import Foundation
 import LocalAPI
@@ -38,6 +39,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var tracksSong: String?
     @ObservationIgnored private var tracksAsked: CFTimeInterval = 0
+
+    @ObservationIgnored private var chaseSong: (key: String, song: MultitrackSong?)?
 
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
@@ -117,10 +120,18 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func stopTracks() {
+        stopStems()
+        stopMusic()
+    }
+
+    func stopStems() {
         if tracksSong != nil {
             controls?.tracks.stop()
             tracksSong = nil
         }
+    }
+
+    func stopMusic() {
         guard let controls, let deck = deck() else { return }
         for id in Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
         where controls.audio.player(forAudioItem: id) != nil {
@@ -172,6 +183,22 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         controls?.tracks.cueAhead(songs.filter { $0.id != tracksSong })
     }
 
+    private func chaseTracks(_ command: TimecodeFollow.Command, now: CFTimeInterval, readAt: CFTimeInterval) {
+        guard let controls, let itemID, let deck = deck() else { return }
+        let key = [itemID, deck.id, arrangementId ?? ""].joined(separator: "|")
+        var landing = false
+        if case .land = command { landing = true }
+        if landing || chaseSong?.key != key {
+            chaseSong = (key, multitrackSong(itemID: itemID, deck: deck, arrangementId: arrangementId))
+            landing = true
+        }
+        guard let song = chaseSong?.song, landing || now - tracksAsked >= 0.1 else { return }
+        tracksSong = song.id
+        tracksAsked = now
+
+        controls.tracks.chase(song, position: command.position, hostTime: AVAudioTime.hostTime(forSeconds: readAt))
+    }
+
     private func startTracks(at position: Double) {
         guard let song = multitrackSong() else { return }
         tracksSong = song.id
@@ -218,7 +245,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     func follow(
         _ command: TimecodeFollow.Command, itemID: String, presentation: Presentation, arrangementId: String?,
-        playsAudio: Bool = false
+        playsAudio: Bool = false, readAt: CFTimeInterval = CACurrentMediaTime()
     ) {
         if self.itemID != itemID || presentationID != presentation.id || self.arrangementId != arrangementId {
             select(itemID: itemID, presentation: presentation, arrangementId: arrangementId)
@@ -247,17 +274,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             let sync = TimecodeFollow.audioSync(cues, at: command.position, playing: playing)
             if sync.contains(where: { if case .playAudio = $0 { true } else { false } }) { audioSyncHold = now + 0.5 }
             apply(sync, cues: cues, deck: deck)
-
-            if let song = multitrackSong() {
-                let heard = controls.tracks.position(of: song.id)
-                if tracksSong != song.id || heard.map({ abs($0 - command.position) > 0.5 }) ?? (now - tracksAsked > 1) {
-                    tracksSong = song.id
-                    tracksAsked = now
-                    audioSyncHold = now + 0.5
-                    controls.tracks.play(song, from: command.position)
-                }
-            }
         }
+        chaseTracks(command, now: now, readAt: readAt)
         setPlayhead(command.position)
         publishClock(position: command.position, running: true)
     }

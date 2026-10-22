@@ -107,17 +107,31 @@ private let smooth: Float = 0.06
     #expect(engine.cuesDecoded == 0)
 }
 
-@Test func slipsHoldStemsOnDriftingTimecode() throws {
+@Test func varispeedHoldsStemsOnDriftingTimecode() throws {
     let song = try sine("drift", seconds: 190)
     let engine = engine()
     let run = chase(engine, song, seconds: 180) { 5 + $0 * 1.0001 }
     let settled = run.errors.filter { $0.0 > 10 }.map { abs($0.1) }
-    #expect(settled.max()! < 0.003, "worst \(settled.max()!)")
+    #expect(settled.max()! < 0.002, "worst \(settled.max()!)")
     #expect(engine.chaseLandings == 0)
     #expect(biggestStep(run.out) < smooth, "step \(biggestStep(run.out))")
 
-    #expect(abs(run.errors.last!.1) < 0.003)
-    #expect((700 ... 960).contains(engine.renderer.slipsTotal), "\(engine.renderer.slipsTotal) slips")
+    #expect(abs(run.errors.last!.1) < 0.001)
+    #expect(abs(engine.renderer.speed - 1.0001) < 0.00002, "speed \(engine.renderer.speed)")
+}
+
+@Test func varispeedKeepsTheTopOctaveSteady() throws {
+    let path = try file("hf", seconds: 30) { Float(sin(2 * .pi * 15_000 * Double($0) / 48_000)) * 0.5 }
+    let song = MultitrackSong(id: "hf", stems: [.init(path: path, channelId: "s")])
+    let engine = engine()
+    let run = chase(engine, song, seconds: 25) { 1 + $0 * 1.00068 }
+    let blocks = stride(from: 48_000 * 4, to: run.out.count - 480, by: 480).map { start in
+        (run.out[start ..< start + 480].map { $0 * $0 }.reduce(0, +) / 480).squareRoot()
+    }
+    let decibels = blocks.map { 20 * log10($0 / (0.5 / Float(2).squareRoot())) }
+    #expect(decibels.max()! - decibels.min()! < 0.1, "flutter \(decibels.max()! - decibels.min()!) dB")
+    #expect(abs(decibels.max()!) < 0.1, "level \(decibels.max()!) dB")
+    #expect(abs(engine.renderer.speed - 1.00068) < 0.00003, "speed \(engine.renderer.speed)")
 }
 
 @Test func stemsLandWithJumpsAndLoops() throws {

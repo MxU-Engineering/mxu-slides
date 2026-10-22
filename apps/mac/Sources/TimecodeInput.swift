@@ -235,21 +235,26 @@ final class TimecodeFollower {
     func setPlaysAudio(_ on: Bool) {
         playsAudio = on
         UserDefaults.standard.set(on, forKey: TimecodeStation.audioKey)
-        if !on, audioRunning {
-            controls?.timeline.stopTracks()
-            audioRunning = false
-        }
+
+        if !on, audioRunning { controls?.timeline.stopMusic() }
     }
 
     func retry() {
         if reader == nil { start() }
     }
 
+    private func stopTimecodeAudio() {
+        if playsAudio { controls?.timeline.stopTracks() } else { controls?.timeline.stopStems() }
+        audioRunning = false
+    }
+
     private func tick() {
         guard let reader else { return }
         let (heard, peak) = reader.drain()
         for frame in heard { clock.receive(frame) }
-        var reading = clock.reading(at: CACurrentMediaTime())
+
+        let readAt = CACurrentMediaTime()
+        var reading = clock.reading(at: readAt)
         publishDisplay(reading)
         if let rate = reading.rate, let position = reading.position {
             reading.position = position + Double(offsetFrames) / rate.actual
@@ -263,9 +268,9 @@ final class TimecodeFollower {
             level: level, decoding: TimecodeSignalCheck.decoding(reading.state), at: CACurrentMediaTime())
         if heardNoTimecode != noTimecode { noTimecode = heardNoTimecode }
 
-        if audioRunning, reading.state == .stopped || reading.state == .noInput {
-            controls?.timeline.stopTracks()
-            audioRunning = false
+        if audioRunning, reading.state == .stopped || reading.state == .noInput
+            || (reading.state == .locked && reading.reverse) {
+            stopTimecodeAudio()
         }
         guard follows, let controls else { return }
 
@@ -276,6 +281,11 @@ final class TimecodeFollower {
             return
         }
         var songs = Self.songs(controls.appModel)
+
+        if audioRunning, let seconds = reading.position, let rate = reading.rate,
+           TimecodeFollow.song(containing: seconds, rate: rate, in: songs.map(\.song)) == nil {
+            stopTimecodeAudio()
+        }
         if let take {
             songs = songs.compactMap { followed in
                 take.songs([followed.song]).first.map {
@@ -297,8 +307,8 @@ final class TimecodeFollower {
             }
             controls.timeline.follow(
                 command, itemID: item.song.itemID, presentation: item.presentation, arrangementId: item.arrangementId,
-                playsAudio: playsAudio)
-            audioRunning = playsAudio
+                playsAudio: playsAudio, readAt: readAt)
+            audioRunning = true
         }
 
         if let pending = revealPending, controls.liveContextID == pending {

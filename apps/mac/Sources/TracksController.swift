@@ -170,6 +170,17 @@ final class TracksController {
         client.send(.seek(seconds: position))
     }
 
+    func chase(_ song: MultitrackSong, position: Double, hostTime: UInt64) {
+        if driving.value != song.id {
+            driving.value = song.id
+            songChannels = Set(song.stems.map(\.channelId))
+            refresh()
+            DiagnosticsStore.shared.note("tracks.chase", detail: "\(song.stems.count) stems at \(String(format: "%.2f", position))")
+        }
+        let known = latest.value?.songID == song.id
+        client.send(.chase(song: known ? nil : song, songID: song.id, position: position, hostTime: hostTime))
+    }
+
     func cueAhead(_ songs: [MultitrackSong]) {
         guard hasTracks, songs != preloaded else { return }
         preloaded = songs

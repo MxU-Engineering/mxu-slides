@@ -2,34 +2,32 @@ import Foundation
 
 struct MultitrackChase {
     enum Decision: Equatable {
-        case hold
 
         case land
 
-        case slips(Int)
+        case speed(Double)
     }
-
-    static let deadband = 0.002
 
     static let land = 0.15
 
-    static let smoothing = 1.0
+    static let smoothing = 0.5
 
-    static let correctOver = 4.0
+    static let proportional = 0.5
+    static let integral = 0.0625
 
-    static let maxSlipsPerSecond = 40.0
+    static let maxDeviation = 0.002
 
     private var error: Double?
     private var lastTime: Double?
-    private var carry = 0.0
+
+    private var drift = 0.0
 
     mutating func reset() {
         error = nil
         lastTime = nil
-        carry = 0
     }
 
-    mutating func step(error raw: Double, at time: Double, sampleRate: Double) -> Decision {
+    mutating func step(error raw: Double, at time: Double) -> Decision {
         if abs(raw) > Self.land {
             reset()
             return .land
@@ -38,15 +36,10 @@ struct MultitrackChase {
         lastTime = time
         let smoothed = error.map { $0 + (raw - $0) * dt / (Self.smoothing + dt) } ?? raw
         error = smoothed
-        guard abs(smoothed) > Self.deadband else {
-            carry = 0
-            return .hold
-        }
+        let wanted = -(Self.proportional * smoothed + drift)
+        let limited = min(max(wanted, -Self.maxDeviation), Self.maxDeviation)
 
-        let rate = min(max(-smoothed * sampleRate / Self.correctOver, -Self.maxSlipsPerSecond), Self.maxSlipsPerSecond)
-        carry += rate * dt
-        let count = Int(carry.rounded(.towardZero))
-        carry -= Double(count)
-        return count == 0 ? .hold : .slips(count)
+        if wanted == limited { drift += Self.integral * smoothed * dt }
+        return .speed(1 + limited)
     }
 }

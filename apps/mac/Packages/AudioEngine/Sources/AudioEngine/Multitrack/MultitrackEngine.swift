@@ -124,16 +124,13 @@ public final class MultitrackEngine: @unchecked Sendable {
                 return
             }
             let error = renderer.position(atHostTime: hostTime) - position
-            switch chase.step(error: error, at: Self.seconds(hostTime), sampleRate: sampleRate) {
-            case .hold:
-                break
+            switch chase.step(error: error, at: Self.seconds(hostTime)) {
             case .land:
                 cueLocked(target, at: position, anchor: hostTime)
                 chaseStarted = now
                 chaseLandings += 1
-            case .slips(let count):
-
-                if abs(renderer.pendingSlips) < 4 { renderer.requestSlips(count) }
+            case .speed(let speed):
+                renderer.speed = speed
             }
         }
     }
@@ -251,9 +248,11 @@ public final class MultitrackEngine: @unchecked Sendable {
             stemReaders = Self.openReaders(song, sampleRate: sampleRate, startFrame: start)
             cuesDecoded += 1
         }
+
         let session = MultitrackSession(
             rings: stemReaders.map(\.ring), stemChannels: song.stems.map(\.channelId), startFrame: start,
-            anchor: anchor.map { (Int64((max(0, seconds) * sampleRate).rounded()), $0) })
+            anchor: anchor.map { (Int64((max(0, seconds) * sampleRate).rounded()), $0) },
+            varispeed: anchor.map { _ in MultitrackVarispeed(stems: stemReaders.count, maxFrames: renderer.maxFrames) })
         readers[ObjectIdentifier(session)] = stemReaders
         self.session = session
         publish(session)
