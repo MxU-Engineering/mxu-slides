@@ -350,4 +350,23 @@ private func link(_ source: TextSourceKind) -> TextLink { TextLink(source: sourc
     #expect(!LinkedText.authoringSources(current: .clock).contains(.nextServiceTitle))
     #expect(LinkedText.authoringSources(current: .nextServiceTitle).contains(.nextServiceTitle))
     #expect(LinkedText.authoringSources(current: nil).count == TextSourceKind.allCases.count - 1)
+@Test func timecodeSourceCountsHoldsAndHidesWithNoInput() {
+    var info = ConfidenceInfo()
+    #expect(LinkedText.resolve(link(.timecode), info: info, at: fixedDate) == nil, "no input, nothing shown")
+
+    info.timecode = TimecodeDisplay(seconds: 3600, rate: .fps30, anchoredAt: fixedDate, isRunning: true)
+    #expect(LinkedText.resolve(link(.timecode), info: info, at: fixedDate) == "01:00:00:00")
+    #expect(LinkedText.resolve(link(.timecode), info: info, at: fixedDate + 0.5) == "01:00:00:15")
+
+    info.timecode?.isRunning = false
+    #expect(LinkedText.resolve(link(.timecode), info: info, at: fixedDate + 10) == "01:00:00:00")
+
+    let rate = TimecodeRate.fps2997DropFrame
+    info.timecode = TimecodeDisplay(
+        seconds: rate.seconds(TimecodeLabel(hours: 0, minutes: 1, seconds: 0, frames: 2)) + 0.001, rate: rate,
+        anchoredAt: fixedDate, isRunning: false)
+    #expect(LinkedText.resolve(link(.timecode), info: info, at: fixedDate) == "00:01:00;02")
+    #expect(LinkedText.isTimeVarying(link(.timecode)))
+    #expect(LinkedText.ticksSubSecond(link(.timecode)), "frames tick faster than a second")
+    #expect(LinkedText.resolve(link(.timecode), info: LinkedText.previewInfo, at: LinkedText.previewDate) == "01:01:02:15")
 }

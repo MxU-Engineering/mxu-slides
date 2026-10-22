@@ -211,6 +211,17 @@ enum LTCSignal {
         #expect(LTCSignal.decode(noisy).frames.count >= 24)
     }
 
+    @Test func labelsFromFrameNumbersRoundTrip() {
+        for rate in TimecodeRate.allCases {
+            for n in [0, 1, 1_797, 1_798, 1_800, 17_981, 17_982, 107_892, 107_999, 2_000_000] {
+                #expect(rate.frameNumber(rate.label(frameNumber: n)) == n, "\(rate) \(n)")
+            }
+        }
+
+        #expect(TimecodeRate.fps2997DropFrame.label(frameNumber: 1_800).text(dropFrame: true) == "00:01:00;02")
+        #expect(TimecodeRate.fps25.label(seconds: 3600.5) == TimecodeLabel(hours: 1, minutes: 0, seconds: 0, frames: 12))
+    }
+
     @Test func secondsFromLabels() {
         let label = TimecodeLabel(hours: 1, minutes: 0, seconds: 0, frames: 15)
         #expect(TimecodeRate.fps30.seconds(label) == 3600.5)

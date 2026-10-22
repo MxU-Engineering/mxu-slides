@@ -44,6 +44,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             land(at: timelinePlayheadTime)
         }
         anchor(at: timelinePlayheadTime)
+        publishClock(position: timelinePlayheadTime, running: true)
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -64,6 +65,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             }
         }
         playing = false
+        publishClock(position: timelinePlayheadTime, running: false)
         recording = false
         recordingTimeline = nil
         DiagnosticsStore.shared.note("timeline.stop", detail: String(format: "%.2f", timelinePlayheadTime))
@@ -93,6 +95,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             land(at: position)
             anchor(at: position)
         }
+        publishClock(position: position, running: playing)
     }
 
     func follow(
@@ -113,6 +116,36 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             land(at: at)
         }
         setPlayhead(command.position)
+        publishClock(position: command.position, running: true)
+    }
+
+    func timecodeHeld() {
+        guard clockAnchor?.running == true, !playing else { return }
+        publishClock(position: timelinePlayheadTime, running: false)
+    }
+
+    struct ClockAnchor: Equatable {
+        var itemID: String
+        var position: Double
+        var at: Date
+        var running: Bool
+        var length: Double
+    }
+
+    private(set) var clockAnchor: ClockAnchor?
+
+    private func publishClock(position: Double, running: Bool) {
+        guard let itemID else {
+            if clockAnchor != nil { clockAnchor = nil }
+            return
+        }
+        let now = Date()
+        let length = deck().flatMap { timeline(of: $0) }.map(PresentationTimelines.length) ?? 0
+        if let held = clockAnchor, held.itemID == itemID, held.running == running, held.length == length,
+           abs(held.position + (running ? now.timeIntervalSince(held.at) : 0) - position) < 0.1 {
+            return
+        }
+        clockAnchor = ClockAnchor(itemID: itemID, position: position, at: now, running: running, length: length)
     }
 
     private func select(itemID: String, presentation: Presentation, arrangementId: String?) {
@@ -121,6 +154,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         presentationID = presentation.id
         self.arrangementId = arrangementId
         setPlayhead(0)
+        publishClock(position: 0, running: false)
     }
 
     private func anchor(at position: Double) {

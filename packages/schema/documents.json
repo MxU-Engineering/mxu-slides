@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 142,
+  "schemaVersion": 143,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -3781,7 +3781,8 @@
         "stageMessage",
         "currentGroup",
         "currentPresentation",
-        "nextServiceTitle"
+        "nextServiceTitle",
+        "timecode"
       ]
     },
     "TimerTextFormat": {

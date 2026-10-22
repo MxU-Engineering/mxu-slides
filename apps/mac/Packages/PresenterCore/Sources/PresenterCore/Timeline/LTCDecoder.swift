@@ -35,6 +35,21 @@ public enum TimecodeRate: String, CaseIterable, Sendable {
         return labelled - 2 * (minutes - minutes / 10)
     }
 
+    public func label(frameNumber: Int) -> TimecodeLabel {
+        var n = max(frameNumber, 0)
+        if self == .fps2997DropFrame {
+            let tens = n / 17_982, rest = n % 17_982
+            n += 18 * tens + (rest < 2 ? 0 : 2 * ((rest - 2) / 1_798))
+        }
+        let seconds = n / nominal
+        return TimecodeLabel(
+            hours: seconds / 3600 % 24, minutes: seconds / 60 % 60, seconds: seconds % 60, frames: n % nominal)
+    }
+
+    public func label(seconds: Double) -> TimecodeLabel {
+        label(frameNumber: Int((seconds * actual + 1e-6).rounded(.down)))
+    }
+
     public func seconds(_ label: TimecodeLabel) -> Double {
         Double(frameNumber(label)) / actual
     }

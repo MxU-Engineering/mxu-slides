@@ -5,6 +5,7 @@ import Foundation
 import Observation
 import PresenterCore
 import QuartzCore
+import SlideScene
 import SwiftUI
 
 final class LTCReader: @unchecked Sendable {
@@ -132,6 +133,7 @@ final class TimecodeFollower {
         timer = nil
         reader?.stop()
         reader = nil
+        controls?.render.confidenceInfo.timecode = nil
         timecodeReading = TimecodeClock.Reading(state: .noInput)
         timecodeLevel = 0
     }
@@ -174,6 +176,7 @@ final class TimecodeFollower {
             clock.receive(frame.frame, rate: frame.rate, hostTime: frame.hostTime)
         }
         var reading = clock.reading(at: CACurrentMediaTime())
+        publishDisplay(reading)
         if let rate = reading.rate, let position = reading.position {
             reading.position = position + Double(offsetFrames) / rate.actual
             if detectedRate != rate { detectedRate = rate }
@@ -181,7 +184,12 @@ final class TimecodeFollower {
         if reading != timecodeReading { timecodeReading = reading }
         let level = max(peak, timecodeLevel * 0.85)
         if abs(level - timecodeLevel) > 0.002 { timecodeLevel = level < 0.001 ? 0 : level }
-        guard follows, reading.live, let controls else { return }
+        guard follows, let controls else { return }
+        guard reading.live else {
+
+            if reading.state != .freewheel { controls.timeline.timecodeHeld() }
+            return
+        }
         let songs = songs(controls.appModel)
         if let command = follow.step(reading, songs: songs.map(\.song)),
            let item = songs.first(where: { $0.song.itemID == command.itemID }) {
@@ -200,6 +208,24 @@ final class TimecodeFollower {
             revealPending = nil
             controls.noteKeyboardFire()
         }
+    }
+
+    private func publishDisplay(_ reading: TimecodeClock.Reading) {
+        guard let render = controls?.render else { return }
+        let now = Date()
+        var display: TimecodeDisplay?
+        if let seconds = reading.position, let rate = reading.rate {
+            display = TimecodeDisplay(
+                seconds: seconds, rate: rate, anchoredAt: now,
+                isRunning: reading.state == .locked || reading.state == .freewheel, reverse: reading.reverse)
+        }
+        let held = render.confidenceInfo.timecode
+        if let held, let display, held.rate == display.rate, held.isRunning == display.isRunning,
+           held.reverse == display.reverse, abs(held.seconds(at: now) - display.seconds) < 0.5 / display.rate.actual {
+            return
+        }
+        guard held != display else { return }
+        render.confidenceInfo.timecode = display
     }
 
     private func songs(_ model: AppModel) -> [(song: TimecodeFollow.Song, presentation: Presentation, arrangementId: String?)] {
@@ -291,35 +317,5 @@ struct TimecodeOffsetControl: View {
                 .foregroundStyle(.secondary)
         }
         .fixedSize()
-    }
-}
-
-struct TimecodeStatusChip: View {
-    let follower: TimecodeFollower
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        let reading = follower.timecodeReading
-        let status = TimecodeFollower.status(reading, follows: follower.follows)
-        Button {
-            SettingsRouter.shared.pending = .midi
-            openSettings()
-        } label: {
-            HStack(spacing: 5) {
-                Circle().fill(status.color).frame(width: 6, height: 6)
-                Text(reading.label?.text(dropFrame: reading.rate == .fps2997DropFrame) ?? "Timecode")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text(status.word)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(status.color)
-                    .frame(width: 44, alignment: .leading)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .help("Timecode: \(status.word). Settings › Connections")
-        .accessibilityLabel("Timecode \(status.word)")
     }
 }

@@ -46,7 +46,7 @@ import Testing
         ),
 
         "timecodeReading": (
-            "timecodeReading", /\.timecodeReading\b/, ["TimecodeSignalReadout", "TimecodeStatusChip"]
+            "timecodeReading", /\.timecodeReading\b/, ["TimecodeSignalReadout"]
         ),
         "timecodeLevel": ("timecodeLevel", /\.timecodeLevel\b/, ["TimecodeSignalReadout"]),
 

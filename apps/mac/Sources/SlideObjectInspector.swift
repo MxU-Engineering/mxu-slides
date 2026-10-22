@@ -2839,6 +2839,7 @@ extension TextSourceKind {
         case .currentGroup: "Group Name"
         case .currentPresentation: "Presentation Name"
         case .nextServiceTitle: "Next Service Title"
+        case .timecode: "Timecode"
         }
     }
 }
