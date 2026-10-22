@@ -18,9 +18,9 @@ extension SlideSceneBuilder {
            !arrangement.sectionIds.isEmpty {
             var result: [(start: Int, normalizedName: String)] = []
             var index = 0
-            for sectionId in arrangement.sectionIds {
+            for (sectionId, block) in zip(arrangement.sectionIds, arrangementBlocks(arrangement, in: presentation)) {
                 result.append((index, normalized(sectionId)))
-                index += presentation.slides.count { $0.sectionId == sectionId }
+                index += block.count
             }
             return result
         }
