@@ -181,7 +181,16 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     func resume(fromTracks status: TracksPlayerStatus) {
         guard let controls, let key = status.songID, !playing else { return }
         let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 3, let deck = controls.appModel.presentation(parts[1]) else { return }
+        guard parts.count == 3 else { return }
+
+        guard let deck = controls.appModel.presentation(parts[1]) else {
+            Task { [weak self] in
+                guard await controls.appModel.presentationsFilled([parts[1]])[parts[1]] != nil,
+                      let fresh = controls.tracks.latest.value, fresh.playing, fresh.songID == key else { return }
+                self?.resume(fromTracks: fresh)
+            }
+            return
+        }
         select(itemID: parts[0], presentation: deck, arrangementId: parts[2].isEmpty ? nil : parts[2])
         let position = status.position()
         playing = true

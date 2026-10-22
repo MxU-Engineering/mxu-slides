@@ -243,3 +243,17 @@ func playsOnARealDeviceByItsClock() throws {
     let idle = MultitrackRouting.resolve(channels: [], mixes: mixes, trim: 1, muted: false, fallbackDevice: "speakers")
     #expect(idle.deviceUID == "speakers")
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MXU_MULTITRACK_LIVE"] == "1"))
+func aNewDeviceRateKeepsTheSongsPlace() throws {
+    let speakers = try #require(AudioDeviceList.outputDevices().first { $0.name.contains("Speakers") })
+    let path = try file("rate", rate: 48_000, channels: 2, seconds: 3) { _ in 0 }
+    let engine = MultitrackEngine(sampleRate: 48_000, deviceChannels: 2)
+    engine.cue(MultitrackSong(id: "s", stems: [.init(path: path, channelId: "x")]), at: 1.5)
+    try engine.attach(device: speakers)
+    #expect(engine.sampleRate == (MultitrackOutput.nominalRate(speakers.id) ?? 48_000))
+    #expect(abs(engine.position() - 1.5) < 0.01)
+    try engine.attach(device: speakers)
+    #expect(abs(engine.position() - 1.5) < 0.01)
+    engine.detach()
+}

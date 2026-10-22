@@ -31,6 +31,8 @@ public struct TracksPlayerStatus: Codable, Equatable, Sendable {
     public var meters: [String: [Float]]
     public var error: String?
 
+    public var channels: [String]?
+
     public func position(atHostTime now: UInt64 = mach_absolute_time()) -> Double {
         var seconds = sampleRate > 0 ? Double(frame) / sampleRate : 0
         guard playing, hostTime > 0, now > hostTime else { return seconds }
@@ -309,7 +311,8 @@ public final class TracksPlayerServer: @unchecked Sendable {
             frame: published.playing ? published.frame : Int64((engine.position() * engine.sampleRate).rounded()),
             hostTime: published.hostTime, sampleRate: engine.sampleRate, deviceUID: engine.deviceUID,
             deviceChannels: engine.deviceChannels, starvedFrames: engine.starvedFrames,
-            meters: engine.takeMeters().mapValues { [$0.rms, $0.peak] }, error: lastError)
+            meters: engine.takeMeters().mapValues { [$0.rms, $0.peak] }, error: lastError,
+            channels: engine.songChannelIDs)
     }
 }
 

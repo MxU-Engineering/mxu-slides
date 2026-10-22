@@ -36,12 +36,14 @@ public final class MultitrackEngine: @unchecked Sendable {
 
     public func attach(device: AudioOutputDevice?) throws {
         try queue.sync {
-            output?.stop()
-            output = nil
             guard let device = device ?? AudioDeviceList.defaultOutputDevice() else { return }
             let rate = MultitrackOutput.nominalRate(device.id) ?? sampleRate
+
+            if output != nil, device.uid == deviceUID, rate == sampleRate, device.channelCount == deviceChannels { return }
+            output?.stop()
+            output = nil
             if rate != sampleRate || device.channelCount != deviceChannels {
-                let resume = position()
+                let resume = positionLocked()
                 let wasPlaying = renderer.published.playing
                 sampleRate = rate
                 deviceChannels = device.channelCount
@@ -91,11 +93,17 @@ public final class MultitrackEngine: @unchecked Sendable {
     }
 
     public func position(atHostTime hostTime: UInt64 = mach_absolute_time()) -> Double {
-        if let program = queue.sync(execute: { program }), !renderer.isCurrent(program) {
+        queue.sync { positionLocked(atHostTime: hostTime) }
+    }
+
+    private func positionLocked(atHostTime hostTime: UInt64 = mach_absolute_time()) -> Double {
+        if let program, !renderer.isCurrent(program) {
             return Double(program.session.startFrame) / sampleRate
         }
         return renderer.position(atHostTime: hostTime)
     }
+
+    public var songChannelIDs: [String] { queue.sync { song?.stems.map(\.channelId) ?? [] } }
 
     public var isPlaying: Bool { renderer.published.playing }
 

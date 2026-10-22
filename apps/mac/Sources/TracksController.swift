@@ -12,6 +12,8 @@ final class TracksController {
     nonisolated let latest = Locked<TracksPlayerStatus?>(nil)
 
     private let driving = Locked<String?>(nil)
+
+    private let awaitingStatus = Locked(false)
     private var sentRouting: MultitrackRouting?
     private var sentDevice: String??
     private var refreshQueued = false
@@ -25,18 +27,22 @@ final class TracksController {
     init() {
         let path = TracksPlayerWire.socketPath(appIdentity: Bundle.main.bundleIdentifier ?? "io.prodcontrol.mxupresenter")
         client = TracksPlayerClient(socketPath: path) { Self.launchPlayer(socketPath: path) }
-        let latest = latest, driving = driving
+        let latest = latest, driving = driving, awaiting = awaitingStatus
         client.onStatus = { [weak self] status in
             latest.value = status
+            if awaiting.withLock({ let was = $0; $0 = false; return was }) {
+                Task { @MainActor in
+                    self?.songChannels.formUnion(status.channels ?? [])
+                    self?.resend()
+                }
+            }
 
             if status.playing, let song = status.songID, driving.value == nil {
                 driving.value = song
                 Task { @MainActor in self?.onFoundPlaying?(status) }
             }
         }
-        client.onConnect = { [weak self] in
-            Task { @MainActor in self?.resend() }
-        }
+        client.onConnect = { awaiting.value = true }
         client.onDisconnect = { latest.value = nil }
 
         NotificationCenter.default.addObserver(
@@ -172,7 +178,7 @@ final class TracksController {
         guard let model, let mixer else { return }
         let channels = model.trackChannels
         seedSends(channels)
-        let resolved = Self.routing(channels: channels, extra: songChannels, mixer: mixer)
+        let resolved = Self.routing(channels: channels, extra: heardChannels(), mixer: mixer)
         guard client.isConnected || driving.value != nil else { return }
         if sentDevice != .some(resolved.deviceUID) {
             sentDevice = .some(resolved.deviceUID)
@@ -188,6 +194,10 @@ final class TracksController {
         sentRouting = nil
         sentDevice = nil
         refresh()
+    }
+
+    private func heardChannels() -> Set<String> {
+        songChannels.union(latest.value?.channels ?? [])
     }
 
     static func routing(

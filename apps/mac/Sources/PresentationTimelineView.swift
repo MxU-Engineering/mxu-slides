@@ -1154,7 +1154,8 @@ extension TimelineLane {
         case .stillGraphics: "Still Graphics"
         case .loopingVideos: "Background Media"
         case .videoInput: "Video Input"
-        case .audio: "Audio"
+
+        case .audio: "Music"
         case .actions: "Actions"
         }
     }
@@ -1214,7 +1215,7 @@ extension PresentationTimelineContext {
         case .videoInput:
             return LiveInputCatalog.choices.first { $0.id == cue.liveInputId }?.name ?? "Video Input"
         case .audio:
-            return cue.mediaId.flatMap { model.audio($0)?.name } ?? "Audio"
+            return cue.mediaId.flatMap { model.audio($0)?.name } ?? "Music"
         case .videos, .stillGraphics, .loopingVideos:
             return cue.mediaId.flatMap { model.media($0)?.name } ?? "Media"
         case .actions:
