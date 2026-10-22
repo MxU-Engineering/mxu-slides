@@ -56,6 +56,19 @@ import Testing
     #expect(LyricPhrasing.rejoined(jesus, casing: .init(""))[1] == "You’re more than every dream come true")
 }
 
+@Test func aLineEndingOnIsRunsOnSoTheChorusKeepsItsPairs() {
+
+    let chorus = [
+        "[D2]With a thousand [A]hallelujahs", "[Eadd4]We magni[F#m7]fy Your [Eadd4]name",
+        "[D2]You alone de[A]serve the glory", "[Eadd4]The honor [F#m7]and the [Eadd4]praise",
+        "[D2]Lord Jesu[Eadd4]s", "This song is", "For[A]e[A/C#]ver [F#m7]Yours[Eadd4]",
+        "A [D2]thousand halle[A/C#]lujahs", "And a [Eadd4]thousand [A]more",
+    ]
+    let lines = LyricPhrasing.rejoined(chorus, casing: .init(chorus.joined(separator: "\n")))
+    #expect(lines[4...] == ["[D2]Lord Jesu[Eadd4]s", "This song is for[A]e[A/C#]ver [F#m7]Yours[Eadd4]", "A [D2]thousand halle[A/C#]lujahs", "And a [Eadd4]thousand [A]more"])
+    #expect(LyricPhrasing.slides(lines, perSlide: 2).map(\.count) == [2, 2, 2, 2])
+}
+
 @Test func slidesBreakWherePhrasesEndNotEveryTwoLines() {
 
     let lines = [

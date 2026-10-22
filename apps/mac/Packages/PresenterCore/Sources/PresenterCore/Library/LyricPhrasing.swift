@@ -173,7 +173,7 @@ public enum LyricPhrasing {
     static let runsOn: Set<String> = [
         "the", "a", "an", "of", "to", "for", "and", "or", "but", "with", "in", "on", "at", "by",
         "from", "into", "about", "than", "that", "my", "your", "our", "his", "her", "their", "its",
-        "be", "been", "when", "who", "as", "if", "like",
+        "be", "been", "is", "when", "who", "as", "if", "like",
     ]
 
     static let continuations: Set<String> = ["of", "than", "about"]
