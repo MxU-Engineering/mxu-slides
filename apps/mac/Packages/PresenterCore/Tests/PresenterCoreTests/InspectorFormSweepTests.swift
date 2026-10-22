@@ -47,7 +47,7 @@ import Testing
                 violations.append("\(index + 1): \(trimmed)")
             }
         }
-        #expect(forms == 2, "the slide and object inspectors are InspectorForms (\(forms))")
+        #expect(forms == 3, "the presentation, slide and object inspectors are InspectorForms (\(forms))")
         #expect(cards >= 20, "sections are InspectorSection cards (\(cards))")
         #expect(violations.isEmpty, "grouped-Form spellings in the inspector: \(violations)")
     }

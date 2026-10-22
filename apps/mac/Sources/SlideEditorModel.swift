@@ -30,7 +30,7 @@ final class SlideEditorModel {
     }
 
     let appModel: AppModel
-    private let render: RenderContext?
+    let render: RenderContext?
     @ObservationIgnored private var host: Host
 
     @ObservationIgnored private var token: EditorToken
@@ -545,6 +545,44 @@ final class SlideEditorModel {
                 presentation.themeId = id
             }
         }
+    }
+
+    func applyTheme(_ themeId: String, design: String?) {
+        if case .presentation = host, let design, let theme = appModel.theme(themeId) {
+            let every = Set(presentation.slides.map(\.id))
+            if presentation.slides(every, allFollow: themeId, design: design) {
+                reapplyTheme()
+            } else {
+                let appModel = appModel
+                updateDocument { presentation in
+                    let followed = Set(presentation.slides.map { presentation.themeId(for: $0) } + [themeId])
+                    let themes = Dictionary(uniqueKeysWithValues: followed.compactMap { id in
+                        appModel.theme(id).map { (id, $0) }
+                    })
+                    presentation.applyTheme(theme, toSlides: every, design: design, themes: themes)
+                    presentation.clearSlideThemes()
+                    presentation.themeId = themeId
+                }
+            }
+        } else {
+            setTheme(themeId)
+        }
+    }
+
+    func pickThemeSlide(_ name: String?, themeId: String, for slideID: String) {
+        let followsDeck = presentation.slides.first { $0.id == slideID }?.themeId?.isEmpty != false
+        if themeId == presentation.themeId, followsDeck {
+            setThemeSlide(name, for: slideID)
+        } else {
+            setThemeSlide(name, themeId: themeId, for: slideID)
+        }
+    }
+
+    var choosingDeckTheme = false
+    var choosingSlideTheme = false
+
+    var hasPresentationSettings: Bool {
+        if case .presentation = host { true } else { false }
     }
 
     var presentationHasSlideThemes: Bool {

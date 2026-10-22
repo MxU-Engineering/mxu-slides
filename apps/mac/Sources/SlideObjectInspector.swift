@@ -11,6 +11,8 @@ struct SlideObjectInspector: View {
     @State private var showingBackgroundPicker = false
     @State private var showingFillMediaPicker = false
 
+    @State private var showingArrangements = false
+
     @State private var selectedLineIndex = 0
 
     @State private var insetsExpanded = false
@@ -32,7 +34,7 @@ struct SlideObjectInspector: View {
     )
 
     enum Tab: String, CaseIterable {
-        case slide, object, animation
+        case presentation, slide, object, animation
     }
 
     @State private var tab: Tab = .object
@@ -48,6 +50,9 @@ struct SlideObjectInspector: View {
         let _ = BodyMeter.tick(.slideObjectInspector)
         VStack(spacing: 0) {
             Picker("", selection: $tab) {
+                if model.hasPresentationSettings {
+                    Text("Presentation").tag(Tab.presentation)
+                }
                 Text(slideTabTitle).tag(Tab.slide)
 
                 Text(model.isMultiView ? "Tile" : "Object").tag(Tab.object)
@@ -62,6 +67,8 @@ struct SlideObjectInspector: View {
             .padding(.top, 8)
             .padding(.bottom, 4)
             switch tab {
+            case .presentation:
+                presentationInspector()
             case .slide:
                 cueInspector()
             case .object:
@@ -145,26 +152,11 @@ struct SlideObjectInspector: View {
     private func presentationCueSections() -> some View {
         InspectorSection("Slide") {
             InspectorTextField("Name", text: slideNameBinding())
+
             if !model.themeSlideNames.isEmpty || !model.otherThemeChoices.isEmpty {
-                InspectorPicker("Theme Slide", selection: themeSlideSelection()) {
-                    Text("Automatic").tag("")
-
-                    ForEach(Array(model.themeSlideGroups.enumerated()), id: \.offset) { _, group in
-                        if let folder = group.folder {
-                            Section(folder) {
-                                ForEach(group.names, id: \.self) { Text($0).tag($0) }
-                            }
-                        } else {
-                            ForEach(group.names, id: \.self) { Text($0).tag($0) }
-                        }
-                    }
-
-                    ForEach(model.otherThemeChoices, id: \.theme.id) { choice in
-                        Section(choice.theme.name) {
-                            ForEach(choice.groups.flatMap(\.names), id: \.self) { name in
-                                Text(name).tag("\(choice.theme.id)|\(name)")
-                            }
-                        }
+                LabeledContent("Theme Slide") {
+                    ThemePickButton(title: themeSlideTitle, detail: themeSlideDetail) {
+                        model.choosingSlideTheme = true
                     }
                 }
             }
@@ -222,6 +214,70 @@ struct SlideObjectInspector: View {
 
             ActionListEditor(model: model.appModel, actions: slideActionsBinding())
         }
+
+        if !model.hasPresentationSettings {
+            presentationSettingsSection()
+        }
+    }
+
+    private func presentationInspector() -> some View {
+        InspectorForm {
+            InspectorSection("Theme") {
+                LabeledContent("Every Slide") {
+                    ThemePickButton(title: deckThemeTitle, detail: nil) {
+                        model.choosingDeckTheme = true
+                    }
+                }
+            }
+            InspectorSection("Background") {
+                PresentationBackgroundRows(model: model)
+                Text("A color drawn under every slide of this presentation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            InspectorSection("Arrangements") {
+                LabeledContent(arrangementsSummary) {
+                    Button("Edit\u{2026}") { showingArrangements = true }
+                        .popover(isPresented: $showingArrangements, arrowEdge: .leading) {
+                            ArrangementPopover(model: model)
+                        }
+                }
+                Text("Repeat a chorus without duplicating its slides, then pick the arrangement per service.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            presentationSettingsSection()
+        }
+    }
+
+    private var deckThemeTitle: String {
+        let id = model.presentation.themeId
+        return id.isEmpty ? "None" : model.appModel.entry(id)?.name ?? "Theme"
+    }
+
+    private var arrangementsSummary: String {
+        switch model.arrangements.count {
+        case 0: "Slide order only"
+        case 1: "1 arrangement"
+        default: "\(model.arrangements.count) arrangements"
+        }
+    }
+
+    private var themeSlideTitle: String {
+        if model.currentSlide?.unthemed == true {
+            "Blank"
+        } else {
+            model.currentSlide?.themeSlideName ?? "Automatic"
+        }
+    }
+
+    private var themeSlideDetail: String? {
+        let id = model.currentSlide.map { model.themeId(of: $0.id) } ?? ""
+        return model.currentSlide?.unthemed == true || id.isEmpty ? nil : model.appModel.entry(id)?.name
+    }
+
+    @ViewBuilder
+    private func presentationSettingsSection() -> some View {
 
         InspectorSection("Presentation") {
             InspectorPicker("Resolution", selection: canvasSelectionBinding()) {
@@ -334,30 +390,6 @@ struct SlideObjectInspector: View {
         Binding(
             get: { model.currentSlide?.name ?? "" },
             set: { model.renameCurrentSlide($0) }
-        )
-    }
-
-    private func themeSlideSelection() -> Binding<String> {
-        Binding(
-            get: {
-                guard let slide = model.currentSlide else { return "" }
-                let name = slide.themeSlideName ?? ""
-                if let own = slide.themeId, !own.isEmpty { return "\(own)|\(name)" }
-                return name
-            },
-            set: { value in
-                guard let slideID = model.currentSlide?.id else { return }
-                if let bar = value.firstIndex(of: "|") {
-                    let themeId = String(value[..<bar])
-                    let name = String(value[value.index(after: bar)...])
-                    model.setThemeSlide(name.isEmpty ? nil : name, themeId: themeId, for: slideID)
-                } else if model.currentSlide?.themeId?.isEmpty == false {
-
-                    model.setThemeSlide(value.isEmpty ? nil : value, themeId: model.presentation.themeId, for: slideID)
-                } else {
-                    model.setThemeSlide(value.isEmpty ? nil : value, for: slideID)
-                }
-            }
         )
     }
 

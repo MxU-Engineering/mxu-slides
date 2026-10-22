@@ -151,15 +151,16 @@ struct ModeSwitcher: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 11)
-            .padding(.vertical, 4)
+            .frame(height: HeaderMetrics.controlHeight)
             .contentShape(RoundedRectangle.standard(CornerStandard.element))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+
         .background(
-            hovering ? Color.primary.opacity(0.06) : .clear,
+            Color.primary.opacity(hovering ? 0.12 : 0.08),
             in: RoundedRectangle.standard(CornerStandard.element)
         )
         .overlay(
@@ -1420,11 +1421,12 @@ struct ShellView: View {
 
             Glyph(kind: .viewOptions, size: 17)
                 .foregroundStyle(.secondary)
-                .padding(6)
+                .frame(width: HeaderMetrics.controlHeight + 2, height: HeaderMetrics.controlHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .headerItemBackground()
         .help("Present view preferences — thumbnails only, never output")
         .popover(isPresented: $presentViewOpen, arrowEdge: .bottom) {
             presentViewPopover

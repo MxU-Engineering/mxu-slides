@@ -14,7 +14,7 @@ struct MultiViewToolbar: View {
     var body: some View {
         HStack(spacing: 12) {
             ToolbarCluster {
-                Menu {
+                ToolbarCellMenu {
                     ForEach(Self.presets.indices, id: \.self) { index in
                         Button(Self.presets[index].title) { pendingPreset = index }
                     }

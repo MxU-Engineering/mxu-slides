@@ -20,9 +20,6 @@ struct SlideEditorView: View {
 
     @State private var model: SlideEditorModel?
     @State private var showingMediaPicker = false
-    @State private var showingBackgroundFill = false
-
-    @State private var pendingThemeID: String?
 
     @Environment(\.actionRouter) private var actionRouter
 
@@ -34,7 +31,6 @@ struct SlideEditorView: View {
     @State private var newSectionName = ""
     @State private var renameSectionTarget: PresentationSection?
     @State private var renameSectionName = ""
-    @State private var showingArrangement = false
     @State private var showingReflow = false
     @State private var showingChords = false
 
@@ -205,6 +201,20 @@ struct SlideEditorView: View {
             NewSlideSheet(appModel: appModel, render: render, deckThemeId: model.presentation.themeId) { choice in
                 model.addSlide(choice)
             }
+        }
+
+        .sheet(isPresented: Binding(get: { model.choosingDeckTheme }, set: { model.choosingDeckTheme = $0 })) {
+            ApplyThemeSheet(
+                appModel: appModel, render: render, deckThemeId: model.presentation.themeId,
+                scope: "Applies to every slide"
+                    + (model.presentationHasSlideThemes ? ", slides with a theme of their own too." : "."),
+                onNone: model.presentation.themeId.isEmpty ? nil : { model.setTheme("") }
+            ) { themeId, design in
+                model.applyTheme(themeId, design: design)
+            }
+        }
+        .sheet(isPresented: Binding(get: { model.choosingSlideTheme }, set: { model.choosingSlideTheme = $0 })) {
+            SlideThemeSheet(appModel: appModel, render: render, model: model)
         }
     }
 
@@ -1060,19 +1070,6 @@ struct SlideEditorView: View {
         )
     }
 
-    private func themeSelection(_ model: SlideEditorModel) -> Binding<String> {
-        Binding(
-            get: { model.presentation.themeId },
-            set: { id in
-                if !id.isEmpty, model.presentationHasSlideThemes {
-                    pendingThemeID = id
-                } else {
-                    model.setTheme(id)
-                }
-            }
-        )
-    }
-
     static func objectIcon(_ object: SlideObject) -> String {
         let object = SlideObjectNormalization.normalized(object)
         switch object.objectKind {
@@ -1103,8 +1100,7 @@ struct SlideEditorView: View {
             HStack(spacing: 12) {
                 addObjectTools(model)
                 Spacer()
-                chordsToggle(model)
-                presentationTools(model)
+                songTools(model)
                 undoRedoTools(model)
                 Spacer(minLength: 8)
                 modePicker(model)
@@ -1112,8 +1108,7 @@ struct SlideEditorView: View {
             HStack(spacing: 12) {
                 addObjectTools(model)
                 Spacer()
-                chordsToggle(model)
-                presentationMenu(model)
+                compactSongTools(model)
                 undoRedoTools(model)
                 Spacer(minLength: 8)
                 modePicker(model)
@@ -1130,19 +1125,6 @@ struct SlideEditorView: View {
 
         .sheet(isPresented: $showingChords) {
             ChordEditorSheet(model: model.appModel, render: render, presentationID: model.presentation.id)
-        }
-        .confirmationDialog(
-            "Apply \(pendingThemeID.flatMap { appModel.entry($0)?.name } ?? "this theme") to every slide?",
-            isPresented: Binding(get: { pendingThemeID != nil }, set: { if !$0 { pendingThemeID = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Apply to Every Slide") {
-                if let id = pendingThemeID { model.setTheme(id) }
-                pendingThemeID = nil
-            }
-            Button("Cancel", role: .cancel) { pendingThemeID = nil }
-        } message: {
-            Text("Slides that follow a theme of their own will follow this one instead.")
         }
     }
 
@@ -1176,142 +1158,57 @@ struct SlideEditorView: View {
             Toggle(isOn: pathDrawingBinding(model)) {
                 Label("Draw Path", systemImage: "pencil.tip")
             }
-            .toggleStyle(.button)
+            .toggleStyle(ToolbarCellToggleStyle())
             .help("Draw a path — click for corners, drag for curves; click the first point to close")
         }
         .fixedSize()
     }
 
     @ViewBuilder
-    private func presentationTools(_ model: SlideEditorModel) -> some View {
+    private func songTools(_ model: SlideEditorModel) -> some View {
         if !model.isThemeEditor, !model.isSingleComposition {
-            Button {
-                showingReflow = true
-            } label: {
-                Label("Reflow", systemImage: "text.alignleft")
+            ToolbarCluster {
+                chordsToggle(model)
+                    .labelStyle(.titleAndIcon)
+                if model.showsChords {
+                    Button("Chart\u{2026}") { showingChords = true }
+                        .help("Chord Chart — every line's chords as ChordPro text")
+                }
             }
-            .help("Reflow — paste text, get slides")
-
-            Button {
-                showingArrangement.toggle()
-            } label: {
-                Label("Arrangement", systemImage: "rectangle.grid.1x2")
-            }
-            .help("Arrangement")
-            .popover(isPresented: $showingArrangement, arrowEdge: .bottom) {
-                ArrangementPopover(model: model)
-            }
-
-            Button {
-                showingChords = true
-            } label: {
-                Label("Chord Chart", systemImage: "music.note.list")
-            }
-            .help("Chord Chart — every line's chords as ChordPro text")
-
-            Menu {
-                themeItems(model)
-            } label: {
-                Label("Theme", systemImage: "paintpalette")
-            }
-            .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Theme")
+            ToolbarCluster {
+                Button("Reflow") { showingReflow = true }
+                    .help("Reflow — paste text, get slides")
+            }
+            .fixedSize()
+        }
+    }
 
-            if !model.presentation.themeId.isEmpty {
-                Button {
-                    model.toggleThemeContent()
+    @ViewBuilder
+    private func compactSongTools(_ model: SlideEditorModel) -> some View {
+        if !model.isThemeEditor, !model.isSingleComposition {
+            ToolbarCluster {
+                chordsToggle(model)
+                ToolbarCellMenu {
+                    Button("Chord Chart\u{2026}") { showingChords = true }
+                    Button("Reflow\u{2026}") { showingReflow = true }
                 } label: {
-                    Label(
-                        model.showsThemeContent ? "Hide Theme Content" : "Show Theme Content",
-                        systemImage: model.showsThemeContent ? "eye" : "eye.slash"
-                    )
+                    Label("More", systemImage: "ellipsis")
                 }
-                .help(model.showsThemeContent
-                    ? "Hide theme content while editing"
-                    : "Show theme content")
+                .help("Chord Chart and Reflow")
             }
-
-            Button {
-                showingBackgroundFill = true
-            } label: {
-                Label("Background", systemImage: "rectangle.inset.filled")
-            }
-            .help("Presentation background")
-            .popover(isPresented: $showingBackgroundFill, arrowEdge: .bottom) {
-                PresentationBackgroundPopover(model: model)
-            }
-
-            Button {
-                model.appModel.exportPresentation(model.presentation, render: render)
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
-            }
-            .help("Export — an MxU Slides file, a PDF, slide images, or a song's ChordPro text")
-        }
-    }
-
-    @ViewBuilder
-    private func chordsToggle(_ model: SlideEditorModel) -> some View {
-        if !model.isThemeEditor, !model.isSingleComposition {
-            Toggle(isOn: Binding(get: { model.showsChords }, set: { _ in model.toggleChords() })) {
-                Label("Chords", systemImage: "music.note")
-            }
-            .toggleStyle(.button)
-            .help(model.showsChords
-                ? "Hide chords — back to the audience view"
-                : "Show chords on the slides to add, move, and change them")
-        }
-    }
-
-    @ViewBuilder
-    private func presentationMenu(_ model: SlideEditorModel) -> some View {
-        if !model.isThemeEditor, !model.isSingleComposition {
-            Menu {
-                Button("Reflow…") { showingReflow = true }
-                Button("Arrangement…") { showingArrangement = true }
-                Button("Chord Chart…") { showingChords = true }
-
-                Button("Export…") { model.appModel.exportPresentation(model.presentation, render: render) }
-                Divider()
-                Menu("Theme") { themeItems(model) }
-                if !model.presentation.themeId.isEmpty {
-                    Button(model.showsThemeContent ? "Hide Theme Content" : "Show Theme Content") {
-                        model.toggleThemeContent()
-                    }
-                }
-                Button("Background…") { showingBackgroundFill = true }
-            } label: {
-                Label("Presentation", systemImage: "ellipsis.circle")
-            }
-            .menuIndicator(.hidden)
             .fixedSize()
-            .help("Reflow, arrangement, chords, theme, and background")
-            .popover(isPresented: $showingArrangement, arrowEdge: .bottom) {
-                ArrangementPopover(model: model)
-            }
-            .popover(isPresented: $showingBackgroundFill, arrowEdge: .bottom) {
-                PresentationBackgroundPopover(model: model)
-            }
         }
     }
 
-    @ViewBuilder
-    private func themeItems(_ model: SlideEditorModel) -> some View {
-        Picker("Theme", selection: themeSelection(model)) {
-            Text("None").tag("")
-            ForEach(appModel.entries(in: .themes), id: \.id) { entry in
-                let isCurrent = entry.id == model.presentation.themeId
-                Text(entry.name + (isCurrent && model.presentationHasLocalEdits
-                    ? " (edited)" : ""))
-                    .tag(entry.id)
-            }
+    private func chordsToggle(_ model: SlideEditorModel) -> some View {
+        Toggle(isOn: Binding(get: { model.showsChords }, set: { _ in model.toggleChords() })) {
+            Label("Chords", systemImage: "music.note")
         }
-        .pickerStyle(.inline)
-        if !model.presentation.themeId.isEmpty, model.presentationHasLocalEdits {
-            Divider()
-            Button("Reapply Theme (Clear Slide Edits)") { model.reapplyTheme() }
-        }
+        .toggleStyle(ToolbarCellToggleStyle())
+        .help(model.showsChords
+            ? "Hide chords — back to the audience view"
+            : "Show chords on the slides to add, move, and change them")
     }
 
     private func undoRedoTools(_ model: SlideEditorModel) -> some View {
@@ -1335,17 +1232,13 @@ struct SlideEditorView: View {
     }
 
     private func modePicker(_ model: SlideEditorModel) -> some View {
-        Picker("", selection: Binding(
-            get: { model.editorMode },
-            set: { model.editorMode = $0 }
-        )) {
-            ForEach(SlideEditorModel.EditorMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        ToolbarSegments(
+            options: SlideEditorModel.EditorMode.allCases.map { ($0, $0.displayName) },
+            selection: Binding(
+                get: { model.editorMode },
+                set: { model.editorMode = $0 }
+            )
+        )
         .help("Design edits the slide; Animate edits its steps on the timeline")
     }
 
@@ -1454,6 +1347,32 @@ struct EditorCommands: Commands {
             Button("Ungroup") { editor?.perform(.ungroup) }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(editor?.canUngroup != true)
+
+            Divider()
+            Button("Reapply Theme (Clear Slide Edits)") {
+                if let editor, !editor.presentation.themeId.isEmpty {
+                    editor.reapplyTheme()
+                }
+            }
+            .disabled(editor?.hasPresentationSettings != true)
+        }
+        CommandGroup(after: .sidebar) {
+            Divider()
+
+            Toggle("Show Theme Content", isOn: Binding(
+                get: { editor?.showsThemeContent ?? true },
+                set: { _ in editor?.toggleThemeContent() }
+            ))
+            .disabled(editor?.hasPresentationSettings != true)
+        }
+
+        CommandGroup(after: .importExport) {
+            Button("Export Presentation\u{2026}") {
+                if let editor {
+                    editor.appModel.exportPresentation(editor.presentation, render: editor.render)
+                }
+            }
+            .disabled(editor?.hasPresentationSettings != true)
         }
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") { undo() }
@@ -1506,24 +1425,21 @@ struct EditorCommands: Commands {
     }
 }
 
-private struct PresentationBackgroundPopover: View {
+struct PresentationBackgroundRows: View {
     let model: SlideEditorModel
 
     var body: some View {
-        Form {
-            Toggle("Background Fill", isOn: enabledBinding)
-            if let fill = model.presentation.backgroundFill {
-                if fill.fillKind == .linearGradient {
-                    LabeledContent("Fill", value: "Gradient (imported)")
-                } else {
+        Toggle("Background Fill", isOn: enabledBinding)
+        if let fill = model.presentation.backgroundFill {
+            if fill.fillKind == .linearGradient {
+                LabeledContent("Fill", value: "Gradient (imported)")
+            } else {
+                LabeledContent("Color") {
                     ColorPicker("Color", selection: colorBinding, supportsOpacity: true)
+                        .labelsHidden()
                 }
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .frame(width: 240)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var enabledBinding: Binding<Bool> {

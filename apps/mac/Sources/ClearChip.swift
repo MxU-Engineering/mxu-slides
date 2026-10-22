@@ -20,20 +20,11 @@ struct ClearChip: View {
                     .fixedSize()
             }
             .foregroundStyle(anyContent ? Color.green : .secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                (anyContent ? Color.green : .primary)
-                    .opacity(anyContent ? 0.1 : 0.06),
-                in: Capsule()
-            )
-            .overlay {
-                Capsule().strokeBorder(
-                    Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-            }
-            .contentShape(Capsule())
+            .headerItemLabel()
         }
         .buttonStyle(.plain)
+
+        .headerItemBackground(tint: anyContent ? .green : nil)
         .help("Clear — everything at once, one function, or one layer")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             popup
