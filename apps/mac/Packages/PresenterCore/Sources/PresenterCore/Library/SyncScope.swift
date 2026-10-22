@@ -120,6 +120,31 @@ public enum LibraryHome {
         }
     }
 
+    public struct Location: Equatable, Sendable {
+        public private(set) var section: String
+        private var path: [String]?
+
+        public init(section: String, path: [String]? = []) {
+            self.section = section
+            self.path = path
+        }
+
+        public func path(on section: String) -> [String]? {
+            self.section == section ? path : []
+        }
+
+        public mutating func set(_ path: [String]?, on section: String) {
+            self.section = section
+            self.path = path
+        }
+
+        public mutating func switched(to section: String) {
+            if self.section != section {
+                set([], on: section)
+            }
+        }
+    }
+
     public static func area(for kind: DocumentKind) -> LibraryArea? {
         SyncScope.scope(for: kind) == .team ? .team : nil
     }

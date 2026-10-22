@@ -11,7 +11,11 @@ struct LibrarySidebar: View {
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
-    @State private var folderPath: [String]? = []
+    private var folderPath: [String]? {
+        get { folderLocation.path(on: model.selectedSection.rawValue) }
+        nonmutating set { folderLocation.set(newValue, on: model.selectedSection.rawValue) }
+    }
+    @State private var folderLocation = LibraryHome.Location(section: "")
 
     static let unfiledToken = "\u{1}uncategorized"
 
@@ -75,6 +79,9 @@ struct LibrarySidebar: View {
         }
         .onChange(of: viewedFolder, initial: true) { _, viewed in
             model.viewedLibraryFolder = viewed
+        }
+        .onChange(of: model.selectedSection, initial: true) { _, section in
+            folderLocation.switched(to: section.rawValue)
         }
         .onChange(of: model.libraryRevealID) { _, id in
             if let id {
