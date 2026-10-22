@@ -840,7 +840,7 @@ private struct TracksSection: View {
     var body: some View {
         Section {
             Toggle("Play tracks on this computer", isOn: $enabled)
-            Text("Turn on for the computer that plays songs' stems (click, guide and backing tracks) to the band and the room. Its mixer then shows the Tracks strips and a bus for each instrument family to patch to your outputs. Any computer can add stems to songs.")
+            Text("Turn on for the computer that plays songs' stems (click, guide and backing tracks) to the band and the room. Its mixer then shows the Tracks strips and a mix for each instrument family to patch to your outputs. Any computer can add stems to songs.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

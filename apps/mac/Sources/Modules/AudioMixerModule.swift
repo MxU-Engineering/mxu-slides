@@ -39,7 +39,7 @@ struct AudioMixerModule: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(audio.isMuted ? "Unmute playback buses" : "Mute playback buses")
+                .help(audio.isMuted ? "Unmute music" : "Mute music")
                 if !runOnly {
 
                     Button {
@@ -325,7 +325,7 @@ struct AudioMixerModule: View {
                     get: { onMain },
                     set: { TracksController.setMusicOnMain($0, channels) }
                 ))
-                Text("Each track also feeds its family's bus in the Tracks folder. Patch the buses to outputs, then take tracks off Main so it doesn't carry them twice.")
+                Text("Each track also feeds its instrument family's mix in the Tracks folder. Patch those mixes to outputs, then take tracks off Main so it doesn't carry them twice.")
             })
         })
     }

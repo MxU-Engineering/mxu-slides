@@ -636,7 +636,7 @@ struct PresentationTimelineLanes: View {
             Button("Turn On") { tracksOn = true }
             Button("Not Now", role: .cancel) {}
         } message: {
-            Text("The stems are on the song. To hear them here, and to set up the Tracks strips and buses in the mixer, this computer needs Tracks turned on. Any computer can add stems; only the one that plays them needs this.")
+            Text("The stems are on the song. To hear them here, and to set up the Tracks strips and mixes in the mixer, this computer needs Tracks turned on. Any computer can add stems; only the one that plays them needs this.")
         }
 
         .sheet(item: $placing) { placing in
@@ -1084,7 +1084,7 @@ struct PresentationTimelineLanes: View {
                         .buttonStyle(.borderless)
                         .controlSize(.mini)
                         .font(.caption2)
-                        .help("Tracks don't play on this computer. Turn them on to hear stems and get the Tracks strips and buses in the mixer (also in Settings › Audio & Video › Tracks).")
+                        .help("Tracks don't play on this computer. Turn them on to hear stems and get the Tracks strips and mixes in the mixer (also in Settings › Audio & Video › Tracks).")
                 }
                 if !runOnly {
                     Menu {

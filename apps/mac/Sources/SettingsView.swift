@@ -640,7 +640,7 @@ struct SettingsRowSpec: Identifiable {
         "api.enabled": "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
         "api.tokens": "Required: nothing connects without one. Create a key here and paste it into the client. Each key grants Watch, Operate, or Manage access.",
         "appearance.scheme": "One scheme across Present and Edit.",
-        "audio.fadeEnabled": "Every bus.",
+        "audio.fadeEnabled": "All music.",
         "avInputs.audio": "Each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
         "avInputs.cameras": "Added inputs run warm from launch and appear in Live Input pickers, so slides never wait on a camera spinning up.",
         "avInputs.outputs": "The output patch bay: named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",

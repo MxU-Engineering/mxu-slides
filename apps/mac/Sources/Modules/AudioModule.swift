@@ -44,7 +44,7 @@ struct AudioModule: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(audio.isMuted ? "Unmute (all buses)" : "Mute (all buses)")
+                .help(audio.isMuted ? "Unmute all music" : "Mute all music")
                 if !runOnly {
                     Button {
                         if let id = model.createPlaylist(in: .audio) {
