@@ -112,9 +112,7 @@ public enum TimecodeStation {
     public static let offsetKey = "timecode.offsetFrames"
 
     public static let followKey = "timecode.follow"
-
-    public static let audioKey = "timecode.playsAudio"
-    public static let keys = [deviceKey, channelKey, offsetKey, followKey, audioKey]
+    public static let keys = [deviceKey, channelKey, offsetKey, followKey]
     public static let offsetRange = -30...30
 }
 
@@ -198,40 +196,50 @@ public struct TimecodeFollow: Sendable {
         return Self.enter(id, at: position)
     }
 
-    public static func underTimecode(
-        _ effects: [PresentationTimelines.Effect], playsAudio: Bool = false
-    ) -> [PresentationTimelines.Effect] {
-        if playsAudio { return effects }
-        return effects.filter {
+    public static func clashes(_ songs: [Song]) -> Set<String> {
+        let windows = songs.map {
+            PresentationTimelines.Window(
+                id: $0.itemID, start: $0.startFrames, length: PresentationTimelines.frames(seconds: $0.length + $0.tail))
+        }
+        return Set(windows.filter { !PresentationTimelines.overlaps($0, in: windows).isEmpty }.map(\.id))
+    }
+
+    public struct CueRow: Equatable, Sendable {
+        public var id: String
+
+        public var timecode: String
+
+        public var label: String
+        public var at: Double
+    }
+
+    public static func cueRows(
+        _ timeline: PresentationTimeline, blocks: [TimelinePlayedBlock], sectionName: (String?) -> String
+    ) -> [CueRow] {
+        var starts: [Int] = []
+        var index = 0
+        for block in blocks {
+            starts.append(index)
+            index += block.slideIds.count
+        }
+        return timeline.cues.filter { $0.kind == .slide }.sorted { $0.at < $1.at }.compactMap { cue in
+            guard let occurrence = PresentationTimelines.occurrence(of: cue, in: blocks),
+                  let block = starts.lastIndex(where: { $0 <= occurrence }) else { return nil }
+            let frames = timeline.timecodeStart + Int((cue.at * Double(PresentationTimelines.framesPerSecond)).rounded())
+            return CueRow(
+                id: cue.id, timecode: PresentationTimelines.timecode(frames: frames),
+                label: "\(sectionName(blocks[block].sectionId)) · \(occurrence - starts[block] + 1)", at: cue.at)
+        }
+    }
+
+    public static func underTimecode(_ effects: [PresentationTimelines.Effect]) -> [PresentationTimelines.Effect] {
+        effects.filter {
             switch $0 {
             case .playAudio: false
             case .fire(let lane, _), .clear(let lane, _): lane != .audio
             case .showSlide, .runActions: true
             }
         }
-    }
-
-    public static let audioDrift = 0.5
-
-    public static func audioSync(
-        _ cues: [TimelineCue], at position: Double, playing: [String: Double]
-    ) -> [PresentationTimelines.Effect] {
-        let tracks = cues.filter { $0.kind == .audio && $0.contentId != nil }
-        let held = tracks.filter {
-            $0.at <= position && position < PresentationTimelines.end(of: $0, in: cues)
-        }.max { $0.at < $1.at }
-        var effects: [PresentationTimelines.Effect] = []
-        for id in Set(tracks.compactMap(\.contentId)).sorted() where id != held?.contentId && playing[id] != nil {
-            effects.append(.clear(lane: .audio, id: id))
-        }
-        if let held, let id = held.contentId {
-            let due = position - held.at
-            if let at = playing[id], abs(at - due) <= audioDrift {
-                return effects
-            }
-            effects.append(.playAudio(id: id, from: due))
-        }
-        return effects
     }
 
     private static func enter(_ id: String, at position: Double) -> Command {

@@ -98,6 +98,8 @@ final class TimecodeFollower {
 
     private(set) var timecodeLevel: Float = 0
 
+    private(set) var isLocked = false
+
     private(set) var detectedRate: TimecodeRate?
 
     @ObservationIgnored private var reader: LTCReader?
@@ -140,6 +142,7 @@ final class TimecodeFollower {
         controls?.render.confidenceInfo.timecode = nil
         timecodeReading = TimecodeClock.Reading(state: .noInput)
         timecodeLevel = 0
+        isLocked = false
     }
 
     func setDevice(_ uid: String?) {
@@ -195,6 +198,7 @@ final class TimecodeFollower {
             if detectedRate != rate { detectedRate = rate }
         }
         if reading != timecodeReading { timecodeReading = reading }
+        if isLocked != (reading.state == .locked) { isLocked = reading.state == .locked }
         let level = max(peak, timecodeLevel * 0.85)
         if abs(level - timecodeLevel) > 0.002 { timecodeLevel = level < 0.001 ? 0 : level }
 
@@ -208,7 +212,7 @@ final class TimecodeFollower {
             if reading.state != .freewheel { controls.timeline.timecodeHeld() }
             return
         }
-        let songs = songs(controls.appModel)
+        let songs = Self.songs(controls.appModel)
         if let command = follow.step(reading, songs: songs.map(\.song)),
            let item = songs.first(where: { $0.song.itemID == command.itemID }) {
             let newSong = controls.timeline.itemID != command.itemID
@@ -248,14 +252,24 @@ final class TimecodeFollower {
         render.confidenceInfo.timecode = display
     }
 
-    private func songs(_ model: AppModel) -> [(song: TimecodeFollow.Song, presentation: Presentation, arrangementId: String?)] {
+    struct FollowedSong {
+        var song: TimecodeFollow.Song
+        var item: ServiceItem
+        var presentation: Presentation
+        var timeline: PresentationTimeline
+        var arrangementId: String? { item.arrangementId }
+    }
+
+    static func songs(_ model: AppModel) -> [FollowedSong] {
         guard let serviceID = model.currentServiceID, let service = try? model.service(serviceID) else { return [] }
         return model.runOfShow(service).compactMap { item in
             guard item.itemKind == .presentation, let deck = model.presentation(item.refId),
                   let timeline = PresentationTimelines.timeline(for: item.arrangementId, in: deck),
                   timeline.timecodeEnabled
             else { return nil }
-            return (TimecodeFollow.Song(itemID: item.id, timeline: timeline), deck, item.arrangementId)
+            return FollowedSong(
+                song: TimecodeFollow.Song(itemID: item.id, timeline: timeline), item: item, presentation: deck,
+                timeline: timeline)
         }
     }
 }

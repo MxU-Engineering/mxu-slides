@@ -32,6 +32,7 @@ struct ModuleWindowView: View {
                         case .combos: ActionCombosModule(model: model, controls: controls)
                         case .confidence: ConfidenceModule(model: model, controls: controls)
                         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
+                        case .timecode: TimecodeModule(model: model, controls: controls)
                         }
                     }
                 }

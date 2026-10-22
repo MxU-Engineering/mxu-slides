@@ -13,9 +13,11 @@ enum ServiceControlsModule: String, Codable, CaseIterable, Sendable {
 
     case outputs
 
+    case timecode
+
     static let defaultOrder: [ServiceControlsModule] = [
         .combos, .timers, .tracking, .overlays, .audio, .alerts,
-        .mixer, .confidence, .outputs,
+        .mixer, .confidence, .outputs, .timecode,
     ]
 
     var title: String {
@@ -29,6 +31,7 @@ enum ServiceControlsModule: String, Codable, CaseIterable, Sendable {
         case .combos: "Combos"
         case .confidence: "Confidence Monitor"
         case .outputs: "Outputs"
+        case .timecode: "Timecode"
         }
     }
 
@@ -43,6 +46,7 @@ enum ServiceControlsModule: String, Codable, CaseIterable, Sendable {
         case .combos: .combos
         case .confidence: .confidence
         case .outputs: .screens
+        case .timecode: .timers
         }
     }
 }

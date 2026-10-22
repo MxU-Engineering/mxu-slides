@@ -152,6 +152,34 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
         #expect(TimecodeFollow.Song(itemID: "a", timeline: fixed).tail == 0)
     }
 
+    @Test func clashesFlagSongsSharingAStart() {
+        let defaultStart = [
+            TimecodeFollow.Song(itemID: "a", startFrames: 0, length: 200),
+            TimecodeFollow.Song(itemID: "b", startFrames: 0, length: 180),
+            TimecodeFollow.Song(itemID: "c", startFrames: 108_000, length: 240),
+        ]
+        #expect(TimecodeFollow.clashes(defaultStart) == ["a", "b"])
+        #expect(TimecodeFollow.clashes(Array(defaultStart.suffix(2))).isEmpty)
+    }
+
+    @Test func cueRowsReadAsTimecode() {
+        let blocks = [
+            TimelinePlayedBlock(sectionId: "v", slideIds: ["v1", "v2"]),
+            TimelinePlayedBlock(sectionId: "c", slideIds: ["c1"]),
+        ]
+        let timeline = PresentationTimeline(
+            id: "t", timecodeEnabled: true, timecodeStart: 108_000,
+            cues: [
+                TimelineCue(id: "2", lane: "slide", at: 12.5, sectionId: "c", sectionOccurrence: 0, slideId: "c1"),
+                TimelineCue(id: "1", lane: "slide", at: 4, sectionId: "v", sectionOccurrence: 0, slideId: "v2"),
+                TimelineCue(id: "x", lane: "actions", at: 6),
+                TimelineCue(id: "o", lane: "slide", at: 8, sectionId: "gone", slideId: "z"),
+            ])
+        let rows = TimecodeFollow.cueRows(timeline, blocks: blocks) { $0 == "v" ? "Verse" : "Chorus" }
+        #expect(rows.map(\.timecode) == ["01:00:04:00", "01:00:12:15"])
+        #expect(rows.map(\.label) == ["Verse · 2", "Chorus · 1"])
+    }
+
     @Test func stationSettingsNeverSyncOrBackUp() {
         for key in TimecodeStation.keys {
             #expect(!WorkspaceSetting.allCases.contains { $0.carries(key) }, "\(key)")
