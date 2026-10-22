@@ -672,7 +672,7 @@ struct SlideGridBody: View {
         return presentation.arrangements?.first { $0.id == arrangementId }
     }
 
-    var body: some View {
+    @ViewBuilder private var grid: some View {
 
         let _ = (dropTargetIndex, dropTargetAfterIndex, backgroundDropIndex)
         ZStack(alignment: .topLeading) {
@@ -807,6 +807,10 @@ struct SlideGridBody: View {
                 }
             )
         }
+    }
+
+    var body: some View {
+        grid
         .sheet(item: $mediaActionTarget) { target in
             LibraryPickerSheet(appModel: model, kind: target.kind) { entry in
                 model.updateSlides(presentationID: presentation.id, undoLabel: "Choose Media") { presentation in
