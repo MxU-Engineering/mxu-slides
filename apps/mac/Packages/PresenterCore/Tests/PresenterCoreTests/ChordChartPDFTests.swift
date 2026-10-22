@@ -94,6 +94,7 @@ struct ChordChartPDFTests {
             .init(name: "Interlude", lines: ["[Bm][G]"]),
             .init(name: "Chorus", lines: ["[D]Hallelujah"]),
             .init(name: "Chorus", lines: ["[G]Hallelujah"]),
+
             .init(name: "Chorus", lines: ["Hallelu[G]jah"]),
             .init(name: "Chorus", lines: ["[D]Hallelujah"]),
         ]
@@ -101,14 +102,18 @@ struct ChordChartPDFTests {
             "Interlude", "[D][Aadd4][G2]", "", "Interlude",
             "", "Interlude 2", "[Bm][G]", "", "Interlude 2",
 
-            "", "Chorus", "[D]Hallelujah", "", "Chorus 2", "[G]Hallelujah", "", "Chorus 2", "", "Chorus",
+            "", "Chorus", "[D]Hallelujah", "", "Chorus", "[G]Hallelujah", "", "Chorus", "[G]Hallelujah", "", "Chorus",
         ])
+
+        let parsed = Reflow.parse(ChordChartPDF.written(sections: sections, leading: []).joined(separator: "\n"), linesPerSlide: 2)
+        #expect(parsed.sections.map(\.name).suffix(2) == ["Chorus", "Chorus"])
+        #expect(parsed.order.suffix(4).map { parsed.sections[$0].slides } == [["[D]Hallelujah"], ["[G]Hallelujah"], ["[G]Hallelujah"], ["[D]Hallelujah"]])
         #expect(ChordChartPDF.numbered("Interlude 2", taken: ["Interlude 2"]) == "Interlude 3")
 
         #expect(ChordChartPDF.written(sections: [
             .init(name: "Vamp", lines: ["[D]Oh oh"]), .init(name: "Vamp", lines: ["[G]Hey hey"]),
             .init(name: "Chorus", lines: ["Way maker"]), .init(name: "Chorus", lines: ["Promise keeper"]),
-        ], leading: []) == ["Vamp", "[D]Oh oh", "", "Vamp 2", "[G]Hey hey", "", "Chorus", "Way maker", "", "Chorus 2", "Promise keeper"])
+        ], leading: []) == ["Vamp", "[D]Oh oh", "", "Vamp 2", "[G]Hey hey", "", "Chorus", "Way maker", "", "Chorus", "Promise keeper"])
     }
 
     @Test func theChartImportsAsADeckInItsKey() throws {
