@@ -109,11 +109,14 @@ struct MediaImportTests {
             if case .skipped = $0.outcome { return true } else { return false }
         }.count == 1)  
 
-        let flagged = try await onLibraryActor(reading: libraryRoot) { library in
+        let items = try await onLibraryActor(reading: libraryRoot) { library in
             try media.map { try library.open(MediaItem.self, id: $0.id).value }
-                .filter { $0.fileStatus == .needsTranscode }
         }
-        #expect(flagged.count == 4)  
+
+        #expect(items.allSatisfy { $0.classification == .foreground })
+
+        let flagged = items.filter { $0.fileStatus == .needsTranscode }
+        #expect(flagged.count == 4)
         #expect(flagged.allSatisfy { !$0.statusDetail.isEmpty })
 
         let clips = try await onLibraryActor(reading: libraryRoot) { library in
