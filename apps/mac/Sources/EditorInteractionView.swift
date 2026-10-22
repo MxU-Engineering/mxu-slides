@@ -160,7 +160,16 @@ final class EditorInteractionNSView: NSView {
 
             overlay.insertText(attributed.string, replacementRange: selection)
             model.applyPastedFormatting(attributed, atUTF16: selection.location)
+            if let clip = overlay.pastedChordClip(), clip.text == attributed.string {
+                model.applyPastedChords(clip, atUTF16: selection.location)
+            }
             return true
+        }
+        overlay.chordClip = { [weak self] range in
+            self?.model.canvasTextChordClip(utf16Range: range)
+        }
+        overlay.onPasteChords = { [weak self] clip, location in
+            self?.model.applyPastedChords(clip, atUTF16: location)
         }
         overlay.isRichText = false
         overlay.drawsBackground = false
@@ -1608,6 +1617,52 @@ final class OverlayTextView: NSTextView {
     var onFormatKey: ((FormatKey) -> Bool)?
 
     var onPasteWithFormatting: ((NSAttributedString) -> Bool)?
+
+    var chordClip: ((NSRange) -> ChordClipboard.Payload?)?
+    var onPasteChords: ((ChordClipboard.Payload, Int) -> Void)?
+    static let chordsType = NSPasteboard.PasteboardType(ChordClipboard.type)
+
+    override func copy(_ sender: Any?) {
+        let clip = chordClip?(selectedRange())
+        super.copy(sender)
+        writeChordClip(clip)
+    }
+
+    override func cut(_ sender: Any?) {
+
+        let clip = chordClip?(selectedRange())
+        super.cut(sender)
+        writeChordClip(clip)
+    }
+
+    override func paste(_ sender: Any?) {
+        if let clip = pastedChordClip() {
+            let selection = selectedRange()
+
+            insertText(clip.text, replacementRange: selection)
+            onPasteChords?(clip, selection.location)
+        } else {
+            super.paste(sender)
+        }
+    }
+
+    private func writeChordClip(_ clip: ChordClipboard.Payload?) {
+        if let clip, let data = try? JSONEncoder().encode(clip) {
+            NSPasteboard.general.addTypes([Self.chordsType], owner: nil)
+            NSPasteboard.general.setData(data, forType: Self.chordsType)
+        }
+    }
+
+    func pastedChordClip() -> ChordClipboard.Payload? {
+        let board = NSPasteboard.general
+        if let data = board.data(forType: Self.chordsType),
+           let clip = try? JSONDecoder().decode(ChordClipboard.Payload.self, from: data),
+           clip.text == board.string(forType: .string) {
+            return clip
+        } else {
+            return nil
+        }
+    }
 
     var perspective: EditorGeometry.Homography? {
         didSet {

@@ -932,6 +932,28 @@ final class SlideEditorModel {
         }
     }
 
+    func canvasTextChordClip(utf16Range: NSRange) -> ChordClipboard.Payload? {
+        if let object = canvasEditedObject, let chords = object.chords, !chords.isEmpty {
+            let selection = TextStyleRuns.characterRange(
+                fromUTF16: utf16Range.location, length: utf16Range.length, in: object.text
+            )
+            return ChordClipboard.copying(selection, of: object.text, chords: chords)
+        } else {
+            return nil
+        }
+    }
+
+    func applyPastedChords(_ payload: ChordClipboard.Payload, atUTF16 location: Int) {
+        if let id = canvasTextEditID {
+            updateObject(id: id) { object in
+                let position = TextStyleRuns.characterRange(fromUTF16: location, length: 0, in: object.text).lowerBound
+                object.chords = ChordClipboard.pasting(
+                    payload, at: position, into: object.text, chords: object.chords ?? []
+                )
+            }
+        }
+    }
+
     func canvasTextWillReplace(utf16Range: NSRange, replacement: String) {
         guard let id = canvasTextEditID, let object = canvasEditedObject,
               object.styleRuns?.isEmpty == false || object.chords?.isEmpty == false
