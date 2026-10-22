@@ -8,7 +8,10 @@ struct ChordEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var editingChip: ChipID?
+    @State private var editingRow: Row?
     @State private var editingText = ""
+
+    @State private var addingChord: AddingChord?
     @FocusState private var focusedChip: ChipID?
 
     @State private var draggingChip: ChipID?
@@ -17,6 +20,15 @@ struct ChordEditorSheet: View {
     struct ChipID: Hashable {
         var rowID: String
         var index: Int
+
+        static func adding(_ rowID: String) -> ChipID {
+            ChipID(rowID: rowID, index: -1)
+        }
+    }
+
+    struct AddingChord {
+        var row: Row
+        var column: Int
     }
 
     struct Row: Identifiable {
@@ -73,6 +85,8 @@ struct ChordEditorSheet: View {
             }
         }
         .frame(minWidth: 940, minHeight: 560)
+
+        .onAppear { DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) } }
     }
 
     private var header: some View {
@@ -177,6 +191,14 @@ struct ChordEditorSheet: View {
                 ForEach(Array(row.chords.enumerated()), id: \.offset) { index, chord in
                     chip(chord, id: ChipID(rowID: row.id, index: index), row: row)
                 }
+                if let adding = addingChord, adding.row.id == row.id {
+                    chordField(id: .adding(row.id), x: CGFloat(adding.column) * Self.charWidth) {
+                        commitAdding()
+                    } cancel: {
+                        addingChord = nil
+                        focusedChip = nil
+                    }
+                }
             }
             Text(row.text.isEmpty ? " " : row.text)
                 .font(Font(Self.lyricFont))
@@ -191,26 +213,19 @@ struct ChordEditorSheet: View {
         let column = (draggingChip == id ? dragColumn : nil) ?? chord.column
         let x = CGFloat(min(column, max(row.text.count, 0))) * Self.charWidth
         if editingChip == id {
-            TextField("", text: $editingText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(Self.chordInk)
-                .frame(width: max(56, CGFloat(editingText.count + 2) * 8))
-                .focused($focusedChip, equals: id)
-                .onSubmit { commitChipEdit(row: row, index: id.index) }
-                .onExitCommand {
-                    editingChip = nil
-                    focusedChip = nil
-                }
-                .onChange(of: focusedChip) { _, focus in
-
-                    if focus != id, editingChip == id { commitChipEdit(row: row, index: id.index) }
-                }
-                .offset(x: x)
+            chordField(id: id, x: x) {
+                commitChipEdit(row: row, index: id.index)
+            } cancel: {
+                editingChip = nil
+                editingRow = nil
+                focusedChip = nil
+            }
         } else {
             ChipLabel(symbol: chord.symbol, ink: Self.chordInk) {
+                commitOpenEdit()
                 editingText = chord.symbol
                 editingChip = id
+                editingRow = row
                 focusedChip = id
             } onDelete: {
                 writeChords(row: row) { chords in
@@ -240,32 +255,75 @@ struct ChordEditorSheet: View {
         }
     }
 
+    private func chordField(
+        id: ChipID, x: CGFloat, commit: @escaping () -> Void, cancel: @escaping () -> Void
+    ) -> some View {
+
+        TextField("", text: $editingText, prompt: Text("Chord"))
+            .textFieldStyle(.plain)
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(Self.chordInk)
+            .frame(width: max(56, CGFloat(editingText.count + 2) * 8))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Self.chordInk.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+            .focused($focusedChip, equals: id)
+
+            .onAppear { DispatchQueue.main.async { focusedChip = id } }
+            .onSubmit(commit)
+            .onExitCommand(perform: cancel)
+            .onChange(of: focusedChip) { was, focus in
+
+                if was == id, focus != id, isOpen(id) { commit() }
+            }
+            .offset(x: x)
+    }
+
+    private func isOpen(_ id: ChipID) -> Bool {
+        editingChip == id || addingChord.map { ChipID.adding($0.row.id) } == id
+    }
+
+    private func commitOpenEdit() {
+        if addingChord != nil {
+            commitAdding()
+        } else if let chip = editingChip, let row = editingRow {
+            commitChipEdit(row: row, index: chip.index)
+        }
+    }
+
     private func snappedColumn(base: Int, translation: CGFloat, row: Row) -> Int {
         let moved = CGFloat(base) + translation / Self.charWidth
         return min(max(0, Int(moved.rounded())), max(row.text.count, 0))
     }
 
     private func addChord(at x: CGFloat, row: Row) {
+        commitOpenEdit()
         let column = min(max(0, Int((x / Self.charWidth).rounded())), max(row.text.count, 0))
-        let line = row.line
-        let place: @Sendable (inout [ChordPlacement]) -> Void = { chords in
-            chords.append(ChordPlacement(line: line, column: column, symbol: ""))
-            chords.sort { ($0.column, $0.symbol) < ($1.column, $1.symbol) }
-        }
-
-        var placed = row.chords
-        place(&placed)
-        let newIndex = placed.firstIndex { $0.column == column && $0.symbol.isEmpty } ?? 0
-        writeChords(row: row, place)
         editingText = ""
-        let chip = ChipID(rowID: row.id, index: newIndex)
-        editingChip = chip
-        focusedChip = chip
+        addingChord = AddingChord(row: row, column: column)
+        focusedChip = .adding(row.id)
+    }
+
+    private func commitAdding() {
+        if let adding = addingChord {
+            let symbol = editingText.trimmingCharacters(in: .whitespaces)
+            addingChord = nil
+            focusedChip = nil
+            if !symbol.isEmpty {
+                let line = adding.row.line
+                let column = adding.column
+                writeChords(row: adding.row) { chords in
+                    chords.append(ChordPlacement(line: line, column: column, symbol: symbol))
+                    chords.sort { ($0.column, $0.symbol) < ($1.column, $1.symbol) }
+                }
+            }
+        }
     }
 
     private func commitChipEdit(row: Row, index: Int) {
         let symbol = editingText.trimmingCharacters(in: .whitespaces)
         editingChip = nil
+        editingRow = nil
         focusedChip = nil
         writeChords(row: row) { chords in
             guard chords.indices.contains(index) else { return }
