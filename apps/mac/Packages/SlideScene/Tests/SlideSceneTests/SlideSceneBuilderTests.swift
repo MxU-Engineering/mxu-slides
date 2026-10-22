@@ -635,6 +635,8 @@ private func arrangedSong() -> Presentation {
     #expect(SlideSceneBuilder.arrangementBlockStarts(for: song, arrangementId: "pco") == [0, 1, 2, 3, 3, 4])
     #expect(SlideSceneBuilder.blockSectionNames(for: song, arrangementId: "pco").map(\.start) == [0, 1, 2, 3, 3, 4])
 
+    #expect(SlideSceneBuilder.playedBlocks(sectionIds: ["c", "i", "i"], in: song).map(\.count) == [1, 1, 0])
+
     song.slides[1].background = CueMedia(mediaId: "loop")
     #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "pco").map(\.id) == ["c1", "c1", "i1", "i1", "b1", "i1"])
 }

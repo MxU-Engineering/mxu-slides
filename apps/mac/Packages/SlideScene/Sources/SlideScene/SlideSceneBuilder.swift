@@ -59,12 +59,12 @@ public enum SlideSceneBuilder {
               let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
               !arrangement.sectionIds.isEmpty
         else { return presentation.slides }
-        return arrangementBlocks(arrangement, in: presentation).flatMap { $0 }
+        return playedBlocks(sectionIds: arrangement.sectionIds, in: presentation).flatMap { $0 }
     }
 
-    static func arrangementBlocks(_ arrangement: Arrangement, in presentation: Presentation) -> [[Slide]] {
+    public static func playedBlocks(sectionIds: [String], in presentation: Presentation) -> [[Slide]] {
         var previous: String?
-        return arrangement.sectionIds.map { sectionId in
+        return sectionIds.map { sectionId in
             let slides = presentation.slides.filter { $0.sectionId == sectionId }
             let repeatsEmpty = sectionId == previous && slides.allSatisfy(showsNothing)
             previous = sectionId
@@ -87,7 +87,7 @@ public enum SlideSceneBuilder {
            !arrangement.sectionIds.isEmpty {
             var starts: [Int] = []
             var index = 0
-            for block in arrangementBlocks(arrangement, in: presentation) {
+            for block in playedBlocks(sectionIds: arrangement.sectionIds, in: presentation) {
                 starts.append(index)
                 index += block.count
             }
