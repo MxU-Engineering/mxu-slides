@@ -8,18 +8,25 @@ final class MultitrackSession: @unchecked Sendable {
 
     let startFrame: Int64
 
+    let anchor: (frame: Int64, hostTime: UInt64)?
+
     let meters: UnsafeMutablePointer<mxu_atomic_i64>
     static let meterSlots = 5
 
-    init(rings: [StemRing], stemChannels: [String], startFrame: Int64) {
+    let lastSamples: UnsafeMutablePointer<Float>
+
+    init(rings: [StemRing], stemChannels: [String], startFrame: Int64, anchor: (frame: Int64, hostTime: UInt64)? = nil) {
         self.rings = rings
         self.stemChannels = stemChannels
         self.startFrame = startFrame
+        self.anchor = anchor
         meters = .allocate(capacity: max(1, rings.count * Self.meterSlots))
         for index in 0 ..< max(1, rings.count * Self.meterSlots) { mxu_store_i64(meters + index, 0) }
+        lastSamples = .allocate(capacity: max(1, rings.count * 2))
+        lastSamples.initialize(repeating: 0, count: max(1, rings.count * 2))
     }
 
-    deinit { meters.deallocate() }
+    deinit { meters.deallocate(); lastSamples.deallocate() }
 }
 
 final class MultitrackProgram: @unchecked Sendable {
@@ -99,6 +106,9 @@ final class MultitrackRenderer: @unchecked Sendable {
     private let playHostTime = UnsafeMutablePointer<mxu_atomic_i64>.allocate(capacity: 1)
     private let stopRequest = UnsafeMutablePointer<mxu_atomic_i64>.allocate(capacity: 1)
 
+    private let slipRequest = UnsafeMutablePointer<mxu_atomic_i64>.allocate(capacity: 1)
+    private let slipsMade = UnsafeMutablePointer<mxu_atomic_i64>.allocate(capacity: 1)
+
     private let usingCurrent = UnsafeMutablePointer<mxu_atomic_ptr>.allocate(capacity: 1)
     private let usingOutgoing = UnsafeMutablePointer<mxu_atomic_ptr>.allocate(capacity: 1)
     private let publishedFrame = UnsafeMutablePointer<mxu_atomic_i64>.allocate(capacity: 1)
@@ -117,6 +127,7 @@ final class MultitrackRenderer: @unchecked Sendable {
     private var envelopeTarget: Float = 0
     private var seenPlay: Int64 = 0
     private var seenStop: Int64 = 0
+    private var slipsDone: Int64 = 0
     private let scratchLeft: UnsafeMutablePointer<Float>
     private let scratchRight: UnsafeMutablePointer<Float>
     private let feedScratch: UnsafeMutablePointer<Float>
@@ -134,8 +145,9 @@ final class MultitrackRenderer: @unchecked Sendable {
         self.deviceChannels = deviceChannels
         self.sampleRate = sampleRate
         fadeFrames = max(1, Int(sampleRate * fadeSeconds))
-        scratchLeft = .allocate(capacity: maxFrames)
-        scratchRight = .allocate(capacity: maxFrames)
+
+        scratchLeft = .allocate(capacity: maxFrames + 1)
+        scratchRight = .allocate(capacity: maxFrames + 1)
         feedScratch = .allocate(capacity: maxFrames * 2 * Self.maxFeeds)
         var timebase = mach_timebase_info_data_t()
         mach_timebase_info(&timebase)
@@ -143,7 +155,7 @@ final class MultitrackRenderer: @unchecked Sendable {
         mxu_store_ptr(wanted, nil)
         mxu_store_ptr(usingCurrent, nil)
         mxu_store_ptr(usingOutgoing, nil)
-        for counter in [playRequest, playHostTime, stopRequest, publishedFrame, publishedHostTime, publishedPlaying] {
+        for counter in [playRequest, playHostTime, stopRequest, slipRequest, slipsMade, publishedFrame, publishedHostTime, publishedPlaying] {
             mxu_store_i64(counter, 0)
         }
     }
@@ -151,6 +163,7 @@ final class MultitrackRenderer: @unchecked Sendable {
     deinit {
         scratchLeft.deallocate(); scratchRight.deallocate(); feedScratch.deallocate()
         wanted.deallocate(); playRequest.deallocate(); playHostTime.deallocate(); stopRequest.deallocate()
+        slipRequest.deallocate(); slipsMade.deallocate()
         usingCurrent.deallocate(); usingOutgoing.deallocate()
         publishedFrame.deallocate(); publishedHostTime.deallocate(); publishedPlaying.deallocate()
     }
@@ -167,6 +180,14 @@ final class MultitrackRenderer: @unchecked Sendable {
     func stop() {
         mxu_store_i64(stopRequest, mxu_load_i64(stopRequest) + 1)
     }
+
+    func requestSlips(_ count: Int) {
+        mxu_store_i64(slipRequest, mxu_load_i64(slipRequest) + Int64(count))
+    }
+
+    var slipsTotal: Int64 { mxu_load_i64(slipsMade) }
+
+    var pendingSlips: Int64 { mxu_load_i64(slipRequest) - mxu_load_i64(slipsMade) }
 
     func isHolding(_ program: MultitrackProgram) -> Bool {
         let pointer = Unmanaged.passUnretained(program).toOpaque()
@@ -196,7 +217,7 @@ final class MultitrackRenderer: @unchecked Sendable {
         for channel in 0 ..< deviceChannels {
             outputs[channel].update(repeating: 0, count: total)
         }
-        adoptWanted()
+        adoptWanted(hostTime: hostTime)
         var offset = 0
         let playAsked = mxu_load_i64(playRequest)
         if playAsked != seenPlay {
@@ -244,7 +265,7 @@ final class MultitrackRenderer: @unchecked Sendable {
         program.delays?.process(outputs, channels: deviceChannels, count: total)
     }
 
-    private func adoptWanted() {
+    private func adoptWanted(hostTime: UInt64) {
         let pointer = mxu_load_ptr(wanted)
         guard pointer != current.map({ $0.toOpaque() }) else { return }
         let next = pointer.map { Unmanaged<MultitrackProgram>.fromOpaque($0) }
@@ -256,16 +277,26 @@ final class MultitrackRenderer: @unchecked Sendable {
             return
         }
         if previous?.session !== program.session {
-            if playing, envelopeTarget > 0, let previous {
+            let crossfading = playing && envelopeTarget > 0 && previous != nil
+            if crossfading, let previous {
 
                 outgoing = Unmanaged.passUnretained(previous)
                 outgoingFrame = frame
                 crossfadeLeft = fadeFrames
                 mxu_store_ptr(usingOutgoing, Unmanaged.passUnretained(previous).toOpaque())
-            } else {
-                envelope = program.session.startFrame <= 0 ? 1 : 0
             }
             frame = program.session.startFrame
+
+            if let anchor = program.session.anchor, hostTime > 0, anchor.hostTime > 0 {
+                let since = (Double(Int64(bitPattern: hostTime &- anchor.hostTime)) * nanosPerTick) / 1e9
+                let target = anchor.frame + Int64((since * sampleRate).rounded())
+                if target > frame {
+                    for ring in program.session.rings { ring.skip(Int(target - frame)) }
+                    frame = target
+                }
+            }
+
+            if !crossfading { envelope = frame <= 0 ? 1 : 0 }
         } else if let previous {
             rampFrom = Unmanaged.passUnretained(previous)
         }
@@ -300,9 +331,17 @@ final class MultitrackRenderer: @unchecked Sendable {
                 mxu_store_ptr(usingOutgoing, nil)
             }
         }
+
+        var slip = 0
+        let asked = mxu_load_i64(slipRequest)
+        if asked != slipsDone, outgoing == nil, envelopeTarget > 0, envelope == 1, count >= 32 {
+            slip = asked > slipsDone ? 1 : -1
+            slipsDone += Int64(slip)
+            mxu_store_i64(slipsMade, slipsDone)
+        }
         mix(program, count: count, offset: offset, envelope: (startGain * fadeIn, endGain * fadeInEnd),
             outputs: outputs, feedFrames: feedFrames, readFrom: &frame, writesFeeds: true,
-            rampFrom: rampFrom?.takeUnretainedValue())
+            rampFrom: rampFrom?.takeUnretainedValue(), slip: slip)
         rampFrom = nil
         envelope = endGain
         if envelopeTarget == 0, envelope == 0 {
@@ -316,7 +355,7 @@ final class MultitrackRenderer: @unchecked Sendable {
         _ program: MultitrackProgram, count: Int, offset: Int, envelope: (Float, Float),
         outputs: UnsafeMutablePointer<UnsafeMutablePointer<Float>>,
         feedFrames: UnsafeMutablePointer<Float>, readFrom position: inout Int64, writesFeeds: Bool,
-        rampFrom: MultitrackProgram? = nil
+        rampFrom: MultitrackProgram? = nil, slip: Int = 0
     ) {
 
         let from = rampFrom.flatMap { $0.matrix.destinations == program.matrix.destinations
@@ -326,7 +365,14 @@ final class MultitrackRenderer: @unchecked Sendable {
         let destinations = matrix.destinations
         let feeds = min(program.matrix.feedSlots.count, Self.maxFeeds)
         for (stem, ring) in session.rings.enumerated() {
-            ring.read(into: scratchLeft, scratchRight, count: count)
+            let last = session.lastSamples + stem * 2
+            if slip == 0 {
+                ring.read(into: scratchLeft, scratchRight, count: count)
+            } else {
+                Self.slipped(ring, slip: slip, count: count, last: last, left: scratchLeft, right: scratchRight)
+            }
+            last[0] = scratchLeft[count - 1]
+            last[1] = scratchRight[count - 1]
             meter(session, stem: stem, count: count)
             var start = envelope.0
             var rampStep = (envelope.1 - envelope.0) / Float(count)
@@ -362,13 +408,37 @@ final class MultitrackRenderer: @unchecked Sendable {
                 }
             }
         }
-        position += Int64(count)
+        position += Int64(count + slip)
         guard writesFeeds else { return }
         guard let share else { return }
         for feed in 0 ..< feeds {
             share.write(
                 slot: program.matrix.feedSlots[feed],
                 left: feedFrames + feed * 2 * count, right: feedFrames + (feed * 2 + 1) * count, count: count)
+        }
+    }
+
+    private static func slipped(
+        _ ring: StemRing, slip: Int, count: Int, last: UnsafeMutablePointer<Float>,
+        left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>
+    ) {
+        if slip > 0 {
+            ring.read(into: left, right, count: count + 1)
+        } else {
+            ring.read(into: left + 1, right + 1, count: count - 1)
+            left[0] = last[0]
+            right[0] = last[1]
+        }
+        blend(left, slip: slip, count: count)
+        blend(right, slip: slip, count: count)
+    }
+
+    private static func blend(_ side: UnsafeMutablePointer<Float>, slip: Int, count: Int) {
+        for j in 0 ..< count {
+            let w = Float(j + 1) / Float(count)
+            let old = slip > 0 ? side[j] : (j + 1 < count ? side[j + 1] : side[j])
+            let new = slip > 0 ? side[j + 1] : side[j]
+            side[j] = old + (new - old) * w
         }
     }
 

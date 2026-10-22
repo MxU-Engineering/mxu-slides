@@ -14,6 +14,8 @@ public enum TracksPlayerMessage: Codable, Equatable, Sendable {
 
     case preload(songs: [MultitrackSong])
 
+    case chase(song: MultitrackSong?, songID: String, position: Double, hostTime: UInt64)
+
     case quit
 
     case status(TracksPlayerStatus)
@@ -51,7 +53,7 @@ public struct TracksPlayerStatus: Codable, Equatable, Sendable {
 
 public enum TracksPlayerWire {
 
-    public static let version = 2
+    public static let version = 3
 
     public static func socketPath(appIdentity: String) -> String {
         var hash: UInt32 = 2_166_136_261
@@ -327,6 +329,8 @@ public final class TracksPlayerServer: @unchecked Sendable {
             engine.seek(to: seconds)
         case .preload(let songs):
             engine.preload(songs)
+        case .chase(let song, let id, let position, let hostTime):
+            engine.chase(song: song, songID: id, position: position, hostTime: hostTime)
         case .quit:
             engine.stop()
             queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.finish(code: 0) }

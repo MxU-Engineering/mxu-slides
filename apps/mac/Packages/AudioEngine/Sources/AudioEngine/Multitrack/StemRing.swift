@@ -56,6 +56,10 @@ final class StemRing: @unchecked Sendable {
         return n
     }
 
+    func skip(_ count: Int) {
+        mxu_store_i64(read, readFrames + Int64(count))
+    }
+
     func read(into l: UnsafeMutablePointer<Float>, _ r: UnsafeMutablePointer<Float>, count: Int) {
         let rd = readFrames
         let available = min(count, max(0, Int(writtenFrames - rd)))

@@ -28,6 +28,12 @@ public final class MultitrackEngine: @unchecked Sendable {
 
     private(set) var cuesDecoded = 0
 
+    private var chaseSongID: String?
+    private var chaseStarted: CFTimeInterval = 0
+    private var chase = MultitrackChase()
+
+    public private(set) var chaseLandings = 0
+
     private var retired: [(program: MultitrackProgram, at: CFTimeInterval)] = []
 
     static let ringSeconds = 3.0
@@ -93,7 +99,43 @@ public final class MultitrackEngine: @unchecked Sendable {
     }
 
     public func cue(_ song: MultitrackSong, at seconds: Double = 0) {
-        queue.sync { cueLocked(song, at: seconds) }
+        queue.sync {
+            chaseSongID = nil
+            cueLocked(song, at: seconds)
+        }
+    }
+
+    public func chase(song: MultitrackSong?, songID: String, position: Double, hostTime: UInt64) {
+        queue.sync {
+            guard let target = song ?? (self.song?.id == songID ? self.song : nil) else { return }
+            let now = CACurrentMediaTime()
+            let playing = renderer.published.playing
+            let current = program.map { renderer.isCurrent($0) } ?? false
+            if chaseSongID == target.id, !(current && playing) {
+
+                if now - chaseStarted < 1 { return }
+            }
+            guard chaseSongID == target.id, target == self.song, playing, current else {
+                cueLocked(target, at: position, anchor: hostTime)
+                renderer.play()
+                chaseSongID = target.id
+                chaseStarted = now
+                chase.reset()
+                return
+            }
+            let error = renderer.position(atHostTime: hostTime) - position
+            switch chase.step(error: error, at: Self.seconds(hostTime), sampleRate: sampleRate) {
+            case .hold:
+                break
+            case .land:
+                cueLocked(target, at: position, anchor: hostTime)
+                chaseStarted = now
+                chaseLandings += 1
+            case .slips(let count):
+
+                if abs(renderer.pendingSlips) < 4 { renderer.requestSlips(count) }
+            }
+        }
     }
 
     public func preload(_ songs: [MultitrackSong]) {
@@ -112,6 +154,12 @@ public final class MultitrackEngine: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    static func seconds(_ hostTime: UInt64) -> Double {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        return Double(hostTime) * Double(timebase.numer) / Double(timebase.denom) / 1e9
     }
 
     private func needsPreload(_ song: MultitrackSong, rate: Double) -> Bool {
@@ -133,12 +181,16 @@ public final class MultitrackEngine: @unchecked Sendable {
     }
 
     public func stop() {
-        queue.sync { renderer.stop() }
+        queue.sync {
+            chaseSongID = nil
+            renderer.stop()
+        }
     }
 
     public func seek(to seconds: Double) {
         queue.sync {
             guard let song else { return }
+            chaseSongID = nil
             cueLocked(song, at: seconds)
         }
     }
@@ -185,19 +237,23 @@ public final class MultitrackEngine: @unchecked Sendable {
         queue.sync { session?.rings.reduce(0) { $0 + $1.starvedFrames } ?? 0 }
     }
 
-    private func cueLocked(_ song: MultitrackSong, at seconds: Double) {
+    private func cueLocked(_ song: MultitrackSong, at seconds: Double, anchor: UInt64? = nil) {
         self.song = song
-        let start = Int64((max(0, seconds) * sampleRate).rounded())
+        var start = Int64((max(0, seconds) * sampleRate).rounded())
         let stemReaders: [StemReader]
-        if start == 0, let ready = preloaded.firstIndex(where: { $0.song == song && $0.rate == sampleRate }) {
+        let ready = preloaded.firstIndex(where: { $0.song == song && $0.rate == sampleRate })
 
+        let nearTop = anchor != nil && seconds < Self.primeSeconds - 0.25
+        if let ready, start == 0 || nearTop {
             stemReaders = preloaded.remove(at: ready).readers
+            start = 0
         } else {
             stemReaders = Self.openReaders(song, sampleRate: sampleRate, startFrame: start)
             cuesDecoded += 1
         }
         let session = MultitrackSession(
-            rings: stemReaders.map(\.ring), stemChannels: song.stems.map(\.channelId), startFrame: start)
+            rings: stemReaders.map(\.ring), stemChannels: song.stems.map(\.channelId), startFrame: start,
+            anchor: anchor.map { (Int64((max(0, seconds) * sampleRate).rounded()), $0) })
         readers[ObjectIdentifier(session)] = stemReaders
         self.session = session
         publish(session)
