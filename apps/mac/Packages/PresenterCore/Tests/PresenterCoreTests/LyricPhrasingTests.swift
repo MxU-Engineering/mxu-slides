@@ -41,6 +41,21 @@ import Testing
             "a phrase ending on \"was\", a refrain sung twice, a cry, a join past 45 characters, after a full stop")
 }
 
+@Test func shortChartLinesThatStartAPhraseKeepTheChartsBreaks() {
+
+    let verse1 = [
+        "[G]Who else would rocks", "Cry out to [G]worship", "[G]Whose glory [C6]taught",
+        "The stars to [G]shine", "[C2]Perhaps creation [D]longs", "To [Em]have the [D]words to [C2]sing",
+        "[C2]But this [D]joy is [G]mine",
+    ]
+    #expect(LyricPhrasing.rejoined(verse1, casing: .init(verse1.joined(separator: "\n"))) == verse1)
+    #expect(LyricPhrasing.slides(verse1, perSlide: 2).map(\.count) == [2, 2, 2, 1])
+    let verse2 = ["Who else would die", "For our redemption", "Whose resurrection", "Means I’ll rise"]
+    #expect(LyricPhrasing.rejoined(verse2, casing: .init("")) == verse2, "a short pair sings together")
+    let jesus = ["I don’t want anything but You", "You’re more than every dream", "Come true", "All of the things I thought I wanted"]
+    #expect(LyricPhrasing.rejoined(jesus, casing: .init(""))[1] == "You’re more than every dream come true")
+}
+
 @Test func slidesBreakWherePhrasesEndNotEveryTwoLines() {
 
     let lines = [

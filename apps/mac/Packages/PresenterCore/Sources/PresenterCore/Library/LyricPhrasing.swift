@@ -70,7 +70,8 @@ public enum LyricPhrasing {
         let first = key(words.first)
         let cue = runsOn.contains(key(previousWords.last))
             || continuations.contains(first)
-            || (words.count <= 3 && !interjections.contains(first))
+            || (words.count <= 2 && !interjections.contains(first)
+                && next.map { Self.words(of: $0).count > 3 } ?? true)
         return fits && cue
     }
 

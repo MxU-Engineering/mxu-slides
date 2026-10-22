@@ -83,8 +83,8 @@ struct ChordProExportTests {
         let readLyrics = try #require(read.slides.first { !$0.objects.isEmpty }?.objects.first)
         let flippedLyrics = try #require(flipped.slides.first { !$0.objects.isEmpty }?.objects.first)
 
-        #expect(readLyrics.text == "Amazing grace song of praise")
-        #expect(flippedLyrics.text == "Amazing grace a song of praise")
+        #expect(readLyrics.text == "Amazing grace\nsong of praise")
+        #expect(flippedLyrics.text == "Amazing grace\nA song of praise")
         #expect(flippedLyrics.chords?.map(\.symbol) == ["G", "C"])
     }
 
