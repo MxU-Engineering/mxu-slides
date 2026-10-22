@@ -66,4 +66,14 @@ import UniformTypeIdentifiers
         let poster = try #require(PosterDecode.downsampled(url: original))
         #expect(poster.width == PosterDecode.maxPixelSize && poster.height == PosterDecode.maxPixelSize / 2)
     }
+
+    @Test func aLargerAskDecodesTheOriginalAtThatSize() throws {
+        let directory = try makeDirectory()
+        let original = directory.appendingPathComponent("wide.png")
+        let disk = directory.appendingPathComponent("m1.fingerprint.jpg")
+        try writeImage(to: original, width: 4000, height: 2000, alpha: false, type: .png)
+        try writeImage(to: disk, width: 16, height: 16, alpha: false, type: .jpeg)
+        let poster = try #require(PosterDecode.image(original: original, diskPoster: disk, maxPixelSize: 1920))
+        #expect(poster.width == 1920 && poster.height == 960)
+    }
 }

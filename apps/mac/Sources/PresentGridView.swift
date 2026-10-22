@@ -429,6 +429,8 @@ struct SlideGridBody: View {
 
     @State private var builtRows: Set<Int> = []
 
+    @Environment(\.displayScale) private var displayScale
+
     private var cell: CGSize? {
         SlideGridMetrics.cell(
             width: measuredWidth, across: slidesAcross, aspect: SlideGridMetrics.tileAspect(for: presentation))
@@ -1167,7 +1169,8 @@ struct SlideGridBody: View {
             hideScopedBackgrounds: hideScopedBackgrounds,
             legibleText: legibleText,
             contextID: contextID,
-            mediaMissing: !missingMedia(of: slide).isEmpty
+            mediaMissing: !missingMedia(of: slide).isEmpty,
+            pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale)
         ) {
             handleTap(index: index, slide: slide)
         }
@@ -1551,6 +1554,8 @@ struct SlideTile: View {
     var contextID: String? = nil
 
     var mediaMissing = false
+
+    var pixelWidth = ThumbnailResolution.base
     let fire: () -> Void
 
     private var isLive: Bool {
@@ -1589,7 +1594,8 @@ struct SlideTile: View {
                 slide: slide, presentation: presentation, theme: theme,
                 arrangementId: arrangementId,
                 hideScopedBackgrounds: hideScopedBackgrounds,
-                legibleText: legibleText
+                legibleText: legibleText,
+                pixelWidth: pixelWidth
             )
             .aspectRatio(aspect, contentMode: .fit)
             .clipShape(tileShape)
@@ -1983,6 +1989,8 @@ struct SlideThumbnailView: View {
 
     var contentStamp: String? = nil
 
+    var pixelWidth = ThumbnailResolution.base
+
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
 
     private var updatedStamp: String {
@@ -2048,7 +2056,11 @@ struct SlideThumbnailView: View {
 
     private func posterLayer(mediaId: String) -> some View {
         Color.clear
-            .overlay { PosterImage(model: model, mediaId: mediaId) }
+            .overlay {
+                PosterImage(
+                    model: model, mediaId: mediaId,
+                    maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
+            }
             .clipped()
     }
 
@@ -2062,6 +2074,7 @@ struct SlideThumbnailView: View {
             canvas: SlideSceneBuilder.canvasSize(for: presentation),
             cacheKey: "\(identity)|\(updatedStamp)",
             identity: identity,
+            pixelWidth: pixelWidth,
             mediaEffects: { model.mediaSceneEffects(id: $0) }
         )
         if let image {
@@ -2075,8 +2088,12 @@ struct PosterImage: View {
     let model: AppModel
     let mediaId: String
 
+    var maxPixels = PosterDecode.maxPixelSize
+
     @State private var image: CGImage?
     @State private var missing = false
+
+    @State private var loadedStamp: String?
 
     var body: some View {
 
@@ -2096,7 +2113,7 @@ struct PosterImage: View {
                     .help("Media file missing")
             }
         }
-        .task(id: stamp) {
+        .task(id: "\(stamp)|\(maxPixels)") {
             guard let item = model.media(mediaId) else {
 
                 missing = true
@@ -2105,13 +2122,15 @@ struct PosterImage: View {
             }
             guard let blobs = model.blobs else { return }
             missing = model.isMediaFileMissing(item)
-            if !missing, let cached = ThumbnailStore.shared.cachedPoster(for: item) {
+            if !missing, let cached = ThumbnailStore.shared.cachedPoster(for: item, maxPixels: maxPixels) {
                 image = cached
+                loadedStamp = stamp
                 return
             }
 
-            image = nil
-            image = await ThumbnailStore.shared.poster(for: item, blobs: blobs)
+            if loadedStamp != stamp { image = nil }
+            image = await ThumbnailStore.shared.poster(for: item, blobs: blobs, maxPixels: maxPixels)
+            loadedStamp = stamp
         }
     }
 }

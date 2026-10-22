@@ -6,18 +6,18 @@ public enum PosterDecode {
 
     public static let maxPixelSize = 512
 
-    public static func image(original: URL, diskPoster: URL?) -> CGImage? {
+    public static func image(original: URL, diskPoster: URL?, maxPixelSize size: Int = maxPixelSize) -> CGImage? {
         let source = CGImageSourceCreateWithURL(original as CFURL, nil)
         let opaque = source.map { !hasAlpha($0) } ?? false
-        if opaque, let diskPoster, FileManager.default.fileExists(atPath: diskPoster.path) {
-            return downsampled(url: diskPoster) ?? source.flatMap(downsampled(source:))
+        if size <= maxPixelSize, opaque, let diskPoster, FileManager.default.fileExists(atPath: diskPoster.path) {
+            return downsampled(url: diskPoster) ?? source.flatMap { downsampled(source: $0, maxPixelSize: size) }
         } else {
-            return source.flatMap(downsampled(source:))
+            return source.flatMap { downsampled(source: $0, maxPixelSize: size) }
         }
     }
 
     public static func downsampled(url: URL) -> CGImage? {
-        CGImageSourceCreateWithURL(url as CFURL, nil).flatMap(downsampled(source:))
+        CGImageSourceCreateWithURL(url as CFURL, nil).flatMap { downsampled(source: $0) }
     }
 
     static func hasAlpha(_ source: CGImageSource) -> Bool {
@@ -28,11 +28,11 @@ public enum PosterDecode {
         }
     }
 
-    static func downsampled(source: CGImageSource) -> CGImage? {
+    static func downsampled(source: CGImageSource, maxPixelSize size: Int = maxPixelSize) -> CGImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceThumbnailMaxPixelSize: size,
             kCGImageSourceShouldCacheImmediately: false,
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
