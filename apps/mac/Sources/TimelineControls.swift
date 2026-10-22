@@ -210,14 +210,51 @@ struct TimelinePlayheadHandle<Source: TimelinePlayheadSource>: View {
 
 struct TimelinePlayheadLine<Source: TimelinePlayheadSource>: View {
     let source: Source
+    var cap = false
     let x: (Double) -> CGFloat
 
     var body: some View {
-        Rectangle()
-            .fill(Color.accentColor)
-            .frame(width: 1.5)
-            .offset(x: x(source.timelinePlayheadTime))
+        if cap {
+
+            VStack(spacing: 0) {
+                PlayheadCap().fill(Color.accentColor).frame(width: 9, height: 6)
+                Rectangle().fill(Color.accentColor).frame(width: 2)
+            }
+            .frame(width: 9)
+            .offset(x: x(source.timelinePlayheadTime) - 4.5)
             .allowsHitTesting(false)
+        } else {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 1.5)
+                .offset(x: x(source.timelinePlayheadTime))
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct PlayheadCap: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct TimelinePageFollow<Source: TimelinePlayheadSource>: View {
+    let source: Source
+    let pageWidth: CGFloat
+    let x: (Double) -> CGFloat
+    let turned: (Int) -> Void
+
+    var body: some View {
+        let page = pageWidth > 0 ? Int(max(x(source.timelinePlayheadTime), 0) / pageWidth) : 0
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: page) { _, page in turned(page) }
     }
 }
 

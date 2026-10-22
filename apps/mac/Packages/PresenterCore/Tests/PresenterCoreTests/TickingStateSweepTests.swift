@@ -42,7 +42,7 @@ import Testing
 
         "timelinePlayheadTime": (
             "timelinePlayheadTime", /\btimelinePlayheadTime\b/,
-            ["TimelinePlayheadReadout", "TimelinePlayheadLine", "TimelinePlayheadHandle"]
+            ["TimelinePlayheadReadout", "TimelinePlayheadLine", "TimelinePlayheadHandle", "TimelinePageFollow"]
         ),
 
         "timecodeReading": (

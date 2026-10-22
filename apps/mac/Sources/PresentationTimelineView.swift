@@ -117,8 +117,12 @@ struct PresentationTimelineContext {
 struct PresentationTimelineStrip: View {
     let context: PresentationTimelineContext
     @Environment(\.runOnly) private var runOnly
-    @State private var width: CGFloat = 0
+    @State private var viewport: CGFloat = 0
+
+    @State private var pointsPerSecond: Double?
     @State private var startShown = false
+
+    static let defaultWindow = 60.0
 
     var body: some View {
         let clock = context.clock
@@ -203,28 +207,118 @@ struct PresentationTimelineStrip: View {
     }
 
     private func sections(length: Double) -> some View {
-        let x: (Double) -> CGFloat = { CGFloat(min(max($0 / length, 0), 1)) * width }
-        return VStack(spacing: 2) {
-            PresentationTimelineSectionsBar(context: context, length: length, x: x)
-                .frame(height: 18)
-                .frame(maxWidth: .infinity)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+        let pps = pointsPerSecond
+            ?? TimelineZoom.clamped(Double(max(viewport, 1)) / min(length, Self.defaultWindow), in: TimelineZoom.songRange)
 
-            PresentationTimelineStepsRow(context: context, x: x)
-                .frame(height: 12)
-                .frame(maxWidth: .infinity)
+        let inset: CGFloat = 7
+        let x: (Double) -> CGFloat = { inset + CGFloat(min(max($0, 0), length) * pps) }
+        let time: (CGFloat) -> Double = { Double(max($0 - inset, 0)) / pps }
+        let contentWidth = max(CGFloat(length * pps) + inset * 2, viewport)
+        return HStack(spacing: 4) {
+            PresentationTimelineFollowScroll(
+                context: context, contentWidth: contentWidth, viewport: viewport, x: x
+            ) {
+                VStack(spacing: 2) {
+                    PresentationTimelineSlideDots(context: context, x: x)
+                        .frame(width: contentWidth, height: 8, alignment: .leading)
+                    PresentationTimelineSectionsBar(context: context, length: length, page: viewport * 0.85, x: x)
+                        .frame(width: contentWidth, height: 18, alignment: .leading)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+                    PresentationTimelineStepsRow(context: context, x: x)
+                        .frame(width: contentWidth, height: 12, alignment: .leading)
+                }
+                .overlay(alignment: .topLeading) {
+                    if context.isCurrent {
+                        TimelinePlayheadLine(source: context.clock, cap: true, x: x)
+                            .frame(height: 42, alignment: .top)
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if !context.isPlaying { context.seek(to: time(value.location.x)) }
+                        }
+                        .onEnded { value in
+                            if context.isPlaying { context.seek(to: time(value.location.x)) }
+                        }
+                )
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
+            .timelinePinchZoom(current: { pps }, range: TimelineZoom.songRange) { pointsPerSecond = $0 }
+            Button {
+                pointsPerSecond = TimelineZoom.zoomedOut(pps, in: TimelineZoom.songRange)
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .help("Zoom out")
+            Button {
+                pointsPerSecond = TimelineZoom.zoomedIn(pps, in: TimelineZoom.songRange)
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .help("Zoom in")
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if !context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
+    }
+}
+
+struct PresentationTimelineFollowScroll<Content: View>: View {
+    let context: PresentationTimelineContext
+    let contentWidth: CGFloat
+    let viewport: CGFloat
+    let x: (Double) -> CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+
+        let page = max(viewport * 0.85, 1)
+        let pages = Int((contentWidth / page).rounded(.up))
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                content()
+                    .background(alignment: .topLeading) {
+
+                        HStack(spacing: 0) {
+                            ForEach(0..<max(pages, 1), id: \.self) { index in
+                                Color.clear
+                                    .frame(width: page, height: 1)
+                                    .id("page-\(index)")
+                            }
+                        }
+                    }
+            }
+            .background {
+                if context.isCurrent {
+                    TimelinePageFollow(source: context.clock, pageWidth: page, x: x) { index in
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo("page-\(index)", anchor: .leading)
+                        }
+                    }
                 }
-                .onEnded { value in
-                    if context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
-                }
-        )
+            }
+        }
+    }
+}
+
+struct PresentationTimelineSlideDots: View {
+    let context: PresentationTimelineContext
+    let x: (Double) -> CGFloat
+
+    var body: some View {
+        let blocks = context.blocks
+        let slides = (context.timeline?.cues ?? [])
+            .filter { $0.kind == .slide && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
+        ZStack(alignment: .leading) {
+            ForEach(slides, id: \.id) { cue in
+                Circle()
+                    .fill(Color.primary.opacity(0.8))
+                    .frame(width: 6, height: 6)
+                    .help(context.label(cue))
+                    .position(x: x(cue.at), y: 4)
+            }
+        }
     }
 }
 
@@ -233,27 +327,24 @@ struct PresentationTimelineStepsRow: View {
     let x: (Double) -> CGFloat
 
     var body: some View {
-        let cues = (context.timeline?.cues ?? []).filter { $0.kind != nil && $0.kind != .slide }
         ZStack(alignment: .leading) {
-            ForEach(cues, id: \.id) { cue in
-                let lane = cue.kind ?? .actions
-                let end = PresentationTimelines.end(of: cue, in: cues)
-                if lane.isBlock {
-                    let left = x(cue.at)
-                    let right = end.isFinite ? x(end) : left
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.45))
-                        .frame(width: max(right - left, 1), height: 1)
-                        .position(x: (left + right) / 2, y: 6)
-                }
+            ForEach(Self.placed(context.timeline?.cues ?? [], x: x), id: \.cue.id) { step in
+                let lane = step.cue.kind ?? .actions
                 Image(systemName: lane.symbol)
                     .font(.system(size: 8))
                     .foregroundStyle(.secondary)
                     .frame(width: 12, height: 12)
-                    .background(Color.cardSurface)
-                    .help("\(lane.title): \(context.label(cue))")
-                    .position(x: x(cue.at), y: 6)
+                    .help("\(lane.title): \(context.label(step.cue))")
+                    .position(x: step.x, y: 6)
             }
+        }
+    }
+
+    static func placed(_ cues: [TimelineCue], x: (Double) -> CGFloat) -> [(cue: TimelineCue, x: CGFloat)] {
+        var last = -CGFloat.infinity
+        return cues.filter { $0.kind != nil && $0.kind != .slide }.sorted { $0.at < $1.at }.map { cue in
+            last = max(x(cue.at), last + 13)
+            return (cue, last)
         }
     }
 }
@@ -263,7 +354,15 @@ struct PresentationTimelineSectionsBar: View {
     let length: Double
 
     var flat = false
+
+    var page: CGFloat?
     let x: (Double) -> CGFloat
+
+    private func namePositions(left: CGFloat, width: CGFloat) -> [CGFloat] {
+        guard let page, page > 0 else { return [left] }
+        let pages = stride(from: (left / page).rounded(.up) * page, to: left + width - 40, by: page)
+        return [left] + pages.filter { $0 > left + 60 }
+    }
 
     var body: some View {
         let timeline = context.timeline
@@ -271,9 +370,6 @@ struct PresentationTimelineSectionsBar: View {
         let spans = timeline.map {
             PresentationTimelines.sectionSpans($0.cues, blocks: blocks, length: length)
         } ?? []
-        let ticks = (timeline?.cues ?? [])
-            .filter { $0.kind == .slide && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
-            .map(\.at)
         let palette = context.model.groupColors
         ZStack(alignment: .leading) {
             if spans.isEmpty {
@@ -289,36 +385,29 @@ struct PresentationTimelineSectionsBar: View {
                 let spanWidth = max(x(span.end) - left - 1, 1)
                 let color = GroupColor.fill(section, palette: palette) ?? Color.secondary
                 if flat {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(section?.name ?? "")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Rectangle().fill(color.opacity(0.8)).frame(height: 3)
-                    }
-                    .frame(width: spanWidth, height: 18, alignment: .bottomLeading)
-                    .clipped()
-                    .position(x: left + spanWidth / 2, y: 9)
+                    Rectangle()
+                        .fill(color.opacity(0.8))
+                        .frame(width: spanWidth, height: 3)
+                        .position(x: left + spanWidth / 2, y: 16.5)
                 } else {
-                    Text(section?.name ?? "")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .padding(.horizontal, 3)
-                        .frame(width: spanWidth, height: 16, alignment: .leading)
-                        .background(color.opacity(0.35), in: RoundedRectangle(cornerRadius: 3))
-                        .clipped()
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color.opacity(0.35))
+                        .frame(width: spanWidth, height: 16)
                         .position(x: left + spanWidth / 2, y: 9)
                 }
+                ForEach(namePositions(left: left, width: spanWidth), id: \.self) { at in
+                    let room = min(left + spanWidth - at - 6, 140)
+                    if room > 8 {
+                        Text(section?.name ?? "")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(flat ? .secondary : .primary)
+                            .lineLimit(1)
+                            .frame(width: room, alignment: .leading)
+                            .position(x: at + 3 + room / 2, y: flat ? 6 : 9)
+                    }
+                }
             }
-            ForEach(ticks, id: \.self) { at in
-                Rectangle()
-                    .fill(Color.primary.opacity(0.55))
-                    .frame(width: 1, height: flat ? 6 : 12)
-                    .position(x: x(at), y: flat ? 15 : 9)
-                    .allowsHitTesting(false)
-            }
-            if context.isCurrent {
+            if context.isCurrent, flat {
                 TimelinePlayheadLine(source: context.clock, x: x)
             }
         }
@@ -441,14 +530,14 @@ struct PresentationTimelineLanes: View {
 
         let display = cues.isEmpty ? 30 : context.shownLength
         let pps = pointsPerSecond
-            ?? TimelineZoom.fit(seconds: display, viewportWidth: viewport, reserve: 0, in: TimelineZoom.songRange)
+            ?? TimelineZoom.fit(seconds: min(display, 45), viewportWidth: viewport, reserve: 0, in: TimelineZoom.songRange)
             ?? 12
         let map = TimelineMap(
             segments: [TimelineSegment(start: 0, displayDuration: display, width: CGFloat(display * pps))],
             pointsPerSecond: CGFloat(pps))
         let visible = visibleLanes(cues)
         VStack(alignment: .leading, spacing: 6) {
-            toolbar(cues, pps: pps)
+            toolbar(cues, pps: pps, display: display)
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
 
@@ -468,7 +557,9 @@ struct PresentationTimelineLanes: View {
                 }
 
                 .frame(width: 104, alignment: .leading)
-                ScrollView(.horizontal) {
+                PresentationTimelineFollowScroll(
+                    context: context, contentWidth: map.width, viewport: viewport, x: { map.x(ofTime: $0) }
+                ) {
                     lanes(cues, visible: visible, map: map)
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
@@ -512,7 +603,7 @@ struct PresentationTimelineLanes: View {
         }
     }
 
-    private func toolbar(_ cues: [TimelineCue], pps: Double) -> some View {
+    private func toolbar(_ cues: [TimelineCue], pps: Double, display: Double) -> some View {
         HStack(spacing: 8) {
             if let cue = cues.first(where: { $0.id == selection }) {
                 Text(context.label(cue))
@@ -541,7 +632,11 @@ struct PresentationTimelineLanes: View {
             }
             Spacer(minLength: 8)
             TimelineZoomControls(
-                pointsPerSecond: pps, zoom: { pointsPerSecond = $0 }, fit: { pointsPerSecond = nil },
+                pointsPerSecond: pps, zoom: { pointsPerSecond = $0 },
+                fit: {
+                    pointsPerSecond = TimelineZoom.fit(
+                        seconds: display, viewportWidth: viewport, reserve: 0, in: TimelineZoom.songRange)
+                },
                 fitHelp: "Fit the song to the width", range: TimelineZoom.songRange)
         }
         .foregroundStyle(.secondary)
@@ -638,7 +733,9 @@ struct PresentationTimelineLanes: View {
                 }
             }
             .frame(width: map.width, height: Self.rulerHeight, alignment: .topLeading)
-            PresentationTimelineSectionsBar(context: context, length: context.shownLength, flat: true) { map.x(ofTime: $0) }
+            PresentationTimelineSectionsBar(
+                context: context, length: context.shownLength, flat: true, page: viewport * 0.85
+            ) { map.x(ofTime: $0) }
                 .frame(width: map.width, height: Self.sectionsHeight, alignment: .leading)
                 .allowsHitTesting(false)
             ZStack(alignment: .topLeading) {
