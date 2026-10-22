@@ -1194,6 +1194,8 @@ struct ShellView: View {
                     versionNameText = ""
                     closeServicePickerThen { versionNaming = ServiceVersionTarget(serviceID: entry.id, versionID: nil) }
                 }
+                Button("Select All") { selectAllServices() }
+
                 Divider()
                 Button("Delete…", role: .destructive) {
                     closeServicePickerThen { pendingServiceDelete = ids }
@@ -1206,12 +1208,12 @@ struct ShellView: View {
                         }
                     }
                 }
+                Button("Select All") { selectAllServices() }
+                Divider()
                 Button("Delete \(ids.count) Services…", role: .destructive) {
                     closeServicePickerThen { pendingServiceDelete = ids }
                 }
             }
-            Divider()
-            Button("Select All") { selectAllServices() }
         }
     }
 

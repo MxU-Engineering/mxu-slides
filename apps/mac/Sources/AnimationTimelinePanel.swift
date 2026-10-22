@@ -1567,190 +1567,228 @@ struct AnimationTimelinePanel: View {
             Button(fix.label) { fix.apply() }
             Divider()
         }
-        if let (_, step) = model.animationStep(id: block.stepID) {
-            Menu("Plays") {
+
+        Section("Effect") {
+            Button("Change Effect…") {
+                model.selectAnimationStep(block.stepID)
+                effectPickerID = DialsTarget(id: block.stepID)
+            }
+            Menu("Add Effect To") {
+
                 ForEach(Array(timeline.columns.enumerated()), id: \.offset) { _, column in
-                    Button {
-                        model.moveTimelineStep(
-                            block.stepID, into: slot(for: column.group), atOffset: block.startOffset
-                        )
-                    } label: {
-                        if column.group == block.group {
-                            Label(columnTitle(column.group), systemImage: "checkmark")
-                        } else {
-                            Text(columnTitle(column.group))
-                        }
+                    Button(columnTitle(column.group)) {
+                        armAddFromCard(block, slot: slot(for: column.group))
                     }
                 }
                 Button("New Click") {
-                    model.moveTimelineStep(
-                        block.stepID, into: .click(timeline.columns.count), atOffset: 0
-                    )
+                    armAddFromCard(block, slot: .click(timeline.columns.count))
                 }
             }
-            Menu("Speed") {
-                ForEach(SlideEditorModel.AnimationSpeed.allCases, id: \.self) { speed in
-                    if let seconds = speed.seconds {
+            Button("Preview from Here") {
+                if let start = previewStart(of: block, in: timeline) {
+                    model.playAnimationPreview(from: max(start - 0.15, 0))
+                }
+            }
+        }
+        if let (_, step) = model.animationStep(id: block.stepID) {
+            Section("Timing") {
+                Menu("Plays: \(columnTitle(block.group))") {
+                    ForEach(Array(timeline.columns.enumerated()), id: \.offset) { _, column in
                         Button {
-                            model.resizeTimelineStep(block.stepID, duration: seconds)
+                            model.moveTimelineStep(
+                                block.stepID, into: slot(for: column.group), atOffset: block.startOffset
+                            )
                         } label: {
-                            let current = SlideEditorModel.AnimationSpeed.of(step.durationSeconds) == speed
-                            if current {
-                                Label(speed.rawValue.capitalized + String(format: " · %.1fs", seconds), systemImage: "checkmark")
+                            if column.group == block.group {
+                                Label(columnTitle(column.group), systemImage: "checkmark")
                             } else {
-                                Text(speed.rawValue.capitalized + String(format: " · %.1fs", seconds))
+                                Text(columnTitle(column.group))
+                            }
+                        }
+                    }
+                    Button("New Click") {
+                        model.moveTimelineStep(
+                            block.stepID, into: .click(timeline.columns.count), atOffset: 0
+                        )
+                    }
+                }
+                Menu("Speed: \(Self.speedValue(step))") {
+                    ForEach(SlideEditorModel.AnimationSpeed.allCases, id: \.self) { speed in
+                        if let seconds = speed.seconds {
+                            Button {
+                                model.resizeTimelineStep(block.stepID, duration: seconds)
+                            } label: {
+                                let current = SlideEditorModel.AnimationSpeed.of(step.durationSeconds) == speed
+                                if current {
+                                    Label(speed.rawValue.capitalized + String(format: " · %.1fs", seconds), systemImage: "checkmark")
+                                } else {
+                                    Text(speed.rawValue.capitalized + String(format: " · %.1fs", seconds))
+                                }
+                            }
+                        }
+                    }
+                    Text(String(format: "Custom · %.1fs (drag the grip)", step.durationSeconds))
+                }
+                Menu("Delay: \(Self.delayValue(step))") {
+                    ForEach([0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0], id: \.self) { value in
+                        Button {
+                            model.updateAnimationStep(block.stepID) {
+                                $0.delaySeconds = value == 0 ? nil : value
+                            }
+                        } label: {
+                            let title = value == 0 ? "None" : String(format: "%gs", value)
+                            if abs((step.delaySeconds ?? 0) - value) < 0.01 {
+                                Label(title, systemImage: "checkmark")
+                            } else {
+                                Text(title)
+                            }
+                        }
+                    }
+                    Text(String(format: "Custom · %.2fs (drag the card)", step.delaySeconds ?? 0))
+                }
+                Menu("Ramp: \(Self.rampValue(step))") {
+                    ramp(nil, "Default", step)
+                    ramp(AnimationRamp.none, "Linear", step)
+                    ramp(.in, "Ease In", step)
+                    ramp(.out, "Ease Out", step)
+                    ramp(.both, "Ease In · Out", step)
+                }
+                if block.linked || model.stepEntries.first(where: { $0.step.id == block.stepID })?.step.trigger == .withPrevious {
+                    Button(block.linked ? "Unlink (a plain delay)" : "Link After Previous") {
+                        model.toggleStepLink(block.stepID)
+                    }
+                }
+            }
+            Section("Motion") {
+                if step.animation == .move || step.animation == .wipe {
+                    Menu((step.kind == .out ? "Leaves To: " : "Enters From: ") + (step.edge?.displayName ?? "Default")) {
+                        ForEach([AnimationEdge.left, .right, .top, .bottom], id: \.self) { edge in
+                            Button {
+                                model.updateAnimationStep(block.stepID) { $0.edge = edge }
+                            } label: {
+                                if step.edge == edge {
+                                    Label(edge.displayName, systemImage: "checkmark")
+                                } else {
+                                    Text(edge.displayName)
+                                }
                             }
                         }
                     }
                 }
-                Text(String(format: "Custom · %.1fs (drag the grip)", step.durationSeconds))
-            }
-            Menu("Delay") {
-                ForEach([0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0], id: \.self) { value in
+                Menu("With Fade: \(step.withFade == true ? "On" : "Off")") {
+                    Button {
+                        model.updateAnimationStep(block.stepID) { $0.withFade = true }
+                    } label: {
+                        if step.withFade == true { Label("On", systemImage: "checkmark") } else { Text("On") }
+                    }
+                    Button {
+                        model.updateAnimationStep(block.stepID) { $0.withFade = nil }
+                    } label: {
+                        if step.withFade != true { Label("Off", systemImage: "checkmark") } else { Text("Off") }
+                    }
+                }
+                Menu("Camera Push: \(Self.pushValue(step))") {
+                    Button {
+                        model.updateAnimationStep(block.stepID) { $0.videoPush = nil }
+                    } label: {
+                        if step.videoPush == nil { Label("Off", systemImage: "checkmark") } else { Text("Off") }
+                    }
                     Button {
                         model.updateAnimationStep(block.stepID) {
-                            $0.delaySeconds = value == 0 ? nil : value
+                            var push = $0.videoPush ?? VideoPush()
+                            push.mode = .fill
+                            $0.videoPush = push
                         }
                     } label: {
-                        let title = value == 0 ? "None" : String(format: "%gs", value)
-                        if abs((step.delaySeconds ?? 0) - value) < 0.01 {
-                            Label(title, systemImage: "checkmark")
+                        if step.videoPush != nil, (step.videoPush?.mode ?? .fill) == .fill {
+                            Label("Push (crop in)", systemImage: "checkmark")
+                        } else { Text("Push (crop in)") }
+                    }
+                    Button {
+                        model.updateAnimationStep(block.stepID) {
+                            var push = $0.videoPush ?? VideoPush()
+                            push.mode = .fit
+                            $0.videoPush = push
+                        }
+                    } label: {
+                        if step.videoPush?.mode == .fit {
+                            Label("Push (letterbox)", systemImage: "checkmark")
+                        } else { Text("Push (letterbox)") }
+                    }
+                    Button {
+                        model.updateAnimationStep(block.stepID) {
+                            var push = $0.videoPush ?? VideoPush()
+                            push.mode = .blurBackground
+                            $0.videoPush = push
+                        }
+                    } label: {
+                        if step.videoPush?.mode == .blurBackground {
+                            Label("Blur Background", systemImage: "checkmark")
+                        } else { Text("Blur Background") }
+                    }
+                    if let push = step.videoPush, (push.mode ?? .fill) != .blurBackground {
+                        Menu("Video Sits") {
+                            ForEach([VideoPushAlignment.center, .left, .right, .top, .bottom], id: \.self) { side in
+                                Button {
+                                    model.updateAnimationStep(block.stepID) { $0.videoPush?.alignment = side }
+                                } label: {
+                                    let title = String(describing: side).capitalized
+                                    if (push.alignment ?? .center) == side {
+                                        Label(title, systemImage: "checkmark")
+                                    } else { Text(title) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if step.kind == .in {
+                    Button {
+                        model.setInCustomStart(block.stepID, enabled: step.fromObject == nil)
+                    } label: {
+                        if step.fromObject != nil {
+                            Label("Manual Enter Position", systemImage: "checkmark")
                         } else {
-                            Text(title)
-                        }
-                    }
-                }
-                Text(String(format: "Custom · %.2fs (drag the card)", step.delaySeconds ?? 0))
-            }
-            Menu("Ramp") {
-                ramp(nil, "Default", step)
-                ramp(AnimationRamp.none, "Linear", step)
-                ramp(.in, "Ease In", step)
-                ramp(.out, "Ease Out", step)
-                ramp(.both, "Ease In · Out", step)
-            }
-            if step.animation == .move || step.animation == .wipe {
-                Menu(step.kind == .out ? "Leaves To" : "Enters From") {
-                    ForEach([AnimationEdge.left, .right, .top, .bottom], id: \.self) { edge in
-                        Button {
-                            model.updateAnimationStep(block.stepID) { $0.edge = edge }
-                        } label: {
-                            if step.edge == edge {
-                                Label(edge.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(edge.displayName)
-                            }
+                            Text("Set Manual Enter Position…")
                         }
                     }
                 }
             }
-            Menu("With Fade") {
-                Button {
-                    model.updateAnimationStep(block.stepID) { $0.withFade = true }
-                } label: {
-                    if step.withFade == true { Label("On", systemImage: "checkmark") } else { Text("On") }
-                }
-                Button {
-                    model.updateAnimationStep(block.stepID) { $0.withFade = nil }
-                } label: {
-                    if step.withFade != true { Label("Off", systemImage: "checkmark") } else { Text("Off") }
-                }
-            }
-            Menu("Camera Push") {
-                Button {
-                    model.updateAnimationStep(block.stepID) { $0.videoPush = nil }
-                } label: {
-                    if step.videoPush == nil { Label("Off", systemImage: "checkmark") } else { Text("Off") }
-                }
-                Button {
-                    model.updateAnimationStep(block.stepID) {
-                        var push = $0.videoPush ?? VideoPush()
-                        push.mode = .fill
-                        $0.videoPush = push
-                    }
-                } label: {
-                    if step.videoPush != nil, (step.videoPush?.mode ?? .fill) == .fill {
-                        Label("Push (crop in)", systemImage: "checkmark")
-                    } else { Text("Push (crop in)") }
-                }
-                Button {
-                    model.updateAnimationStep(block.stepID) {
-                        var push = $0.videoPush ?? VideoPush()
-                        push.mode = .fit
-                        $0.videoPush = push
-                    }
-                } label: {
-                    if step.videoPush?.mode == .fit {
-                        Label("Push (letterbox)", systemImage: "checkmark")
-                    } else { Text("Push (letterbox)") }
-                }
-                Button {
-                    model.updateAnimationStep(block.stepID) {
-                        var push = $0.videoPush ?? VideoPush()
-                        push.mode = .blurBackground
-                        $0.videoPush = push
-                    }
-                } label: {
-                    if step.videoPush?.mode == .blurBackground {
-                        Label("Blur Background", systemImage: "checkmark")
-                    } else { Text("Blur Background") }
-                }
-                if let push = step.videoPush, (push.mode ?? .fill) != .blurBackground {
-                    Menu("Video Sits") {
-                        ForEach([VideoPushAlignment.center, .left, .right, .top, .bottom], id: \.self) { side in
-                            Button {
-                                model.updateAnimationStep(block.stepID) { $0.videoPush?.alignment = side }
-                            } label: {
-                                let title = String(describing: side).capitalized
-                                if (push.alignment ?? .center) == side {
-                                    Label(title, systemImage: "checkmark")
-                                } else { Text(title) }
-                            }
-                        }
-                    }
-                }
-            }
-            if step.kind == .in {
-                Button {
-                    model.setInCustomStart(block.stepID, enabled: step.fromObject == nil)
-                } label: {
-                    if step.fromObject != nil {
-                        Label("Manual Enter Position", systemImage: "checkmark")
-                    } else {
-                        Text("Set Manual Enter Position…")
-                    }
-                }
-            }
-            if block.linked || model.stepEntries.first(where: { $0.step.id == block.stepID })?.step.trigger == .withPrevious {
-                Button(block.linked ? "Unlink (a plain delay)" : "Link After Previous") {
-                    model.toggleStepLink(block.stepID)
-                }
-            }
-            Divider()
         }
-        Button("Change Effect…") {
-            model.selectAnimationStep(block.stepID)
-            effectPickerID = DialsTarget(id: block.stepID)
-        }
-        Menu("Add Effect To") {
-
-            ForEach(Array(timeline.columns.enumerated()), id: \.offset) { _, column in
-                Button(columnTitle(column.group)) {
-                    armAddFromCard(block, slot: slot(for: column.group))
-                }
-            }
-            Button("New Click") {
-                armAddFromCard(block, slot: .click(timeline.columns.count))
-            }
-        }
-        Button("Preview from Here") {
-            if let start = previewStart(of: block, in: timeline) {
-                model.playAnimationPreview(from: max(start - 0.15, 0))
-            }
+        Section("Card") {
+            Button("Duplicate") { model.duplicateAnimationStep(block.stepID) }
         }
         Divider()
-        Button("Duplicate") { model.duplicateAnimationStep(block.stepID) }
         Button("Remove", role: .destructive) { model.removeAnimationStep(block.stepID) }
+    }
+
+    private static func speedValue(_ step: AnimationStep) -> String {
+        let speed = SlideEditorModel.AnimationSpeed.of(step.durationSeconds)
+        return speed == .custom
+            ? String(format: "%.1fs", step.durationSeconds)
+            : speed.rawValue.capitalized
+    }
+
+    private static func delayValue(_ step: AnimationStep) -> String {
+        (step.delaySeconds ?? 0) < 0.01 ? "None" : String(format: "%gs", step.delaySeconds ?? 0)
+    }
+
+    private static func rampValue(_ step: AnimationStep) -> String {
+        switch step.ramp {
+        case nil: "Default"
+        case .some(.none): "Linear"
+        case .some(.in): "Ease In"
+        case .some(.out): "Ease Out"
+        case .some(.both): "Ease In · Out"
+        }
+    }
+
+    private static func pushValue(_ step: AnimationStep) -> String {
+        switch step.videoPush.map({ $0.mode ?? .fill }) {
+        case nil: "Off"
+        case .some(.fit): "Letterbox"
+        case .some(.blurBackground): "Blur Background"
+        default: "Crop In"
+        }
     }
 
     @ViewBuilder

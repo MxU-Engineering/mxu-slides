@@ -936,6 +936,11 @@ struct SlideEditorView: View {
                             .reportingGlobalFrame(id: entry.object.id, into: $objectRowFrames)
 
                             .contextMenu {
+
+                                Button("Rename…") {
+                                    objectNameDraft = entry.object.name
+                                    renamingObjectID = entry.object.id
+                                }
                                 Button(entry.object.hidden == true ? "Show" : "Hide") {
                                     model.updateObject(id: entry.object.id) {
                                         $0.hidden = $0.hidden == true ? nil : true
@@ -955,10 +960,6 @@ struct SlideEditorView: View {
                                     )
                                 )
                                 Divider()
-                                Button("Rename") {
-                                    objectNameDraft = entry.object.name
-                                    renamingObjectID = entry.object.id
-                                }
                                 Button("Delete", role: .destructive) {
                                     model.setSelection([entry.object.id])
                                     model.deleteSelectedObjects()

@@ -338,7 +338,8 @@ struct SchedulerView: View {
             if lineTargetID == folder.id { ControlBoardInsertionLine() }
         }
         .contextMenu {
-            Menu("Enabled") {
+
+            Menu("Enabled: \(folder.enabled == false ? "Off" : "On")") {
                 Picker("Enabled", selection: Binding(
                     get: { folder.enabled ?? true },
                     set: { value in
@@ -501,7 +502,9 @@ struct SchedulerView: View {
             }
             .contextMenu {
                 Button("Run Now") { scheduler?.runNow(triggerID: id) }
-                Menu("Enabled") {
+
+                Menu("Enabled: " + (trigger.enabled == false ? "Off"
+                    : ScheduleMath.snoozed(trigger, at: Date(), calendar: .current) ? "Paused" : "On")) {
                     Picker("Enabled", selection: Binding(
                         get: { trigger.enabled ?? true },
                         set: { value in
