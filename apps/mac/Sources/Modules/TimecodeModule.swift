@@ -43,20 +43,20 @@ struct TimecodeModule: View {
                     get: { byOrder },
                     set: { on in model.updateService(serviceID) { $0.timecodeByOrder = on ? true : nil } }
                 )) {
-                    Text("Saved with each song").tag(false)
-                    Text("In service order").tag(true)
+                    Text("By saved times").tag(false)
+                    Text("By service order").tag(true)
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
             } label: {
-                Text(byOrder ? "In service order" : "Saved with each song")
+                Text(byOrder ? "By service order" : "By saved times")
                     .font(.caption)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .disabled(runOnly)
             .accessibilityLabel("Start times")
-            .help("Start times. In service order: items that play from timecode start at 01:00, 02:00, … in run order, for this service only")
+            .help("Start times. By service order: items that play from timecode start at 01:00, 02:00, … in run order, for this service only")
         }
     }
 

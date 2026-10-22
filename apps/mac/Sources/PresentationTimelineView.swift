@@ -465,11 +465,11 @@ struct PresentationTimelineStartPopover: View {
                     Text("· by order in this service")
                         .foregroundStyle(.secondary)
                 }
-                Button("Use the song's own start") { context.setByOrder(false) }
+                Button("Use saved times") { context.setByOrder(false) }
                     .buttonStyle(.link)
                     .controlSize(.small)
                     .disabled(runOnly)
-                    .help("Start times for this service: Saved with each song")
+                    .help("Start times for this service: By saved times")
             }
             HStack {
                 TextField("HH:MM:SS:FF", text: $text)
@@ -507,7 +507,7 @@ struct PresentationTimelineStartPopover: View {
                         Button("Use service order") { context.setByOrder(true) }
                             .buttonStyle(.link)
                             .controlSize(.small)
-                            .help("Start times for this service: In service order (01:00, 02:00, … in run order)")
+                            .help("Start times for this service: By service order (01:00, 02:00, … in run order)")
                     }
                     .disabled(runOnly)
                 }
