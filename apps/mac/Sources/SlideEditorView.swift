@@ -1105,14 +1105,6 @@ struct SlideEditorView: View {
                 Spacer(minLength: 8)
                 modePicker(model)
             }
-            HStack(spacing: 12) {
-                addObjectTools(model)
-                Spacer()
-                compactSongTools(model)
-                undoRedoTools(model)
-                Spacer(minLength: 8)
-                modePicker(model)
-            }
         }
         .labelStyle(.iconOnly)
         .padding(.horizontal, 10)
@@ -1169,7 +1161,6 @@ struct SlideEditorView: View {
         if !model.isThemeEditor, !model.isSingleComposition {
             ToolbarCluster {
                 chordsToggle(model)
-                    .labelStyle(.titleAndIcon)
                 if model.showsChords {
                     Button("Chart\u{2026}") { showingChords = true }
                         .help("Chord Chart — every line's chords as ChordPro text")
@@ -1177,25 +1168,12 @@ struct SlideEditorView: View {
             }
             .fixedSize()
             ToolbarCluster {
-                Button("Reflow") { showingReflow = true }
-                    .help("Reflow — paste text, get slides")
-            }
-            .fixedSize()
-        }
-    }
-
-    @ViewBuilder
-    private func compactSongTools(_ model: SlideEditorModel) -> some View {
-        if !model.isThemeEditor, !model.isSingleComposition {
-            ToolbarCluster {
-                chordsToggle(model)
-                ToolbarCellMenu {
-                    Button("Chord Chart\u{2026}") { showingChords = true }
-                    Button("Reflow\u{2026}") { showingReflow = true }
+                Button {
+                    showingReflow = true
                 } label: {
-                    Label("More", systemImage: "ellipsis")
+                    Label("Reflow", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
                 }
-                .help("Chord Chart and Reflow")
+                .help("Reflow — paste text, get slides")
             }
             .fixedSize()
         }

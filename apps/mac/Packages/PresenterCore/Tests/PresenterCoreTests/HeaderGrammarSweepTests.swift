@@ -28,7 +28,8 @@ import Testing
         for gone in ["ArrangementPopover", "exportPresentation", "toggleThemeContent", "setTheme(", "setBackgroundFill", ".pickerStyle(.segmented)"] {
             #expect(!header.contains(gone), "\(gone) left the editor header")
         }
-        #expect(header.contains("Button(\"Reflow\")"), "Reflow is worded")
+        #expect(header.contains("Label(\"Reflow\", systemImage: \"point.bottomleft.forward.to.point.topright.scurvepath\")"), "Reflow is an icon")
+        #expect(!header.contains(".labelStyle(.titleAndIcon)"), "the header's tools are icons; only Chart… is a word")
         #expect(header.contains("Button(\"Chart\\u{2026}\")"), "Chart… sits beside Chords while it is on")
         #expect(header.contains("ToolbarSegments("), "Design / Animate is a tool group, not the stock segmented control")
     }
