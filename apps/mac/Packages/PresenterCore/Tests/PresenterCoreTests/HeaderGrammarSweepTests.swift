@@ -53,6 +53,9 @@ import Testing
             #expect(chip.contains(".headerItemLabel()"), "\(name) stands the header height")
         }
         #expect(try source("ClearChip.swift").contains(".headerItemBackground(tint: anyContent ? .green : nil)"))
+        let preview = try source("LivePanel.swift")
+        let picker = try slice(preview, from: "private var screenPicker: some View {", to: ".help(\"Which screen or layout")
+        #expect(picker.contains(".headerItemBackground()") && !picker.contains("strokeBorder"), "the Output Preview picker is bare too")
         let broadcast = try source("BroadcastStatusChip.swift")
         let label = try slice(broadcast, from: "private var chipLabel: some View {", to: "private var liveCaption")
         #expect(label.contains("(tint ?? .clear).opacity(0.12)"), "the on-air tint washes the chip inside its ticking label")
