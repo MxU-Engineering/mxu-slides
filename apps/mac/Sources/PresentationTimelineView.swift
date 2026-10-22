@@ -203,12 +203,17 @@ struct PresentationTimelineStrip: View {
     }
 
     private func sections(length: Double) -> some View {
-        PresentationTimelineSectionsBar(context: context, length: length, markers: true) {
-            CGFloat(min(max($0 / length, 0), 1)) * width
+        let x: (Double) -> CGFloat = { CGFloat(min(max($0 / length, 0), 1)) * width }
+        return VStack(spacing: 2) {
+            PresentationTimelineSectionsBar(context: context, length: length, x: x)
+                .frame(height: 18)
+                .frame(maxWidth: .infinity)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+
+            PresentationTimelineStepsRow(context: context, x: x)
+                .frame(height: 12)
+                .frame(maxWidth: .infinity)
         }
-        .frame(height: 18)
-        .frame(maxWidth: .infinity)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .contentShape(Rectangle())
         .gesture(
@@ -223,11 +228,39 @@ struct PresentationTimelineStrip: View {
     }
 }
 
+struct PresentationTimelineStepsRow: View {
+    let context: PresentationTimelineContext
+    let x: (Double) -> CGFloat
+
+    var body: some View {
+        let cues = (context.timeline?.cues ?? []).filter { $0.kind != nil && $0.kind != .slide }
+        ZStack(alignment: .leading) {
+            ForEach(cues, id: \.id) { cue in
+                let lane = cue.kind ?? .actions
+                let end = PresentationTimelines.end(of: cue, in: cues)
+                if lane.isBlock {
+                    let left = x(cue.at)
+                    let right = end.isFinite ? x(end) : left
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.45))
+                        .frame(width: max(right - left, 1), height: 1)
+                        .position(x: (left + right) / 2, y: 6)
+                }
+                Image(systemName: lane.symbol)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12, height: 12)
+                    .background(Color.cardSurface)
+                    .help("\(lane.title): \(context.label(cue))")
+                    .position(x: x(cue.at), y: 6)
+            }
+        }
+    }
+}
+
 struct PresentationTimelineSectionsBar: View {
     let context: PresentationTimelineContext
     let length: Double
-
-    var markers = false
 
     var flat = false
     let x: (Double) -> CGFloat
@@ -285,32 +318,12 @@ struct PresentationTimelineSectionsBar: View {
                     .position(x: x(at), y: flat ? 15 : 9)
                     .allowsHitTesting(false)
             }
-            if markers {
-                ForEach(markerSteps(timeline), id: \.key) { step in
-                    let lane = step.cue.kind ?? .actions
-                    Image(systemName: lane.symbol)
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 13, height: 13)
-                        .background(lane.tint.opacity(step.out ? 0.35 : 0.9), in: Circle())
-                        .help(context.label(step.cue) + (step.out ? " ends" : ""))
-                        .position(x: x(step.at), y: 9)
-                }
-            }
             if context.isCurrent {
                 TimelinePlayheadLine(source: context.clock, x: x)
             }
         }
     }
 
-    private func markerSteps(_ timeline: PresentationTimeline?) -> [(key: String, cue: TimelineCue, at: Double, out: Bool)] {
-        let cues = timeline?.cues ?? []
-        return cues.filter { $0.kind != .slide && $0.kind != nil }.flatMap { cue in
-            let end = PresentationTimelines.end(of: cue, in: cues)
-            let out = (cue.kind?.clearsAtOut ?? false) && end.isFinite
-            return [(cue.id, cue, cue.at, false)] + (out ? [(cue.id + ".out", cue, end, true)] : [])
-        }
-    }
 }
 
 extension PresentationTimelineContext {
@@ -667,9 +680,12 @@ struct PresentationTimelineLanes: View {
         let end = PresentationTimelines.end(of: cue, in: cues)
 
         let next = cues.filter { $0.kind == cue.kind && $0.at > cue.at }.map(\.at).min()
+
+        let pin = cue.kind == .actions
+        let gap = (next.map { map.x(ofTime: $0) } ?? left + 140) - left
         let width: CGFloat = isBlock
             ? (end.isFinite ? map.x(ofTime: end) - left : max(map.width - left, TimelineBlockEdit.minimumWidth))
-            : min(max((next.map { map.x(ofTime: $0) } ?? left + 90) - left - 1, 10), 90)
+            : pin ? min(max(gap - 4, 16), 140) : min(max(gap - 1, 10), 90)
 
         let mode = edit.mode(of: cue.id).map { isBlock ? $0 : .move }
         let span = TimelineBlockEdit.liveSpan(x: left, width: width, mode: mode, delta: edit.delta)
@@ -677,13 +693,14 @@ struct PresentationTimelineLanes: View {
 
         let section = cue.kind == .slide ? context.presentation.sections?.first { $0.id == cue.sectionId } : nil
         let tint = orphan ? .red : GroupColor.fill(section, palette: context.model.groupColors) ?? (cue.kind?.tint ?? .gray)
-        return TimelineBlockCard(
-            width: span.width, tint: tint, selected: selection == cue.id
-        ) {
-            Text(cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue))
-                .font(.system(size: 10, weight: cue.kind == .slide ? .semibold : .regular).monospacedDigit())
-                .lineLimit(1)
-        }
+        let face: AnyView = pin
+            ? AnyView(actionPin(cue, width: span.width, selected: selection == cue.id))
+            : AnyView(TimelineBlockCard(width: span.width, tint: tint, selected: selection == cue.id) {
+                Text(cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue))
+                    .font(.system(size: 10, weight: cue.kind == .slide ? .semibold : .regular).monospacedDigit())
+                    .lineLimit(1)
+            })
+        return face
         .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : context.label(cue))
         .timelineBlockGestures(
             id: cue.id, anchor: anchor, edit: $edit, frames: $frames,
@@ -716,7 +733,29 @@ struct PresentationTimelineLanes: View {
             }
         }
 
-        .position(x: span.x + span.width / 2, y: Self.laneHeight / 2)
+        .position(x: span.x + span.width / 2 - (pin ? Self.pinSize / 2 : 0), y: Self.laneHeight / 2)
+    }
+
+    static let pinSize: CGFloat = 16
+
+    private func actionPin(_ cue: TimelineCue, width: CGFloat, selected: Bool) -> some View {
+        HStack(spacing: 3) {
+
+            Rectangle()
+                .fill(selected ? Color.accentColor : Color.secondary)
+                .frame(width: selected ? 2 : 1, height: Self.laneHeight - 4)
+                .frame(width: Self.pinSize)
+            Image(systemName: TimelineLane.actions.symbol)
+                .font(.system(size: 9))
+            Text(context.label(cue))
+                .font(.system(size: 10))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+        .frame(width: width, height: Self.laneHeight, alignment: .leading)
+        .contentShape(Rectangle())
+        .clipped()
     }
 
     private func move(
@@ -814,15 +853,15 @@ extension TimelineLane {
 
     var symbol: String {
         switch self {
-        case .alerts: "exclamationmark.bubble.fill"
+        case .alerts: "exclamationmark.bubble"
         case .overlays: "rectangle.bottomthird.inset.filled"
-        case .slide: "rectangle.fill"
-        case .videos: "play.rectangle.fill"
-        case .stillGraphics: "photo.fill"
-        case .loopingVideos: "film.fill"
-        case .videoInput: "video.fill"
+        case .slide: "rectangle"
+        case .videos: "play.rectangle"
+        case .stillGraphics: "photo"
+        case .loopingVideos: "film"
+        case .videoInput: "video"
         case .audio: "music.note"
-        case .actions: "bolt.fill"
+        case .actions: "bolt"
         }
     }
 }
