@@ -16,6 +16,8 @@ final class TracksController {
     private var sentDevice: String??
     private var refreshQueued = false
 
+    private var songChannels: Set<String> = []
+
     var onFoundPlaying: ((TracksPlayerStatus) -> Void)?
 
     nonisolated static let playerName = "MxU Tracks Player"
@@ -73,6 +75,7 @@ final class TracksController {
 
     func play(_ song: MultitrackSong, from position: Double) {
         driving.value = song.id
+        songChannels = Set(song.stems.map(\.channelId))
         refresh()
         client.send(.cue(song: song, at: position))
         client.send(.play(hostTime: 0))
@@ -169,7 +172,7 @@ final class TracksController {
         guard let model, let mixer else { return }
         let channels = model.trackChannels
         seedSends(channels)
-        let resolved = Self.routing(channels: channels, mixer: mixer)
+        let resolved = Self.routing(channels: channels, extra: songChannels, mixer: mixer)
         guard client.isConnected || driving.value != nil else { return }
         if sentDevice != .some(resolved.deviceUID) {
             sentDevice = .some(resolved.deviceUID)
@@ -188,48 +191,41 @@ final class TracksController {
     }
 
     static func routing(
-        channels: [TrackChannel], mixer: AudioMixerController
+        channels: [TrackChannel], extra: Set<String> = [], mixer: AudioMixerController
     ) -> (routing: MultitrackRouting, deviceUID: String?) {
-        let mixes = AudioMixInventory.shared.entries
-        let defaultUID = AudioDeviceList.defaultOutputDevice()?.uid
+        let defaultUID = AudioDeviceList.defaultOutputDevice()?.uid ?? ""
         let devices = AudioDeviceList.outputDevices()
-        let trackChannels = channels.map { channel -> MultitrackRouting.Channel in
+        let known = Set(channels.map(\.id))
+        let all = channels + extra.subtracting(known).sorted().map { TrackChannel(id: $0, name: $0) }
+        let trackChannels = all.map { channel -> MultitrackRouting.Channel in
             var sends = mixer.channelSends("track:\(channel.id)")
             if let route = mixId(channel) { sends[route] = 1 }
             return .init(id: channel.id, gain: gain(channel.id), pan: pan(channel.id), muted: muted(channel.id), sends: sends)
         }
-        func landings(_ mix: AudioMixInventory.Entry) -> [(uid: String?, output: MultitrackRouting.Output)] {
-            guard !AudioMixInventory.isVirtual(mix.outputIds) else { return [] }
-            let ids: [String?] = mix.outputIds.isEmpty ? [nil] : mix.outputIds.map { $0 == AudioMixInventory.defaultOutputID ? nil : $0 }
-            return ids.enumerated().compactMap { index, id in
-                let entry = id.flatMap { AudioOutputInventory.shared.entry(id: $0) }
-                if entry?.isDeviceless == true || AudioController.outputMuted(id) { return nil }
-                let uid = entry?.deviceUID ?? defaultUID
-                let count = max(2, devices.first { $0.uid == uid }?.channelCount ?? 2)
-                let offset = entry?.channelOffset ?? 0
-                let pair = offset >= 0 && offset + 1 < count ? offset : 0
-                let channels = entry?.monoChannel.map { [$0] } ?? [pair, pair + 1]
-                let send = index == 0 ? 1 : (id.map { mixer.sendLevel(mixId: mix.id, outputId: $0) } ?? 1)
-                return (uid, .init(channels: channels, level: send * AudioController.outputTrim(id)))
+        let mixes = AudioMixInventory.shared.entries.map { mix -> MultitrackRouting.ConsoleMix in
+            var landings: [(deviceUID: String, output: MultitrackRouting.Output)] = []
+            if !AudioMixInventory.isVirtual(mix.outputIds) {
+                let ids: [String?] = mix.outputIds.isEmpty ? [nil] : mix.outputIds.map { $0 == AudioMixInventory.defaultOutputID ? nil : $0 }
+                for (index, id) in ids.enumerated() {
+                    let entry = id.flatMap { AudioOutputInventory.shared.entry(id: $0) }
+                    if entry?.isDeviceless == true || AudioController.outputMuted(id) { continue }
+                    let uid = entry?.deviceUID ?? defaultUID
+                    let count = max(2, devices.first { $0.uid == uid }?.channelCount ?? 2)
+                    let offset = entry?.channelOffset ?? 0
+                    let pair = offset >= 0 && offset + 1 < count ? offset : 0
+                    let channels = entry?.monoChannel.flatMap { $0 < count ? [$0] : nil } ?? [pair, pair + 1]
+                    let send = index == 0 ? 1 : (id.map { mixer.sendLevel(mixId: mix.id, outputId: $0) } ?? 1)
+                    landings.append((uid, .init(channels: channels, level: send * AudioController.outputTrim(id))))
+                }
             }
+            return .init(
+                id: mix.id,
+                gain: (UserDefaults.standard.object(forKey: "audio.mix.\(mix.id).gain") as? Float).map { min(max($0, 0), 1) } ?? 1,
+                muted: UserDefaults.standard.bool(forKey: "audio.mix.\(mix.id).muted"),
+                landings: landings)
         }
-        let reached = Set(trackChannels.filter { !$0.muted }.flatMap { $0.sends.filter { $0.value > 0 }.keys })
-        var tally: [String: Int] = [:]
-        for mix in mixes where reached.contains(mix.id) {
-            for landing in landings(mix) { tally[landing.uid ?? "", default: 0] += 1 }
-        }
-        let device = tally.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }?.key ?? defaultUID
-        let deviceUID = device?.isEmpty == true ? nil : device
-        let routing = MultitrackRouting(
-            channels: trackChannels,
-            mixes: mixes.map { mix in
-                MultitrackRouting.Mix(
-                    id: mix.id,
-                    gain: (UserDefaults.standard.object(forKey: "audio.mix.\(mix.id).gain") as? Float).map { min(max($0, 0), 1) } ?? 1,
-                    muted: UserDefaults.standard.bool(forKey: "audio.mix.\(mix.id).muted"),
-                    outputs: landings(mix).filter { $0.uid == (deviceUID ?? defaultUID) }.map(\.output))
-            },
-            trim: trim, muted: trimMuted)
-        return (routing, deviceUID ?? defaultUID)
+        let resolved = MultitrackRouting.resolve(
+            channels: trackChannels, mixes: mixes, trim: trim, muted: trimMuted, fallbackDevice: defaultUID)
+        return (resolved.routing, resolved.deviceUID.isEmpty ? nil : resolved.deviceUID)
     }
 }

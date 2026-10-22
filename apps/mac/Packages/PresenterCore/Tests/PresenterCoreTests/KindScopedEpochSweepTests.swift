@@ -89,6 +89,8 @@ import Testing
         "AppModel.swift libraryOpened",
         "AppModel.swift locateMissingMedia",
         "AppModel.swift importFiles",
+
+        "AppModel.swift importStems",
         "AppModel.swift importProPresenter",
         "AppModel.swift importProPresenterThemes",
         "AppModel.swift importProPresenterPlaylists",

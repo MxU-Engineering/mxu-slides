@@ -52,6 +52,45 @@ public struct MultitrackRouting: Codable, Equatable, Sendable {
     public var feedMixIds: [String] { mixes.filter(\.feeds).map(\.id) }
 }
 
+public extension MultitrackRouting {
+
+    struct ConsoleMix: Equatable, Sendable {
+        public var id: String
+        public var gain: Float
+        public var muted: Bool
+        public var landings: [(deviceUID: String, output: Output)]
+
+        public init(id: String, gain: Float = 1, muted: Bool = false, landings: [(deviceUID: String, output: Output)]) {
+            self.id = id; self.gain = gain; self.muted = muted; self.landings = landings
+        }
+
+        public static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.id == rhs.id && lhs.gain == rhs.gain && lhs.muted == rhs.muted
+                && lhs.landings.map(\.deviceUID) == rhs.landings.map(\.deviceUID)
+                && lhs.landings.map(\.output) == rhs.landings.map(\.output)
+        }
+    }
+
+    static func resolve(
+        channels: [Channel], mixes: [ConsoleMix], trim: Float, muted: Bool, fallbackDevice: String
+    ) -> (routing: MultitrackRouting, deviceUID: String) {
+        let reached = Set(channels.filter { !$0.muted }.flatMap { $0.sends.filter { $0.value > 0 }.keys })
+        var tally: [String: Int] = [:]
+        for mix in mixes where reached.contains(mix.id) && !mix.muted {
+            for landing in mix.landings { tally[landing.deviceUID, default: 0] += 1 }
+        }
+        let device = tally.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }?.key ?? fallbackDevice
+        let routing = MultitrackRouting(
+            channels: channels,
+            mixes: mixes.map { mix in
+                Mix(id: mix.id, gain: mix.gain, muted: mix.muted,
+                    outputs: mix.landings.filter { $0.deviceUID == device }.map(\.output))
+            },
+            trim: trim, muted: muted)
+        return (routing, device)
+    }
+}
+
 struct MultitrackMatrix: Sendable {
     let stems: Int
     let deviceChannels: Int

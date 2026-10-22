@@ -70,10 +70,10 @@ final class AudioPlayer {
     }
 
     func configureRouting(
-        device: AudioOutputDevice?, channelOffset: Int, key: String, delayMs: Int = 0
+        device: AudioOutputDevice?, channelOffset: Int, key: String, delayMs: Int = 0, mono: Bool = false
     ) {
         targetKey = key
-        try? engine.setOutputDevice(device, channelOffset: channelOffset)
+        try? engine.setOutputDevice(device, channelOffset: channelOffset, mono: mono)
         engine.outputDelayMilliseconds = Double(delayMs)
     }
 
@@ -712,6 +712,8 @@ final class AudioController {
         let key: String
 
         let delayMs: Int
+
+        var mono = false
     }
 
     private func routing(forMix mixID: String) -> Routing {
@@ -722,6 +724,9 @@ final class AudioController {
         }
         let device = output?.deviceUID.flatMap { uid in
             outputDevices.first { $0.uid == uid }
+        }
+        if let mono = output?.monoChannel, mono >= 0, mono < max(2, device?.channelCount ?? 2) {
+            return Routing(device: device, channelOffset: mono, key: mix.id, delayMs: output?.delayMs ?? 0, mono: true)
         }
         let offset = output?.channelOffset ?? 0
         let clamped = (offset >= 0 && offset + 1 < max(2, device?.channelCount ?? 2))
@@ -754,7 +759,7 @@ final class AudioController {
         )
         player.configureRouting(
             device: routing.device, channelOffset: routing.channelOffset, key: routing.key,
-            delayMs: routing.delayMs
+            delayMs: routing.delayMs, mono: routing.mono
         )
         applyLevels(to: player)
         player.onTransportChanged = { [weak self] in self?.onTransportChanged?() }
@@ -767,7 +772,7 @@ final class AudioController {
                 ?? defaultRouting()
             player.configureRouting(
                 device: routing.device, channelOffset: routing.channelOffset, key: routing.key,
-                delayMs: routing.delayMs
+                delayMs: routing.delayMs, mono: routing.mono
             )
         }
         applyDefaultRoutingToMedia()

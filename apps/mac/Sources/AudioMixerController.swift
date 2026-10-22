@@ -23,6 +23,10 @@ final class AudioMixerController {
 
     static let videoMeterKey = "video"
 
+    static let tracksMeterKey = "tracks"
+
+    weak var tracks: TracksController?
+
     private var meterTokens: [String: UUID] = [:]
 
     private(set) var displayLevels: [String: MeterBallistics] = [:]
@@ -236,10 +240,14 @@ final class AudioMixerController {
         let output = outputId.flatMap { AudioOutputInventory.shared.entry(id: $0) }
         let devices = AudioDeviceList.outputDevices()
         let device = output?.deviceUID.flatMap { uid in devices.first { $0.uid == uid } }
-        let offset = output?.channelOffset ?? 0
-        let clamped = (offset >= 0 && offset + 1 < max(2, device?.channelCount ?? 2))
-            ? offset : 0
-        try? playthrough.setOutputDevice(device, channelOffset: clamped)
+        if let mono = output?.monoChannel, mono >= 0, mono < max(2, device?.channelCount ?? 2) {
+            try? playthrough.setOutputDevice(device, channelOffset: mono, mono: true)
+        } else {
+            let offset = output?.channelOffset ?? 0
+            let clamped = (offset >= 0 && offset + 1 < max(2, device?.channelCount ?? 2))
+                ? offset : 0
+            try? playthrough.setOutputDevice(device, channelOffset: clamped)
+        }
         playthrough.outputDelayMilliseconds = Double(output?.delayMs ?? 0)
     }
 
@@ -840,6 +848,29 @@ final class AudioMixerController {
         var videoMeter = nextDisplayLevels[Self.videoMeterKey] ?? MeterBallistics()
         videoMeter.update(rms: video.rms, peak: video.peak, elapsed: elapsed)
         nextDisplayLevels[Self.videoMeterKey] = videoMeter
+
+        if let tracks, let channels = tracks.model?.trackChannels, !channels.isEmpty {
+            let levels = tracks.meters
+            let trim = TracksController.trimMuted ? 0 : TracksController.trim
+            var loudest: (rms: Float, peak: Float) = (0, 0)
+            for channel in channels {
+                let level = levels[channel.id] ?? (0, 0)
+                var meter = nextDisplayLevels["track:\(channel.id)"] ?? MeterBallistics()
+                meter.update(rms: level.rms, peak: level.peak, elapsed: elapsed)
+                nextDisplayLevels["track:\(channel.id)"] = meter
+                let channelGain = TracksController.muted(channel.id) ? 0 : TracksController.gain(channel.id) * trim
+                loudest = (max(loudest.rms, level.rms * channelGain), max(loudest.peak, level.peak * channelGain))
+                var reaches = channelSends("track:\(channel.id)")
+                if let route = TracksController.mixId(channel) { reaches[route] = 1 }
+                for (mixId, send) in reaches where send > 0 && audio.mixes.entry(id: mixId) != nil && !audio.mixMuted(mixId) {
+                    mixRaw[mixId] = AudioLevel.combine(
+                        mixRaw[mixId] ?? (0, 0), adding: level, gain: channelGain * send * audio.mixGain(mixId))
+                }
+            }
+            var group = nextDisplayLevels[Self.tracksMeterKey] ?? MeterBallistics()
+            group.update(rms: loudest.rms, peak: loudest.peak, elapsed: elapsed)
+            nextDisplayLevels[Self.tracksMeterKey] = group
+        }
         displayLevels = nextDisplayLevels
         let videoLanding = AudioLevel.channelLanding(
             level: video,

@@ -57,6 +57,7 @@ final class ServiceControls {
         self.timecode.controls = self
         tracks.model = appModel
         tracks.mixer = mixer
+        mixer.tracks = tracks
         tracks.onFoundPlaying = { [weak self] status in self?.timeline.resume(fromTracks: status) }
         tracks.start()
 

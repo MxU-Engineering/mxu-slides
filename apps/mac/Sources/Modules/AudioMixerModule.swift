@@ -64,6 +64,13 @@ struct AudioMixerModule: View {
                             busStrip(player, audio: audio, mixer: mixer)
                         }
 
+                        let trackChannels = model.trackChannels
+                        if trackChannels.count == 1, let only = trackChannels.first {
+                            trackStrip(only, mixer: mixer)
+                        } else if !trackChannels.isEmpty {
+                            tracksGroup(trackChannels, mixer: mixer)
+                        }
+
                         ForEach(inputRows) { row in
                             switch row {
                             case .single(let entry):
@@ -78,15 +85,27 @@ struct AudioMixerModule: View {
                     if scope == 3 { consoleDivider() }
 
                     if scope == 1 || scope == 3 {
-                        ForEach(mixInventory.entries) { mix in
-                            mixStrip(mix, audio: audio, mixer: mixer)
+
+                        ForEach(mixRows) { row in
+                            switch row {
+                            case .mix(let mix):
+                                mixStrip(mix, audio: audio, mixer: mixer)
+                            case .folder(let folder, let members):
+                                mixFolder(folder, members: members, audio: audio, mixer: mixer)
+                            }
                         }
                     }
                     if scope == 3 { consoleDivider() }
 
                     if scope == 2 || scope == 3 {
-                        ForEach(outputInventory.entries) { output in
-                            outputStrip(output, mixer: mixer)
+
+                        ForEach(outputRows) { row in
+                            switch row {
+                            case .single(let output):
+                                outputStrip(output, mixer: mixer)
+                            case .group(let uid, let name, let members):
+                                outputGroup(uid: uid, name: name, members: members, mixer: mixer)
+                            }
                         }
                     }
                 }
@@ -227,6 +246,123 @@ struct AudioMixerModule: View {
             .help(expanded ? "Fold the device's channels into one strip"
                            : "Show every channel strip (\(members.count))")
         }
+    }
+
+    private func tracksGroup(_ channels: [TrackChannel], mixer: AudioMixerController) -> some View {
+        let expanded = groupStore.isExpanded(Self.tracksGroupKey)
+        return HStack(alignment: .top, spacing: 4) {
+            ConsoleStrip(
+                name: "Tracks",
+                live: controls.tracks.isPlaying,
+                tint: .purple,
+                topSlot: .blank,
+                bottomSlot: .static("\(channels.count) channels"),
+                gain: Binding(get: { TracksController.trim }, set: { TracksController.setTrim($0) }),
+                muted: Binding(get: { TracksController.trimMuted }, set: { TracksController.setTrimMuted($0) }),
+
+                meter: mixer.displayLevels[AudioMixerController.tracksMeterKey],
+                meterAppliesGain: false,
+                colorKey: "tracks",
+                defaultColorName: "Purple",
+                extraMenu: { AnyView(self.makeTrackMixesButton(channels)) }
+            ) {
+                Button {
+                    groupStore.toggle(Self.tracksGroupKey)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(expanded ? "Fold" : "\(channels.count)")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 15)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+                    .overlay(
+                        RoundedRectangle.standard(CornerStandard.element)
+                            .strokeBorder(Color.separator.opacity(0.4), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(expanded ? "Fold the track channels into one strip" : "Show every track channel (\(channels.count))")
+            }
+            if expanded {
+                ForEach(channels) { channel in
+                    trackStrip(channel, mixer: mixer)
+                }
+            }
+        }
+        .padding(2)
+        .background(
+            expanded ? Color.primary.opacity(0.04) : .clear,
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
+    }
+
+    static let tracksGroupKey = "tracks"
+
+    private func trackStrip(_ channel: TrackChannel, mixer: AudioMixerController) -> some View {
+        let route = TracksController.mixId(channel)
+        return ConsoleStrip(
+            name: channel.name,
+            live: false,
+            topSlot: sendsSlot(channel: "track:\(channel.id)", routedMix: route ?? "", mixer: mixer),
+            bottomSlot: trackRouteSlot(channel, current: route),
+            gain: Binding(get: { TracksController.gain(channel.id) }, set: { TracksController.setGain($0, for: channel.id) }),
+            muted: Binding(get: { TracksController.muted(channel.id) }, set: { TracksController.setMuted($0, for: channel.id) }),
+            pan: Binding(get: { TracksController.pan(channel.id) }, set: { TracksController.setPan($0, for: channel.id) }),
+            meter: mixer.displayLevels["track:\(channel.id)"],
+            meterAppliesGain: true,
+            colorKey: "track:\(channel.id)",
+            defaultColorName: "Purple",
+            extraMenu: { AnyView(self.makeTrackMixesButton(self.model.trackChannels)) }
+        ) {
+            if channel.trackRole != .music {
+
+                Text(channel.trackRole == .click ? "CLICK" : "GUIDE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 15)
+                    .help("\(channel.trackRole == .click ? "Click" : "Guide") starts on no mix, so it never reaches the house unasked; its Main send waits at zero")
+            }
+        }
+    }
+
+    private func trackRouteSlot(_ channel: TrackChannel, current: String?) -> ConsoleSlot {
+        .menu(current.flatMap { mixInventory.entry(id: $0)?.name } ?? "No Mix", accent: current == nil && channel.trackRole != .music, content: {
+            AnyView(Group {
+                Toggle("No Mix", isOn: Binding(
+                    get: { current == nil },
+                    set: { _ in TracksController.setMix(nil, for: channel.id) }
+                ))
+                ForEach(self.mixInventory.entries) { mix in
+                    Toggle(mix.name, isOn: Binding(
+                        get: { current == mix.id },
+                        set: { _ in TracksController.setMix(mix.id, for: channel.id) }
+                    ))
+                }
+            })
+        })
+    }
+
+    private func makeTrackMixesButton(_ channels: [TrackChannel]) -> some View {
+        Button("Make a Mix for Every Track Channel") {
+            let folder = mixInventory.folder(named: "Tracks")
+            for channel in channels {
+                let mix = mixInventory.entries.first { $0.name == channel.name && $0.folderId == folder.id } ?? {
+
+                    let made = mixInventory.create(name: channel.name)
+                    mixInventory.setPrimary(mixId: made.id, token: AudioMixInventory.noOutputID)
+                    return made
+                }()
+                mixInventory.move(mix.id, toFolder: folder.id)
+                TracksController.setMix(mix.id, for: channel.id)
+            }
+        }
+        .disabled(runOnly || channels.isEmpty)
     }
 
     private func inputStrip(
@@ -376,11 +512,151 @@ struct AudioMixerModule: View {
             colorKey: "mix:\(mix.id)",
             defaultColorName: "Blue",
             extraMenu: {
-                (mix.isMain || self.runOnly)
+                self.runOnly
                     ? AnyView(EmptyView())
-                    : AnyView(Button("Remove Mix") { self.mixInventory.remove(mix) })
+                    : AnyView(Group {
+                        Menu("Move to Folder") {
+                            ForEach(self.mixInventory.folders) { folder in
+                                Button(folder.name) { self.mixInventory.move(mix.id, toFolder: folder.id) }
+                                    .disabled(mix.folderId == folder.id)
+                            }
+                            if !self.mixInventory.folders.isEmpty { Divider() }
+                            Button("New Folder") {
+                                let folder = self.mixInventory.folder(named: self.newFolderName())
+                                self.mixInventory.move(mix.id, toFolder: folder.id)
+                                self.groupStore.toggle("folder:\(folder.id)")
+                            }
+                            if mix.folderId != nil {
+                                Button("Out of the Folder") { self.mixInventory.move(mix.id, toFolder: nil) }
+                            }
+                        }
+                        if !mix.isMain {
+                            Button("Remove Mix") { self.mixInventory.remove(mix) }
+                        }
+                    })
             }
         ) { EmptyView() }
+    }
+
+    private enum OutputRow: Identifiable {
+        case single(AudioOutputInventory.Entry)
+        case group(uid: String, name: String, members: [AudioOutputInventory.Entry])
+
+        var id: String {
+            switch self {
+            case .single(let output): "output:\(output.id)"
+            case .group(let uid, _, _): "outdevice:\(uid)"
+            }
+        }
+    }
+
+    private var outputRows: [OutputRow] {
+        let entries = outputInventory.entries
+        let real = { (entry: AudioOutputInventory.Entry) -> String? in
+            guard let uid = entry.deviceUID, !entry.isDeviceless else { return nil }
+            return uid
+        }
+        var counts: [String: Int] = [:]
+        for entry in entries { if let uid = real(entry) { counts[uid, default: 0] += 1 } }
+        var rows: [OutputRow] = []
+        var grouped: Set<String> = []
+        for entry in entries {
+            guard let uid = real(entry), counts[uid, default: 0] >= 2 else {
+                rows.append(.single(entry))
+                continue
+            }
+            guard grouped.insert(uid).inserted else { continue }
+            let name = AudioDeviceList.outputDevices().first { $0.uid == uid }?.name ?? "Missing Device"
+            rows.append(.group(uid: uid, name: name, members: entries.filter { real($0) == uid }))
+        }
+        return rows
+    }
+
+    private func outputGroup(
+        uid: String, name: String, members: [AudioOutputInventory.Entry], mixer: AudioMixerController
+    ) -> some View {
+        let key = "outdevice:\(uid)"
+        let expanded = groupStore.isExpanded(key)
+        return HStack(alignment: .top, spacing: 4) {
+            FoldCard(
+                name: name, symbol: "hifispeaker.2", count: members.count, expanded: expanded,
+                peak: members.compactMap { mixer.outputLevels[$0.id]?.peak }.max() ?? 0,
+                toggle: { groupStore.toggle(key) }, rename: nil, remove: nil)
+            if expanded {
+                ForEach(members) { output in
+                    outputStrip(output, mixer: mixer)
+                }
+            }
+        }
+        .padding(2)
+        .background(
+            expanded ? Color.orange.opacity(0.05) : .clear,
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
+    }
+
+    private enum MixRow: Identifiable {
+        case mix(AudioMixInventory.Entry)
+        case folder(AudioMixInventory.Folder, members: [AudioMixInventory.Entry])
+
+        var id: String {
+            switch self {
+            case .mix(let mix): "mix:\(mix.id)"
+            case .folder(let folder, _): "folder:\(folder.id)"
+            }
+        }
+    }
+
+    private var mixRows: [MixRow] {
+        let entries = mixInventory.entries
+        let folders = mixInventory.folders
+        var rows: [MixRow] = []
+        var placed: Set<String> = []
+        for mix in entries {
+            guard let id = mix.folderId, let folder = folders.first(where: { $0.id == id }) else {
+                rows.append(.mix(mix))
+                continue
+            }
+            guard placed.insert(id).inserted else { continue }
+            rows.append(.folder(folder, members: entries.filter { $0.folderId == id }))
+        }
+        for folder in folders where !placed.contains(folder.id) {
+            rows.append(.folder(folder, members: []))
+        }
+        return rows
+    }
+
+    private func newFolderName() -> String {
+        let names = Set(mixInventory.folders.map(\.name))
+        var number = 1
+        while names.contains("Folder \(number)") { number += 1 }
+        return "Folder \(number)"
+    }
+
+    private func mixFolder(
+        _ folder: AudioMixInventory.Folder, members: [AudioMixInventory.Entry],
+        audio: AudioController, mixer: AudioMixerController
+    ) -> some View {
+        let key = "folder:\(folder.id)"
+        let expanded = groupStore.isExpanded(key)
+        return HStack(alignment: .top, spacing: 4) {
+            FoldCard(
+                name: folder.name, symbol: expanded ? "folder" : "folder.fill", count: members.count, expanded: expanded,
+                peak: members.compactMap { mixer.busLevels[$0.id]?.peak }.max() ?? 0,
+                toggle: { groupStore.toggle(key) },
+                rename: runOnly ? nil : { mixInventory.renameFolder(id: folder.id, to: $0) },
+                remove: runOnly ? nil : { mixInventory.removeFolder(id: folder.id) })
+            if expanded {
+                ForEach(members) { mix in
+                    mixStrip(mix, audio: audio, mixer: mixer)
+                }
+            }
+        }
+        .padding(2)
+        .background(
+            expanded ? Color.blue.opacity(0.05) : .clear,
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
     }
 
     private func mixRouteSlot(_ mix: AudioMixInventory.Entry) -> ConsoleSlot {
@@ -555,6 +831,16 @@ struct AudioMixerModule: View {
                                 id: output.id, deviceUID: device.uid, channelOffset: offset)
                         }
                     }
+                    Divider()
+
+                    Menu("One Channel (mono)") {
+                        ForEach(0 ..< device.channelCount, id: \.self) { channel in
+                            Button("Channel \(channel + 1)") {
+                                outputInventory.assignDevice(
+                                    id: output.id, deviceUID: device.uid, channelOffset: 0, monoChannel: channel)
+                            }
+                        }
+                    }
                 }
             } else {
                 Button(device.name) {
@@ -570,8 +856,8 @@ struct AudioMixerModule: View {
         guard let uid = output.deviceUID else { return "Default" }
         guard let device = AudioDeviceList.outputDevices().first(where: { $0.uid == uid })
         else { return "Missing" }
-        return device.channelCount > 2
-            ? "\(device.name) \(output.channelOffset + 1)-\(output.channelOffset + 2)"
+        return device.channelCount > 2 || output.monoChannel != nil
+            ? "\(device.name) \(outputInventory.channelWords(output))"
             : device.name
     }
 
@@ -1194,6 +1480,69 @@ private struct StripRenamePopover: View {
             .focused($focused)
             .onAppear { focused = true }
             .onSubmit(commit)
+    }
+}
+
+private struct FoldCard: View {
+    let name: String
+    let symbol: String
+    let count: Int
+    let expanded: Bool
+    let peak: Float
+    let toggle: () -> Void
+    let rename: ((String) -> Void)?
+    let remove: (() -> Void)?
+    @Environment(\.runOnly) private var runOnly
+    @State private var renaming = false
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Button(action: toggle) {
+                VStack(spacing: 4) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 12))
+                    Text(name)
+                        .font(.system(size: 9, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                    Text("\(count)")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.tertiary)
+                    Image(systemName: expanded ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(expanded ? "Fold \(name)" : "Show \(name) (\(count))")
+            VerticalMeter(peak: peak, heldPeakDecibels: -120)
+                .frame(width: 5)
+                .frame(maxHeight: .infinity)
+        }
+        .padding(.vertical, 8)
+        .frame(width: 46)
+        .frame(maxHeight: .infinity)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+        .contextMenu {
+            if !runOnly, let rename {
+                Button("Rename\u{2026}") {
+                    draft = name
+                    renaming = true
+                }
+            }
+            if !runOnly, let remove {
+                Button("Remove Folder (keeps its mixes)", action: remove)
+            }
+        }
+        .popover(isPresented: $renaming) {
+            StripRenamePopover(draft: $draft) {
+                rename?(draft)
+                renaming = false
+            }
+        }
     }
 }
 

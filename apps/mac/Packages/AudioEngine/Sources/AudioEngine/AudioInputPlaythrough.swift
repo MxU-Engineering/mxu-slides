@@ -17,6 +17,7 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     private var muted = true
     private var desiredChannelOffset = 0
     private var deviceChannelCount = 2
+    private var monoOut = false
 
     private var appliedDeviceID: AudioDeviceID?
 
@@ -175,7 +176,7 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     }
 
     private func applyGainLocked() {
-        engine.mainMixerNode.outputVolume = muted ? 0 : storedGain
+        engine.mainMixerNode.outputVolume = muted ? 0 : storedGain * (monoOut ? AudioEngine.monoFold : 1)
     }
 
     public var pan: Float {
@@ -214,12 +215,12 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     }
 
     public func setOutputDevice(
-        _ device: AudioOutputDevice?, channelOffset: Int = 0
+        _ device: AudioOutputDevice?, channelOffset: Int = 0, mono: Bool = false
     ) throws {
         try lock.withLock {
             let target = device ?? AudioDeviceList.defaultOutputDevice()
 
-            if appliedDeviceID == target?.id, desiredChannelOffset == channelOffset,
+            if appliedDeviceID == target?.id, desiredChannelOffset == channelOffset, monoOut == mono,
                deviceChannelCount == (target?.channelCount ?? 2),
                engine.isRunning == running {
                 return
@@ -233,6 +234,14 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
                 try engine.outputNode.auAudioUnit.setDeviceID(id)
             }
             appliedDeviceID = target?.id
+            if mono != monoOut {
+                monoOut = mono
+                engine.disconnectNodeOutput(engine.mainMixerNode)
+                engine.connect(
+                    engine.mainMixerNode, to: engine.outputNode,
+                    format: mono ? AVAudioFormat(standardFormatWithSampleRate: format.sampleRate, channels: 1)! : format)
+                applyGainLocked()
+            }
             desiredChannelOffset = channelOffset
             deviceChannelCount = target?.channelCount ?? 2
             applyChannelMap()
@@ -247,11 +256,11 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     private func applyChannelMap() {
         guard let unit = engine.outputNode.audioUnit else { return }
         let channels = max(2, deviceChannelCount)
-        let offset = (desiredChannelOffset + 1 < channels && desiredChannelOffset >= 0)
+        let offset = (desiredChannelOffset + (monoOut ? 0 : 1) < channels && desiredChannelOffset >= 0)
             ? desiredChannelOffset : 0
         var map = [Int32](repeating: -1, count: channels)
         map[offset] = 0
-        map[offset + 1] = 1
+        if !monoOut { map[offset + 1] = 1 }
         let size = UInt32(MemoryLayout<Int32>.size * channels)
         let status = AudioUnitSetProperty(
             unit, kAudioOutputUnitProperty_ChannelMap,

@@ -221,3 +221,25 @@ func playsOnARealDeviceByItsClock() throws {
     #expect(engine.starvedFrames == 0)
     #expect(engine.sampleRate == 48_000)
 }
+
+@Test func theTracksPlayOnTheDeviceTheirMixesLandOn() {
+
+    let channels: [MultitrackRouting.Channel] = [
+        .init(id: "keys", sends: ["keys-mix": 1, "main": 0.5]),
+        .init(id: "bass", sends: ["bass-mix": 1]),
+        .init(id: "click", muted: true, sends: ["main": 1]),
+    ]
+    let mixes: [MultitrackRouting.ConsoleMix] = [
+        .init(id: "main", landings: [("speakers", .init(channels: [0, 1]))]),
+        .init(id: "keys-mix", landings: [("dante", .init(channels: [4]))]),
+        .init(id: "bass-mix", landings: [("dante", .init(channels: [5]))]),
+        .init(id: "unused", landings: [("other", .init(channels: [0, 1])), ("other", .init(channels: [2, 3]))]),
+    ]
+    let resolved = MultitrackRouting.resolve(channels: channels, mixes: mixes, trim: 1, muted: false, fallbackDevice: "speakers")
+    #expect(resolved.deviceUID == "dante")
+    #expect(resolved.routing.mixes.first { $0.id == "keys-mix" }?.outputs == [.init(channels: [4])])
+    #expect(resolved.routing.mixes.first { $0.id == "main" }?.outputs == [])
+
+    let idle = MultitrackRouting.resolve(channels: [], mixes: mixes, trim: 1, muted: false, fallbackDevice: "speakers")
+    #expect(idle.deviceUID == "speakers")
+}

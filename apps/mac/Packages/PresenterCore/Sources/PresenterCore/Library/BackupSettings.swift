@@ -6,7 +6,7 @@ public enum BackupSettings {
 
     static let portableKeys: Set<String> = [
         "keyboard.map", "midi.map", "midi.out.targets",
-        "audio.mixes", "audio.fadeEnabled", "audio.fadeSeconds", "audio.crossfadeSeconds",
+        "audio.mixes", "audio.mixFolders", "audio.fadeEnabled", "audio.fadeSeconds", "audio.crossfadeSeconds",
         "serviceControls.timers", "serviceControls.timerBoard",
         "serviceControls.moduleOrder", "serviceControls.hiddenModules",
         "serviceControls.clearAllIncludesAudio", "serviceControls.clearAllSkips", "serviceControls.clearAllSweepsTracks",

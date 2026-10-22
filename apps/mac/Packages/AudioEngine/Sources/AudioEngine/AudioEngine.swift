@@ -230,7 +230,7 @@ public final class AudioEngine: @unchecked Sendable {
 
     private func applyConsoleLocked() {
         let effective = muted ? 0 : storedVolume
-        hardwareLeg.outputVolume = hardwareEnabled ? effective : 0
+        hardwareLeg.outputVolume = hardwareEnabled ? effective * (monoOut ? Self.monoFold : 1) : 0
         tapState.set(gain: effective)
     }
 
@@ -363,7 +363,7 @@ public final class AudioEngine: @unchecked Sendable {
     }
 
     public func setOutputDevice(
-        _ device: AudioOutputDevice?, channelOffset: Int = 0
+        _ device: AudioOutputDevice?, channelOffset: Int = 0, mono: Bool = false
     ) throws {
         try lock.withLock {
             cancelRamp(resolving: true)
@@ -374,6 +374,15 @@ public final class AudioEngine: @unchecked Sendable {
             if let id = target?.id {
                 try engine.outputNode.auAudioUnit.setDeviceID(id)
             }
+            if mono != monoOut {
+                monoOut = mono
+                engine.disconnectNodeOutput(hardwareLeg)
+                engine.connect(
+                    hardwareLeg, to: engine.outputNode,
+                    format: mono ? AVAudioFormat(standardFormatWithSampleRate: AudioDeck.graphFormat.sampleRate, channels: 1)!
+                        : AudioDeck.graphFormat)
+                applyConsoleLocked()
+            }
             desiredChannelOffset = channelOffset
             deviceChannelCount = target?.channelCount ?? 2
             applyChannelMap()
@@ -383,15 +392,18 @@ public final class AudioEngine: @unchecked Sendable {
 
     private var desiredChannelOffset = 0
     private var deviceChannelCount = 2
+    private var monoOut = false
+
+    static let monoFold: Float = 0.707_106_77
 
     private func applyChannelMap() {
         guard let unit = engine.outputNode.audioUnit else { return }
         let channels = max(2, deviceChannelCount)
-        let offset = (desiredChannelOffset + 1 < channels && desiredChannelOffset >= 0)
+        let offset = (desiredChannelOffset + (monoOut ? 0 : 1) < channels && desiredChannelOffset >= 0)
             ? desiredChannelOffset : 0
         var map = [Int32](repeating: -1, count: channels)
         map[offset] = 0
-        map[offset + 1] = 1
+        if !monoOut { map[offset + 1] = 1 }
         let size = UInt32(MemoryLayout<Int32>.size * channels)
         let status = AudioUnitSetProperty(
             unit, kAudioOutputUnitProperty_ChannelMap,
@@ -419,12 +431,17 @@ public final class AudioEngine: @unchecked Sendable {
         if resume { deck.player.play() }
     }
 
-    func enableManualRenderingForTests() throws {
+    func enableManualRenderingForTests(mono: Bool = false) throws {
         lock.withLock {
             engine.stop()
-            try? engine.enableManualRenderingMode(
-                .offline, format: AudioDeck.graphFormat, maximumFrameCount: 4096
-            )
+            let format = mono ? AVAudioFormat(standardFormatWithSampleRate: AudioDeck.graphFormat.sampleRate, channels: 1)! : AudioDeck.graphFormat
+            if mono {
+                monoOut = true
+                engine.disconnectNodeOutput(hardwareLeg)
+                engine.connect(hardwareLeg, to: engine.outputNode, format: format)
+                applyConsoleLocked()
+            }
+            try? engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
         }
     }
 

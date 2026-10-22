@@ -112,11 +112,25 @@ final class AudioOutputInventory {
         persist()
     }
 
-    func assignDevice(id: String, deviceUID: String?, channelOffset: Int) {
+    func assignDevice(id: String, deviceUID: String?, channelOffset: Int, monoChannel: Int? = nil) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].deviceUID = deviceUID
         entries[index].channelOffset = max(0, channelOffset)
+        entries[index].monoChannel = monoChannel.map { max(0, $0) }
         persist()
+    }
+
+    func addOutputPerChannel(of device: AudioOutputDevice) {
+        let taken = Set(entries.filter { $0.deviceUID == device.uid }.compactMap(\.monoChannel))
+        for channel in 0 ..< device.channelCount where !taken.contains(channel) {
+            entries.append(Entry(
+                name: "\(device.name) \(channel + 1)", deviceUID: device.uid, channelOffset: 0, monoChannel: channel))
+        }
+        persist()
+    }
+
+    func channelWords(_ entry: Entry) -> String {
+        entry.monoChannel.map { "\($0 + 1)" } ?? "\(entry.channelOffset + 1)-\(entry.channelOffset + 2)"
     }
 
     func setDelay(id: String, milliseconds: Int) {

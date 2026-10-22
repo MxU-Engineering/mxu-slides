@@ -874,6 +874,15 @@ private struct AudioOutputsSection: View {
                         inventory.assignDevice(id: entry.id, deviceUID: device.uid, channelOffset: 0)
                     }
                 }
+                let wide = devices.filter { $0.channelCount > 2 }
+                if !wide.isEmpty {
+                    Divider()
+                    ForEach(wide, id: \.uid) { device in
+                        Button("An Output for Every Channel of \(device.name) (\(device.channelCount))") {
+                            inventory.addOutputPerChannel(of: device)
+                        }
+                    }
+                }
             }
             .fixedSize()
         } header: {
@@ -896,8 +905,9 @@ private enum AudioOutputWords {
         if entry.isDeviceless { parts.append("No device") }
         else if let uid = entry.deviceUID {
             if let device = devices.first(where: { $0.uid == uid }) {
-                parts.append(device.channelCount > 2 ? "\(device.name) \(entry.channelOffset + 1)-\(entry.channelOffset + 2)" : device.name)
-            } else { parts.append("Channels \(entry.channelOffset + 1)-\(entry.channelOffset + 2)") }
+                parts.append(device.channelCount > 2 || entry.monoChannel != nil
+                    ? "\(device.name) \(AudioOutputInventory.shared.channelWords(entry))" : device.name)
+            } else { parts.append("Channels \(AudioOutputInventory.shared.channelWords(entry))") }
         } else { parts.append("System default") }
         if let ms = entry.delayMs, ms > 0 { parts.append("\(ms) ms delay") }
         return parts.joined(separator: " \u{B7} ")
@@ -935,12 +945,21 @@ private struct AudioOutputDetail: View {
                         }
                     }
                     if let device, device.channelCount > 2 {
+
                         Picker("Channels", selection: Binding(
-                            get: { entry.channelOffset },
-                            set: { inventory.assignDevice(id: id, deviceUID: device.uid, channelOffset: $0) })
+                            get: { entry.monoChannel.map { -($0 + 1) } ?? entry.channelOffset },
+                            set: { tag in
+                                inventory.assignDevice(
+                                    id: id, deviceUID: device.uid, channelOffset: max(tag, 0),
+                                    monoChannel: tag < 0 ? -tag - 1 : nil)
+                            })
                         ) {
                             ForEach(Array(stride(from: 0, to: device.channelCount - 1, by: 2)), id: \.self) { offset in
                                 Text("\(offset + 1)-\(offset + 2)").tag(offset)
+                            }
+                            Divider()
+                            ForEach(0 ..< device.channelCount, id: \.self) { channel in
+                                Text("\(channel + 1) (mono)").tag(-(channel + 1))
                             }
                         }
                     }

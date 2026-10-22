@@ -564,21 +564,26 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
 }
 
 @Test func clearAllScopeDefaultsMigratesAndRoundTrips() {
+
     #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs, .tracks])
-    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs])
-    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio],
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs, .tracks])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio, .tracks],
             "the old Music switch carries over")
-    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [], "a saved checklist wins")
-    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts])
-    #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio],
+    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [.tracks], "a saved checklist wins")
+    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts, .tracks])
+    #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio, .tracks],
             "a skip saved before Digital Signage left (2026-10-16) drops")
+    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: nil, sweepsTracks: true) == [])
+    #expect(ClearAllScope.encode([.tracks, .audio]) == "audio", "Tracks never rides the skip list")
     #expect(ClearAllScope.swept(skips: [.inputs]) == Set(ShowFunction.allCases).subtracting([.inputs]))
 
     let defaults = UserDefaults(suiteName: "ClearAllScopeTests-\(UUID().uuidString)")!
     ClearAllScope.set(.audio, swept: false, defaults: defaults)
-    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.inputs, .audio]))
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.inputs, .audio, .tracks]))
     #expect(defaults.object(forKey: ClearAllScope.legacyIncludesAudioKey) as? Bool == false,
             "older builds still read Music from the old switch")
     ClearAllScope.set(.inputs, swept: true, defaults: defaults)
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.audio, .tracks]))
+    ClearAllScope.set(.tracks, swept: true, defaults: defaults)
     #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.audio]))
 }
