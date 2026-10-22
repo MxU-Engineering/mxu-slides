@@ -894,7 +894,20 @@ private struct TrackChannelsForm: View {
     @State private var newName = ""
 
     @State private var drop = TrackRowDrop.State()
-    @State private var rowHeights: [String: CGFloat] = [:]
+
+    @State private var rowFrames = RowFrames()
+
+    final class RowFrames {
+        var byID: [String: CGRect] = [:]
+    }
+
+    static func halfGap(_ channels: [TrackChannel], _ upper: Int, _ lower: Int, _ frames: [String: CGRect]) -> CGFloat {
+        func frame(_ index: Int) -> CGRect? { channels.indices.contains(index) ? frames[channels[index].id] : nil }
+        let gap = if let top = frame(upper), let bottom = frame(lower) { bottom.minY - top.maxY }
+            else if let first = frame(0), let second = frame(1) { second.minY - first.maxY }
+            else { CGFloat(12) }
+        return max(gap, 2) / 2
+    }
 
     static let dragPrefix = "mxutrackchannel::"
     static func channelID(_ payload: String) -> String? {
@@ -912,14 +925,18 @@ private struct TrackChannelsForm: View {
                     TrackChannelRow(channel: channel) { open(channel.id) }
 
                         .draggable(Self.dragPrefix + channel.id)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[channel.id] = $0 }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rowFrames.byID[channel.id] = $0 }
                         .onDrop(of: [.plainText], delegate: TrackRowDrop(
-                            target: channel.id, channels: channels, height: rowHeights[channel.id] ?? 44, state: drop
+                            target: channel.id, channels: channels, height: rowFrames.byID[channel.id]?.height ?? 44, state: drop
                         ) { id, before in tracks?.moveChannel(id, before: before) })
                         .overlay(alignment: drop.gap?.above == false ? .bottom : .top) {
                             if drop.gap?.target == channel.id {
+
+                                let above = drop.gap?.above != false
                                 Rectangle().fill(Color.accentColor).frame(height: 2)
-                                    .offset(y: drop.gap?.above == false ? 1 : -1)
+                                    .offset(y: above
+                                        ? -Self.halfGap(channels, index - 1, index, rowFrames.byID)
+                                        : Self.halfGap(channels, index, index + 1, rowFrames.byID))
                                     .allowsHitTesting(false)
                             }
                         }
