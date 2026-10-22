@@ -41,10 +41,10 @@ public struct MultitrackRouting: Codable, Equatable, Sendable {
 
         public var outputs: [Output]
 
-        public var feeds: Bool
+        public var feedSlot: Int?
 
-        public init(id: String, gain: Float = 1, muted: Bool = false, outputs: [Output] = [], feeds: Bool = false) {
-            self.id = id; self.gain = gain; self.muted = muted; self.outputs = outputs; self.feeds = feeds
+        public init(id: String, gain: Float = 1, muted: Bool = false, outputs: [Output] = [], feedSlot: Int? = nil) {
+            self.id = id; self.gain = gain; self.muted = muted; self.outputs = outputs; self.feedSlot = feedSlot
         }
     }
 
@@ -52,8 +52,19 @@ public struct MultitrackRouting: Codable, Equatable, Sendable {
         public var channels: [Int]
         public var level: Float
 
-        public init(channels: [Int], level: Float = 1) {
-            self.channels = channels; self.level = level
+        public var delayMs: Double
+
+        public init(channels: [Int], level: Float = 1, delayMs: Double = 0) {
+            self.channels = channels; self.level = level; self.delayMs = delayMs
+        }
+
+        enum CodingKeys: String, CodingKey { case channels, level, delayMs }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            channels = try c.decode([Int].self, forKey: .channels)
+            level = try c.decode(Float.self, forKey: .level)
+            delayMs = try c.decodeIfPresent(Double.self, forKey: .delayMs) ?? 0
         }
     }
 
@@ -67,7 +78,18 @@ public struct MultitrackRouting: Codable, Equatable, Sendable {
         self.channels = channels; self.mixes = mixes; self.trim = trim; self.muted = muted
     }
 
-    public var feedMixIds: [String] { mixes.filter(\.feeds).map(\.id) }
+    public var feedMixIds: [String] { mixes.filter { $0.feedSlot != nil }.map(\.id) }
+
+    func delayFrames(deviceChannels: Int, sampleRate: Double) -> [Int] {
+        var frames = [Int](repeating: 0, count: deviceChannels)
+        for output in mixes.flatMap(\.outputs) where output.delayMs > 0 {
+            let delay = Int((min(output.delayMs, 2000) / 1000 * sampleRate).rounded())
+            for channel in output.channels where channel >= 0 && channel < deviceChannels {
+                frames[channel] = max(frames[channel], delay)
+            }
+        }
+        return frames
+    }
 }
 
 public extension MultitrackRouting {
@@ -107,12 +129,42 @@ public extension MultitrackRouting {
             trim: trim, muted: muted)
         return (routing, device)
     }
+
+    var reachedMixIds: Set<String> {
+        guard !muted else { return [] }
+        return Set(channels.filter { !$0.muted }.flatMap { $0.sends.filter { $0.value > 0 }.keys })
+    }
+
+    static func assignSlots(_ wanted: Set<String>, held: [String: Int]) -> [String: Int] {
+        var slots = held
+        for mix in wanted.sorted() where slots[mix] == nil {
+            let taken = Set(slots.values)
+            if let free = (0 ..< TracksShare.slots).first(where: { !taken.contains($0) }) {
+                slots[mix] = free
+            } else if let idle = slots.filter({ !wanted.contains($0.key) }).min(by: { $0.value < $1.value }) {
+                slots[idle.key] = nil
+                slots[mix] = idle.value
+            }
+        }
+        return slots
+    }
+
+    func feeding(_ wanted: Set<String>, slots: [String: Int]) -> MultitrackRouting {
+        var routing = self
+        for index in routing.mixes.indices {
+            let id = routing.mixes[index].id
+            routing.mixes[index].feedSlot = wanted.contains(id) ? slots[id] : nil
+        }
+        return routing
+    }
 }
 
 struct MultitrackMatrix: Sendable {
     let stems: Int
     let deviceChannels: Int
     let feedMixIds: [String]
+
+    let feedSlots: [Int]
     var destinations: Int { deviceChannels + 2 * feedMixIds.count }
     private(set) var gains: [Float]
 
@@ -124,6 +176,7 @@ struct MultitrackMatrix: Sendable {
         stems = stemChannels.count
         self.deviceChannels = deviceChannels
         feedMixIds = routing.feedMixIds
+        feedSlots = routing.mixes.compactMap(\.feedSlot)
         let destinations = deviceChannels + 2 * feedMixIds.count
         gains = [Float](repeating: 0, count: stemChannels.count * 2 * destinations)
         guard !routing.muted else { return }

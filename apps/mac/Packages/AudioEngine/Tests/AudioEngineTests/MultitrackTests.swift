@@ -73,11 +73,12 @@ private func solo(_ ids: [String]) -> MultitrackRouting {
         ],
         mixes: [
             .init(id: "clicks", outputs: [.init(channels: [4])]),
-            .init(id: "main", gain: 0.8, outputs: [.init(channels: [0, 1], level: 0.5)], feeds: true),
-            .init(id: "stream", feeds: true),
+            .init(id: "main", gain: 0.8, outputs: [.init(channels: [0, 1], level: 0.5)], feedSlot: 3),
+            .init(id: "stream", feedSlot: 0),
         ])
     let matrix = MultitrackMatrix(routing, stemChannels: ["click", "keys", "bass"], deviceChannels: 6)
     #expect(matrix.feedMixIds == ["main", "stream"])
+    #expect(matrix.feedSlots == [3, 0])
     #expect(matrix.destinations == 10)
 
     #expect(matrix.gain(stem: 0, side: 0, destination: 4) == 0.25)
@@ -218,26 +219,6 @@ private func solo(_ ids: [String]) -> MultitrackRouting {
     #expect(abs(meter.left.peak - 0.5) < 1e-4 && abs(meter.left.rms - 0.5) < 1e-3)
     #expect(abs(meter.right.peak - 0.25) < 1e-4 && abs(meter.right.rms - 0.25) < 1e-3)
     #expect(engine.takeMeters()["k"].map { $0.left.peak == 0 && $0.right.peak == 0 } == true, "a take clears")
-}
-
-@Test func fedMixesHandTheirShareBack() throws {
-    let path = try file("feed", rate: 48_000, channels: 1, seconds: 1) { _ in 0.25 }
-    let engine = MultitrackEngine(sampleRate: 48_000, deviceChannels: 2)
-    engine.setRouting(MultitrackRouting(
-        channels: [.init(id: "t", sends: ["main": 1])],
-        mixes: [.init(id: "main", gain: 0.5, outputs: [.init(channels: [0, 1])], feeds: true)]))
-    engine.cue(MultitrackSong(id: "s", stems: [.init(path: path, channelId: "t")]))
-    engine.play()
-    _ = render(engine, seconds: 0.1)
-    var frames = 0
-    var last: Float = 0
-    engine.drainFeeds { mix, left, _, count in
-        #expect(mix == "main")
-        frames += count
-        last = left[count - 1]
-    }
-    #expect(frames == 4800)
-    #expect(abs(last - 0.125) < 1e-5)
 }
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MXU_MULTITRACK_LIVE"] == "1"))

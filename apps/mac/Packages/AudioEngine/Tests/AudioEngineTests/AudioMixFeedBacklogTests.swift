@@ -63,6 +63,29 @@ final class AudioMixFeedBacklogTests: XCTestCase {
         }
         XCTAssertEqual(feed.trimmedMilliseconds, 0)
     }
+
+    func testAPartialPullLeavesOneMemberOut() throws {
+        let whole = Marks(), without = Marks()
+        let feed = AudioMixFeed(startsClock: false) { buffer, _, _ in whole.append(Double(buffer.floatChannelData![0][0])) }
+        feed.setPartialConsumer(excluding: "tracks") { buffer, _, _ in without.append(Double(buffer.floatChannelData![0][0])) }
+        let music = try buffer(frames: 480), tracks = try buffer(frames: 480)
+        for frame in 0..<480 {
+            music.floatChannelData![0][frame] = 0.25
+            tracks.floatChannelData![0][frame] = 0.5
+        }
+        feed.push(member: "music", buffer: music)
+        feed.push(member: "tracks", buffer: tracks)
+        feed.tick(now: 100)
+        XCTAssertEqual(whole.values, [0.75])
+        XCTAssertEqual(without.values, [0.25])
+        feed.push(member: "music", buffer: music)
+        feed.removeMember("tracks")
+        feed.tick(now: 100.01)
+        XCTAssertEqual(without.values, [0.25, 0.25])
+        feed.setPartialConsumer(excluding: "tracks", nil)
+        feed.tick(now: 100.02)
+        XCTAssertEqual(without.values.count, 2)
+    }
 }
 
 private final class Marks: @unchecked Sendable {

@@ -117,3 +117,99 @@ private func socketPath() -> String { TracksPlayerWire.socketPath(appIdentity: U
     #expect(waitFor { exited.value == 0 })
     close(fd)
 }
+
+private func rawConnect(_ path: String) -> Int32 {
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    var address = sockaddr_un()
+    address.sun_family = sa_family_t(AF_UNIX)
+    withUnsafeMutableBytes(of: &address.sun_path) { raw in
+        let bytes = Array(path.utf8)
+        raw.copyBytes(from: bytes)
+        raw[bytes.count] = 0
+    }
+    _ = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+    }
+    return fd
+}
+
+@Test func aConnectionThatNeverSaysHelloCantTakeSlidesPlace() throws {
+    let path = socketPath()
+    let server = TracksPlayerServer(socketPath: path, engine: MultitrackEngine(), exit: { _ in })
+    #expect(try server.start())
+    let client = TracksPlayerClient(socketPath: path) { Issue.record("no launch") }
+    let statuses = Box(0)
+    let reasons = Box<[String]>([])
+    client.onStatus = { _ in statuses.value += 1 }
+    client.onDisconnect = { reasons.value.append($0) }
+    client.reattach()
+    #expect(waitFor { statuses.value > 0 })
+
+    #expect(try TracksPlayerServer(socketPath: path, engine: MultitrackEngine(), exit: { _ in }).start() == false)
+    let probe = rawConnect(path)
+    Thread.sleep(forTimeInterval: 0.2)
+    close(probe)
+    let before = statuses.value
+    #expect(waitFor { statuses.value > before + 2 })
+    #expect(reasons.value.isEmpty)
+    #expect(client.isConnected)
+    client.disconnect()
+    server.shutDown()
+}
+
+@Test func aLostConnectionReattachesButAReplacedSlidesStaysOff() throws {
+    let path = socketPath()
+    let server = TracksPlayerServer(socketPath: path, engine: MultitrackEngine(), exit: { _ in })
+    #expect(try server.start())
+    let first = TracksPlayerClient(socketPath: path) { Issue.record("no launch") }
+    let firstReasons = Box<[String]>([])
+    let firstConnects = Box(0)
+    first.onConnect = { firstConnects.value += 1 }
+    first.onDisconnect = { firstReasons.value.append($0) }
+    let heardPid = Box<Int32?>(nil)
+    first.onStatus = { heardPid.value = $0.pid }
+    first.reattach()
+    #expect(waitFor { heardPid.value == getpid() })
+
+    server.shutDown()
+    let again = TracksPlayerServer(socketPath: path, engine: MultitrackEngine(), exit: { _ in })
+    #expect(try again.start())
+    #expect(waitFor { firstConnects.value == 2 })
+    #expect(firstReasons.value == ["end of file"])
+    let second = TracksPlayerClient(socketPath: path) { Issue.record("no launch") }
+    second.reattach()
+    #expect(waitFor { firstReasons.value.last == "another Slides took over" })
+    Thread.sleep(forTimeInterval: 1.2)
+    #expect(firstConnects.value == 2, "a replaced Slides doesn't fight back")
+    #expect(!first.isConnected && second.isConnected)
+    second.disconnect()
+    again.shutDown()
+}
+
+@Test func thePlayersShareIsMappedByName() throws {
+    let path = socketPath()
+    let engine = MultitrackEngine()
+    let server = TracksPlayerServer(socketPath: path, engine: engine, exit: { _ in })
+    #expect(try server.start())
+    let name = TracksPlayerWire.shareName(socketPath: path)
+    #expect(name.utf8.count <= 31)
+    let mapped = try #require(TracksShare.open(name: name))
+    #expect(mapped.sampleRate == 48_000)
+    let ones = [Float](repeating: 1, count: 64)
+    ones.withUnsafeBufferPointer { engine.share?.write(slot: 9, left: $0.baseAddress, right: $0.baseAddress, count: 64) }
+    #expect(mapped.writtenFrames(slot: 9) == 64)
+    server.shutDown()
+    #expect(TracksShare.open(name: name) == nil)
+}
+
+@Test func thePlayerPreloadsWhatSlidesNames() throws {
+    let path = socketPath()
+    let engine = MultitrackEngine()
+    let server = TracksPlayerServer(socketPath: path, engine: engine, exit: { _ in })
+    #expect(try server.start())
+    let client = TracksPlayerClient(socketPath: path) {}
+    client.send(.preload(songs: [MultitrackSong(id: "next", stems: [.init(path: try silentStem(), channelId: "c")])]))
+    #expect(waitFor { engine.preloadedSongIDs == ["next"] })
+    client.disconnect()
+    server.shutDown()
+}

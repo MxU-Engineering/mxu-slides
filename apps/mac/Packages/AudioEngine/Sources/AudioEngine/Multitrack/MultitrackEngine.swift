@@ -17,16 +17,40 @@ public final class MultitrackEngine: @unchecked Sendable {
     private var readers: [ObjectIdentifier: [StemReader]] = [:]
     private var program: MultitrackProgram?
 
+    private var delays: MultitrackDelays?
+
+    public private(set) var share: TracksShare?
+
+    private var preloaded: [(song: MultitrackSong, rate: Double, readers: [StemReader])] = []
+
+    private var preloadWanted: [MultitrackSong] = []
+    private let preloadQueue = DispatchQueue(label: "io.prodcontrol.multitrack.preload", qos: .userInitiated)
+
+    private(set) var cuesDecoded = 0
+
     private var retired: [(program: MultitrackProgram, at: CFTimeInterval)] = []
 
     static let ringSeconds = 3.0
 
     static let primeSeconds = 0.75
 
-    public init(sampleRate: Double = 48_000, deviceChannels: Int = 2) {
+    static let preloadLimit = 2
+
+    public init(sampleRate: Double = 48_000, deviceChannels: Int = 2, share: TracksShare? = nil) {
         self.sampleRate = sampleRate
         self.deviceChannels = deviceChannels
-        renderer = MultitrackRenderer(deviceChannels: deviceChannels, sampleRate: sampleRate)
+        self.share = share
+        share?.sampleRate = sampleRate
+        renderer = MultitrackRenderer(deviceChannels: deviceChannels, sampleRate: sampleRate, share: share)
+    }
+
+    public func setShare(_ share: TracksShare) {
+        queue.sync {
+            self.share = share
+            share.sampleRate = sampleRate
+            renderer = MultitrackRenderer(deviceChannels: deviceChannels, sampleRate: sampleRate, share: share)
+            if let session { publish(session) }
+        }
     }
 
     deinit {
@@ -47,7 +71,10 @@ public final class MultitrackEngine: @unchecked Sendable {
                 let wasPlaying = renderer.published.playing
                 sampleRate = rate
                 deviceChannels = device.channelCount
-                renderer = MultitrackRenderer(deviceChannels: deviceChannels, sampleRate: sampleRate)
+                share?.sampleRate = rate
+                renderer = MultitrackRenderer(deviceChannels: deviceChannels, sampleRate: sampleRate, share: share)
+                delays = nil
+                preloaded = []
                 if let song { cueLocked(song, at: resume) }
                 if wasPlaying { renderer.play() }
             }
@@ -68,6 +95,30 @@ public final class MultitrackEngine: @unchecked Sendable {
     public func cue(_ song: MultitrackSong, at seconds: Double = 0) {
         queue.sync { cueLocked(song, at: seconds) }
     }
+
+    public func preload(_ songs: [MultitrackSong]) {
+        let rate: Double = queue.sync {
+            preloadWanted = Array(songs.suffix(Self.preloadLimit))
+            preloaded.removeAll { entry in !preloadWanted.contains { $0 == entry.song } }
+            return sampleRate
+        }
+        preloadQueue.async { [weak self] in
+            for song in songs.suffix(Self.preloadLimit) {
+                guard let self, self.queue.sync(execute: { self.needsPreload(song, rate: rate) }) else { continue }
+                let readers = Self.openReaders(song, sampleRate: rate, startFrame: 0)
+                self.queue.async {
+                    guard self.needsPreload(song, rate: rate) else { return }
+                    self.preloaded.append((song, rate, readers))
+                }
+            }
+        }
+    }
+
+    private func needsPreload(_ song: MultitrackSong, rate: Double) -> Bool {
+        rate == sampleRate && preloadWanted.contains(song) && !preloaded.contains { $0.song == song && $0.rate == rate }
+    }
+
+    public var preloadedSongIDs: [String] { queue.sync { preloaded.map(\.song.id) } }
 
     public func setRouting(_ routing: MultitrackRouting) {
         queue.sync {
@@ -134,33 +185,17 @@ public final class MultitrackEngine: @unchecked Sendable {
         queue.sync { session?.rings.reduce(0) { $0 + $1.starvedFrames } ?? 0 }
     }
 
-    public func drainFeeds(_ body: (String, UnsafePointer<Float>, UnsafePointer<Float>, Int) -> Void) {
-        queue.sync {
-            guard let program else { return }
-            let frames = 2048
-            let left = UnsafeMutablePointer<Float>.allocate(capacity: frames)
-            let right = UnsafeMutablePointer<Float>.allocate(capacity: frames)
-            defer { left.deallocate(); right.deallocate() }
-            for (index, ring) in program.feeds.enumerated() {
-                while ring.buffered > 0 {
-                    let count = min(frames, ring.buffered)
-                    ring.read(into: left, right, count: count)
-                    body(program.matrix.feedMixIds[index], left, right, count)
-                }
-            }
-        }
-    }
-
     private func cueLocked(_ song: MultitrackSong, at seconds: Double) {
         self.song = song
         let start = Int64((max(0, seconds) * sampleRate).rounded())
-        let capacity = Int(Self.ringSeconds * sampleRate)
-        let stemReaders = song.stems.map {
-            StemReader(stem: $0, sampleRate: sampleRate, startFrame: start, capacity: capacity)
-        }
+        let stemReaders: [StemReader]
+        if start == 0, let ready = preloaded.firstIndex(where: { $0.song == song && $0.rate == sampleRate }) {
 
-        let prime = Int(Self.primeSeconds * sampleRate)
-        for reader in stemReaders { reader.fill(upTo: prime) }
+            stemReaders = preloaded.remove(at: ready).readers
+        } else {
+            stemReaders = Self.openReaders(song, sampleRate: sampleRate, startFrame: start)
+            cuesDecoded += 1
+        }
         let session = MultitrackSession(
             rings: stemReaders.map(\.ring), stemChannels: song.stems.map(\.channelId), startFrame: start)
         readers[ObjectIdentifier(session)] = stemReaders
@@ -168,9 +203,21 @@ public final class MultitrackEngine: @unchecked Sendable {
         publish(session)
     }
 
+    private static func openReaders(_ song: MultitrackSong, sampleRate: Double, startFrame: Int64) -> [StemReader] {
+        let capacity = Int(ringSeconds * sampleRate)
+        let readers = song.stems.map {
+            StemReader(stem: $0, sampleRate: sampleRate, startFrame: startFrame, capacity: capacity)
+        }
+        let prime = Int(primeSeconds * sampleRate)
+        for reader in readers { reader.fill(upTo: prime) }
+        return readers
+    }
+
     private func publish(_ session: MultitrackSession) {
         let matrix = MultitrackMatrix(routing, stemChannels: session.stemChannels, deviceChannels: deviceChannels)
-        let next = MultitrackProgram(session: session, matrix: matrix, feedCapacity: Int(sampleRate))
+        let frames = routing.delayFrames(deviceChannels: deviceChannels, sampleRate: sampleRate)
+        if delays?.frames != frames { delays = frames.contains { $0 > 0 } ? MultitrackDelays(frames: frames) : nil }
+        let next = MultitrackProgram(session: session, matrix: matrix, delays: delays)
         if let program { retired.append((program, CACurrentMediaTime())) }
         program = next
         renderer.publish(next)

@@ -26,19 +26,65 @@ final class MultitrackProgram: @unchecked Sendable {
     let session: MultitrackSession
     let matrix: MultitrackMatrix
     let gains: UnsafeMutablePointer<Float>
-    let feeds: [StemRing]
 
-    init(session: MultitrackSession, matrix: MultitrackMatrix, feedCapacity: Int) {
+    let delays: MultitrackDelays?
+
+    init(session: MultitrackSession, matrix: MultitrackMatrix, delays: MultitrackDelays? = nil) {
         self.session = session
         self.matrix = matrix
+        self.delays = delays
         let table = UnsafeMutablePointer<Float>.allocate(capacity: max(1, matrix.gains.count))
         table.initialize(repeating: 0, count: max(1, matrix.gains.count))
         matrix.gains.withUnsafeBufferPointer { if let base = $0.baseAddress { table.update(from: base, count: $0.count) } }
         gains = table
-        feeds = matrix.feedMixIds.map { _ in StemRing(capacity: feedCapacity) }
     }
 
     deinit { gains.deallocate() }
+}
+
+final class MultitrackDelays: @unchecked Sendable {
+
+    let frames: [Int]
+    private let lines: UnsafeMutablePointer<UnsafeMutablePointer<Float>?>
+    private let heads: UnsafeMutablePointer<Int>
+
+    init(frames: [Int]) {
+        self.frames = frames
+        lines = .allocate(capacity: max(1, frames.count))
+        heads = .allocate(capacity: max(1, frames.count))
+        for (channel, delay) in frames.enumerated() {
+            heads[channel] = 0
+            if delay > 0 {
+                let line = UnsafeMutablePointer<Float>.allocate(capacity: delay)
+                line.initialize(repeating: 0, count: delay)
+                lines[channel] = line
+            } else {
+                lines[channel] = nil
+            }
+        }
+    }
+
+    deinit {
+        for channel in frames.indices { lines[channel]?.deallocate() }
+        lines.deallocate(); heads.deallocate()
+    }
+
+    func process(_ outputs: UnsafeMutablePointer<UnsafeMutablePointer<Float>>, channels: Int, count: Int) {
+        for channel in 0 ..< min(channels, frames.count) {
+            guard let line = lines[channel] else { continue }
+            let delay = frames[channel]
+            let samples = outputs[channel]
+            var head = heads[channel]
+            for frame in 0 ..< count {
+                let delayed = line[head]
+                line[head] = samples[frame]
+                samples[frame] = delayed
+                head += 1
+                if head == delay { head = 0 }
+            }
+            heads[channel] = head
+        }
+    }
 }
 
 final class MultitrackRenderer: @unchecked Sendable {
@@ -74,10 +120,16 @@ final class MultitrackRenderer: @unchecked Sendable {
     private let scratchLeft: UnsafeMutablePointer<Float>
     private let scratchRight: UnsafeMutablePointer<Float>
     private let feedScratch: UnsafeMutablePointer<Float>
-    private static let maxFeeds = 32
+    private static let maxFeeds = TracksShare.slots
     private let nanosPerTick: Double
 
-    init(maxFrames: Int = 4096, deviceChannels: Int, sampleRate: Double, fadeSeconds: Double = 0.01) {
+    let share: TracksShare?
+
+    init(
+        maxFrames: Int = 4096, deviceChannels: Int, sampleRate: Double, fadeSeconds: Double = 0.01,
+        share: TracksShare? = nil
+    ) {
+        self.share = share
         self.maxFrames = maxFrames
         self.deviceChannels = deviceChannels
         self.sampleRate = sampleRate
@@ -172,13 +224,24 @@ final class MultitrackRenderer: @unchecked Sendable {
         mxu_store_i64(publishedHostTime, Int64(bitPattern: hostTime))
         mxu_store_i64(publishedPlaying, playing && envelopeTarget > 0 ? 1 : 0)
 
-        guard playing, let program = current?.takeUnretainedValue() else { rampFrom = nil; return }
-        var done = offset
-        while done < total {
-            let count = min(maxFrames, total - done)
-            renderSlice(program, count: count, at: done, outputs: outputs)
-            done += count
+        defer { rampFrom = nil }
+        guard let program = current?.takeUnretainedValue() else { return }
+        if playing {
+
+            if offset > 0 {
+                for slot in program.matrix.feedSlots.prefix(Self.maxFeeds) {
+                    share?.write(slot: slot, left: nil, right: nil, count: offset)
+                }
+            }
+            var done = offset
+            while done < total {
+                let count = min(maxFrames, total - done)
+                renderSlice(program, count: count, at: done, outputs: outputs)
+                done += count
+            }
         }
+
+        program.delays?.process(outputs, channels: deviceChannels, count: total)
     }
 
     private func adoptWanted() {
@@ -214,7 +277,7 @@ final class MultitrackRenderer: @unchecked Sendable {
         _ program: MultitrackProgram, count: Int, at offset: Int,
         outputs: UnsafeMutablePointer<UnsafeMutablePointer<Float>>
     ) {
-        let feeds = program.feeds.count
+        let feeds = program.matrix.feedSlots.count
         let feedFrames = feedScratch
         if feeds > 0 { feedFrames.update(repeating: 0, count: count * 2 * min(feeds, Self.maxFeeds)) }
 
@@ -261,7 +324,7 @@ final class MultitrackRenderer: @unchecked Sendable {
         let session = program.session
         let matrix = program.matrix
         let destinations = matrix.destinations
-        let feeds = min(program.feeds.count, Self.maxFeeds)
+        let feeds = min(program.matrix.feedSlots.count, Self.maxFeeds)
         for (stem, ring) in session.rings.enumerated() {
             ring.read(into: scratchLeft, scratchRight, count: count)
             meter(session, stem: stem, count: count)
@@ -301,8 +364,10 @@ final class MultitrackRenderer: @unchecked Sendable {
         }
         position += Int64(count)
         guard writesFeeds else { return }
+        guard let share else { return }
         for feed in 0 ..< feeds {
-            program.feeds[feed].write(
+            share.write(
+                slot: program.matrix.feedSlots[feed],
                 left: feedFrames + feed * 2 * count, right: feedFrames + (feed * 2 + 1) * count, count: count)
         }
     }

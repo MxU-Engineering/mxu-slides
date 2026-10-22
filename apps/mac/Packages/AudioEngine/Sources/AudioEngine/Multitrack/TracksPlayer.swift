@@ -12,9 +12,13 @@ public enum TracksPlayerMessage: Codable, Equatable, Sendable {
     case stop
     case seek(seconds: Double)
 
+    case preload(songs: [MultitrackSong])
+
     case quit
 
     case status(TracksPlayerStatus)
+
+    case replaced
 }
 
 public struct TracksPlayerStatus: Codable, Equatable, Sendable {
@@ -33,6 +37,8 @@ public struct TracksPlayerStatus: Codable, Equatable, Sendable {
 
     public var channels: [String]?
 
+    public var pid: Int32?
+
     public func position(atHostTime now: UInt64 = mach_absolute_time()) -> Double {
         var seconds = sampleRate > 0 ? Double(frame) / sampleRate : 0
         guard playing, hostTime > 0, now > hostTime else { return seconds }
@@ -45,12 +51,18 @@ public struct TracksPlayerStatus: Codable, Equatable, Sendable {
 
 public enum TracksPlayerWire {
 
-    public static let version = 1
+    public static let version = 2
 
     public static func socketPath(appIdentity: String) -> String {
         var hash: UInt32 = 2_166_136_261
         for byte in appIdentity.utf8 { hash = (hash ^ UInt32(byte)) &* 16_777_619 }
         return (NSTemporaryDirectory() as NSString).appendingPathComponent(String(format: "mxu-tracks-%08x.sock", hash))
+    }
+
+    public static func shareName(socketPath: String) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for byte in socketPath.utf8 { hash = (hash ^ UInt32(byte)) &* 16_777_619 }
+        return String(format: "/mxu-trk-%08x", hash)
     }
 }
 
@@ -60,12 +72,15 @@ final class TracksPlayerConnection: @unchecked Sendable {
     private var source: DispatchSourceRead?
     private var pending = Data()
     private let onMessage: (TracksPlayerMessage) -> Void
-    private let onClose: (TracksPlayerConnection) -> Void
+
+    private let onClose: (TracksPlayerConnection, String) -> Void
     private var closed = false
+
+    var greeted = false
 
     init(
         fd: Int32, queue: DispatchQueue, onMessage: @escaping (TracksPlayerMessage) -> Void,
-        onClose: @escaping (TracksPlayerConnection) -> Void
+        onClose: @escaping (TracksPlayerConnection, String) -> Void
     ) {
         self.fd = fd
         self.queue = queue
@@ -79,13 +94,14 @@ final class TracksPlayerConnection: @unchecked Sendable {
         source.setCancelHandler { close(fd) }
         source.resume()
         self.source = source
-        if closed { queue.async { [self] in closed = false; shut() } }
+        if closed { queue.async { [self] in closed = false; shut("peer gone at open") } }
     }
 
     func send(_ message: TracksPlayerMessage) {
         queue.async { [self] in
             guard !closed, var data = try? JSONEncoder().encode(message) else { return }
             data.append(0x0A)
+            var failure: Int32 = 0
             let ok = data.withUnsafeBytes { bytes -> Bool in
                 var offset = 0
                 while offset < bytes.count {
@@ -95,22 +111,27 @@ final class TracksPlayerConnection: @unchecked Sendable {
                     } else if wrote < 0, errno == EAGAIN {
                         usleep(1000)
                     } else {
+                        failure = errno
                         return false
                     }
                 }
                 return true
             }
-            if !ok { shut() }
+            if !ok { shut("write error \(failure)") }
         }
     }
 
-    func cancel() { queue.async { [self] in shut() } }
+    func cancel() { queue.async { [self] in shut("cancelled") } }
 
     private func readAvailable() {
         var buffer = [UInt8](repeating: 0, count: 65_536)
         let count = read(fd, &buffer, buffer.count)
         guard count > 0 else {
-            if count == 0 || errno != EAGAIN { shut() }
+            if count == 0 {
+                shut("end of file")
+            } else if errno != EAGAIN, errno != EINTR {
+                shut("read error \(errno)")
+            }
             return
         }
         pending.append(contentsOf: buffer[0 ..< count])
@@ -123,11 +144,11 @@ final class TracksPlayerConnection: @unchecked Sendable {
         }
     }
 
-    private func shut() {
+    private func shut(_ reason: String) {
         guard !closed else { return }
         closed = true
         source?.cancel()
-        onClose(self)
+        onClose(self, reason)
     }
 }
 
@@ -166,6 +187,9 @@ public final class TracksPlayerServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.prodcontrol.tracksplayer.server")
     private var listenSource: DispatchSourceRead?
     private var client: TracksPlayerConnection?
+
+    private var pending: [TracksPlayerConnection] = []
+    private var share: TracksShare?
     private var statusTimer: DispatchSourceTimer?
     private var alone: CFAbsoluteTime? = CFAbsoluteTimeGetCurrent()
     private var lastError: String?
@@ -189,6 +213,13 @@ public final class TracksPlayerServer: @unchecked Sendable {
             return false
         }
         unlink(path)
+
+        if let share = TracksShare.create(name: TracksPlayerWire.shareName(socketPath: path)) {
+            self.share = share
+            engine.setShare(share)
+        } else {
+            log.error("no shared memory for mix shares; streams won't carry tracks")
+        }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw MultitrackError.status(OSStatus(errno)) }
 
@@ -221,35 +252,61 @@ public final class TracksPlayerServer: @unchecked Sendable {
             listenSource?.cancel()
             client?.cancel()
             client = nil
+            pending.forEach { $0.cancel() }
+            pending = []
             unlink(path)
+            share?.remove()
         }
     }
 
     private func accept(_ listener: Int32) {
         let fd = Darwin.accept(listener, nil, nil)
         guard fd >= 0 else { return }
-
-        client?.cancel()
-        let connection = TracksPlayerConnection(fd: fd, queue: queue, onMessage: { [weak self] in
-            self?.handle($0)
-        }, onClose: { [weak self] connection in
-            guard let self, self.client === connection else { return }
+        var made: TracksPlayerConnection?
+        let connection = TracksPlayerConnection(fd: fd, queue: queue, onMessage: { [weak self] message in
+            guard let self, let made else { return }
+            self.handle(message, from: made)
+        }, onClose: { [weak self] connection, reason in
+            guard let self else { return }
+            self.pending.removeAll { $0 === connection }
+            guard self.client === connection else { return }
             self.client = nil
             self.alone = CFAbsoluteTimeGetCurrent()
-            self.log.notice("Slides went away; playing on alone")
+            self.log.notice("Slides went away (\(reason, privacy: .public)); playing on alone")
         })
-        client = connection
-        alone = nil
-        sendStatus()
+        made = connection
+        pending.append(connection)
+    }
+
+    private func handle(_ message: TracksPlayerMessage, from connection: TracksPlayerConnection) {
+        if case .hello(let version) = message {
+            if version != TracksPlayerWire.version, !engine.isPlaying {
+                log.notice("version \(version) != \(TracksPlayerWire.version); exiting for the new player")
+                finish(code: 0)
+                return
+            }
+
+            pending.removeAll { $0 === connection }
+            if let previous = client, previous !== connection {
+                log.notice("a new Slides took over")
+                previous.send(.replaced)
+                previous.cancel()
+            }
+            connection.greeted = true
+            client = connection
+            alone = nil
+            sendStatus()
+            return
+        }
+
+        guard connection === client, connection.greeted else { return }
+        handle(message)
     }
 
     private func handle(_ message: TracksPlayerMessage) {
         switch message {
-        case .hello(let version):
-            if version != TracksPlayerWire.version, !engine.isPlaying {
-                log.notice("version \(version) != \(TracksPlayerWire.version); exiting for the new player")
-                finish(code: 0)
-            }
+        case .hello:
+            break
         case .attach(let uid):
             let device = uid.flatMap { uid in AudioDeviceList.outputDevices().first { $0.uid == uid } }
             do {
@@ -268,10 +325,12 @@ public final class TracksPlayerServer: @unchecked Sendable {
             engine.stop()
         case .seek(let seconds):
             engine.seek(to: seconds)
+        case .preload(let songs):
+            engine.preload(songs)
         case .quit:
             engine.stop()
             queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.finish(code: 0) }
-        case .status:
+        case .status, .replaced:
             break
         }
     }
@@ -281,6 +340,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
         statusTimer?.cancel()
         listenSource?.cancel()
         unlink(path)
+        share?.remove()
         exit(code)
     }
 
@@ -313,7 +373,8 @@ public final class TracksPlayerServer: @unchecked Sendable {
             deviceChannels: engine.deviceChannels, starvedFrames: engine.starvedFrames,
             meters: engine.takeMeters().mapValues { [$0.left.rms, $0.left.peak, $0.right.rms, $0.right.peak] },
             error: lastError,
-            channels: engine.songChannelIDs)
+            channels: engine.songChannelIDs,
+            pid: getpid())
     }
 }
 
@@ -323,10 +384,13 @@ public final class TracksPlayerClient: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.prodcontrol.tracksplayer.client")
     private var connection: TracksPlayerConnection?
     private var connecting = false
+
+    private var replaced = false
     private var backlog: [TracksPlayerMessage] = []
     public var onStatus: (@Sendable (TracksPlayerStatus) -> Void)?
     public var onConnect: (@Sendable () -> Void)?
-    public var onDisconnect: (@Sendable () -> Void)?
+
+    public var onDisconnect: (@Sendable (String) -> Void)?
 
     public init(socketPath: String, launch: @escaping @Sendable () -> Void) {
         path = socketPath
@@ -350,6 +414,17 @@ public final class TracksPlayerClient: @unchecked Sendable {
         queue.async { [self] in
             guard connection == nil, let fd = connectSocket(path) else { return }
             adopt(fd)
+        }
+    }
+
+    private func reattach(attempt: Int) {
+        queue.asyncAfter(deadline: .now() + 0.1) { [self] in
+            guard connection == nil, !connecting else { return }
+            if let fd = connectSocket(path) {
+                adopt(fd)
+            } else if attempt < 9 {
+                reattach(attempt: attempt + 1)
+            }
         }
     }
 
@@ -386,12 +461,19 @@ public final class TracksPlayerClient: @unchecked Sendable {
     }
 
     private func adopt(_ fd: Int32) {
+        replaced = false
         let made = TracksPlayerConnection(fd: fd, queue: queue, onMessage: { [weak self] message in
-            if case .status(let status) = message { self?.onStatus?(status) }
-        }, onClose: { [weak self] connection in
+            switch message {
+            case .status(let status): self?.onStatus?(status)
+            case .replaced: self?.replaced = true
+            default: break
+            }
+        }, onClose: { [weak self] connection, reason in
             guard let self, self.connection === connection else { return }
             self.connection = nil
-            self.onDisconnect?()
+            self.onDisconnect?(self.replaced ? "another Slides took over" : reason)
+
+            if !self.replaced { self.reattach(attempt: 0) }
         })
         connection = made
         made.send(.hello(version: TracksPlayerWire.version))
