@@ -113,7 +113,7 @@ struct ChordChartPDFTests {
         #expect(ChordChartPDF.written(sections: [
             .init(name: "Vamp", lines: ["[D]Oh oh"]), .init(name: "Vamp", lines: ["[G]Hey hey"]),
             .init(name: "Chorus", lines: ["Way maker"]), .init(name: "Chorus", lines: ["Promise keeper"]),
-        ], leading: []) == ["Vamp", "[D]Oh oh", "", "Vamp 2", "[G]Hey hey", "", "Chorus", "Way maker", "", "Chorus", "Promise keeper"])
+        ], leading: []) == ["Vamp", "[D]Oh oh", "", "Vamp", "[G]Hey hey", "", "Chorus", "Way maker", "", "Chorus", "Promise keeper"])
     }
 
     @Test func theChartImportsAsADeckInItsKey() throws {

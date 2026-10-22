@@ -365,7 +365,7 @@ public enum ChordChartPDF {
                 .filter { $0 != "|" }.joined(separator: "\n")
             let sameName = seen.filter { $0.chartName.caseInsensitiveCompare(section.name) == .orderedSame }
             let earlier = sameName.first { $0.content == content }
-            let numbers = words.isEmpty || PlanLyricsImporter.followedName(of: section.name) != nil
+            let numbers = words.isEmpty
             let name = earlier?.name
                 ?? (numbers && !sameName.isEmpty ? numbered(section.name, taken: seen.map(\.name)) : section.name)
             if !out.isEmpty { out.append("") }
