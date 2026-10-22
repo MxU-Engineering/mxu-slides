@@ -32,7 +32,6 @@ struct SlideEditorView: View {
     @State private var renameSectionTarget: PresentationSection?
     @State private var renameSectionName = ""
     @State private var showingReflow = false
-    @State private var showingChords = false
 
     @AppStorage("shell.sidebarVisible") private var sidebarVisible = true
 
@@ -1110,10 +1109,6 @@ struct SlideEditorView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { toolbarWidth = $0 }
 
         .clipped()
-
-        .sheet(isPresented: $showingChords) {
-            ChordEditorSheet(model: model.appModel, render: render, presentationID: model.presentation.id)
-        }
     }
 
     private func addObjectTools(_ model: SlideEditorModel) -> some View {
@@ -1157,10 +1152,6 @@ struct SlideEditorView: View {
         if !model.isThemeEditor, !model.isSingleComposition {
             ToolbarCluster {
                 chordsToggle(model)
-                if model.showsChords {
-                    Button("Chart\u{2026}") { showingChords = true }
-                        .help("Chord Chart — every line's chords as ChordPro text")
-                }
             }
             .fixedSize()
             ToolbarCluster {

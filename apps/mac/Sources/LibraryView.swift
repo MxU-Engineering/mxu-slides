@@ -36,7 +36,6 @@ struct LibrarySidebar: View {
     @State private var renameText = ""
     @State private var mediaSettingsTarget: MediaSettingsTarget?
     @State private var newFolderTarget: LibraryIndex.Entry?
-    @State private var chordEditTarget: LibraryIndex.Entry?
     @State private var resolutionTarget: PresentationResolutionSheet.Target?
 
     @State private var pendingApplyTheme: PendingDeckTheme?
@@ -122,9 +121,6 @@ struct LibrarySidebar: View {
         }
         .sheet(item: $mediaSettingsTarget) { target in
             MediaSettingsSheet(model: model, mediaID: target.id)
-        }
-        .sheet(item: $chordEditTarget) { entry in
-            ChordEditorSheet(model: model, render: render, presentationID: entry.id)
         }
         .sheet(item: $resolutionTarget) { target in
             PresentationResolutionSheet(model: model, target: target)
@@ -1058,7 +1054,6 @@ struct LibrarySidebar: View {
             Menu("Apply Theme") {
                 DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
             }
-            Button("Edit Chords…") { chordEditTarget = entry }
             if !runOnly {
                 Button("Resolution…") { resolutionTarget = .init(ids: [entry.id]) }
             }
