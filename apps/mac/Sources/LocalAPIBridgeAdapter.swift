@@ -523,7 +523,7 @@ final class AppAPIBridge: LocalAPIBridge {
 
     func clear(_ command: APIClearCommand) throws {
         if let raw = command.function {
-            guard let function = ShowFunction(rawValue: raw) else {
+            guard let function = ShowFunction(apiName: raw) else {
                 throw APIError.badRequest(
                     "Unknown function '\(raw)'. Functions: \(ShowFunction.allCases.map(\.rawValue).joined(separator: ", "))."
                 )

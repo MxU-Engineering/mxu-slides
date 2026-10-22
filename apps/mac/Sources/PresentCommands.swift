@@ -29,7 +29,6 @@ struct PresentCommands: Commands {
                 .keyboardShortcut(command: .clearAlerts)
             Button("Clear Inputs") { controls?.clear(function: .inputs) }
                 .keyboardShortcut(command: .clearInputs)
-            Button("Clear Tracks") { controls?.clear(function: .tracks) }
             Divider()
             Menu("Clear Layer") {
 

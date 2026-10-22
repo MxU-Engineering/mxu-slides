@@ -170,7 +170,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func clearTracks() {
-        if tracksSong != nil, playing {
+        if TracksClear.stopsTimeline(ownClockPlaying: playing, playingTracks: tracksSong != nil) {
             stop()
         } else {
             controls?.tracks.stop()

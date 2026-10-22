@@ -564,26 +564,45 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
 }
 
 @Test func clearAllScopeDefaultsMigratesAndRoundTrips() {
-
-    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs, .tracks])
-    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs, .tracks])
-    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio, .tracks],
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio],
             "the old Music switch carries over")
-    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [.tracks], "a saved checklist wins")
-    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts, .tracks])
-    #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio, .tracks],
+    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [], "a saved checklist wins")
+    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts])
+    #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio],
             "a skip saved before Digital Signage left (2026-10-16) drops")
-    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: nil, sweepsTracks: true) == [])
-    #expect(ClearAllScope.encode([.tracks, .audio]) == "audio", "Tracks never rides the skip list")
+    #expect(ClearAllScope.skips(stored: "tracks,inputs", legacyIncludesAudio: nil) == [.inputs],
+            "M1's Tracks row is gone: Music covers it (Cody 2026-10-19)")
     #expect(ClearAllScope.swept(skips: [.inputs]) == Set(ShowFunction.allCases).subtracting([.inputs]))
 
     let defaults = UserDefaults(suiteName: "ClearAllScopeTests-\(UUID().uuidString)")!
     ClearAllScope.set(.audio, swept: false, defaults: defaults)
-    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.inputs, .audio, .tracks]))
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.inputs, .audio]))
     #expect(defaults.object(forKey: ClearAllScope.legacyIncludesAudioKey) as? Bool == false,
             "older builds still read Music from the old switch")
     ClearAllScope.set(.inputs, swept: true, defaults: defaults)
-    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.audio, .tracks]))
-    ClearAllScope.set(.tracks, swept: true, defaults: defaults)
     #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.audio]))
+}
+
+@Test func clearMusicStopsTracksAndOnlyATracksClockedTimeline() {
+    #expect(TracksClear.stopsTracks(sweeping: [.audio]), "Clear Music: popup, menu, action, MIDI, API")
+    for function in ShowFunction.allCases where function != .audio {
+        #expect(!TracksClear.stopsTracks(sweeping: [function]), "Clear \(function.displayName) leaves tracks")
+    }
+
+    #expect(TracksClear.stopsTracks(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips)))
+    #expect(!TracksClear.stopsTracks(sweeping: ClearAllScope.swept(
+        skips: ClearAllScope.skips(stored: nil, legacyIncludesAudio: false))))
+
+    #expect(TracksClear.stopsTimeline(ownClockPlaying: true, playingTracks: true), "its clock is its tracks (T13)")
+    #expect(!TracksClear.stopsTimeline(ownClockPlaying: false, playingTracks: true), "timecode drives it: keeps following")
+    #expect(!TracksClear.stopsTimeline(ownClockPlaying: true, playingTracks: false), "own clock, no stems: runs on")
+}
+
+@Test func apiFunctionNamesKeepTracksAsAnAlias() {
+    #expect(ShowFunction(apiName: "tracks") == .audio)
+    #expect(ShowFunction(apiName: "audio") == .audio)
+    #expect(ShowFunction(apiName: "slides") == .slides)
+    #expect(ShowFunction(apiName: "signage") == nil)
 }

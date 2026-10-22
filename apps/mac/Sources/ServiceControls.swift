@@ -1330,7 +1330,7 @@ final class ServiceControls {
             refreshNextSlide()
         }
         if function == .audio { audio.stop() }
-        if function == .tracks { timeline.clearTracks() }
+        if TracksClear.stopsTracks(sweeping: [function]) { timeline.clearTracks() }
         apply()
         if function == .alerts { syncFlashClock() }
     }
@@ -1367,7 +1367,7 @@ final class ServiceControls {
         let swept = ClearAllScope.swept()
         state.clearAll(sweeping: swept, protecting: protecting)
         if swept.contains(.audio) { audio.stop() }
-        if swept.contains(.tracks) { timeline.clearTracks() }
+        if TracksClear.stopsTracks(sweeping: swept) { timeline.clearTracks() }
 
         if state.liveSlide == nil {
             liveContextID = nil
@@ -1389,9 +1389,8 @@ final class ServiceControls {
         case .slides: state.liveSlide != nil
         case .media, .inputs: state.liveMedia.values.contains { $0.showFunction == function }
         case .overlays: !state.liveOverlays.isEmpty
-        case .audio: !state.liveAudio.isEmpty
+        case .audio: !state.liveAudio.isEmpty || tracks.isPlaying
         case .alerts: state.liveAlert != nil
-        case .tracks: tracks.isPlaying
         }
     }
 

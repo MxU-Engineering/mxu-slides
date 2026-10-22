@@ -9,10 +9,9 @@ struct ClearChip: View {
 
     @AppStorage(ClearAllScope.skipsKey) private var storedSkips: String?
     @AppStorage(ClearAllScope.legacyIncludesAudioKey) private var legacyIncludesAudio: Bool?
-    @AppStorage(ClearAllScope.sweepsTracksKey) private var sweepsTracks = false
 
     private var skips: Set<ShowFunction> {
-        ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio, sweepsTracks: sweepsTracks)
+        ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio)
     }
 
     var body: some View {
@@ -56,10 +55,6 @@ struct ClearChip: View {
                 functionButton(.audio)
                 functionButton(.alerts)
                 functionButton(.inputs)
-            }
-
-            HStack(spacing: 6) {
-                functionButton(.tracks)
             }
             sectionLabel("Layers")
                 .padding(.top, 4)
@@ -183,10 +178,9 @@ struct ClearChip: View {
 struct ClearAllChecklistMenu: View {
     @AppStorage(ClearAllScope.skipsKey) private var storedSkips: String?
     @AppStorage(ClearAllScope.legacyIncludesAudioKey) private var legacyIncludesAudio: Bool?
-    @AppStorage(ClearAllScope.sweepsTracksKey) private var sweepsTracks = false
 
     var body: some View {
-        let skips = ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio, sweepsTracks: sweepsTracks)
+        let skips = ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio)
         Text("Clear All clears")
         ForEach(ShowFunction.allCases, id: \.self) { function in
             Toggle(function.displayName, isOn: Binding(
@@ -200,10 +194,9 @@ struct ClearAllChecklistMenu: View {
 struct ClearAllChecklist: View {
     @AppStorage(ClearAllScope.skipsKey) private var storedSkips: String?
     @AppStorage(ClearAllScope.legacyIncludesAudioKey) private var legacyIncludesAudio: Bool?
-    @AppStorage(ClearAllScope.sweepsTracksKey) private var sweepsTracks = false
 
     var body: some View {
-        let skips = ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio, sweepsTracks: sweepsTracks)
+        let skips = ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio)
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 4), alignment: .leading, spacing: 6) {
             ForEach(ShowFunction.allCases, id: \.self) { function in
                 Toggle(function.displayName, isOn: Binding(
