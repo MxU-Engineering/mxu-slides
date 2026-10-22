@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 147,
+  "schemaVersion": 148,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -2282,6 +2282,25 @@
         {
           "name": "mxuSongKeyApplied",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "SongTransition",
+          "optional": true
+        }
+      ]
+    },
+    "SongTransition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": "string"
+        },
+        {
+          "name": "seconds",
+          "type": "double",
           "optional": true
         }
       ]

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 147,
+  "schemaVersion": 148,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1868,6 +1868,9 @@
         },
         "mxuSongKeyApplied": {
           "type": "string"
+        },
+        "transition": {
+          "$ref": "#/components/schemas/SongTransition"
         }
       },
       "required": [
@@ -1875,6 +1878,20 @@
         "itemKind",
         "name",
         "refId"
+      ]
+    },
+    "SongTransition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind"
       ]
     },
     "ServiceLinkRule": {

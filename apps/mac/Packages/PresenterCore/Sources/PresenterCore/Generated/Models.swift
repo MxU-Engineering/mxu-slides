@@ -1189,8 +1189,9 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var mxuBpm: Double?
     public var mxuTimeSignature: String?
     public var mxuSongKeyApplied: String?
+    public var transition: SongTransition?
 
-    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuPcoItemId: String? = nil, mxuPcoSongId: String? = nil, mxuPcoArrangementId: String? = nil, mxuPcoKeyId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil) {
+    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuPcoItemId: String? = nil, mxuPcoSongId: String? = nil, mxuPcoArrangementId: String? = nil, mxuPcoKeyId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, transition: SongTransition? = nil) {
         self.id = id
         self.itemKind = itemKind
         self.name = name
@@ -1223,6 +1224,17 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         self.mxuBpm = mxuBpm
         self.mxuTimeSignature = mxuTimeSignature
         self.mxuSongKeyApplied = mxuSongKeyApplied
+        self.transition = transition
+    }
+}
+
+public struct SongTransition: Codable, Sendable, Equatable {
+    public var kind: String
+    public var seconds: Double?
+
+    public init(kind: String, seconds: Double? = nil) {
+        self.kind = kind
+        self.seconds = seconds
     }
 }
 
