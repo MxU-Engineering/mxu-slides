@@ -210,7 +210,7 @@ struct AudioMixerModule: View {
                 set: { mixer.setDeviceMuted($0, uid: uid) }
             ),
 
-            meter: mixer.displayLevels["device:\(uid)"],
+            meter: .display("device:\(uid)"), mixer: mixer,
             colorKey: "device:\(uid)",
             defaultColorName: "Teal",
             extraMenu: {
@@ -260,7 +260,7 @@ struct AudioMixerModule: View {
                 gain: Binding(get: { TracksController.trim }, set: { TracksController.setTrim($0) }),
                 muted: Binding(get: { TracksController.trimMuted }, set: { TracksController.setTrimMuted($0) }),
 
-                meter: mixer.displayLevels[AudioMixerController.tracksMeterKey],
+                meter: .display(AudioMixerController.tracksMeterKey), mixer: mixer,
                 meterAppliesGain: false,
                 colorKey: "tracks",
                 defaultColorName: "Purple",
@@ -313,7 +313,7 @@ struct AudioMixerModule: View {
             gain: Binding(get: { TracksController.gain(channel.id) }, set: { TracksController.setGain($0, for: channel.id) }),
             muted: Binding(get: { TracksController.muted(channel.id) }, set: { TracksController.setMuted($0, for: channel.id) }),
             pan: Binding(get: { TracksController.pan(channel.id) }, set: { TracksController.setPan($0, for: channel.id) }),
-            meter: mixer.displayLevels["track:\(channel.id)"],
+            meter: .display("track:\(channel.id)"), mixer: mixer,
             meterAppliesGain: true,
             colorKey: "track:\(channel.id)",
             defaultColorName: "Purple",
@@ -413,7 +413,7 @@ struct AudioMixerModule: View {
                 get: { mixer.pan(forInput: entry.id) },
                 set: { mixer.setPan($0, forInput: entry.id) }
             ),
-            meter: mixer.displayLevels[entry.id],
+            meter: .display(entry.id), mixer: mixer,
             meterAppliesGain: true,
 
             onRename: { audioInventory.rename(id: entry.id, to: $0) },
@@ -481,7 +481,7 @@ struct AudioMixerModule: View {
                 set: { audio.setMuted($0, for: player) }
             ),
 
-            meter: mixer.playerLevels[player.targetKey],
+            meter: .player(player.targetKey), mixer: mixer,
             meterAppliesGain: true,
             colorKey: playlistID.map { "playlist:\($0)" } ?? "single-item",
             defaultColorName: "Teal"
@@ -503,7 +503,7 @@ struct AudioMixerModule: View {
                 get: { audio.mediaAudioMuted },
                 set: { audio.mediaAudioMuted = $0 }
             ),
-            meter: controls.mixer.displayLevels[AudioMixerController.videoMeterKey],
+            meter: .display(AudioMixerController.videoMeterKey), mixer: controls.mixer,
             colorKey: "video",
             defaultColorName: "Teal"
         ) { EmptyView() }
@@ -527,7 +527,7 @@ struct AudioMixerModule: View {
                 get: { audio.mixMuted(mix.id) },
                 set: { audio.setMixMuted($0, mixID: mix.id) }
             ),
-            meter: mixer.busLevels[mix.id],
+            meter: .bus(mix.id), mixer: mixer,
             onRename: (mix.isMain || runOnly) ? nil : { newName in
                 mixInventory.rename(id: mix.id, to: newName)
             },
@@ -602,7 +602,8 @@ struct AudioMixerModule: View {
         return HStack(alignment: .top, spacing: 4) {
             FoldCard(
                 name: name, symbol: "hifispeaker.2", count: members.count, expanded: expanded,
-                peak: members.compactMap { mixer.outputLevels[$0.id]?.peak }.max() ?? 0,
+
+                meter: .output("device:\(uid)"), mixer: mixer,
                 toggle: { groupStore.toggle(key) }, rename: nil, remove: nil)
             if expanded {
                 ForEach(members) { output in
@@ -664,7 +665,7 @@ struct AudioMixerModule: View {
         return HStack(alignment: .top, spacing: 4) {
             FoldCard(
                 name: folder.name, symbol: expanded ? "folder" : "folder.fill", count: members.count, expanded: expanded,
-                peak: members.compactMap { mixer.busLevels[$0.id]?.peak }.max() ?? 0,
+                meter: .loudestMix(members.map(\.id)), mixer: mixer,
                 toggle: { groupStore.toggle(key) },
                 rename: runOnly ? nil : { mixInventory.renameFolder(id: folder.id, to: $0) },
                 remove: runOnly ? nil : { mixInventory.removeFolder(id: folder.id) })
@@ -820,7 +821,7 @@ struct AudioMixerModule: View {
                 get: { mixer.outputMuted(output.id) },
                 set: { mixer.setOutputMuted($0, outputId: output.id) }
             ),
-            meter: mixer.outputLevels[output.id],
+            meter: .output(output.id), mixer: mixer,
             colorKey: "output:\(output.id)",
             defaultColorName: "Orange",
             extraMenu: {
@@ -1059,7 +1060,8 @@ private struct ConsoleStrip<Footer: View>: View {
 
     let pan: Binding<Float>?
 
-    let meter: MeterBallistics?
+    let meter: MeterSource
+    let mixer: AudioMixerController
 
     let meterAppliesGain: Bool
 
@@ -1074,23 +1076,15 @@ private struct ConsoleStrip<Footer: View>: View {
     @ViewBuilder let footer: () -> Footer
     @State private var editingName = false
     @State private var draftName = ""
-
-    @State private var peakHold = PeakHold()
-    @State private var tickHold = PeakHold(holdSeconds: 1)
     @State private var editingGain = false
     @State private var gainDraft = ""
     @State private var colorStore = StripColorStore.shared
     @Environment(\.moduleViewportHeight) private var viewportHeight
     @Environment(\.runOnly) private var runOnly
 
-    private var displayedPeak: Float {
-        let raw = meter?.peak ?? 0
-        guard meterAppliesGain else { return raw }
-        return muted.wrappedValue ? 0 : min(raw * gain.wrappedValue, 1)
-    }
-
-    private var signalPresent: Bool {
-        meter != nil && (meter?.peak ?? 0) > 0.001
+    private var meterScale: Float {
+        guard meterAppliesGain else { return 1 }
+        return muted.wrappedValue ? 0 : gain.wrappedValue
     }
 
     private var faderHeight: CGFloat {
@@ -1103,7 +1097,7 @@ private struct ConsoleStrip<Footer: View>: View {
         name: String, live: Bool, tint: Color = .green,
         topSlot: ConsoleSlot = .blank, bottomSlot: ConsoleSlot = .blank,
         gain: Binding<Float>, muted: Binding<Bool>,
-        pan: Binding<Float>? = nil, meter: MeterBallistics?,
+        pan: Binding<Float>? = nil, meter: MeterSource, mixer: AudioMixerController,
         meterAppliesGain: Bool = false,
         onRename: ((String) -> Void)? = nil,
         renameValue: String? = nil,
@@ -1121,6 +1115,7 @@ private struct ConsoleStrip<Footer: View>: View {
         self.muted = muted
         self.pan = pan
         self.meter = meter
+        self.mixer = mixer
         self.meterAppliesGain = meterAppliesGain
         self.onRename = onRename
         self.renameValue = renameValue
@@ -1163,27 +1158,15 @@ private struct ConsoleStrip<Footer: View>: View {
                             editingGain = false
                         }
                     }
-                if meter != nil {
-                    LevelLabel(decibels: peakHold.decibels, style: .peak)
-                        .contentShape(Rectangle())
-                        .onTapGesture { peakHold.reset() }
-                        .help("Highest peak since reset — click to reset")
-                }
+                StripPeakLabel(source: meter, mixer: mixer, scale: meterScale)
             }
             .frame(height: 10)
             HStack(spacing: 2) {
                 VerticalFader(value: gain)
                 MeterScale()
-                VerticalMeter(
-                    peak: displayedPeak, heldPeakDecibels: tickHold.decibels,
-                    signalPresent: signalPresent)
+                StripMeter(source: meter, mixer: mixer, scale: meterScale)
             }
             .frame(height: faderHeight)
-            .onChange(of: displayedPeak, initial: true) {
-                peakHold.update(displayedPeak)
-                tickHold.update(
-                    displayedPeak, at: Date().timeIntervalSinceReferenceDate)
-            }
             Button {
                 muted.wrappedValue.toggle()
             } label: {
@@ -1437,6 +1420,7 @@ private struct VerticalMeter: View {
     let heldPeakDecibels: Float
 
     var signalPresent: Bool = false
+    var width: CGFloat = 4
 
     var body: some View {
         GeometryReader { geometry in
@@ -1466,7 +1450,89 @@ private struct VerticalMeter: View {
 
             .animation(.linear(duration: 0.07), value: fill)
         }
-        .frame(width: 4)
+        .frame(width: width)
+    }
+}
+
+private enum MeterSource {
+    case display(String), player(String), bus(String), output(String)
+
+    case loudestMix([String])
+}
+
+private struct StripMeter: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+
+    let scale: Float
+    @State private var ticks: [PeakHold] = []
+
+    static let width: CGFloat = 9
+
+    static func peaks(_ source: MeterSource, in mixer: AudioMixerController) -> [Float]? {
+        switch source {
+        case .display(let key): mixer.displayLevels[key]?.map(\.peak)
+        case .player(let key): mixer.playerLevels[key]?.map(\.peak)
+        case .bus(let key): mixer.busLevels[key]?.map(\.peak)
+        case .output(let key): mixer.outputLevels[key]?.map(\.peak)
+        case .loudestMix(let ids): [ids.flatMap { mixer.busLevels[$0] ?? [] }.map(\.peak).max() ?? 0]
+        }
+    }
+
+    var body: some View {
+        let raw = Self.peaks(source, in: mixer) ?? []
+        let shown = raw.map { min($0 * scale, 1) }
+        HStack(spacing: 1) {
+            ForEach(shown.indices, id: \.self) { bar in
+                VerticalMeter(
+                    peak: shown[bar], heldPeakDecibels: bar < ticks.count ? ticks[bar].decibels : -.infinity,
+
+                    signalPresent: raw[bar] > 0.001)
+            }
+        }
+        .frame(width: Self.width, alignment: .leading)
+        .onChange(of: shown, initial: true) {
+            let now = Date().timeIntervalSinceReferenceDate
+            if ticks.count != shown.count { ticks = shown.map { _ in PeakHold(holdSeconds: 1) } }
+            for bar in shown.indices { ticks[bar].update(shown[bar], at: now) }
+        }
+    }
+}
+
+private struct StripPeakLabel: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+    let scale: Float
+    @State private var hold = PeakHold()
+
+    var body: some View {
+        if let raw = StripMeter.peaks(source, in: mixer) {
+            let peak = min((raw.max() ?? 0) * scale, 1)
+            LevelLabel(decibels: hold.decibels, style: .peak)
+                .contentShape(Rectangle())
+                .onTapGesture { hold.reset() }
+                .help("Highest peak since reset — click to reset")
+                .onChange(of: peak, initial: true) { hold.update(peak) }
+        }
+    }
+}
+
+private struct FoldMeter: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+
+    var body: some View {
+        let peaks = StripMeter.peaks(source, in: mixer).flatMap { $0.isEmpty ? nil : $0 } ?? [0]
+        let count = CGFloat(peaks.count)
+        let gap: CGFloat = peaks.count > 12 ? 0.5 : 1
+        let width = min(38, count * 4 + (count - 1) * gap)
+        HStack(spacing: gap) {
+            ForEach(peaks.indices, id: \.self) { index in
+                VerticalMeter(
+                    peak: peaks[index], heldPeakDecibels: -120, width: (width - (count - 1) * gap) / count)
+            }
+        }
+        .frame(width: max(5, width))
     }
 }
 
@@ -1510,7 +1576,8 @@ private struct FoldCard: View {
     let symbol: String
     let count: Int
     let expanded: Bool
-    let peak: Float
+    let meter: MeterSource
+    let mixer: AudioMixerController
     let toggle: () -> Void
     let rename: ((String) -> Void)?
     let remove: (() -> Void)?
@@ -1540,8 +1607,7 @@ private struct FoldCard: View {
             }
             .buttonStyle(.plain)
             .help(expanded ? "Fold \(name)" : "Show \(name) (\(count))")
-            VerticalMeter(peak: peak, heldPeakDecibels: -120)
-                .frame(width: 5)
+            FoldMeter(source: meter, mixer: mixer)
                 .frame(maxHeight: .infinity)
         }
         .padding(.vertical, 8)

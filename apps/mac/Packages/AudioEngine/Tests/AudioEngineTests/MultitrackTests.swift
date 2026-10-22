@@ -5,7 +5,7 @@ import Testing
 
 private func file(
     _ name: String, rate: Double, channels: AVAudioChannelCount, seconds: Double,
-    _ sample: (Int) -> Float
+    right: ((Int) -> Float)? = nil, _ sample: (Int) -> Float
 ) throws -> String {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("multitrack-\(name)-\(UUID().uuidString).wav")
     let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: channels)!
@@ -14,7 +14,9 @@ private func file(
     let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
     buffer.frameLength = frames
     for channel in 0 ..< Int(channels) {
-        for index in 0 ..< Int(frames) { buffer.floatChannelData![channel][index] = sample(index) }
+        for index in 0 ..< Int(frames) {
+            buffer.floatChannelData![channel][index] = channel == 1 ? right?(index) ?? sample(index) : sample(index)
+        }
     }
     try output.write(from: buffer)
     return url.path
@@ -180,7 +182,20 @@ private func solo(_ ids: [String]) -> MultitrackRouting {
     let resumed = render(engine, seconds: 0.1)[0]
     #expect(biggestStep(resumed) < 0.01)
     #expect(abs(resumed.last! - 0.5) < 1e-5)
-    #expect(engine.takeMeters()["d"].map { abs($0.peak - 0.5) < 1e-4 } == true)
+    #expect(engine.takeMeters()["d"].map { abs($0.left.peak - 0.5) < 1e-4 && abs($0.right.peak - 0.5) < 1e-4 } == true)
+}
+
+@Test func stemMetersReadLeftAndRight() throws {
+    let path = try file("sides", rate: 48_000, channels: 2, seconds: 1, right: { _ in 0.25 }) { _ in 0.5 }
+    let engine = MultitrackEngine(sampleRate: 48_000, deviceChannels: 2)
+    engine.setRouting(MultitrackRouting(channels: [.init(id: "k", pan: -1, sends: ["main": 1])]))
+    engine.cue(MultitrackSong(id: "s", stems: [.init(path: path, channelId: "k")]))
+    engine.play()
+    _ = render(engine, seconds: 0.2)
+    let meter = try #require(engine.takeMeters()["k"])
+    #expect(abs(meter.left.peak - 0.5) < 1e-4 && abs(meter.left.rms - 0.5) < 1e-3)
+    #expect(abs(meter.right.peak - 0.25) < 1e-4 && abs(meter.right.rms - 0.25) < 1e-3)
+    #expect(engine.takeMeters()["k"].map { $0.left.peak == 0 && $0.right.peak == 0 } == true, "a take clears")
 }
 
 @Test func fedMixesHandTheirShareBack() throws {

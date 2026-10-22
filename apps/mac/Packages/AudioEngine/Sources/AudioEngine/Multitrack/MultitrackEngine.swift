@@ -115,14 +115,16 @@ public final class MultitrackEngine: @unchecked Sendable {
     }
     public var songID: String? { queue.sync { song?.id } }
 
-    public func takeMeters() -> [String: (rms: Float, peak: Float)] {
+    public func takeMeters() -> [String: (left: AudioLevel.Reading, right: AudioLevel.Reading)] {
         queue.sync {
             guard let session else { return [:] }
-            var levels: [String: (rms: Float, peak: Float)] = [:]
+            var levels: [String: (left: AudioLevel.Reading, right: AudioLevel.Reading)] = [:]
             for (stem, level) in MultitrackRenderer.takeMeters(session).enumerated() {
                 let id = session.stemChannels[stem]
-                let held = levels[id] ?? (0, 0)
-                levels[id] = (max(held.rms, level.rms), max(held.peak, level.peak))
+                var window = LevelWindow()
+                if let held = levels[id] { window.fold(left: held.left, right: held.right) }
+                window.fold(left: level.left, right: level.right)
+                levels[id] = (window.left, window.right)
             }
             return levels
         }

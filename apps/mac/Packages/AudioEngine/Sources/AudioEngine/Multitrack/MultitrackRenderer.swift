@@ -9,13 +9,14 @@ final class MultitrackSession: @unchecked Sendable {
     let startFrame: Int64
 
     let meters: UnsafeMutablePointer<mxu_atomic_i64>
+    static let meterSlots = 5
 
     init(rings: [StemRing], stemChannels: [String], startFrame: Int64) {
         self.rings = rings
         self.stemChannels = stemChannels
         self.startFrame = startFrame
-        meters = .allocate(capacity: max(1, rings.count * 3))
-        for index in 0 ..< max(1, rings.count * 3) { mxu_store_i64(meters + index, 0) }
+        meters = .allocate(capacity: max(1, rings.count * Self.meterSlots))
+        for index in 0 ..< max(1, rings.count * Self.meterSlots) { mxu_store_i64(meters + index, 0) }
     }
 
     deinit { meters.deallocate() }
@@ -306,26 +307,34 @@ final class MultitrackRenderer: @unchecked Sendable {
     }
 
     private func meter(_ session: MultitrackSession, stem: Int, count: Int) {
-        var peakLeft: Float = 0, peakRight: Float = 0, squaresLeft: Float = 0, squaresRight: Float = 0
-        vDSP_maxmgv(scratchLeft, 1, &peakLeft, vDSP_Length(count))
-        vDSP_maxmgv(scratchRight, 1, &peakRight, vDSP_Length(count))
-        vDSP_svesq(scratchLeft, 1, &squaresLeft, vDSP_Length(count))
-        vDSP_svesq(scratchRight, 1, &squaresRight, vDSP_Length(count))
-        let slot = session.meters + stem * 3
-        let peak = max(peakLeft, peakRight, Float(bitPattern: UInt32(truncatingIfNeeded: mxu_load_i64(slot))))
-        mxu_store_i64(slot, Int64(peak.bitPattern))
-        let squares = Float(bitPattern: UInt32(truncatingIfNeeded: mxu_load_i64(slot + 1))) + (squaresLeft + squaresRight) / 2
-        mxu_store_i64(slot + 1, Int64(squares.bitPattern))
-        mxu_store_i64(slot + 2, mxu_load_i64(slot + 2) + Int64(count))
+        let slot = session.meters + stem * MultitrackSession.meterSlots
+        meterSide(scratchLeft, peakSlot: slot, squaresSlot: slot + 2, count: count)
+        meterSide(scratchRight, peakSlot: slot + 1, squaresSlot: slot + 3, count: count)
+        mxu_store_i64(slot + 4, mxu_load_i64(slot + 4) + Int64(count))
     }
 
-    static func takeMeters(_ session: MultitrackSession) -> [(rms: Float, peak: Float)] {
+    private func meterSide(
+        _ samples: UnsafeMutablePointer<Float>, peakSlot: UnsafeMutablePointer<mxu_atomic_i64>,
+        squaresSlot: UnsafeMutablePointer<mxu_atomic_i64>, count: Int
+    ) {
+        var peak: Float = 0, squares: Float = 0
+        vDSP_maxmgv(samples, 1, &peak, vDSP_Length(count))
+        vDSP_svesq(samples, 1, &squares, vDSP_Length(count))
+        let held = Float(bitPattern: UInt32(truncatingIfNeeded: mxu_load_i64(peakSlot)))
+        mxu_store_i64(peakSlot, Int64(max(peak, held).bitPattern))
+        let sum = Float(bitPattern: UInt32(truncatingIfNeeded: mxu_load_i64(squaresSlot))) + squares
+        mxu_store_i64(squaresSlot, Int64(sum.bitPattern))
+    }
+
+    static func takeMeters(_ session: MultitrackSession) -> [(left: AudioLevel.Reading, right: AudioLevel.Reading)] {
         (0 ..< session.rings.count).map { stem in
-            let slot = session.meters + stem * 3
-            let peak = Float(bitPattern: UInt32(truncatingIfNeeded: mxu_exchange_i64(slot, 0)))
-            let squares = Float(bitPattern: UInt32(truncatingIfNeeded: mxu_exchange_i64(slot + 1, 0)))
-            let frames = mxu_exchange_i64(slot + 2, 0)
-            return (frames > 0 ? sqrt(squares / Float(frames)) : 0, peak)
+            let slot = session.meters + stem * MultitrackSession.meterSlots
+            let take = { (index: Int) in Float(bitPattern: UInt32(truncatingIfNeeded: mxu_exchange_i64(slot + index, 0))) }
+            let peaks = (take(0), take(1))
+            let squares = (take(2), take(3))
+            let frames = Float(mxu_exchange_i64(slot + 4, 0))
+            let rms = { (sum: Float) in frames > 0 ? sqrt(sum / frames) : 0 }
+            return ((rms(squares.0), peaks.0), (rms(squares.1), peaks.1))
         }
     }
 }

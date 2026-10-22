@@ -107,8 +107,14 @@ final class TracksController {
 
     nonisolated var isPlaying: Bool { latest.value?.playing == true }
 
-    nonisolated var meters: [String: (rms: Float, peak: Float)] {
-        (latest.value?.meters ?? [:]).compactMapValues { $0.count == 2 ? ($0[0], $0[1]) : nil }
+    nonisolated var meters: [String: [AudioLevel.Reading]] {
+        (latest.value?.meters ?? [:]).compactMapValues { values in
+            switch values.count {
+            case 4: [(values[0], values[1]), (values[2], values[3])]
+            case 2: [(values[0], values[1]), (values[0], values[1])]
+            default: nil
+            }
+        }
     }
 
     nonisolated static func gain(_ id: String) -> Float {

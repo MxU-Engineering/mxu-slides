@@ -311,7 +311,8 @@ public final class TracksPlayerServer: @unchecked Sendable {
             frame: published.playing ? published.frame : Int64((engine.position() * engine.sampleRate).rounded()),
             hostTime: published.hostTime, sampleRate: engine.sampleRate, deviceUID: engine.deviceUID,
             deviceChannels: engine.deviceChannels, starvedFrames: engine.starvedFrames,
-            meters: engine.takeMeters().mapValues { [$0.rms, $0.peak] }, error: lastError,
+            meters: engine.takeMeters().mapValues { [$0.left.rms, $0.left.peak, $0.right.rms, $0.right.peak] },
+            error: lastError,
             channels: engine.songChannelIDs)
     }
 }

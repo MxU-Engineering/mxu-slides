@@ -53,10 +53,11 @@ import Testing
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
         "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
         "alertVisible": ("alertVisible", /\balertVisible\b/, []),
-        "displayLevels": ("displayLevels", /\.displayLevels\b/, ["AudioMixerModule"]),
-        "busLevels": ("busLevels", /\.busLevels\b/, ["AudioMixerModule"]),
-        "playerLevels": ("playerLevels", /\.playerLevels\b/, ["AudioMixerModule"]),
-        "outputLevels": ("outputLevels", /\.outputLevels\b/, ["AudioMixerModule"]),
+
+        "displayLevels": ("displayLevels", /\.displayLevels\b/, ["StripMeter"]),
+        "busLevels": ("busLevels", /\.busLevels\b/, ["StripMeter"]),
+        "playerLevels": ("playerLevels", /\.playerLevels\b/, ["StripMeter"]),
+        "outputLevels": ("outputLevels", /\.outputLevels\b/, ["StripMeter"]),
     ]
 
     private let actionOpeners: [Regex<Substring>] = [

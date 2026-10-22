@@ -273,20 +273,22 @@ public final class AudioEngine: @unchecked Sendable {
             lock.withLock { (meterWanted, gain, feed) }
         }
 
-        func store(source raw: (rms: Float, peak: Float), gain: Float) {
+        func store(sides raw: (left: AudioLevel.Reading, right: AudioLevel.Reading), gain: Float) {
+            let scaled = { (level: AudioLevel.Reading) in (min(level.rms * gain, 1), min(level.peak * gain, 1)) }
             lock.withLock {
-                source = raw
-                post = (min(raw.rms * gain, 1), min(raw.peak * gain, 1))
-                sourceWindow.fold(source)
-                postWindow.fold(post)
+                source = AudioLevel.louder([raw.left, raw.right])
+                post = scaled(source)
+                sourceWindow.fold(left: raw.left, right: raw.right)
+                postWindow.fold(left: scaled(raw.left), right: scaled(raw.right))
             }
         }
 
-        func takeLevels() -> (
-            post: (rms: Float, peak: Float), source: (rms: Float, peak: Float)
-        ) {
+        func takeLevels() -> (post: LevelWindow, source: LevelWindow) {
 
-            lock.withLock { (post: postWindow.take(), source: sourceWindow.take()) }
+            lock.withLock {
+                defer { postWindow = LevelWindow(); sourceWindow = LevelWindow() }
+                return (post: postWindow, source: sourceWindow)
+            }
         }
 
         func resetLevels() {
@@ -329,7 +331,7 @@ public final class AudioEngine: @unchecked Sendable {
                     let tick = state.snapshot()
                     if tick.meterWanted {
 
-                        state.store(source: AudioLevel.measure(buffer), gain: tick.gain)
+                        state.store(sides: AudioLevel.measureSides(buffer), gain: tick.gain)
                     }
                     guard let feed = tick.feed else { return }
 
@@ -356,9 +358,7 @@ public final class AudioEngine: @unchecked Sendable {
 
     public var sourceMeterLevel: (rms: Float, peak: Float) { tapState.sourceLevel }
 
-    public func takeMeterLevels() -> (
-        post: (rms: Float, peak: Float), source: (rms: Float, peak: Float)
-    ) {
+    public func takeMeterLevels() -> (post: LevelWindow, source: LevelWindow) {
         tapState.takeLevels()
     }
 

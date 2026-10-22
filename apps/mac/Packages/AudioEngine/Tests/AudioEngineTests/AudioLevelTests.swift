@@ -36,15 +36,17 @@ private func buffer(filledWith value: Float, frames: AVAudioFrameCount = 480) ->
 @Test func outputLevelsFoldEveryMixLandingOnTheOutput() {
 
     let levels = AudioLevel.outputLevels([
-        (level: (rms: 0.4, peak: 0.8),
+        (level: [(rms: 0.4, peak: 0.8), (rms: 0.1, peak: 0.1)],
          sends: [(outputId: "lr", gain: 1), (outputId: "stream", gain: 0.5)]),
-        (level: (rms: 0.3, peak: 0.3), sends: [(outputId: "stream", gain: 1)]),
-        (level: (rms: 0.9, peak: 0.9), sends: []),  
+        (level: [(rms: 0.3, peak: 0.3), (rms: 0.3, peak: 0.6)], sends: [(outputId: "stream", gain: 1)]),
+        (level: [(rms: 0.9, peak: 0.9), (rms: 0.9, peak: 0.9)], sends: []),
     ])
-    #expect(abs(levels["lr"]!.rms - 0.4) < 0.001)
-    #expect(abs(levels["lr"]!.peak - 0.8) < 0.001)
-    #expect(abs(levels["stream"]!.rms - (0.2 * 0.2 + 0.3 * 0.3).squareRoot()) < 0.001)
-    #expect(abs(levels["stream"]!.peak - 0.4) < 0.001)
+    #expect(abs(levels["lr"]![0].rms - 0.4) < 0.001)
+    #expect(abs(levels["lr"]![0].peak - 0.8) < 0.001)
+    #expect(abs(levels["lr"]![1].peak - 0.1) < 0.001)
+    #expect(abs(levels["stream"]![0].rms - (0.2 * 0.2 + 0.3 * 0.3).squareRoot()) < 0.001)
+    #expect(abs(levels["stream"]![0].peak - 0.4) < 0.001)
+    #expect(abs(levels["stream"]![1].peak - 0.6) < 0.001)
     #expect(levels.count == 2)
 }
 
