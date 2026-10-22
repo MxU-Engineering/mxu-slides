@@ -1741,7 +1741,7 @@ struct SlideTile: View {
                     HStack(spacing: 3) {
 
                         ForEach(Array(actions.prefix(4)), id: \.id) { action in
-                            Glyph(kind: badgeGlyph(action.kind), size: 9)
+                            Glyph(kind: GlyphKind(action: action, model: model), size: 9)
                                 .foregroundStyle(.tertiary)
                                 .tileHelp(slideActionLabel(
                                     action, model: model,
@@ -1857,27 +1857,7 @@ struct SlideTile: View {
     }
 
     private var actionBadges: [GlyphKind] {
-        (slide.actions ?? []).map { badgeGlyph($0.kind) }
-    }
-
-    private func badgeGlyph(_ kind: SlideActionKind) -> GlyphKind {
-        switch kind {
-        case .switchOutputPreset: .screens
-        case .clearLayer, .clearAll, .clearAudio: .clear
-        case .fireMedia: .media
-        case .fireAlert, .dismissAlert: .alerts
-        case .timerStart, .timerPause, .timerReset, .timerConfigure: .timers
-        case .midiOut: .midi
-        case .fireCombo: .combos
-        case .captureStart, .captureStop: .broadcast
-        case .firePresentation: .presentations
-        case .setConfidenceLayout: .confidence
-        case .fireOverlay, .dismissOverlay: .overlays
-        case .fireLiveInput: .screens
-        case .setSignage, .setScreenSource, .clearSignage: .clear
-        case .enableAudioInput, .disableAudioInput: .audio
-        case .fireAudio, .fireAudioPlaylist: .audio
-        }
+        (slide.actions ?? []).map { GlyphKind(action: $0, model: model) }
     }
 
     private func autoAdvanceSummary(_ advance: AutoAdvance) -> String {

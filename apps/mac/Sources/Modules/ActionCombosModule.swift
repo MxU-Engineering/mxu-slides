@@ -858,7 +858,7 @@ struct ActionCombosModule: View {
         (.combos, "Bolt"), (.timers, "Timer"), (.alerts, "Bell"),
         (.media, "Media"), (.audio, "Music"), (.screens, "Screen"),
         (.clear, "Clear"), (.midi, "MIDI"), (.broadcast, "Record"),
-        (.overlays, "Overlay"),
+        (.overlays, "Overlay"), (.light, "Light"),
     ]
 
     private func icon(of combo: ActionCombo) -> GlyphKind {

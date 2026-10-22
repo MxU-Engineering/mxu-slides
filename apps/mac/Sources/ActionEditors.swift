@@ -672,9 +672,11 @@ struct ActionsMenu: View {
                             Button("Edit…") { edit(action) }
                             Button("Remove", role: .destructive) { remove(action) }
                         } label: {
-                            Label(
-                                slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens),
-                                systemImage: "bolt.fill")
+                            Label {
+                                Text(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens))
+                            } icon: {
+                                Image(nsImage: GlyphKind(action: action, model: model).menuImage)
+                            }
                         }
                     }
                 }
