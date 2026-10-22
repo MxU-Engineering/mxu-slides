@@ -1022,7 +1022,7 @@ private struct TrackChannelDetail: View {
                         .focused($focus, equals: .name)
                         .onSubmit(commitName)
                 }
-                Section("Plays as") {
+                Section("Playback") {
                     TrackMixPicker(channel: channel, tracks: tracks)
                     Picker("Role", selection: Binding(get: { channel.trackRole }, set: { role in
                         tracks?.editChannel(id) { $0.role = role == .music ? nil : role.rawValue }
@@ -1045,7 +1045,7 @@ private struct TrackChannelDetail: View {
                 Section {
                     let names = channel.matchNames ?? []
                     if names.isEmpty {
-                        Text("No other names").foregroundStyle(.secondary)
+                        Text("None").foregroundStyle(.secondary)
                     }
                     ForEach(names, id: \.self) { name in
                         HStack {
@@ -1063,11 +1063,11 @@ private struct TrackChannelDetail: View {
                             .help("Remove \u{201C}\(name)\u{201D}")
                         }
                     }
-                    Button("Add Name\u{2026}") { newName = ""; addingName = true }
+                    Button("Add Stem Name\u{2026}") { newName = ""; addingName = true }
                 } header: {
-                    Text("Also lands here")
+                    Text("Other Stem Names")
                 } footer: {
-                    Text("Stems with these names go on this track when you import.")
+                    Text("Imported stems with these names go on this track.")
                 }
                 Section {
                     Button(checkingUses ? "Checking Songs\u{2026}" : "Delete Track\u{2026}", role: .destructive) {
@@ -1087,12 +1087,12 @@ private struct TrackChannelDetail: View {
             }
 
             .onDisappear(perform: commitName)
-            .alert("Add Name", isPresented: $addingName) {
+            .alert("Add Stem Name", isPresented: $addingName) {
                 TextField("Stem name", text: $newName)
                 Button("Add") { addName() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("A stem with this name goes on \u{201C}\(channel.name)\u{201D}.")
+                Text("Imported stems with this name go on \u{201C}\(channel.name)\u{201D}.")
             }
             .alert("Delete \u{201C}\(channel.name)\u{201D}?", isPresented: Binding(
                 get: { uses != nil }, set: { if !$0 { uses = nil } })
