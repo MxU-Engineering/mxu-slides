@@ -6,6 +6,14 @@ public extension TimelineTracks {
         Set((presentation.timelines ?? []).flatMap(\.cues).compactMap(\.trackChannelId))
     }
 
+    static func listSubtitle(_ channel: TrackChannel) -> String {
+        let width = channel.mono == true ? "Mono" : "Stereo"
+        let family = family(of: channel).name
+        let name = numbered(channel.name).words.joined(separator: " ")
+        let said = !name.isEmpty && family.lowercased().hasPrefix(name)
+        return said ? width : "\(family) mix · \(width)"
+    }
+
     @MainActor static func takesFinderDrop(_ urls: [URL]) -> Bool {
         urls.contains { $0.hasDirectoryPath || MediaImporter.libraryKind(of: $0) == .audio }
     }

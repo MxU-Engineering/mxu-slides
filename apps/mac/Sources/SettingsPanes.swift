@@ -862,11 +862,12 @@ private struct TracksSection: View {
 
     var body: some View {
         Section {
-            Toggle("Play tracks on this computer", isOn: $enabled)
-            Text("Turn on for the computer that plays songs' stems (click, guide and backing tracks) to the band and the room. Its mixer then shows the Tracks strips and a mix for each instrument family to patch to your outputs. Any computer can add stems to songs.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle(isOn: $enabled) {
+                Text("Play tracks on this computer")
+                Text("For the computer that plays click, guide and stems to the band and the room.")
+            }
+            .help("Its mixer then shows the Tracks strips and a mix for each instrument family to patch to your outputs. Any computer can add stems to songs.")
 
             Button(action: open) {
                 HStack(spacing: 8) {
@@ -943,7 +944,7 @@ private struct TrackChannelRow: View {
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(channel.name).font(.system(size: 13))
-                    Text("\(family.name) · \(channel.mono == true ? "Mono" : "Stereo")")
+                    Text(TimelineTracks.listSubtitle(channel))
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
@@ -952,6 +953,32 @@ private struct TrackChannelRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct TrackMixPicker: View {
+    let channel: TrackChannel
+    let tracks: TracksController?
+
+    @AppStorage private var stored: String?
+    @State private var mixes = AudioMixInventory.shared
+
+    init(channel: TrackChannel, tracks: TracksController?) {
+        self.channel = channel
+        self.tracks = tracks
+        _stored = AppStorage("audio.track.\(channel.id).mixId")
+    }
+
+    var body: some View {
+        let current = stored.map { $0.isEmpty ? nil : $0 } ?? TracksController.mixId(channel)
+        Picker("Mix", selection: Binding(get: { current ?? "" }, set: { id in
+            TracksController.setMix(id.isEmpty ? nil : id, for: channel.id)
+            tracks?.refresh()
+        })) {
+            Text(channel.trackRole == .music ? "Off Main" : "No Mix").tag("")
+            ForEach(mixes.entries) { mix in Text(mix.name).tag(mix.id) }
+        }
+        .help("Where this track plays on this computer, as in the mixer. Its sends to other mixes are in the mixer.")
     }
 }
 
@@ -977,6 +1004,7 @@ private struct TrackChannelDetail: View {
                         .onSubmit(commitName)
                 }
                 Section("Plays as") {
+                    TrackMixPicker(channel: channel, tracks: tracks)
                     Picker("Role", selection: Binding(get: { channel.trackRole }, set: { role in
                         tracks?.editChannel(id) { $0.role = role == .music ? nil : role.rawValue }
                     })) {
@@ -995,7 +1023,7 @@ private struct TrackChannelDetail: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
-                    TextField("Also matches", text: $matches)
+                    TextField("Also matches", text: $matches, prompt: Text("None"))
                         .focused($focus, equals: .matches)
                         .onSubmit(commitMatches)
                 } footer: {

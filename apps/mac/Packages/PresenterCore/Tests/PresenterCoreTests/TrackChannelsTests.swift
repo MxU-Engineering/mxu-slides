@@ -154,3 +154,16 @@ private let click = TrackChannel(id: "click", name: "Click", role: "click")
     #expect(cues.map(\.trackChannelId) == ["click"])
     #expect(cues.first?.at == 2)
 }
+
+@Test func theTrackListSaysTheFamilyMixOnlyWhenTheNameDoesnt() {
+    let line = { (name: String, role: String?, mono: Bool?) in
+        TimelineTracks.listSubtitle(TrackChannel(id: "x", name: name, role: role, mono: mono))
+    }
+    #expect(line("Drums", nil, nil) == "Stereo")
+    #expect(line("Electric Guitar 2", nil, true) == "Mono")
+    #expect(line("Click", "click", nil) == "Stereo")
+    #expect(line("Synth Bass", nil, nil) == "Bass mix · Stereo")
+    #expect(line("Piano", nil, nil) == "Keys mix · Stereo")
+    #expect(line("Background Vocals", nil, nil) == "Vocals mix · Stereo")
+    #expect(line("Drum Click", "click", true) == "Click mix · Mono")
+}
