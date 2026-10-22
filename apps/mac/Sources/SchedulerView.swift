@@ -825,7 +825,7 @@ private struct TriggerDetailEditor: View {
     var body: some View {
         Form {
             Section {
-                TextField("Name", text: Binding(
+                CommittedTextField("Name", text: Binding(
                     get: { trigger.name },
                     set: { value in
                         let trimmed = value.trimmingCharacters(in: .whitespaces)
@@ -833,7 +833,7 @@ private struct TriggerDetailEditor: View {
                         model.updateScheduleTrigger(triggerID) { $0.name = trimmed }
                     }
                 ))
-                TextField("Notes", text: Binding(
+                CommittedTextField("Notes", text: Binding(
                     get: { trigger.notes ?? "" },
                     set: { value in
                         model.updateScheduleTrigger(triggerID) {
