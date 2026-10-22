@@ -76,6 +76,20 @@ struct PresentationTimelineContext {
     }
     var isPlaying: Bool { isCurrent && clock.playing }
 
+    var transition: (plan: SongTransitions.Plan, nextName: String?)? {
+        guard let timeline, SongTransitions.kind(item.transition) != .stop,
+              let service = try? model.service(serviceID) else { return nil }
+        let next = ServiceRunOrder.nextFireable(in: model.fireableItems(service), after: item.id)
+        let nextSong = next.flatMap { next -> (PresentationTimeline, [TimelinePlayedBlock])? in
+            guard next.itemKind == .presentation, let deck = model.presentation(next.refId),
+                  let timeline = PresentationTimelines.timeline(for: next.arrangementId, in: deck) else { return nil }
+            return (timeline, SlideSceneBuilder.timelineBlocks(for: deck, arrangementId: next.arrangementId))
+        }
+        guard let plan = SongTransitions.plan(item.transition, timeline: timeline, blocks: blocks, next: nextSong)
+        else { return nil }
+        return (plan, next.map { model.entry($0.refId)?.name ?? $0.name })
+    }
+
     func play() { clock.play(itemID: item.id, presentation: presentation, arrangementId: item.arrangementId) }
 
     func seek(to time: Double) {
@@ -889,6 +903,9 @@ struct PresentationTimelineLanes: View {
                     }
                     if showsTracks(cues) { trackRows(cues, map: map) }
                 }
+                if let transition = context.transition {
+                    SongTransitionTail(plan: transition.plan, nextName: transition.nextName) { map.x(ofTime: $0) }
+                }
                 if context.isCurrent {
                     TimelinePlayheadLine(source: context.clock) { map.x(ofTime: $0) }
                 }
@@ -1579,5 +1596,40 @@ struct TrackRowResizeHandle: View {
             )
             .simultaneousGesture(TapGesture(count: 2).onEnded { set(nil) })
             .help("Drag to size this track; double-click to match the others")
+    }
+}
+
+struct SongTransitionTail: View {
+    let plan: SongTransitions.Plan
+    let nextName: String?
+    let x: (Double) -> CGFloat
+
+    var body: some View {
+        let from = x(min(plan.nextAt, plan.fadeFrom ?? plan.nextAt))
+        let to = x(plan.end)
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(Color.accentColor.opacity(0.08))
+            Rectangle().fill(Color.accentColor.opacity(0.5)).frame(width: 1)
+            HStack(spacing: 4) {
+                SongTransitionGlyph(kind: plan.kind, size: 10)
+                Text(label).lineLimit(1)
+            }
+            .font(.caption2)
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 4)
+            .padding(.top, 2)
+            .fixedSize()
+        }
+        .frame(width: max(to - from, 1))
+        .frame(maxHeight: .infinity)
+        .offset(x: from)
+        .allowsHitTesting(false)
+        .help(label)
+    }
+
+    private var label: String {
+        let seconds = plan.kind == .fade || plan.kind == .crossfade ? plan.fadeSeconds : plan.end - plan.nextAt
+        let what = "\(SongTransitionMenuItems.title(plan.kind)) \(Int(seconds.rounded())) s"
+        return nextName.map { "\(what) → \($0)" } ?? what
     }
 }

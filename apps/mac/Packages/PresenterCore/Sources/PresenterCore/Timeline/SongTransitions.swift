@@ -48,6 +48,20 @@ public enum SongTransitions {
         }
     }
 
+    public static func plan(
+        _ transition: SongTransition?, timeline: PresentationTimeline, blocks: [TimelinePlayedBlock],
+        next: (timeline: PresentationTimeline, blocks: [TimelinePlayedBlock])? = nil
+    ) -> Plan? {
+        let end = PresentationTimelines.length(timeline)
+        let last = PresentationTimelines.sectionSpans(timeline.cues, blocks: blocks, length: end).last
+        let first = next.flatMap {
+            PresentationTimelines.sectionSpans(
+                $0.timeline.cues, blocks: $0.blocks, length: PresentationTimelines.length($0.timeline)).first
+        }
+        let length = length(transition, lastSection: last.map { $0.end - $0.start }, nextFirstSection: first.map { $0.end - $0.start })
+        return plan(kind(transition), end: end, length: length)
+    }
+
     public static func manualPlan(at position: Double, seconds: Double) -> Plan {
         Plan(kind: .crossfade, nextAt: position, fadeFrom: position, fadeSeconds: seconds, fadeInSeconds: seconds, end: position + seconds)
     }

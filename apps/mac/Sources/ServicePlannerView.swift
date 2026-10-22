@@ -403,8 +403,34 @@ struct RunOrderList: View {
     private func bulkMenu(_ ids: [String]) -> some View {
         Text("\(ids.count) Items")
         Divider()
+        Menu("Transition") {
+            SongTransitionMenuItems(current: nil) {
+                model.setServiceItemTransition(serviceID, itemIDs: ids, transition: $0)
+            }
+        }
+        Divider()
         Button("Hide") { hide(ids) }
         Button("Remove from Service", role: .destructive) { requestRemoval(ids) }
+    }
+
+    @ViewBuilder
+    private func transitionButton(_ item: ServiceItem) -> some View {
+        let kind = SongTransitions.kind(item.transition)
+        if item.itemKind == .presentation, kind != .stop || TimelineTracks.hasTracks(model.trackChannels) {
+            Menu {
+                SongTransitionMenuItems(current: item.transition) {
+                    model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                }
+            } label: {
+                SongTransitionGlyph(kind: kind, size: 11)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .foregroundStyle(kind == .stop ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
+            .help(SongTransitionMenuItems.help(item.transition))
+            .disabled(runOnly)
+        }
     }
 
     @ViewBuilder
@@ -437,6 +463,7 @@ struct RunOrderList: View {
                     .lineLimit(1)
             }
             if item.itemKind != .info {
+                transitionButton(item)
                 Glyph(
                     kind: item.itemKind == .presentation ? .presentations
                         : item.itemKind == .audio || item.itemKind == .playlist ? .audio
@@ -509,6 +536,11 @@ struct RunOrderList: View {
                     Section("Presentation") {
                         arrangementMenu(item)
                         outputPresetMenu(item)
+                        Menu("Transition") {
+                            SongTransitionMenuItems(current: item.transition) {
+                                model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                            }
+                        }
 
                         Button("Apply Theme…") {
                             applyThemeTarget = ApplyThemeTarget(presentationID: item.refId, slideIDs: nil)
@@ -524,7 +556,7 @@ struct RunOrderList: View {
             }
         }
 
-        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))")
+        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))|\(SongTransitions.kind(item.transition).rawValue)")
     }
 
     private func displayName(_ item: ServiceItem) -> String {

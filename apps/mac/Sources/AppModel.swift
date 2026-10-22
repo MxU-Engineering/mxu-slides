@@ -1373,6 +1373,15 @@ final class AppModel {
         }
     }
 
+    func setServiceItemTransition(_ serviceID: String, itemIDs: [String]?, transition: SongTransition?) {
+        updateService(serviceID) { service in
+            for index in service.items.indices where service.items[index].itemKind == .presentation {
+                if let itemIDs, !itemIDs.contains(service.items[index].id) { continue }
+                service.items[index].transition = transition
+            }
+        }
+    }
+
     @discardableResult
     func updatePresentation(
         _ id: String, _ mutate: @escaping @Sendable (inout Presentation) -> Void

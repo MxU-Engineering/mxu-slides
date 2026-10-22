@@ -1183,6 +1183,12 @@ struct ShellView: View {
                     closeServicePickerThen { editingServiceDateID = entry.id }
                 }
                 Button("Duplicate") { model.duplicate(entry) }
+
+                Menu("Set All Transitions") {
+                    SongTransitionMenuItems(current: nil) {
+                        model.setServiceItemTransition(entry.id, itemIDs: nil, transition: $0)
+                    }
+                }
                 Button("New Version…") {
                     versionNameText = ""
                     closeServicePickerThen { versionNaming = ServiceVersionTarget(serviceID: entry.id, versionID: nil) }

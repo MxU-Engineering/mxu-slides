@@ -78,3 +78,24 @@ private typealias S = SongTransitions
     let older = try JSONDecoder().decode(ServiceItem.self, from: Data(#"{"id":"b","itemKind":"presentation","name":"B","refId":"d"}"#.utf8))
     #expect(older.transition == nil)
 }
+
+@Test func aServicesPlanReadsTheTimelinesEndAndSections() {
+    typealias T = PresentationTimelines
+    let aBlocks = [TimelinePlayedBlock(sectionId: "v", slideIds: ["v1"]), TimelinePlayedBlock(sectionId: "c", slideIds: ["c1"])]
+    let a = PresentationTimeline(id: "a", timecodeEnabled: false, timecodeStart: 0, length: 300, cues: [
+        T.slideCue(id: "v1", at: 0, anchor: T.anchor(occurrence: 0, in: aBlocks)!),
+        T.slideCue(id: "c1", at: 290, anchor: T.anchor(occurrence: 1, in: aBlocks)!),
+    ])
+    let bBlocks = [TimelinePlayedBlock(sectionId: "i", slideIds: ["i1"]), TimelinePlayedBlock(sectionId: "v", slideIds: ["v1"])]
+    let b = PresentationTimeline(id: "b", timecodeEnabled: false, timecodeStart: 0, cues: [
+        T.slideCue(id: "i1", at: 0, anchor: T.anchor(occurrence: 0, in: bBlocks)!),
+        T.slideCue(id: "v1", at: 3, anchor: T.anchor(occurrence: 1, in: bBlocks)!),
+    ])
+
+    let overlap = S.plan(SongTransition(kind: "overlap"), timeline: a, blocks: aBlocks, next: (b, bBlocks))
+    #expect(overlap?.nextAt == 297)
+    #expect(overlap?.end == 300, "A's end is its set length")
+
+    #expect(S.plan(SongTransition(kind: "overlap"), timeline: a, blocks: aBlocks)?.nextAt == 295)
+    #expect(S.plan(nil, timeline: a, blocks: aBlocks) == nil)
+}
