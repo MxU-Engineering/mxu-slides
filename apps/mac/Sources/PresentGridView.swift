@@ -893,6 +893,11 @@ struct SlideGridBody: View {
             autoAdvanceTarget = AutoAdvanceTarget(
                 slideIDs: slideIDs, name: "\(slideIDs.count) Slides")
         }
+        let transitions = presentation.slides.filter { slideIDs.contains($0.id) }.map(\.transition)
+        let first = transitions.first ?? nil
+        TransitionMenu(current: first, mixed: transitions.contains { $0 != first }) { transform in
+            setTransition(transform, on: slideIDs)
+        }
         Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
             slideShowPresented = true
         }
@@ -994,6 +999,12 @@ struct SlideGridBody: View {
                 try document.updateSlideList { SlideBulkEdit.deleteSlides(slideIDs, in: &$0) }
             })
             clearSelection()
+        }
+    }
+
+    private func setTransition(_ transform: @escaping @Sendable (MediaTransition?) -> MediaTransition?, on slideIDs: [String]) {
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Set Transition") {
+            SlideBulkEdit.setTransition(transform, on: slideIDs, in: &$0)
         }
     }
 
@@ -1101,6 +1112,10 @@ struct SlideGridBody: View {
             ? "Auto Advance…" : "Auto Advance… ✓"
         ) {
             autoAdvanceTarget = AutoAdvanceTarget(slideIDs: [slide.id], name: slide.name)
+        }
+
+        TransitionMenu(current: slide.transition) { transform in
+            setTransition(transform, on: [slide.id])
         }
         Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
             slideShowPresented = true

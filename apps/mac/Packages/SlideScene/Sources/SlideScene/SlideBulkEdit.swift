@@ -69,6 +69,16 @@ public enum SlideBulkEdit {
         }
     }
 
+    public static func setTransition(
+        _ transition: (Transition?) -> Transition?, on slideIDs: [String], in presentation: inout Presentation
+    ) {
+        let targets = Set(slideIDs)
+        for index in presentation.slides.indices
+        where targets.contains(presentation.slides[index].id) {
+            presentation.slides[index].transition = transition(presentation.slides[index].transition)
+        }
+    }
+
     public static func duplicateSlides(
         _ slideIDs: [String], in presentation: inout Presentation
     ) {

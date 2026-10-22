@@ -91,6 +91,10 @@ struct MediaCueMenuItems: View {
                     Text("Off").tag(false)
                 }
             }
+
+            TransitionMenu(current: item.transition) { transform in
+                model.updateMedia(mediaID) { $0.transition = transform($0.transition) }
+            }
             Picker("Favorite", selection: Binding(
                 get: { model.media(mediaID)?.favorite ?? false },
                 set: { value in model.updateMedia(mediaID) { $0.favorite = value } }

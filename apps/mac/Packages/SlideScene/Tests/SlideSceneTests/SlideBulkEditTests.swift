@@ -107,6 +107,18 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertNil(doc.slides[0].autoAdvance, "nil clears")
     }
 
+    func testSetTransitionChangesOnlyTargetsAndNilClears() {
+        var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
+        doc.slides[1].transition = Transition(transitionKind: .dissolve, durationSeconds: 0.6)
+        SlideBulkEdit.setTransition({ TransitionEdit.withKind(.cut, from: $0) }, on: ["s1", "s2"], in: &doc)
+        XCTAssertEqual(doc.slides[0].transition, Transition(transitionKind: .cut))
+        XCTAssertEqual(doc.slides[1].transition, Transition(transitionKind: .cut, durationSeconds: 0.6), "duration carries over")
+        XCTAssertNil(doc.slides[2].transition, "untargeted slide untouched")
+
+        SlideBulkEdit.setTransition({ _ in nil }, on: ["s1"], in: &doc)
+        XCTAssertNil(doc.slides[0].transition, "nil = room default")
+    }
+
     func testDuplicateSlidesInsertsFreshCopiesAfterEachSource() {
         var doc = presentation([slide("s1", section: "v1"), slide("s2"), slide("s3")])
         SlideBulkEdit.duplicateSlides(["s1", "s3"], in: &doc)

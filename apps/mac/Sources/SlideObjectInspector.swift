@@ -705,14 +705,14 @@ struct SlideObjectInspector: View {
             BoundedSliderRow(
                 label: "Duration",
                 value: Binding(
-                    get: { model.currentSlide?.transition?.durationSeconds ?? 0.5 },
+                    get: { TransitionEdit.seconds(model.currentSlide?.transition) },
                     set: { seconds in
                         var updated = transition
                         updated.durationSeconds = seconds
                         model.setSlideTransition(updated)
                     }
                 ),
-                range: 0 ... 5, step: 0.05
+                range: TransitionEdit.durationRange, step: TransitionEdit.durationStep
             )
             if transition.transitionKind == .fadeColor {
                 HexColorRow(

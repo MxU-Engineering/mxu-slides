@@ -1,4 +1,5 @@
 import PresenterCore
+import SlideScene
 import SwiftUI
 
 struct AppSettingsView: View {
@@ -822,8 +823,8 @@ struct DefaultTransitionControl: View {
         controls
             .onAppear {
                 kindRaw = UserDefaults.standard.string(forKey: kindKey) ?? fallbackKind
-                let stored = UserDefaults.standard.double(forKey: durationKey)
-                duration = stored > 0 ? stored : fallbackDuration
+
+                duration = UserDefaults.standard.object(forKey: durationKey) as? Double ?? fallbackDuration
             }
 
     }
@@ -862,8 +863,8 @@ struct DefaultTransitionControl: View {
             .fixedSize()
             if !kindRaw.isEmpty {
                 Stepper(
-                    String(format: "%.2gs", duration),
-                    value: storedDuration, in: 0 ... 5, step: 0.1
+                    TransitionEdit.label(seconds: duration),
+                    value: storedDuration, in: TransitionEdit.durationRange, step: TransitionEdit.durationStep
                 )
                 .font(.caption.monospacedDigit())
                 .controlSize(.small)

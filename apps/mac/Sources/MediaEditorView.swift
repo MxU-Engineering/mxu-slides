@@ -1257,7 +1257,10 @@ struct MediaEditorView: View {
                 model.updateMedia(entry.id) { $0.transition = stored }
             }
         )) {
-            Text("Cut").tag("")
+
+            Text("Room Default").tag("")
+            Divider()
+            Text("Cut").tag(TransitionKind.cut.rawValue)
             Text("Dissolve").tag(TransitionKind.dissolve.rawValue)
             Text("Fade Black").tag(TransitionKind.fadeBlack.rawValue)
             Text("Fade White").tag(TransitionKind.fadeWhite.rawValue)
@@ -1269,7 +1272,7 @@ struct MediaEditorView: View {
             BoundedSliderRow(
                 label: "Duration",
                 value: Binding(
-                    get: { cachedMedia?.transition?.durationSeconds ?? 0.5 },
+                    get: { TransitionEdit.seconds(cachedMedia?.transition) },
                     set: { v in
                         cachedMedia?.transition?.durationSeconds = v
                         if !transitionScrubbing {
@@ -1277,7 +1280,7 @@ struct MediaEditorView: View {
                         }
                     }
                 ),
-                range: 0 ... 5, step: 0.05,
+                range: TransitionEdit.durationRange, step: TransitionEdit.durationStep,
                 onScrubPhase: { began in transitionScrubbing = began }
             )
             if transition.transitionKind == .fadeColor {
