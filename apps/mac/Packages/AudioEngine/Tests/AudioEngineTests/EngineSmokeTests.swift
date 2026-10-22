@@ -43,7 +43,7 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     do {
         try engine.play(url: short)
     } catch {
-        return 
+        return
     }
     #expect(engine.isPlaying)
     #expect(engine.position?.duration ?? 0 > 0.3)
@@ -82,7 +82,7 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     do {
         try engine.play(url: long)
     } catch {
-        return 
+        return
     }
 
     engine.seek(to: 2.5)
@@ -113,7 +113,7 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     do {
         try engine.play(url: tone, trimStart: 0.5, trimEnd: 0.9)
     } catch {
-        return 
+        return
     }
 
     #expect(abs((engine.position?.duration ?? 0) - 0.9) < 0.05)
@@ -133,5 +133,53 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     #expect(abs((engine.position?.duration ?? 0) - 1.5) < 0.05)
     engine.seek(to: 0.1)
     #expect((engine.position?.elapsed ?? 0) >= 0.5)
+    engine.stop()
+}
+
+@Test func reRoutingToTheSameDeviceLeavesARunningEngineAlone() throws {
+
+    let tone = try toneFile(seconds: 2, hertz: 440, name: "reroute")
+    let engine = AudioEngine()
+    engine.masterVolume = 0
+    guard let device = AudioDeviceList.defaultOutputDevice() else { return }
+    try engine.setOutputDevice(device)
+    do { try engine.play(url: tone) } catch { return }
+    let rebuilds = engine.outputRebuilds
+    try engine.setOutputDevice(device)
+    try engine.setOutputDevice(nil)
+    #expect(engine.outputRebuilds == rebuilds)
+    #expect(engine.isPlaying)
+
+    try engine.setOutputDevice(device, mono: true)
+    #expect(engine.outputRebuilds == rebuilds + 1)
+    #expect(engine.isPlaying)
+    engine.stop()
+}
+
+@Test func aStartDueNowLandsAMomentAheadFurtherIn() {
+    let now = AVAudioTime.hostTime(forSeconds: 1000)
+
+    let ahead = AudioEngine.scheduledStart(due: AVAudioTime.hostTime(forSeconds: 1000.5), now: now)
+    #expect(ahead.hostTime == AVAudioTime.hostTime(forSeconds: 1000.5))
+    #expect(ahead.skip == 0)
+    #expect(abs(ahead.wait - 0.5) < 1e-6)
+
+    let late = AudioEngine.scheduledStart(due: AVAudioTime.hostTime(forSeconds: 999.96), now: now)
+    #expect(abs(AVAudioTime.seconds(forHostTime: late.hostTime) - (1000 + AudioEngine.startLead)) < 1e-6)
+    #expect(abs(late.skip - (0.04 + AudioEngine.startLead)) < 1e-6)
+    #expect(abs(late.wait - AudioEngine.startLead) < 1e-6)
+}
+
+@Test func aDueClipLoadsWhereItWillSound() async throws {
+
+    let tone = try toneFile(seconds: 4, hertz: 440, name: "due")
+    let engine = AudioEngine()
+    engine.masterVolume = 0
+    let due = mach_absolute_time() - AVAudioTime.hostTime(forSeconds: 0.1)
+    do { try engine.play(url: tone, from: 0.5, due: due) } catch { return }
+    let loaded = engine.position?.elapsed ?? 0
+    #expect(loaded >= 0.5 + 0.1 + AudioEngine.startLead - 0.001)
+    #expect(loaded < 0.5 + 0.1 + AudioEngine.startLead + 0.05)
+    #expect(engine.isPlaying)
     engine.stop()
 }

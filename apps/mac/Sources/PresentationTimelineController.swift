@@ -23,6 +23,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     @ObservationIgnored private var anchorHost: CFTimeInterval = 0
     @ObservationIgnored private var anchorPosition: Double = 0
 
+    @ObservationIgnored private var stemsReading: (position: Double, at: CFTimeInterval)?
+
     @ObservationIgnored private var lastPosition: Double = 0
 
     @ObservationIgnored private var recordingTimeline: PresentationTimeline?
@@ -438,6 +440,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     private func tick() {
         guard playing else { return }
+        defer { stemsReading = nil }
         var position = anchorPosition + (CACurrentMediaTime() - anchorHost)
 
         if let go = armedGo, go.itemID == itemID, let next = go.nextSong, controls?.tracks.latest.value?.songID == next.id {
@@ -451,6 +454,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                 position = heard
                 anchorHost = CACurrentMediaTime()
                 anchorPosition = heard
+                stemsReading = (heard, anchorHost)
             } else if let go = armedGo, go.nextSong == nil, position >= go.plan.nextAt - 0.25 {
 
                 position = max(position, go.plan.nextAt)
@@ -696,9 +700,11 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                     let overlap = current.map { $0.at < run.at && PresentationTimelines.end(of: $0, in: runs) > run.at + 0.001 } ?? false
                     let start = (item.inPoint ?? 0) + (run.inPoint ?? 0)
                     let end = run.duration.map { start + $0 } ?? item.outPoint
+
+                    let due = stemsReading.map { AVAudioTime.hostTime(forSeconds: $0.at + lastPosition - $0.position) }
                     controls.fire(musicClip: TimelineMusicClip(
                         id: clip, item: item, start: start, end: end, from: max(from, 0),
-                        envelope: Self.envelope(run, in: runs), overlap: overlap))
+                        envelope: Self.envelope(run, in: runs), overlap: overlap, due: due))
                 }
             case .endAudio(let id, let clip):
 

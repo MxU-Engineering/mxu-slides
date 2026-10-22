@@ -15,6 +15,8 @@ struct TimelineMusicClip {
     var from: TimeInterval
     var envelope: ClipEnvelope
     var overlap: Bool
+
+    var due: UInt64? = nil
 }
 
 @MainActor
@@ -144,7 +146,7 @@ final class AudioPlayer {
             try engine.play(
                 url: url, fadeIn: fadeIn, trimStart: clip.start, trimEnd: clip.end, from: clip.start + clip.from,
                 shape: AudioClipShape(envelope: clip.envelope, start: clip.start, end: clip.end ?? .infinity),
-                overlap: clip.overlap)
+                overlap: clip.overlap, due: clip.due)
             currentTrimStart = clip.start
             currentTrackName = clip.item.name
             isPlaying = true
