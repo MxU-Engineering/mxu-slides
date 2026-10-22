@@ -109,20 +109,23 @@ final class ThumbnailStore {
             guard slideLayerMedia.contains(id) else { return id }
 
             let stillID = Self.thumbStillID(id, pixelWidth: pixelWidth)
-            if render?.media.hasStill(id: stillID) == true {
+            if thumbStillIsCurrent(stillID, mediaID: id, pixelWidth: pixelWidth, render: render, model: model) {
                 return stillID
             } else {
 
                 pendingStill = true
                 registerThumbStill(id: id, pixelWidth: pixelWidth, render: render, model: model)
                 let smallID = Self.thumbStillID(id, pixelWidth: ThumbnailResolution.base)
-                return large && render?.media.hasStill(id: smallID) == true ? smallID : id
+                return large && thumbStillIsCurrent(
+                    smallID, mediaID: id, pixelWidth: ThumbnailResolution.base, render: render, model: model
+                ) ? smallID : id
             }
         }
 
         let height = max(1, Int((CGFloat(pixelWidth) * canvas.height
             / max(1, canvas.width)).rounded()))
         contentsInFlight.insert(cacheKey)
+        let mediaFilesAtBuild = mediaFilesGeneration
         let stillsVersionAtBuild = thumbStillsVersion
         let readyAtBuild = placeholdersReady
         let width = pixelWidth
@@ -138,7 +141,8 @@ final class ThumbnailStore {
                 ThumbnailStore.shared.landContent(
                     key: cacheKey, identity: identity, frame: frame, large: large,
                     usedPlaceholder: usedPlaceholderAtBuild, pendingStill: pendingStillAtBuild,
-                    stillsVersionAtBuild: stillsVersionAtBuild, readyAtBuild: readyAtBuild
+                    stillsVersionAtBuild: stillsVersionAtBuild, readyAtBuild: readyAtBuild,
+                    mediaFilesAtBuild: mediaFilesAtBuild
                 )
             }
         }
@@ -182,10 +186,11 @@ final class ThumbnailStore {
     private func landContent(
         key: String, identity: String?, frame: RenderedFrame?, large: Bool,
         usedPlaceholder: Bool, pendingStill: Bool,
-        stillsVersionAtBuild: Int, readyAtBuild: Bool
+        stillsVersionAtBuild: Int, readyAtBuild: Bool, mediaFilesAtBuild: Int
     ) {
         contentsInFlight.remove(key)
-        guard let image = frame?.cgImage else { return }
+
+        guard let image = frame?.cgImage, mediaFilesAtBuild == mediaFilesGeneration else { return }
 
         if (!usedPlaceholder || readyAtBuild), !pendingStill {
             contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
@@ -248,6 +253,29 @@ final class ThumbnailStore {
 
     private var thumbStillsInFlight = Set<String>()
 
+    @ObservationIgnored private var thumbStillKeys: [String: String] = [:]
+
+    @ObservationIgnored private var mediaFilesGeneration = 0
+
+    func mediaFileChanged() {
+        mediaFilesGeneration += 1
+        contents.removeAllObjects()
+        provisionalContents.removeAll()
+        contentsVersion += 1
+    }
+
+    private func thumbStillIsCurrent(
+        _ stillID: String, mediaID: String, pixelWidth: Int, render: RenderContext?, model: AppModel?
+    ) -> Bool {
+        let resident = render?.media.hasStill(id: stillID) == true
+        if resident, let item = model?.media(mediaID) {
+            return thumbStillKeys[stillID] == posterKey(
+                item, maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
+        } else {
+            return resident
+        }
+    }
+
     private(set) var thumbStillsVersion = 0
 
     private static func mediaIDs(onSlideLayerOf scene: RenderScene) -> Set<String> {
@@ -277,11 +305,13 @@ final class ThumbnailStore {
             guard let item = model.media(id),
                   let poster = await poster(for: item, blobs: blobs, maxPixels: maxPixels)
             else { return }
+            let key = posterKey(item, maxPixels: maxPixels)
             guard (try? await render.media.showStill(
                 image: poster,
-                cacheKey: posterKey(item, maxPixels: maxPixels),
+                cacheKey: key,
                 id: stillID
             )) != nil else { return }
+            thumbStillKeys[stillID] = key
             thumbStillsVersion += 1
         }
     }

@@ -1920,22 +1920,36 @@ final class AppModel {
     nonisolated private static func mediaReferenceSets(
         reader: LibraryReader, priority: TaskPriority
     ) async -> [Set<String>] {
+        await mediaReferenceDocuments(reader: reader, priority: priority)
+            .map(\.mediaIDs)
+            .filter { !$0.isEmpty }
+    }
+
+    @concurrent
+    nonisolated private static func mediaReferenceDocuments(
+        reader: LibraryReader, priority: TaskPriority
+    ) async -> [MediaUsage.Document] {
         func walk<E: DocumentEntity>(
-            _ type: E.Type, _ collect: @escaping @Sendable (E) -> Set<String>
-        ) async -> [Set<String>] {
+            _ type: E.Type, themes: @escaping @Sendable (E) -> Set<String> = { _ in [] },
+            _ collect: @escaping @Sendable (E) -> Set<String>
+        ) async -> [MediaUsage.Document] {
             let ids = (try? await reader.ids(of: E.documentKind)) ?? []
-            return await reader.loadValues(type, ids: ids, priority: priority, project: collect).values.values
-                .filter { !$0.isEmpty }
+            return await reader.loadValues(type, ids: ids, priority: priority, project: { value in
+                MediaUsage.Document(
+                    use: MediaUsage.Use(kind: E.documentKind, id: value.id, name: value.name),
+                    mediaIDs: collect(value), themeIDs: themes(value))
+            }).values.values
+                .filter { !$0.mediaIDs.isEmpty || !$0.themeIDs.isEmpty }
         }
-        var sets = await walk(Presentation.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Overlay.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Theme.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(ConfidenceLayout.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Playlist.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Service.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(ActionCombo.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(ScheduleTrigger.self) { MediaReferences.ids(in: $0) }
-        return sets
+        var documents = await walk(Presentation.self, themes: { MediaUsage.themeIDs(in: $0) }) { MediaReferences.ids(in: $0) }
+        documents += await walk(Overlay.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(Theme.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(ConfidenceLayout.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(Playlist.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(Service.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(ActionCombo.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(ScheduleTrigger.self) { MediaReferences.ids(in: $0) }
+        return documents
     }
 
     func mediaReferenceDocumentCount(of ids: Set<String>) async -> Int {
@@ -1944,6 +1958,14 @@ final class AppModel {
             return sets.filter { !$0.isDisjoint(with: ids) }.count
         } else {
             return 0
+        }
+    }
+
+    func mediaUses(of id: String) async -> [MediaUsage.Use] {
+        if let reader = try? await client.reader() {
+            MediaUsage.uses(of: id, in: await Self.mediaReferenceDocuments(reader: reader, priority: .userInitiated))
+        } else {
+            []
         }
     }
 
@@ -2999,6 +3021,8 @@ final class AppModel {
     private func land(_ change: DocumentChange) {
         let held = currentValue(change.kind, id: change.id)
         if change.value == nil || held == nil || !Self.same(held, change.value) {
+            let fileMoved = change.kind == .media
+                && MediaUsage.fileChanged(from: held as? MediaItem, to: change.value as? MediaItem)
 
             if upcomingOnly, [.service, .presentation, .playlist].contains(change.kind) {
                 refreshUpcoming()
@@ -3009,6 +3033,27 @@ final class AppModel {
             if change.kind == .service, change.id == currentServiceID {
                 warmLiveSet()
             }
+            if fileMoved {
+                noteMediaFileChanged(change.id)
+            }
+        }
+    }
+
+    @ObservationIgnored private var mediaFileListeners: [ObjectIdentifier: (String) -> Void] = [:]
+
+    func observeMediaFileChanges(_ owner: AnyObject, _ handler: @escaping (String) -> Void) {
+        mediaFileListeners[ObjectIdentifier(owner)] = handler
+    }
+
+    func stopObservingMediaFileChanges(_ owner: AnyObject) {
+        mediaFileListeners[ObjectIdentifier(owner)] = nil
+    }
+
+    private func noteMediaFileChanged(_ id: String) {
+        DiagnosticsStore.shared.note("media.file.changed", detail: id)
+        ThumbnailStore.shared.mediaFileChanged()
+        for handler in mediaFileListeners.values {
+            handler(id)
         }
     }
 
@@ -3135,6 +3180,12 @@ final class AppModel {
         ].compactMap { $0 }.joined(separator: " — ")
         noteMutation(.media)
         return mediaIDs
+    }
+
+    func importMediaForPick(_ urls: [URL], placement: LibraryHome.Placement) async -> LibraryIndex.Entry? {
+        let ids = await importFiles(urls, placement: placement)
+        await client.settled()
+        return ids.first.flatMap { indexEntry($0) }
     }
 
     private func askMediaNameConflict(name: String, othersLeft: Int) async -> (replace: Bool, forRest: Bool) {

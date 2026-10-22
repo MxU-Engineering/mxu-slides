@@ -19,10 +19,9 @@ import Testing
     @Test func theMediaToolImportsIntoThePickedFolder() throws {
         let editor = try source("SlideEditorView.swift")
         #expect(editor.contains("""
-            onImportMedia: { placement in
-                                MediaFilePicker.choose { urls in
-                                    model.importMediaObjects(urls, placement: placement)
-            """), "the media tool's picker imports from disk through the shared open panel")
+            onImportMedia: { urls, placement in
+                                model.importMediaObjects(urls, placement: placement)
+            """), "the media tool's picker hands its chosen or dropped files to the editor")
         #expect(try source("SlideEditorModel.swift").contains(
             "for id in await appModel.importFiles(urls, placement: placement) {\n"
             + "                addMediaObject(mediaID: id, name: appModel.media(id)?.name ?? \"\")"),
@@ -31,12 +30,12 @@ import Testing
 
     @Test func thePickerSaysWhereTheImportLands() throws {
         let editor = try source("SlideEditorView.swift")
-        #expect(editor.contains("if onImportMedia != nil, kind == .media {\n                importDestination"))
+        #expect(editor.contains("if tab == .importFile {\n                importPane\n                Divider()\n                importDestination"))
         #expect(editor.contains("Text(\"Saves to Media ›\")"))
         #expect(editor.contains("Set(appModel.driveFolders(in: .media) + [current])"), "Make Slides' Drive folder list, plus the default")
         #expect(editor.contains("?? LibraryHome.folder(for: .media, named: nil, viewing: appModel.viewedLibraryFolder)"),
                 "starts where new media lands today")
         #expect(editor.contains(".drive(viewing: .init(kind: .media, area: .team, path: currentImportFolder))"))
-        #expect(editor.contains("let placement = importPlacement\n                        dismiss()\n                        onImportMedia(placement)"))
+        #expect(editor.contains("if let onImportMedia {\n            onImportMedia(urls, placement)"))
     }
 }

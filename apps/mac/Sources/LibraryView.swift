@@ -170,6 +170,11 @@ struct LibrarySidebar: View {
         .sheet(isPresented: $locatePanelShown) {
             LocateMissingMediaView(model: model)
         }
+        .sheet(item: $replaceFileRequest) { request in
+            ReplaceMediaFileSheet(request: request) {
+                ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
+            }
+        }
         .mediaCueSheets(model: model, state: mediaMenuState)
     }
 
@@ -177,6 +182,8 @@ struct LibrarySidebar: View {
     @State private var deleteUsedCount = 0
 
     @State private var locatePanelShown = false
+
+    @State private var replaceFileRequest: ReplaceMediaFileRequest?
 
     @State private var mediaMenuState = MediaCueMenuState()
 
@@ -1011,17 +1018,7 @@ struct LibrarySidebar: View {
         if entry.kind == .media {
 
             Button("Replace Media File…") {
-                let panel = NSOpenPanel()
-                panel.allowsMultipleSelection = false
-                panel.allowedContentTypes = [.image, .movie]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    Task { @MainActor in
-                        if let carried = await model.replaceMediaFile(entry.id, with: url) {
-                            MediaRelinkAlerts.carriedSettingsWarning(itemName: entry.name, carried: carried)
-                        }
-                    }
-                }
+                ReplaceMediaFileFlow.start(model: model, id: entry.id, name: entry.name) { replaceFileRequest = $0 }
             }
             Button("Locate Missing Media…") { locatePanelShown = true }
         }

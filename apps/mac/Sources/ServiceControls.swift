@@ -50,6 +50,10 @@ final class ServiceControls {
             self?.presentationFillDidLand(id)
         }
 
+        appModel.observeMediaFileChanges(self) { [weak self] id in
+            self?.reloadLiveMedia(id)
+        }
+
         NDIScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
 
@@ -1633,6 +1637,13 @@ final class ServiceControls {
     func setPreviewMediaWants(_ wants: [String: Bool?]) {
         if wants != previewMediaWants {
             previewMediaWants = wants
+            syncMedia()
+        }
+    }
+
+    private func reloadLiveMedia(_ id: String) {
+        if liveMediaIDs.contains(id) {
+            liveMediaIDs.remove(id)
             syncMedia()
         }
     }

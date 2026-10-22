@@ -167,11 +167,11 @@ struct SlideObjectInspector: View {
         InspectorSection("Background") {
             if let background = model.effectiveBackground {
 
-                LabeledContent("Media") {
-                    HStack(spacing: 6) {
-                        Text(model.backgroundMediaName(background))
-                        editMediaButton(background.mediaId)
-                    }
+                MediaPickCard(
+                    model: model.appModel, mediaID: background.mediaId,
+                    scope: model.isThemeEditor ? replaceScope : "this background, where Applies To says"
+                ) {
+                    showingBackgroundPicker = true
                 }
                 InspectorPicker("Applies To", selection: backgroundScopeBinding()) {
                     ForEach(model.availableBackgroundScopes, id: \.self) { scope in
@@ -189,11 +189,7 @@ struct SlideObjectInspector: View {
                     Text("Foreground Videos").tag(CueMediaLayer.videos)
                 }
                 Toggle("Loop", isOn: backgroundLoopBinding(background))
-                HStack {
-                    Button("Replace…") { showingBackgroundPicker = true }
-                    Spacer()
-                    Button("Remove", role: .destructive) { model.removeBackground() }
-                }
+                Button("Remove", role: .destructive) { model.removeBackground() }
             } else {
                 Text("No background: when presenting, the previous cue's background keeps playing.")
                     .font(.caption)
@@ -2014,6 +2010,12 @@ struct SlideObjectInspector: View {
 
     private func fillSection(_ object: SlideObject) -> some View {
         InspectorSection(fillIsMediaKind(object) ? "Media" : "Fill") {
+            if fillIsMediaKind(object), fillIsLibrary(object),
+               let mediaID = current(object).fill?.mediaId, !mediaID.isEmpty {
+                MediaPickCard(model: model.appModel, mediaID: mediaID, scope: replaceScope) {
+                    showingFillMediaPicker = true
+                }
+            }
             InspectorPicker("Fill", selection: fillKindBinding(object)) {
                 Text("None").tag(FillKind.none)
                 Text("Solid").tag(FillKind.solid)
@@ -2054,16 +2056,6 @@ struct SlideObjectInspector: View {
                         }
                     }
                 }
-                if fillIsLibrary(object) {
-                    LabeledContent("Item") {
-                        HStack(spacing: 6) {
-                            Text(fillMediaName(object))
-                            if let mediaID = current(object).fill?.mediaId, !mediaID.isEmpty {
-                                editMediaButton(mediaID)
-                            }
-                        }
-                    }
-                }
                 InspectorPicker("Scale", selection: fillWrite(object, \.mediaScaleMode, default: .fill)) {
                     Text("Fill").tag(MediaScaleMode.fill)
                     Text("Fit").tag(MediaScaleMode.fit)
@@ -2081,10 +2073,9 @@ struct SlideObjectInspector: View {
                             }
                         }
                     ))
-                    Button(current(object).fill?.mediaId?.isEmpty == false ? "Replace…" : "Choose…") {
-                        showingFillMediaPicker = true
-                    }
-                    if current(object).fill?.mediaId?.isEmpty == false {
+                    if current(object).fill?.mediaId?.isEmpty != false {
+                        Button("Choose…") { showingFillMediaPicker = true }
+                    } else {
 
                         Button("Remove") {
                             commit(object) {
@@ -2112,21 +2103,8 @@ struct SlideObjectInspector: View {
         }
     }
 
-    private func fillMediaName(_ object: SlideObject) -> String {
-        guard let mediaID = current(object).fill?.mediaId, !mediaID.isEmpty else { return "None" }
-        return model.appModel.indexEntry(mediaID)?.name ?? "Missing item"
-    }
-
-    private func editMediaButton(_ mediaID: String) -> some View {
-        Button {
-            model.appModel.openInEditor(entryID: mediaID)
-        } label: {
-            Image(systemName: "pencil")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help("Edit Media")
+    private var replaceScope: String {
+        model.isThemeEditor ? "this design (every slide that uses it)" : "this object"
     }
 
     private func fillIsLibrary(_ object: SlideObject) -> Bool {

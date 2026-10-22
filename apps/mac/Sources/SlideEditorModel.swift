@@ -247,6 +247,7 @@ final class SlideEditorModel {
     var stepAddArmed = false
 
     @ObservationIgnored private var liveMediaIDs: Set<String> = []
+    @ObservationIgnored private var observingMediaFiles = false
     @ObservationIgnored private var themeCache: (id: String, fill: Int, theme: Theme?)?
 
     @ObservationIgnored private var lastCommitted: [String] = []
@@ -390,6 +391,8 @@ final class SlideEditorModel {
         endSession()
         render?.media.stopAll(withPrefix: Self.editorMediaPrefix)
         liveMediaIDs = []
+        appModel.stopObservingMediaFileChanges(self)
+        observingMediaFiles = false
     }
 
     func endSession() {
@@ -3142,6 +3145,16 @@ final class SlideEditorModel {
 
     private func syncMedia(for slide: Slide) {
         guard let render else { return }
+
+        if !observingMediaFiles {
+            observingMediaFiles = true
+            appModel.observeMediaFileChanges(self) { [weak self] id in
+                if let self, self.liveMediaIDs.contains(id) {
+                    self.liveMediaIDs.remove(id)
+                    self.refreshScene()
+                }
+            }
+        }
 
         var wanted = Set(slide.objects.compactMap(SlideSceneBuilder.fillMediaID))
 

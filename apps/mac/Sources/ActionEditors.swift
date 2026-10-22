@@ -200,7 +200,7 @@ struct ActionParameterFields: View {
                 HStack(spacing: 4) {
                     Button(mediaName(action.mediaId)) { pickMedia() }
                     if let id = action.mediaId, !id.isEmpty {
-                        openInEditorButton(id, help: "Edit Media")
+                        openInEditorButton(id, help: "Open this media item: trim, effects and its file. Changes there apply everywhere it's used.")
                     }
                 }
             }
@@ -431,7 +431,7 @@ struct ActionParameterFields: View {
                         pickAudio()
                     }
                     if let id = action.audioItemId, !id.isEmpty {
-                        openInEditorButton(id, help: "Edit Music")
+                        openInEditorButton(id, help: "Open this music item. Changes there apply everywhere it's used.")
                     }
                 }
             }
@@ -513,15 +513,11 @@ struct ActionParameterFields: View {
     }
 
     private func openInEditorButton(_ entryID: String, help: String) -> some View {
-        Button {
+        Button("Edit…") {
             model.openInEditor(entryID: entryID)
             appModeRaw = AppMode.edit.rawValue
-        } label: {
-            Image(systemName: "pencil")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .controlSize(.small)
         .help(help)
     }
 

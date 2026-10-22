@@ -2,6 +2,7 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SlideEditorView: View {
     let appModel: AppModel
@@ -173,10 +174,8 @@ struct SlideEditorView: View {
         .sheet(isPresented: $showingMediaPicker) {
             LibraryPickerSheet(
                 appModel: appModel,
-                onImportMedia: { placement in
-                    MediaFilePicker.choose { urls in
-                        model.importMediaObjects(urls, placement: placement)
-                    }
+                onImportMedia: { urls, placement in
+                    model.importMediaObjects(urls, placement: placement)
                 }
             ) { entry in
                 model.addMediaObject(mediaID: entry.id, name: entry.name)
@@ -1479,12 +1478,17 @@ struct LibraryPickerSheet: View {
     let appModel: AppModel
     var kind: DocumentKind = .media
 
-    var onImportMedia: ((LibraryHome.Placement) -> Void)? = nil
+    var onImportMedia: (([URL], LibraryHome.Placement) -> Void)? = nil
 
     var render: RenderContext? = nil
     let onPick: (LibraryIndex.Entry) -> Void
 
+    enum Tab: Hashable {
+        case search, importFile
+    }
+
     @Environment(\.dismiss) private var dismiss
+    @State private var tab: Tab = .search
 
     @State private var importFolder: String?
     @State private var query = ""
@@ -1492,15 +1496,67 @@ struct LibraryPickerSheet: View {
     @State private var queryHits: [LibraryIndex.Entry] = []
 
     @State private var proPresenterIDs: Set<String> = []
+    @State private var choosingFiles = false
+    @State private var dropTargeted = false
+
+    @State private var skippedNote: String?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
+        VStack(spacing: 0) {
+            if kind == .media {
+                Picker("Source", selection: $tab) {
+                    Label("Search Media", systemImage: "magnifyingglass").tag(Tab.search)
+                    Label("Import from Disk", systemImage: "square.and.arrow.down").tag(Tab.importFile)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(10)
+                Divider()
+            }
+            if tab == .importFile {
+                importPane
+                Divider()
+                importDestination
+            } else {
+                searchPane
+                Divider()
+            }
+            HStack {
+                if tab == .importFile {
+                    Button("Choose Files…") { choosingFiles = true }
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(10)
+        }
+        .frame(width: 560, height: 460)
+        .onAppear { searchFocused = true }
+        .task {
+            if kind == .presentation {
+                proPresenterIDs = await appModel.proPresenterImportIDs()
+            }
+        }
+        .task(id: query) {
+            queryHits = await appModel.search(query).map(\.entry)
+        }
+        .fileImporter(
+            isPresented: $choosingFiles, allowedContentTypes: [.image, .movie, .video],
+            allowsMultipleSelection: onImportMedia != nil
+        ) { result in
+            if case .success(let urls) = result { importUsable(urls) }
+        }
+    }
+
+    private var searchPane: some View {
         VStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .imageScale(.small)
-                TextField("Search", text: $query)
+                TextField(kind == .media ? "Search media" : "Search", text: $query)
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
             }
@@ -1520,9 +1576,7 @@ struct LibraryPickerSheet: View {
                     ContentUnavailableView(
                         "No Media", systemImage: "photo.on.rectangle.angled",
                         description: Text(query.isEmpty
-                            ? (onImportMedia == nil
-                                ? "Import images or videos in the Media section first."
-                                : "Add an image or video from disk below.")
+                            ? "Add an image or video from Import from Disk above."
                             : "Nothing matches “\(query)”.")
                     )
                     .frame(maxHeight: .infinity)
@@ -1569,33 +1623,68 @@ struct LibraryPickerSheet: View {
                     }
                 }
             }
-            Divider()
-            if onImportMedia != nil, kind == .media {
-                importDestination
+        }
+    }
+
+    private var importPane: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text(onImportMedia == nil ? "Drop a file here, or choose one" : "Drop files here, or choose them")
+                .font(.headline)
+            Text("Images and video")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(onImportMedia == nil
+                ? "It becomes a new library item, used here."
+                : "Each file becomes a media object on this slide.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            if let skippedNote {
+                Label(skippedNote, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
-            HStack {
-                if let onImportMedia, kind == .media {
-                    Button("Add Media from Disk…") {
-                        let placement = importPlacement
-                        dismiss()
-                        onImportMedia(placement)
-                    }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle.standard(CornerStandard.element)
+                .strokeBorder(dropTargeted ? Color.accentColor : Color.secondary.opacity(0.4),
+                              style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+        )
+        .padding(16)
+        .contentShape(Rectangle())
+        .dropDestination(for: URL.self) { urls, _ in
+            importUsable(urls)
+        } isTargeted: { dropTargeted = $0 }
+    }
+
+    @discardableResult
+    private func importUsable(_ urls: [URL]) -> Bool {
+        let media = urls.filter { MediaImporter.libraryKind(of: $0) == .media }
+        if media.isEmpty {
+            skippedNote = "Only images and video can be used here."
+            return false
+        } else {
+            importNow(onImportMedia == nil ? Array(media.prefix(1)) : media)
+            return true
+        }
+    }
+
+    private func importNow(_ urls: [URL]) {
+        let placement = importPlacement
+        let appModel = appModel
+        let onPick = onPick
+        dismiss()
+        if let onImportMedia {
+            onImportMedia(urls, placement)
+        } else {
+            Task { @MainActor in
+                if let entry = await appModel.importMediaForPick(urls, placement: placement) {
+                    onPick(entry)
                 }
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
             }
-            .padding(10)
-        }
-        .frame(width: 560, height: 460)
-        .onAppear { searchFocused = true }
-        .task {
-            if kind == .presentation {
-                proPresenterIDs = await appModel.proPresenterImportIDs()
-            }
-        }
-        .task(id: query) {
-            queryHits = await appModel.search(query).map(\.entry)
         }
     }
 

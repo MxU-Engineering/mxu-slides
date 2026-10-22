@@ -639,6 +639,8 @@ struct MediaEditorView: View {
     @State private var baseStill: CGImage?
     @State private var stillImage: CGImage?
     @State private var nameDraft = ""
+
+    @State private var replaceFileRequest: ReplaceMediaFileRequest?
     @FocusState private var nameFocused: Bool
 
     @State private var effectScrubbing = false
@@ -671,6 +673,11 @@ struct MediaEditorView: View {
             .frame(maxWidth: .infinity)
 
             settingsPanel
+            .sheet(item: $replaceFileRequest) { request in
+                ReplaceMediaFileSheet(request: request) {
+                    ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
+                }
+            }
 
             .frame(width: max(inspectorWidth, PanelWidthGrip.minPanelWidth))
             .floatingPanel()
@@ -970,18 +977,9 @@ struct MediaEditorView: View {
 
     private func replaceFileButton(_ item: MediaItem) -> some View {
         Button("Replace Media File…") {
-            let panel = NSOpenPanel()
-            panel.allowsMultipleSelection = false
-            panel.allowedContentTypes = [.image, .movie]
-            panel.begin { response in
-                guard response == .OK, let url = panel.url else { return }
-                Task { @MainActor in
-                    if let carried = await model.replaceMediaFile(item.id, with: url) {
-                        MediaRelinkAlerts.carriedSettingsWarning(itemName: item.name, carried: carried)
-                    }
-                }
-            }
+            ReplaceMediaFileFlow.start(model: model, id: item.id, name: item.name) { replaceFileRequest = $0 }
         }
+        .help("Swaps this item's file everywhere it's used.")
     }
 
     @ViewBuilder
