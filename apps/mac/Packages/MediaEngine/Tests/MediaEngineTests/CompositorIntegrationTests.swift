@@ -69,6 +69,27 @@ final class CompositorIntegrationTests: XCTestCase {
 
         engine.registerLiveSource(id: "input::item::cam", latestFrame: { nil }, onStop: {})
         XCTAssertNil(engine.stillGeneration(for: "input::item::cam"), "live inputs move")
+
+        let slot = LiveFrameSlot()
+        engine.registerLiveSource(
+            id: "screen::a", latestFrame: { slot.frame }, onStop: {},
+            stillGeneration: { slot.generation })
+        XCTAssertEqual(engine.stillGeneration(for: "screen::a"), 0, "no frame yet draws nothing")
+        func buffer() throws -> CVPixelBuffer {
+            var made: CVPixelBuffer?
+            CVPixelBufferCreate(nil, 8, 8, kCVPixelFormatType_32BGRA, nil, &made)
+            return try XCTUnwrap(made)
+        }
+        let a = try buffer()
+        slot.set(a)
+        let mirrored = try XCTUnwrap(engine.stillGeneration(for: "screen::a"))
+        XCTAssertGreaterThan(mirrored, 0)
+        slot.set(a)
+        XCTAssertEqual(engine.stillGeneration(for: "screen::a"), mirrored, "a resend keeps it")
+        slot.set(try buffer())
+        XCTAssertNotEqual(engine.stillGeneration(for: "screen::a"), mirrored, "a new frame bumps it")
+        engine.setInputDelay(id: "screen::a", frames: 2)
+        XCTAssertNil(engine.stillGeneration(for: "screen::a"), "a delayed feed moves")
     }
 
     func testStillSourceRectCropsThroughTheCompositor() async throws {

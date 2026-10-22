@@ -9,8 +9,33 @@ final class StillMediaSkipTests: XCTestCase {
 
     private final class FakeMedia: MediaTextureSource, @unchecked Sendable {
         let stills = Locked<[String: UInt64]>([:])
+        let mirrors = Locked<[String: LiveFrameSlot]>([:])
         func surface(for mediaID: String, hostTime: CFTimeInterval) -> MediaSurface? { nil }
-        func stillGeneration(for mediaID: String) -> UInt64? { stills.value[mediaID] }
+        func stillGeneration(for mediaID: String) -> UInt64? {
+            stills.value[mediaID] ?? mirrors.value[mediaID]?.generation
+        }
+    }
+
+    private func makeMirror(
+        _ compositor: Compositor, into slot: LiveFrameSlot,
+        showing scene: @escaping @Sendable () -> RenderScene
+    ) throws -> (mirror: OutputMirror, tick: (CFTimeInterval) -> Void) {
+        let delivered = Locked(0)
+        let mirror = try XCTUnwrap(OutputMirror(
+            compositor: compositor, width: 160, height: 90, framesPerSecond: 30,
+            provider: scene,
+            sink: { buffer, _ in
+                slot.set(buffer)
+                delivered.withLock { $0 += 1 }
+            }
+        ))
+        mirror.startWithoutTimerForTesting()
+        return (mirror, { time in
+            let before = delivered.value
+            mirror.tick(at: time)
+            let deadline = Date().addingTimeInterval(5)
+            while delivered.value == before, Date() < deadline { usleep(10_000) }
+        })
     }
 
     private func makeCompositor() throws -> Compositor {
@@ -100,5 +125,58 @@ final class StillMediaSkipTests: XCTestCase {
         XCTAssertFalse(buffers[2] === buffers[1], "a swapped still converts once")
         XCTAssertFalse(buffers[3] === buffers[2], "video converts")
         XCTAssertFalse(buffers[4] === buffers[3], "and keeps converting every tick")
+    }
+
+    func testScreenMirrorOfAStaticScreenSkipsDownstream() throws {
+        let compositor = try makeCompositor()
+        let media = FakeMedia()
+        let slot = LiveFrameSlot()
+        media.stills.value = ["slide.jpg": 1]
+        media.mirrors.value = ["screen::main": slot]
+        compositor.mediaSource = media
+        let upstream = Locked(mediaScene("slide.jpg"))
+        let (mirror, tick) = try makeMirror(compositor, into: slot) { upstream.value }
+        defer { mirror.stop() }
+        let screen = try XCTUnwrap(PlaceholderScreen(
+            compositor: compositor, name: "Confidence", width: 160, height: 90
+        ))
+        let downstream = mediaScene("screen::main")
+        screen.sceneProvider = { downstream }
+        func both(at time: CFTimeInterval) {
+            tick(time)
+            screen.renderNow(at: time)
+        }
+
+        both(at: 0)
+        both(at: 1)
+        XCTAssertEqual(screen.framesRendered, 1, "a mirror of a static screen holds still")
+
+        media.stills.value = ["slide.jpg": 2]
+        both(at: 2)
+        both(at: 3)
+        XCTAssertEqual(screen.framesRendered, 2, "a change upstream renders once downstream")
+
+        upstream.value = mediaScene("clip.mov")
+        both(at: 4)
+        both(at: 5)
+        XCTAssertEqual(screen.framesRendered, 4, "a mirrored moving screen renders every tick")
+    }
+
+    func testMirrorOfItselfKeepsConvertingWithoutHanging() throws {
+        let compositor = try makeCompositor()
+        let media = FakeMedia()
+        let slot = LiveFrameSlot()
+        media.mirrors.value = ["screen::loop": slot]
+        compositor.mediaSource = media
+        let scene = mediaScene("screen::loop")
+        let (mirror, tick) = try makeMirror(compositor, into: slot) { scene }
+        defer { mirror.stop() }
+
+        var generations: [UInt64] = []
+        for time in 0..<3 {
+            tick(CFTimeInterval(time))
+            generations.append(slot.generation)
+        }
+        XCTAssertEqual(Set(generations).count, 3, "a cycle is video feedback: every tick converts")
     }
 }

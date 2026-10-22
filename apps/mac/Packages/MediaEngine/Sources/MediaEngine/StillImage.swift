@@ -12,8 +12,6 @@ struct StillImage {
 
     let generation: UInt64
 
-    private static let lastGeneration = Locked<UInt64>(0)
-
     static func load(url: URL, device: MTLDevice) throws -> StillImage {
         guard
             let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -68,10 +66,7 @@ struct StillImage {
             url: url,
             size: CGSize(width: width, height: height),
             surface: .bgra(texture: texture, transform: transform, retained: []),
-            generation: lastGeneration.withLock { last -> UInt64 in
-                last += 1
-                return last
-            }
+            generation: LiveFrameSlot.nextGeneration()
         )
     }
 }
