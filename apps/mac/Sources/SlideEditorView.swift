@@ -1568,8 +1568,6 @@ struct LibraryPickerSheet: View {
     let appModel: AppModel
     var kind: DocumentKind = .media
 
-    var kinds: [DocumentKind]? = nil
-
     var onImportMedia: ((LibraryHome.Placement) -> Void)? = nil
 
     var render: RenderContext? = nil
@@ -1579,14 +1577,11 @@ struct LibraryPickerSheet: View {
 
     @State private var importFolder: String?
     @State private var query = ""
-    @State private var scope: DocumentKind?
 
     @State private var queryHits: [LibraryIndex.Entry] = []
 
     @State private var proPresenterIDs: Set<String> = []
     @FocusState private var searchFocused: Bool
-
-    private var activeKind: DocumentKind { scope ?? kinds?.first ?? kind }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1599,24 +1594,10 @@ struct LibraryPickerSheet: View {
                     .focused($searchFocused)
             }
             .padding(10)
-            if let kinds, kinds.count > 1 {
-                Picker("Scope", selection: Binding(
-                    get: { activeKind },
-                    set: { scope = $0 }
-                )) {
-                    ForEach(kinds, id: \.self) { candidate in
-                        Text(Self.scopeTitle(candidate)).tag(candidate)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
-            }
             Divider()
             let entries = results
             if entries.isEmpty {
-                if activeKind == .audio {
+                if kind == .audio {
                     ContentUnavailableView(
                         "No Music", systemImage: "music.note",
                         description: Text(query.isEmpty
@@ -1678,11 +1659,11 @@ struct LibraryPickerSheet: View {
                 }
             }
             Divider()
-            if onImportMedia != nil, activeKind == .media {
+            if onImportMedia != nil, kind == .media {
                 importDestination
             }
             HStack {
-                if let onImportMedia, activeKind == .media {
+                if let onImportMedia, kind == .media {
                     Button("Add Media from Disk…") {
                         let placement = importPlacement
                         dismiss()
@@ -1698,7 +1679,7 @@ struct LibraryPickerSheet: View {
         .frame(width: 560, height: 460)
         .onAppear { searchFocused = true }
         .task {
-            if kinds?.contains(.presentation) == true || kind == .presentation {
+            if kind == .presentation {
                 proPresenterIDs = await appModel.proPresenterImportIDs()
             }
         }
@@ -1743,18 +1724,7 @@ struct LibraryPickerSheet: View {
         .drive(viewing: .init(kind: .media, area: .team, path: currentImportFolder))
     }
 
-    static func scopeTitle(_ kind: DocumentKind) -> String {
-        switch kind {
-        case .presentation: "Slides"
-        case .media: "Media"
-        case .audio: "Music"
-        default: kind.rawValue.capitalized
-        }
-    }
-
-
     private var results: [LibraryIndex.Entry] {
-        let kind = activeKind
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
             return queryHits.filter { $0.kind == kind }
@@ -1772,7 +1742,7 @@ struct LibraryPickerSheet: View {
 
     private func symbol(_ entry: LibraryIndex.Entry) -> String {
         if entry.kind == .presentation { return "rectangle.on.rectangle" }
-        if activeKind == .audio { return "music.note" }
+        if kind == .audio { return "music.note" }
 
         guard let item = appModel.media(entry.id) else { return "photo" }
         return item.mediaKind == .video ? "film" : "photo"

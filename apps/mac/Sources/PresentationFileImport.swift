@@ -25,7 +25,8 @@ extension AppModel {
         }
     }
 
-    func importPresentationFiles(_ urls: [URL]) async {
+    @discardableResult
+    func importPresentationFiles(_ urls: [URL]) async -> [String] {
         let activity = ImportActivityModel(title: "Import Presentation")
         ImportActivityWindow.present(activity)
         activity.phase = "Presentations"
@@ -75,6 +76,7 @@ extension AppModel {
             selectedEntryID = last
             libraryRevealID = last
         }
+        return landed
     }
 
     private func askPresentationConflict(name: String) -> SlidesPresentationFile.Conflict? {

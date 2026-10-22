@@ -975,12 +975,12 @@ final class AppModel {
     }
 
     @discardableResult
-    func createPresentation(named name: String) -> String? {
+    func createPresentation(named name: String, themeId: String = "") -> String? {
         let id = UUID().uuidString
 
         createInDrive(Presentation(
             id: id, name: name,
-            presentationKind: .deck, themeId: "",
+            presentationKind: .deck, themeId: themeId,
             slides: [Slide(id: UUID().uuidString, name: "", objects: [])],
             origin: PresentationOrigin(.madeHere)
         ))

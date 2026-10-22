@@ -1389,7 +1389,7 @@ struct LibraryCommands: Commands {
             guard response == .OK, !panel.urls.isEmpty else { return }
             let urls = panel.urls
             Task { @MainActor in
-                await runImport(model: model, urls: urls)
+                await model.runProPresenterImport(urls)
             }
         }
     }
@@ -1406,17 +1406,32 @@ struct LibraryCommands: Commands {
             guard response == .OK, !panel.urls.isEmpty else { return }
             let urls = panel.urls
             Task { @MainActor in
-                await runPowerPointImport(model: model, urls: urls)
+                await model.runPowerPointImport(urls)
             }
         }
     }
 
-    @MainActor
-    private func runPowerPointImport(model: AppModel, urls: [URL]) async {
+    private func exportBackup() {
+        if let model {
+            BackupTransferRunner(model: model).presentExport()
+        }
+    }
+
+    private func importBackup() {
+        if let model {
+            BackupTransferRunner(model: model).presentImport()
+        }
+    }
+}
+
+extension AppModel {
+
+    @discardableResult
+    func runPowerPointImport(_ urls: [URL]) async -> [String] {
         let activity = ImportActivityModel(title: "Import PowerPoint")
         ImportActivityWindow.present(activity)
         activity.phase = "Decks"
-        let summaries = await model.importPowerPoint(urls: urls) { url in
+        let summaries = await importPowerPoint(urls: urls) { url in
             activity.detail = url.deletingPathExtension().lastPathComponent
         }
         let imported = summaries.filter { $0.presentationID != nil }
@@ -1441,13 +1456,14 @@ struct LibraryCommands: Commands {
         }
         if !missingFamilies.isEmpty {
             ResolveMissingFontsWindow.present(missingFamilies: missingFamilies) { replacements in
-                model.applyFontReplacements(replacements, to: importedIDs)
+                self.applyFontReplacements(replacements, to: importedIDs)
             }
         }
+        return importedIDs
     }
 
-    @MainActor
-    private func runImport(model: AppModel, urls: [URL]) async {
+    @discardableResult
+    func runProPresenterImport(_ urls: [URL]) async -> [String] {
         let playlistBundles = urls.filter { $0.pathExtension.lowercased() == "proplaylist" }
         let themes = urls.filter { $0.pathExtension.lowercased() == "protheme" }
         let documents = urls.filter { !["proplaylist", "protheme"].contains($0.pathExtension.lowercased()) }
@@ -1457,11 +1473,12 @@ struct LibraryCommands: Commands {
 
         var summaryLines: [String] = []
         var warnings: [String] = []
+        var landed: [String] = []
 
         if !themes.isEmpty {
             activity.phase = "Themes"
             activity.detail = ""
-            let summaries = await model.importProPresenterThemes(urls: themes)
+            let summaries = await importProPresenterThemes(urls: themes)
             let imported = summaries.filter { $0.themeID != nil && $0.skipped == nil }
             let mediaCount = summaries.reduce(0) { $0 + $1.mediaImported }
             summaryLines.append("\(imported.count) of \(summaries.count) themes imported\(mediaCount > 0 ? ", \(mediaCount) media files" : "")")
@@ -1478,10 +1495,11 @@ struct LibraryCommands: Commands {
 
         if !documents.isEmpty {
             activity.phase = "Presentations"
-            let summaries = await model.importProPresenter(urls: documents) { url in
+            let summaries = await importProPresenter(urls: documents) { url in
                 activity.detail = url.deletingPathExtension().lastPathComponent
             }
             let imported = summaries.filter { $0.presentationID != nil }
+            landed = imported.compactMap(\.presentationID)
             let mediaCount = summaries.reduce(0) { $0 + $1.mediaImported }
             summaryLines.append("\(imported.count) of \(summaries.count) documents imported\(mediaCount > 0 ? ", \(mediaCount) media files" : "")")
             for summary in summaries where summary.presentationID == nil {
@@ -1495,7 +1513,7 @@ struct LibraryCommands: Commands {
         if !playlistBundles.isEmpty {
             activity.phase = "Playlists"
             activity.detail = ""
-            let summaries = await model.importProPresenterPlaylists(urls: playlistBundles)
+            let summaries = await importProPresenterPlaylists(urls: playlistBundles)
             for (url, summary) in zip(playlistBundles, summaries) {
                 if let reason = summary.failureReason {
                     warnings.append("✕ \(url.lastPathComponent): \(reason)")
@@ -1512,18 +1530,7 @@ struct LibraryCommands: Commands {
         }
 
         activity.finish(summaryLines: summaryLines, warnings: warnings)
-    }
-
-    private func exportBackup() {
-        if let model {
-            BackupTransferRunner(model: model).presentExport()
-        }
-    }
-
-    private func importBackup() {
-        if let model {
-            BackupTransferRunner(model: model).presentImport()
-        }
+        return landed
     }
 }
 

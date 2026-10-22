@@ -31,7 +31,7 @@ import Testing
 
     @Test func thePickerSaysWhereTheImportLands() throws {
         let editor = try source("SlideEditorView.swift")
-        #expect(editor.contains("if onImportMedia != nil, activeKind == .media {\n                importDestination"))
+        #expect(editor.contains("if onImportMedia != nil, kind == .media {\n                importDestination"))
         #expect(editor.contains("Text(\"Saves to Media ›\")"))
         #expect(editor.contains("Set(appModel.driveFolders(in: .media) + [current])"), "Make Slides' Drive folder list, plus the default")
         #expect(editor.contains("?? LibraryHome.folder(for: .media, named: nil, viewing: appModel.viewedLibraryFolder)"),

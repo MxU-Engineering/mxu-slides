@@ -88,7 +88,7 @@ import Testing
         let app = try source("AppModel.swift")
         for signature in [
             "func createEntity(in section: LibrarySection) -> String? {",
-            "func createPresentation(named name: String) -> String? {",
+            "func createPresentation(named name: String, themeId: String = \"\") -> String? {",
             "func createConfidenceLayout(from template: ConfidenceLayoutTemplate) -> String? {",
             "func createMultiView(",
             "func importLyrics(",
