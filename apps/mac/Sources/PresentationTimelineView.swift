@@ -228,6 +228,8 @@ struct PresentationTimelineSectionsBar: View {
     let length: Double
 
     var markers = false
+
+    var flat = false
     let x: (Double) -> CGFloat
 
     var body: some View {
@@ -252,23 +254,35 @@ struct PresentationTimelineSectionsBar: View {
                 let section = context.presentation.sections?.first { $0.id == span.sectionId }
                 let left = x(span.start)
                 let spanWidth = max(x(span.end) - left - 1, 1)
-                Text(section?.name ?? "")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 3)
-                    .frame(width: spanWidth, height: 16, alignment: .leading)
-                    .background(
-                        (GroupColor.fill(section, palette: palette) ?? Color.secondary).opacity(0.35),
-                        in: RoundedRectangle(cornerRadius: 3))
+                let color = GroupColor.fill(section, palette: palette) ?? Color.secondary
+                if flat {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(section?.name ?? "")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Rectangle().fill(color.opacity(0.8)).frame(height: 3)
+                    }
+                    .frame(width: spanWidth, height: 18, alignment: .bottomLeading)
                     .clipped()
                     .position(x: left + spanWidth / 2, y: 9)
+                } else {
+                    Text(section?.name ?? "")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 3)
+                        .frame(width: spanWidth, height: 16, alignment: .leading)
+                        .background(color.opacity(0.35), in: RoundedRectangle(cornerRadius: 3))
+                        .clipped()
+                        .position(x: left + spanWidth / 2, y: 9)
+                }
             }
             ForEach(ticks, id: \.self) { at in
                 Rectangle()
                     .fill(Color.primary.opacity(0.55))
-                    .frame(width: 1, height: 12)
-                    .position(x: x(at), y: 9)
+                    .frame(width: 1, height: flat ? 6 : 12)
+                    .position(x: x(at), y: flat ? 15 : 9)
                     .allowsHitTesting(false)
             }
             if markers {
@@ -611,7 +625,7 @@ struct PresentationTimelineLanes: View {
                 }
             }
             .frame(width: map.width, height: Self.rulerHeight, alignment: .topLeading)
-            PresentationTimelineSectionsBar(context: context, length: context.shownLength) { map.x(ofTime: $0) }
+            PresentationTimelineSectionsBar(context: context, length: context.shownLength, flat: true) { map.x(ofTime: $0) }
                 .frame(width: map.width, height: Self.sectionsHeight, alignment: .leading)
                 .allowsHitTesting(false)
             ZStack(alignment: .topLeading) {
@@ -666,8 +680,8 @@ struct PresentationTimelineLanes: View {
         return TimelineBlockCard(
             width: span.width, tint: tint, selected: selection == cue.id
         ) {
-            Text(context.label(cue))
-                .font(.system(size: 10))
+            Text(cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue))
+                .font(.system(size: 10, weight: cue.kind == .slide ? .semibold : .regular).monospacedDigit())
                 .lineLimit(1)
         }
         .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : context.label(cue))
@@ -815,12 +829,23 @@ extension TimelineLane {
 
 extension PresentationTimelineContext {
 
+    func slideBadge(_ cue: TimelineCue, width: CGFloat) -> String {
+        guard let occurrence = PresentationTimelines.occurrence(of: cue, in: blocks) else { return "?" }
+        let number = "\(occurrence + 1)"
+        let section = presentation.sections?.first { $0.id == cue.sectionId }?.name ?? ""
+        if width >= 76, !section.isEmpty { return "\(number) \(section)" }
+        if width >= 32, let initial = section.first { return number + String(initial).uppercased() }
+        return number
+    }
+
     func label(_ cue: TimelineCue) -> String {
         switch cue.kind {
         case .slide:
             let section = presentation.sections?.first { $0.id == cue.sectionId }?.name
-            let index = blocks.first { $0.sectionId == cue.sectionId }?.slideIds.firstIndex { $0 == cue.slideId }
-            return [section, index.map { "\($0 + 1)" }].compactMap { $0 }.joined(separator: " ")
+            guard let occurrence = PresentationTimelines.occurrence(of: cue, in: blocks) else {
+                return "Missing slide" + (section.map { " · \($0)" } ?? "")
+            }
+            return "Slide \(occurrence + 1)" + (section.map { " · \($0)" } ?? "")
         case .overlays:
             return cue.overlayId.flatMap { model.overlay($0)?.name } ?? "Overlay"
         case .alerts:
