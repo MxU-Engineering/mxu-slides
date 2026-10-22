@@ -88,6 +88,10 @@ final class TimecodeFollower {
     private(set) var offsetFrames = UserDefaults.standard.integer(forKey: TimecodeStation.offsetKey)
     private(set) var follows = UserDefaults.standard.object(forKey: TimecodeStation.followKey) as? Bool ?? true
 
+    private(set) var playsAudio = UserDefaults.standard.bool(forKey: TimecodeStation.audioKey)
+
+    @ObservationIgnored private var audioRunning = false
+
     private(set) var problem: String?
 
     private(set) var timecodeReading = TimecodeClock.Reading(state: .noInput)
@@ -165,6 +169,15 @@ final class TimecodeFollower {
         follow = TimecodeFollow()
     }
 
+    func setPlaysAudio(_ on: Bool) {
+        playsAudio = on
+        UserDefaults.standard.set(on, forKey: TimecodeStation.audioKey)
+        if !on, audioRunning {
+            controls?.timeline.stopTracks()
+            audioRunning = false
+        }
+    }
+
     func retry() {
         if reader == nil { start() }
     }
@@ -184,6 +197,11 @@ final class TimecodeFollower {
         if reading != timecodeReading { timecodeReading = reading }
         let level = max(peak, timecodeLevel * 0.85)
         if abs(level - timecodeLevel) > 0.002 { timecodeLevel = level < 0.001 ? 0 : level }
+
+        if audioRunning, reading.state == .stopped || reading.state == .noInput {
+            controls?.timeline.stopTracks()
+            audioRunning = false
+        }
         guard follows, let controls else { return }
         guard reading.live else {
 
@@ -201,7 +219,9 @@ final class TimecodeFollower {
                 DiagnosticsStore.shared.note("timecode.song", detail: "\(command.itemID) at \(String(format: "%.3f", command.position))")
             }
             controls.timeline.follow(
-                command, itemID: item.song.itemID, presentation: item.presentation, arrangementId: item.arrangementId)
+                command, itemID: item.song.itemID, presentation: item.presentation, arrangementId: item.arrangementId,
+                playsAudio: playsAudio)
+            audioRunning = playsAudio
         }
 
         if let pending = revealPending, controls.liveContextID == pending {

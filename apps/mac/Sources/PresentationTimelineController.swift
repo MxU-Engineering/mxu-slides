@@ -28,6 +28,10 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var underTimecode = false
 
+    @ObservationIgnored private var timecodePlaysAudio = false
+
+    @ObservationIgnored private var audioSyncHold: CFTimeInterval = 0
+
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
     func insertionTime(for itemID: String) -> Double {
@@ -58,12 +62,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         timer = nil
         guard playing else { return }
 
-        if let controls, let deck = deck() {
-            for id in Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
-            where controls.audio.player(forAudioItem: id) != nil {
-                controls.stopAudio(audioItemID: id)
-            }
-        }
+        stopTracks()
         playing = false
         publishClock(position: timelinePlayheadTime, running: false)
         recording = false
@@ -84,6 +83,14 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         recording = true
     }
 
+    func stopTracks() {
+        guard let controls, let deck = deck() else { return }
+        for id in Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
+        where controls.audio.player(forAudioItem: id) != nil {
+            controls.stopAudio(audioItemID: id)
+        }
+    }
+
     func seek(to position: Double, itemID: String, presentation: Presentation, arrangementId: String?) {
         if self.itemID != itemID {
             stop()
@@ -99,7 +106,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func follow(
-        _ command: TimecodeFollow.Command, itemID: String, presentation: Presentation, arrangementId: String?
+        _ command: TimecodeFollow.Command, itemID: String, presentation: Presentation, arrangementId: String?,
+        playsAudio: Bool = false
     ) {
         if self.itemID != itemID || presentationID != presentation.id || self.arrangementId != arrangementId {
             select(itemID: itemID, presentation: presentation, arrangementId: arrangementId)
@@ -107,6 +115,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             stop()
         }
         underTimecode = true
+        timecodePlaysAudio = playsAudio
         defer { underTimecode = false }
         switch command {
         case .play(_, let from, let to):
@@ -114,6 +123,18 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             advance(to: to)
         case .land(_, let at):
             land(at: at)
+        }
+
+        let now = CACurrentMediaTime()
+        if case .land = command { audioSyncHold = now + 0.5 }
+        if playsAudio, now >= audioSyncHold, let controls, let deck = deck(), let cues = cues(of: deck) {
+            var playing: [String: Double] = [:]
+            for id in Set(cues.filter { $0.kind == .audio }.compactMap(\.contentId)) {
+                if let player = controls.audio.player(forAudioItem: id), player.isPlaying { playing[id] = player.elapsed }
+            }
+            let sync = TimecodeFollow.audioSync(cues, at: command.position, playing: playing)
+            if sync.contains(where: { if case .playAudio = $0 { true } else { false } }) { audioSyncHold = now + 0.5 }
+            apply(sync, cues: cues, deck: deck)
         }
         setPlayhead(command.position)
         publishClock(position: command.position, running: true)
@@ -197,7 +218,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     private func apply(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {
 
-        let effects = underTimecode ? TimecodeFollow.underTimecode(effects) : effects
+        let effects = underTimecode ? TimecodeFollow.underTimecode(effects, playsAudio: timecodePlaysAudio) : effects
         guard let controls, !effects.isEmpty else { return }
         let model = controls.appModel
         for effect in effects {

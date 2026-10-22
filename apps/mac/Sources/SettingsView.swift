@@ -398,6 +398,14 @@ struct AppSettingsView: View {
                     get: { timecode.follows }, set: { timecode.setFollows($0) })).settingsToggle())
             ))
             rows.append(SettingsRowSpec(
+                id: "timecode.audio",
+                title: "Timecode plays audio",
+                caption: "For when this Mac is the audio source.",
+                keywords: "timecode ltc audio lane backing track sound effects spoken word generator chase play music",
+                control: AnyView(Toggle("", isOn: Binding(
+                    get: { timecode.playsAudio }, set: { timecode.setPlaysAudio($0) })).settingsToggle())
+            ))
+            rows.append(SettingsRowSpec(
                 id: "timecode.input",
                 title: "Input",
                 caption: "The LTC feed. It's read, never played out.",
@@ -637,6 +645,7 @@ struct SettingsRowSpec: Identifiable {
         "avInputs.cameras": "Added inputs run warm from launch and appear in Live Input pickers, so slides never wait on a camera spinning up.",
         "avInputs.outputs": "The output patch bay: named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
         "timecode.follow": "Each song's timeline has a timecode start (the clock on its timeline row) and \"This song plays from timecode\". Incoming timecode plays the song whose window holds it; outside every song the screen holds. With two Macs in a room, follow on one.",
+        "timecode.audio": "Songs' Audio lanes (backing tracks, sound effects, spoken word) play from incoming timecode and stay with it: they start where timecode says, re-cue when it jumps, and stop when it stops. Leave off when Playback or Ableton is playing the music and sending the timecode.",
         "timecode.input": "Route Playback's SMPTE bus (or Ableton's LTC clip) to a spare input, or a channel of BlackHole or Loopback on this Mac. The frame rate is detected.",
         "midi.devices": "Each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
         "midi.map": "Clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",

@@ -64,7 +64,7 @@ public enum SettingsLayout {
         Page(id: "midi", sections: [
             Section("MIDI", ["midi.devices", "midi.map"]),
 
-            Section("Timecode", ["timecode.follow", "timecode.input", "timecode.signal", "timecode.offset"]),
+            Section("Timecode", ["timecode.follow", "timecode.audio", "timecode.input", "timecode.signal", "timecode.offset"]),
         ]),
         Page(id: "keyboard", sections: []),
         Page(id: "api", sections: [
