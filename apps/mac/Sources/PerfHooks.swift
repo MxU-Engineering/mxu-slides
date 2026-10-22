@@ -15,7 +15,7 @@ enum PerfHooks {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
             return
         }
-        observe(["mark", "targets", "play", "stop"])
+        observe(["mark", "targets", "play", "stop", "themes"])
         Task { await run(scenario, spec: spec, model: model) }
     }
 
@@ -146,6 +146,12 @@ enum PerfHooks {
             }
         case "stop":
             editor?.stopAnimationPreview()
+        case "themes":
+
+            if let editor {
+                editor.choosingDeckTheme.toggle()
+                DiagnosticsStore.shared.note("perf.themes", detail: editor.choosingDeckTheme ? "open" : "closed")
+            }
         default:
             break
         }
