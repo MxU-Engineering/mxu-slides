@@ -68,19 +68,31 @@ final class InputTrailRecorder {
             what = "other-click in \(region(at: event.locationInWindow, in: event.window))"
         default:
             let click = event.clickCount > 1 ? "double-click" : "click"
-            what = "\(click) in \(region(at: event.locationInWindow, in: event.window))"
+            let hit = regionView(at: event.locationInWindow, in: event.window)
+            what = "\(click) in \(hit?.name ?? Self.elsewhere(event.window))"
+
+            if let hit, hit.notesClicks {
+                DiagnosticsStore.shared.note("input.click", detail: "\(click) on \(hit.name)")
+            }
         }
 
         trail.record(what, at: ProcessInfo.processInfo.systemUptime)
     }
 
     private func region(at point: NSPoint, in window: NSWindow?) -> String {
+        regionView(at: point, in: window)?.name ?? Self.elsewhere(window)
+    }
+
+    private func regionView(at point: NSPoint, in window: NSWindow?) -> InputRegionView? {
         let hits = regions.allObjects.filter { view in
             view.window != nil && view.window === window && !view.isHiddenOrHasHiddenAncestor
                 && view.covers(point)
         }
-        let smallest = hits.min { $0.area.width * $0.area.height < $1.area.width * $1.area.height }
-        return smallest?.name ?? "elsewhere (\(window?.identifier?.rawValue ?? "no window"))"
+        return hits.min { $0.area.width * $0.area.height < $1.area.width * $1.area.height }
+    }
+
+    private static func elsewhere(_ window: NSWindow?) -> String {
+        "elsewhere (\(window?.identifier?.rawValue ?? "no window"))"
     }
 
     private func focusDescription() -> String {
@@ -99,6 +111,8 @@ final class InputRegionView: NSView {
     var name = ""
     var area = CGSize.zero
 
+    var notesClicks = false
+
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -115,6 +129,7 @@ final class InputRegionView: NSView {
 private struct InputRegionMarker: NSViewRepresentable {
     let name: String
     let area: CGSize
+    let notesClicks: Bool
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: InputRegionView, context: Context) -> CGSize? {
         .zero
@@ -124,21 +139,23 @@ private struct InputRegionMarker: NSViewRepresentable {
         let view = InputRegionView()
         view.name = name
         view.area = area
+        view.notesClicks = notesClicks
         return view
     }
 
     func updateNSView(_ nsView: InputRegionView, context: Context) {
         nsView.name = name
         nsView.area = area
+        nsView.notesClicks = notesClicks
     }
 }
 
 extension View {
 
-    func inputRegion(_ name: String) -> some View {
+    func inputRegion(_ name: String, notesClicks: Bool = false) -> some View {
         background(alignment: .topLeading) {
             GeometryReader { proxy in
-                InputRegionMarker(name: name, area: proxy.size)
+                InputRegionMarker(name: name, area: proxy.size, notesClicks: notesClicks)
                     .frame(width: 0, height: 0)
             }
         }

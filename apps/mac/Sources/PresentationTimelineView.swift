@@ -38,6 +38,7 @@ struct PresentationTimelineButton: View {
             } else {
                 cards.open.insert(itemID)
             }
+            DiagnosticsStore.shared.note("present.header", detail: "timeline \(shown ? "hide" : "show") item \(itemID.suffix(12))")
         } label: {
             Image(systemName: "timeline.selection")
                 .font(.system(size: 11, weight: .medium))

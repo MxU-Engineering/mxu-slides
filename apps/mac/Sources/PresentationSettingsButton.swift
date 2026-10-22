@@ -20,7 +20,10 @@ struct PresentationSettingsButton: View {
     var body: some View {
         let changed = presentation.autoAdvance != nil || presentation.transition != nil
         Button {
-            popoverShown.wrappedValue.toggle()
+            let opening = !popoverShown.wrappedValue
+            popoverShown.wrappedValue = opening
+            DiagnosticsStore.shared.note(
+                "present.header", detail: "settings \(opening ? "open" : "close") \"\(presentation.name)\"")
         } label: {
             HStack(spacing: 4) {
                 if let slideShow = presentation.autoAdvance {
@@ -43,7 +46,15 @@ struct PresentationSettingsButton: View {
         .buttonStyle(.plain)
         .fixedSize()
         .help("Presentation settings")
-        .popover(isPresented: popoverShown, arrowEdge: .bottom) {
+
+        .popover(isPresented: Binding(
+            get: { popoverShown.wrappedValue },
+            set: { shown in
+                if !shown, popoverShown.wrappedValue {
+                    DiagnosticsStore.shared.note("present.header", detail: "settings dismissed \"\(presentation.name)\"")
+                }
+                popoverShown.wrappedValue = shown
+            }), arrowEdge: .bottom) {
             popover
                 .onDisappear {
                     sheet = pendingSheet

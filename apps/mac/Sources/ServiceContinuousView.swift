@@ -546,10 +546,13 @@ struct ServiceContinuousView: View {
                         get: { settingsPopoverItemID == item.id },
                         set: { settingsPopoverItemID = $0 ? item.id : nil }))
 
+                .inputRegion("card settings: \(displayName(item))", notesClicks: true)
+
                 if controls != nil {
                     PresentationTimelineButton(
                         itemID: item.id,
                         hasTimeline: PresentationTimelines.timeline(for: item.arrangementId, in: presentation) != nil)
+                    .inputRegion("card timeline: \(displayName(item))", notesClicks: true)
                 }
             } leading: {
 

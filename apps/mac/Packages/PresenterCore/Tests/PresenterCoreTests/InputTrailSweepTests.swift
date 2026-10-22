@@ -79,11 +79,31 @@ import Testing
 
     @Test func regionMarkersCoverNothing() throws {
         let recorder = try source("InputTrailRecorder.swift")
-        let modifier = try #require(recorder.range(of: "func inputRegion(_ name: String) -> some View {"))
+        let modifier = try #require(recorder.range(of: "func inputRegion(_ name: String, notesClicks: Bool = false) -> some View {"))
         let body = recorder[modifier.upperBound...].prefix(400)
         #expect(body.contains(".frame(width: 0, height: 0)"))
-        #expect(body.contains("InputRegionMarker(name: name, area: proxy.size)"))
+        #expect(body.contains("InputRegionMarker(name: name, area: proxy.size, notesClicks: notesClicks)"))
         #expect(recorder.contains("CGRect(origin: .zero, size: area).contains(convert(windowPoint, from: nil))"))
+    }
+
+    @Test func cardHeaderButtonsLogEveryPressAndAction() throws {
+        let recorder = try source("InputTrailRecorder.swift")
+        let take = try #require(recorder.range(of: "    private func take(_ event: NSEvent) {"))
+        let click = recorder[take.upperBound...].prefix(1500)
+        #expect(click.contains("if let hit, hit.notesClicks {"))
+        #expect(click.contains("DiagnosticsStore.shared.note(\"input.click\", detail: \"\\(click) on \\(hit.name)\")"))
+
+        let surface = try source("ServiceContinuousView.swift")
+        for button in ["settings", "timeline", "notes"] {
+            #expect(surface.contains(".inputRegion(\"card \(button): \\(displayName(item))\", notesClicks: true)"))
+        }
+        let notes = try #require(surface.range(of: "func planItemNotesButton(_ item: ServiceItem) -> some View {"))
+        #expect(surface[notes.upperBound...].prefix(700).contains("\"present.header\", detail: \"notes "))
+
+        let settings = try source("PresentationSettingsButton.swift")
+        #expect(settings.contains("\"present.header\", detail: \"settings \\(opening ? \"open\" : \"close\")"))
+        #expect(settings.contains("\"present.header\", detail: \"settings dismissed "), "a popover that shuts itself shows")
+        #expect(try source("PresentationTimelineView.swift").contains("\"present.header\", detail: \"timeline "))
     }
 
     @Test func cardsAboveTheTopChangingHeightDoNotMoveTheView() throws {
