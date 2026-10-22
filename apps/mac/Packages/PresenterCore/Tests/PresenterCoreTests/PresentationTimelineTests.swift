@@ -96,7 +96,7 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
         block("bg", .background, at: 0, ref: "motion"),
         block("ov", .overlays, at: 2, duration: 3, ref: "lower-third"),
         TimelineCue(id: "act", lane: .actions, at: 4.5),
-        block("fg", .foregroundVideos, at: 6, ref: "bumper"),
+        block("fg", .foregroundVideos, at: 6, duration: 0.5, ref: "bumper"),
     ]
     var live = T.Live()
     var fired: [T.Effect] = []
@@ -118,6 +118,8 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
 
         .clearOverlay(id: "lower-third"),
         .fireMedia(id: "bumper", lane: .foregroundVideos),
+
+        .clearMedia(id: "bumper"),
     ])
 }
 
@@ -182,6 +184,8 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live()) == [.fireMedia(id: "bumper", lane: .foregroundVideos)])
     #expect(T.landing(cues, blocks: blocks, at: 16, live: T.Live()).isEmpty)
     #expect(T.landing(cues, blocks: blocks, at: 12, live: T.Live(mediaIds: ["bumper"])).isEmpty)
+
+    #expect(T.landing(cues, blocks: blocks, at: 16, live: T.Live(mediaIds: ["bumper"])) == [.clearMedia(id: "bumper")])
 }
 
 @Test func reRecordingReplacesOnlyTheSlideCuesAfterIt() {
@@ -214,6 +218,9 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     #expect(trimmed.at == 3 && trimmed.duration == 3)
 
     #expect(T.edited(overlay, in: cues, mode: .trim, by: 10).at == T.snappedToFrame(6 - T.frame))
+
+    let open = block("v", .foregroundVideos, at: 2, ref: "clip")
+    #expect(T.edited(open, in: [open], mode: .stretch, by: -10, openEnd: 30).duration == 18)
 
     #expect(T.edited(point, in: cues, mode: .stretch, by: 1).at == 4)
 }

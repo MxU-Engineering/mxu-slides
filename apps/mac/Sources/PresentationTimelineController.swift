@@ -28,6 +28,10 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
+    func insertionTime(for itemID: String) -> Double {
+        self.itemID == itemID ? PresentationTimelines.snappedToFrame(timelinePlayheadTime) : 0
+    }
+
     func play(itemID: String, presentation: Presentation, arrangementId: String?) {
         if self.itemID != itemID { select(itemID: itemID, presentation: presentation, arrangementId: arrangementId) }
         guard !playing else { return }
@@ -147,6 +151,11 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                 controls.dismissOverlay(id: id)
             case .fireMedia(let id, _):
                 if let media = model.media(id) { controls.fire(mediaItem: media) }
+            case .clearMedia(let id):
+
+                if let layer = controls.state.liveMedia.first(where: { $0.value.mediaId == id })?.key {
+                    controls.clear(layer: layer)
+                }
             case .runActions(let cueID):
                 if let actions = cues.first(where: { $0.id == cueID })?.actions, !actions.isEmpty {
                     controls.actionRouter?.execute(actions)

@@ -148,6 +148,8 @@ public enum PresentationTimelines {
         case clearOverlay(id: String)
         case fireMedia(id: String, lane: TimelineLane)
 
+        case clearMedia(id: String)
+
         case runActions(cueId: String)
     }
 
@@ -171,9 +173,10 @@ public enum PresentationTimelines {
                 let end = end(of: cue, in: cues)
                 if crossed(end) { timed.append((end, 0, .clearOverlay(id: id))) }
             case .foregroundVideos:
-                if crossed(cue.at), let id = cue.mediaId {
-                    timed.append((cue.at, 1, .fireMedia(id: id, lane: .foregroundVideos)))
-                }
+                guard let id = cue.mediaId else { continue }
+                if crossed(cue.at) { timed.append((cue.at, 1, .fireMedia(id: id, lane: .foregroundVideos))) }
+                let end = end(of: cue, in: cues)
+                if crossed(end) { timed.append((end, 0, .clearMedia(id: id))) }
             case .background:
 
                 if crossed(cue.at), let id = cue.mediaId, !liveMedia.contains(id) {
@@ -217,6 +220,12 @@ public enum PresentationTimelines {
                 effects.append(.fireOverlay(id: id))
             }
         }
+
+        let videos = cues.filter { $0.lane == .foregroundVideos && $0.mediaId != nil }
+        let playing = Set(videos.filter(holds).compactMap(\.mediaId))
+        for id in Set(videos.compactMap(\.mediaId)).sorted() where !playing.contains(id) && live.mediaIds.contains(id) {
+            effects.append(.clearMedia(id: id))
+        }
         for lane in [TimelineLane.foregroundVideos, .background] {
             let held = cues.filter { $0.lane == lane && holds($0) }.max { $0.at < $1.at }
             if let id = held?.mediaId, !live.mediaIds.contains(id) {
@@ -243,10 +252,12 @@ public enum PresentationTimelines {
     }
 
     public static func edited(
-        _ cue: TimelineCue, in cues: [TimelineCue], mode: TimelineBlockEdit.Mode, by seconds: Double
+        _ cue: TimelineCue, in cues: [TimelineCue], mode: TimelineBlockEdit.Mode, by seconds: Double,
+        openEnd: Double? = nil
     ) -> TimelineCue {
         guard isBlock(cue.lane), mode != .move else { return moved(cue, by: seconds) }
-        let end = end(of: cue, in: cues)
+        var end = end(of: cue, in: cues)
+        if !end.isFinite, let openEnd { end = openEnd }
         guard end.isFinite else { return mode == .trim ? moved(cue, by: seconds) : cue }
         var edited = cue
         switch mode {

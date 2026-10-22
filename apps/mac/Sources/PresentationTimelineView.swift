@@ -339,6 +339,17 @@ struct PresentationTimelineLanes: View {
     @State private var anchor = TimelinePointerAnchor()
     @State private var autoScroll = TimelineEdgeAutoScroll()
     @State private var dropTargeted = false
+    @Environment(\.actionRouter) private var router
+
+    @State private var placing: PlacingAction?
+
+    @State private var editingActions: String?
+
+    private struct PlacingAction: Identifiable {
+        var action: SlideAction
+        var at: Double
+        var id: String { action.id }
+    }
 
     static let lanes: [TimelineLane] = [.overlays, .slides, .foregroundVideos, .background, .actions]
     static let laneHeight: CGFloat = 26
@@ -380,6 +391,34 @@ struct PresentationTimelineLanes: View {
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
+
+        .sheet(item: $placing) { placing in
+            ActionPlacementSheet(model: context.model, draft: placing.action) { action in
+                let cue = TimelineCue(id: UUID().uuidString, lane: .actions, at: placing.at, actions: [action])
+                context.edit("Add Action") { $0.cues.append(cue) }
+                selection = cue.id
+            }
+        }
+        .sheet(isPresented: Binding(get: { editingActions != nil }, set: { if !$0 { editingActions = nil } })) {
+            if let id = editingActions {
+                SlideActionsSheet(
+                    model: context.model, slideName: "",
+                    actions: Binding(
+                        get: {
+
+                            let deck = context.model.presentation(context.presentation.id) ?? context.presentation
+                            return PresentationTimelines.timeline(for: context.item.arrangementId, in: deck)?
+                                .cues.first { $0.id == id }?.actions ?? []
+                        },
+                        set: { actions in
+                            context.edit("Timeline Actions") { timeline in
+                                guard let index = timeline.cues.firstIndex(where: { $0.id == id }) else { return }
+                                timeline.cues[index].actions = actions
+                            }
+                        }),
+                    title: "Timeline Actions")
+            }
+        }
     }
 
     private func toolbar(_ cues: [TimelineCue], pps: Double) -> some View {
@@ -405,11 +444,23 @@ struct PresentationTimelineLanes: View {
                     .help("Remove from the timeline")
                 }
             } else {
-                Text(runOnly ? "Timeline" : "Drag media or overlays onto a lane; click a cue to nudge it")
+                Text(runOnly ? "Timeline" : "Drag media, overlays or combos onto the lanes; click a cue to nudge it")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
+            if !runOnly {
+
+                Menu("Add Action") {
+                    AddActionMenuItems(model: context.model, timers: router?.timerChoices ?? []) { action in
+                        placing = PlacingAction(action: action, at: context.clock.insertionTime(for: context.item.id))
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .controlSize(.small)
+                .help("Add an action at the playhead")
+            }
             TimelineZoomControls(
                 pointsPerSecond: pps, zoom: { pointsPerSecond = $0 }, fit: { pointsPerSecond = nil },
                 fitHelp: "Fit the song to the width", range: TimelineZoom.songRange)
@@ -503,12 +554,19 @@ struct PresentationTimelineLanes: View {
                 autoScroll.stop()
                 selection = cue.id
                 guard let mode, !runOnly, dx != 0 else { return }
-                move(cue, mode: mode, by: Double(dx / map.pointsPerSecond), label: "Move Cue")
+                move(
+                    cue, mode: mode, by: Double(dx / map.pointsPerSecond), label: "Move Cue",
+                    openEnd: map.locate(x: left + width)?.time)
             },
-            doubleClicked: { context.seek(to: cue.at) }
+            doubleClicked: {
+                if cue.lane == .actions, !runOnly { editingActions = cue.id } else { context.seek(to: cue.at) }
+            }
         ) {
             Button("Go Here") { context.seek(to: cue.at) }
             if !runOnly {
+                if cue.lane == .actions {
+                    Button("Edit Actions\u{2026}") { editingActions = cue.id }
+                }
                 Divider()
                 Button("Nudge 1 Frame Earlier") { move(cue, mode: .move, by: -PresentationTimelines.frame, label: "Nudge Cue") }
                 Button("Nudge 1 Frame Later") { move(cue, mode: .move, by: PresentationTimelines.frame, label: "Nudge Cue") }
@@ -520,10 +578,13 @@ struct PresentationTimelineLanes: View {
         .position(x: span.x + span.width / 2, y: Self.laneHeight / 2)
     }
 
-    private func move(_ cue: TimelineCue, mode: TimelineBlockEdit.Mode, by seconds: Double, label: String) {
+    private func move(
+        _ cue: TimelineCue, mode: TimelineBlockEdit.Mode, by seconds: Double, label: String, openEnd: Double? = nil
+    ) {
         context.edit(label) { timeline in
             guard let index = timeline.cues.firstIndex(where: { $0.id == cue.id }) else { return }
-            timeline.cues[index] = PresentationTimelines.edited(timeline.cues[index], in: timeline.cues, mode: mode, by: seconds)
+            timeline.cues[index] = PresentationTimelines.edited(
+                timeline.cues[index], in: timeline.cues, mode: mode, by: seconds, openEnd: openEnd)
         }
     }
 
@@ -534,7 +595,7 @@ struct PresentationTimelineLanes: View {
 
     private func drop(_ payloads: [String], at time: Double) -> Bool {
         DiagnosticsStore.shared.note("timeline.drop.offered", detail: payloads.first ?? "none")
-        guard !runOnly, let id = payloads.first, let entry = context.model.entry(id) else { return false }
+        guard !runOnly, let id = payloads.first, let entry = context.model.indexEntry(id) else { return false }
         let at = PresentationTimelines.snappedToFrame(time)
         let cue: TimelineCue
         switch entry.kind {
@@ -545,7 +606,11 @@ struct PresentationTimelineLanes: View {
             let background = media?.classification == .background
             cue = TimelineCue(
                 id: UUID().uuidString, lane: background ? .background : .foregroundVideos, at: at,
-                duration: background ? nil : media?.durationSeconds, mediaId: id)
+                duration: background ? nil : media?.durationSeconds ?? 10, mediaId: id)
+        case .actionCombo:
+            cue = TimelineCue(
+                id: UUID().uuidString, lane: .actions, at: at,
+                actions: [SlideAction(id: UUID().uuidString, kind: .fireCombo, comboId: id)])
         default:
             return false
         }
@@ -566,8 +631,9 @@ struct PresentationTimelineLanes: View {
         case .foregroundVideos, .background, .audio:
             return cue.mediaId.flatMap { context.model.media($0)?.name } ?? "Media"
         case .actions:
-            let count = cue.actions?.count ?? 0
-            return count == 1 ? "1 action" : "\(count) actions"
+            let actions = cue.actions ?? []
+            guard let first = actions.first else { return "No actions" }
+            return first.kind.displayName + (actions.count > 1 ? " +\(actions.count - 1)" : "")
         }
     }
 

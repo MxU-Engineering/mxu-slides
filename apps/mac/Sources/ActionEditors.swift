@@ -528,12 +528,14 @@ struct SlideActionsSheet: View {
     let slideName: String
     @Binding var actions: [SlideAction]
 
+    var title: String? = nil
+
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(slideName.isEmpty ? "Slide Actions" : "Slide Actions — \(slideName)")
+                Text(title ?? (slideName.isEmpty ? "Slide Actions" : "Slide Actions — \(slideName)"))
                     .font(.headline)
                 Spacer()
             }
