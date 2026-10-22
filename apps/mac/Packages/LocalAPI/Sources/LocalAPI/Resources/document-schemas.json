@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 140,
+  "schemaVersion": 141,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1319,6 +1319,92 @@
         "deck"
       ]
     },
+    "TimelineLane": {
+      "type": "string",
+      "enum": [
+        "overlays",
+        "slides",
+        "foregroundVideos",
+        "background",
+        "audio",
+        "actions"
+      ]
+    },
+    "TimelineCue": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "lane": {
+          "$ref": "#/components/schemas/TimelineLane"
+        },
+        "at": {
+          "type": "number"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "sectionId": {
+          "type": "string"
+        },
+        "sectionOccurrence": {
+          "type": "integer"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
+        },
+        "overlayId": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "lane",
+        "at"
+      ]
+    },
+    "PresentationTimeline": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "arrangementId": {
+          "type": "string"
+        },
+        "timecodeEnabled": {
+          "type": "boolean"
+        },
+        "timecodeStart": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "number"
+        },
+        "cues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TimelineCue"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "timecodeEnabled",
+        "timecodeStart",
+        "cues"
+      ]
+    },
     "Presentation": {
       "type": "object",
       "properties": {
@@ -1396,6 +1482,12 @@
         },
         "origin": {
           "$ref": "#/components/schemas/PresentationOrigin"
+        },
+        "timelines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/PresentationTimeline"
+          }
         }
       },
       "required": [

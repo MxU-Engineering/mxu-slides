@@ -547,6 +547,12 @@ struct ServiceContinuousView: View {
                     isPresented: Binding(
                         get: { settingsPopoverItemID == item.id },
                         set: { settingsPopoverItemID = $0 ? item.id : nil }))
+
+                if controls != nil {
+                    PresentationTimelineButton(
+                        itemID: item.id,
+                        hasTimeline: PresentationTimelines.timeline(for: item.arrangementId, in: presentation) != nil)
+                }
             } leading: {
 
                 if SlideSceneBuilder.showsArrangements(for: presentation) {
@@ -589,6 +595,10 @@ struct ServiceContinuousView: View {
                             jumpToBlock(item, presentation, slides, pill: pill, proxy: proxy)
                         }
                     )
+                }
+
+                if let context = timelineContext(item, presentation) {
+                    PresentationTimelineStrip(context: context)
                 }
             }
 
@@ -635,6 +645,12 @@ struct ServiceContinuousView: View {
         )
         .background(Color.basePlane)
         .id(item.id)
+    }
+
+    private func timelineContext(_ item: ServiceItem, _ presentation: Presentation) -> PresentationTimelineContext? {
+        guard let controls, PresentationTimelineCards.shared.open.contains(item.id) else { return nil }
+        return PresentationTimelineContext(
+            model: model, controls: controls, serviceID: serviceID, item: item, presentation: presentation)
     }
 
     private func activeArrangementName(

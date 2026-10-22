@@ -879,6 +879,59 @@ public enum PresentationKind: String, Codable, Sendable, CaseIterable, Equatable
     case deck
 }
 
+public enum TimelineLane: String, Codable, Sendable, CaseIterable, Equatable {
+    case overlays
+    case slides
+    case foregroundVideos
+    case background
+    case audio
+    case actions
+}
+
+public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var lane: TimelineLane
+    public var at: Double
+    public var duration: Double?
+    public var sectionId: String?
+    public var sectionOccurrence: Int?
+    public var slideId: String?
+    public var mediaId: String?
+    public var overlayId: String?
+    public var actions: [SlideAction]?
+
+    public init(id: String, lane: TimelineLane, at: Double, duration: Double? = nil, sectionId: String? = nil, sectionOccurrence: Int? = nil, slideId: String? = nil, mediaId: String? = nil, overlayId: String? = nil, actions: [SlideAction]? = nil) {
+        self.id = id
+        self.lane = lane
+        self.at = at
+        self.duration = duration
+        self.sectionId = sectionId
+        self.sectionOccurrence = sectionOccurrence
+        self.slideId = slideId
+        self.mediaId = mediaId
+        self.overlayId = overlayId
+        self.actions = actions
+    }
+}
+
+public struct PresentationTimeline: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var arrangementId: String?
+    public var timecodeEnabled: Bool
+    public var timecodeStart: Int
+    public var length: Double?
+    public var cues: [TimelineCue]
+
+    public init(id: String, arrangementId: String? = nil, timecodeEnabled: Bool, timecodeStart: Int, length: Double? = nil, cues: [TimelineCue]) {
+        self.id = id
+        self.arrangementId = arrangementId
+        self.timecodeEnabled = timecodeEnabled
+        self.timecodeStart = timecodeStart
+        self.length = length
+        self.cues = cues
+    }
+}
+
 public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
@@ -902,8 +955,9 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var transition: Transition?
     public var displayKey: String?
     public var origin: PresentationOrigin?
+    public var timelines: [PresentationTimeline]?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil, timelines: [PresentationTimeline]? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -926,6 +980,7 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.transition = transition
         self.displayKey = displayKey
         self.origin = origin
+        self.timelines = timelines
     }
 }
 

@@ -30,6 +30,8 @@ final class ServiceControls {
 
     let mixer: AudioMixerController
 
+    let timeline = PresentationTimelineController()
+
     private var liveMediaIDs: Set<String> = []
 
     private var transitionResweepScheduled = false
@@ -45,6 +47,7 @@ final class ServiceControls {
         self.recording = RecordingController(render: render)
         self.streaming = StreamingController(render: render)
         self.mixer = AudioMixerController(audio: audio)
+        self.timeline.controls = self
 
         appModel.decks.onFillLanded = { [weak self] id in
             self?.presentationFillDidLand(id)
@@ -417,11 +420,12 @@ final class ServiceControls {
 
     func fire(
         slide: Slide, in presentation: Presentation, arrangementId: String? = nil,
-        contextID: String? = nil, occurrence: Int? = nil
+        contextID: String? = nil, occurrence: Int? = nil, slideActions: Bool = true
     ) {
 
         settlePending()
-        let incoming = actionRouter?.predictedOverrideThemes(for: slide, contextID: contextID) ?? Array(slideThemeOverrides.values)
+        let routed = slideActions ? slide : Self.withoutActions(slide)
+        let incoming = actionRouter?.predictedOverrideThemes(for: routed, contextID: contextID) ?? Array(slideThemeOverrides.values)
         let handoff = state.handoff(to: slide, incomingOverrides: incoming)
         if handoff.wait > 0 {
             state.dismissLooks(handoff.leaving, atHostTime: CACurrentMediaTime())
@@ -433,7 +437,9 @@ final class ServiceControls {
                 self.pendingHandoff = nil
                 self.nextFireArrivesSettled = settled
                 defer { self.nextFireArrivesSettled = false }
-                self.fire(slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID, occurrence: occurrence)
+                self.fire(
+                    slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
+                    occurrence: occurrence, slideActions: slideActions)
             }
             return
         }
@@ -441,7 +447,9 @@ final class ServiceControls {
         let themeID = presentation.themeId(for: slide)
         switch appModel.resident.themes.fireRead(themeID) {
         case .now(let theme):
-            land(slide: slide, in: presentation, theme: theme, arrangementId: arrangementId, contextID: contextID, occurrence: occurrence)
+            land(
+                slide: slide, in: presentation, theme: theme, arrangementId: arrangementId, contextID: contextID,
+                occurrence: occurrence, slideActions: slideActions)
         case .afterFill:
             let settled = nextFireArrivesSettled
             pendingHandoff = Task { @MainActor [weak self] in
@@ -451,19 +459,26 @@ final class ServiceControls {
                     self.nextFireArrivesSettled = settled
                     self.land(
                         slide: slide, in: presentation, theme: self.appModel.theme(themeID),
-                        arrangementId: arrangementId, contextID: contextID, occurrence: occurrence)
+                        arrangementId: arrangementId, contextID: contextID, occurrence: occurrence,
+                        slideActions: slideActions)
                     self.nextFireArrivesSettled = false
                 }
             }
         }
     }
 
+    private static func withoutActions(_ slide: Slide) -> Slide {
+        var bare = slide
+        bare.actions = nil
+        return bare
+    }
+
     private func land(
         slide: Slide, in presentation: Presentation, theme: Theme?, arrangementId: String?,
-        contextID: String?, occurrence: Int?
+        contextID: String?, occurrence: Int?, slideActions: Bool
     ) {
 
-        actionRouter?.applyPresetSwitches(for: slide, contextID: contextID)
+        actionRouter?.applyPresetSwitches(for: slideActions ? slide : Self.withoutActions(slide), contextID: contextID)
 
         if let entrance = RenderContext.sceneTransition(
             from: TransitionEdit.entrance(own: slide.transition, presentation: presentation.transition)) {
@@ -508,7 +523,11 @@ final class ServiceControls {
             restart(mediaID: background.mediaId)
         }
 
-        actionRouter?.slideDidFire(slide, contextID: contextID)
+        if slideActions {
+            actionRouter?.slideDidFire(slide, contextID: contextID)
+        }
+
+        timeline.noteSlideLanded(contextID: contextID, occurrence: occurrence)
         armAutoAdvance(for: slide, in: presentation)
 
         if !deckWasLive {

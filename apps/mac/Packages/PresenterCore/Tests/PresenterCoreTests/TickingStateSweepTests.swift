@@ -14,6 +14,7 @@ import Testing
         "AudioController.swift": [.moves(["elapsed"])],
         "MediaEditorView.swift": [.moves(["elapsed"])],
         "SlideEditorModel+Animations.swift": [.moves(["animationPreviewShownTime"])],
+        "PresentationTimelineController.swift": [.moves(["timelinePlayheadTime"])],
         "TimelineControls.swift": [
             .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the timeline that owns the drag"),
         ],

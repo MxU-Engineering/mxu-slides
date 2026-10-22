@@ -1624,3 +1624,29 @@ private func conditioned(_ conditions: [VisibilityCondition], match: VisibilityM
     }
     #expect(Set(EffectPreset.recommended.map(\.id)).count == EffectPreset.recommended.count)
 }
+
+@Test func timelineBlocksLayEndToEndAsThePlayedOrder() {
+
+    var song = Presentation(
+        id: "p", name: "Song", presentationKind: .deck, themeId: "",
+        slides: [
+            Slide(id: "v1", name: "", objects: [], sectionId: "v"),
+            Slide(id: "c1", name: "", objects: [], sectionId: "c"),
+            Slide(id: "c2", name: "", objects: [], sectionId: "c"),
+            Slide(id: "end", name: "", objects: []),
+        ],
+        sections: [PresentationSection(id: "v", name: "Verse"), PresentationSection(id: "c", name: "Chorus")]
+    )
+    song.arrangements = [Arrangement(id: "a", name: "Live", sectionIds: ["c", "v", "c"])]
+    let base = SlideSceneBuilder.timelineBlocks(for: song)
+    #expect(base == [
+        TimelinePlayedBlock(sectionId: "v", slideIds: ["v1"]),
+        TimelinePlayedBlock(sectionId: "c", slideIds: ["c1", "c2"]),
+        TimelinePlayedBlock(sectionId: nil, slideIds: ["end"]),
+    ])
+    #expect(base.flatMap(\.slideIds) == SlideSceneBuilder.arrangedSlides(for: song).map(\.id))
+    let arranged = SlideSceneBuilder.timelineBlocks(for: song, arrangementId: "a", emptyRepeatsOnce: false)
+    #expect(arranged.map(\.sectionId) == ["c", "v", "c"])
+    #expect(arranged.flatMap(\.slideIds)
+        == SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "a", emptyRepeatsOnce: false).map(\.id))
+}

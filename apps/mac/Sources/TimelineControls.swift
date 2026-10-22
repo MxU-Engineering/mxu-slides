@@ -45,10 +45,11 @@ struct TimelineZoomControls: View {
     let zoom: (Double) -> Void
     let fit: () -> Void
     var fitHelp = "Pack the whole timeline into view"
+    var range = TimelineZoom.range
 
     var body: some View {
         Button {
-            zoom(TimelineZoom.zoomedOut(pointsPerSecond))
+            zoom(TimelineZoom.zoomedOut(pointsPerSecond, in: range))
         } label: {
             Image(systemName: "minus")
         }
@@ -59,12 +60,12 @@ struct TimelineZoomControls: View {
                 get: { pointsPerSecond },
                 set: { zoom($0) }
             ),
-            in: TimelineZoom.range
+            in: range
         )
         .controlSize(.mini)
         .frame(width: 90)
         Button {
-            zoom(TimelineZoom.zoomedIn(pointsPerSecond))
+            zoom(TimelineZoom.zoomedIn(pointsPerSecond, in: range))
         } label: {
             Image(systemName: "plus")
         }
@@ -79,6 +80,7 @@ struct TimelineZoomControls: View {
 private struct TimelinePinchZoom: ViewModifier {
     let current: () -> Double
     let zoom: (Double) -> Void
+    var range = TimelineZoom.range
     @State private var base: Double?
 
     func body(content: Content) -> some View {
@@ -87,7 +89,7 @@ private struct TimelinePinchZoom: ViewModifier {
                 .onChanged { value in
                     let start = base ?? current()
                     base = start
-                    zoom(TimelineZoom.pinched(base: start, magnification: value.magnification))
+                    zoom(TimelineZoom.pinched(base: start, magnification: value.magnification, in: range))
                 }
                 .onEnded { _ in base = nil }
         )
@@ -96,8 +98,11 @@ private struct TimelinePinchZoom: ViewModifier {
 
 extension View {
 
-    func timelinePinchZoom(current: @escaping () -> Double, zoom: @escaping (Double) -> Void) -> some View {
-        modifier(TimelinePinchZoom(current: current, zoom: zoom))
+    func timelinePinchZoom(
+        current: @escaping () -> Double, range: ClosedRange<Double> = TimelineZoom.range,
+        zoom: @escaping (Double) -> Void
+    ) -> some View {
+        modifier(TimelinePinchZoom(current: current, zoom: zoom, range: range))
     }
 }
 
@@ -105,12 +110,15 @@ struct TimelineRuler: View {
     let map: TimelineMap
     var interval: Double = 0.5
 
+    var label: ((Double) -> String)?
+
     var body: some View {
         ForEach(Array(map.segments.enumerated()), id: \.offset) { index, segment in
             HStack(spacing: 0) {
                 let ticks = max(Int(segment.displayDuration / interval), 1)
                 ForEach(0..<ticks, id: \.self) { tick in
-                    Text(tick == 0 ? "0s" : String(format: "%.1f", Double(tick) * interval))
+                    let seconds = Double(tick) * interval
+                    Text(tick == 0 ? "0s" : label?(seconds) ?? String(format: "%.1f", seconds))
                         .font(.system(size: 8).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 2)
@@ -130,12 +138,16 @@ struct TimelineRuler: View {
 
 struct TimelineScrubStrip<Playhead: View>: View {
     let map: TimelineMap
+    var interval: Double = 0.5
+    var label: ((Double) -> String)?
     let scrub: (_ time: Double, _ segment: Int) -> Void
+
+    var released: ((_ time: Double) -> Void)?
     @ViewBuilder let playhead: () -> Playhead
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            TimelineRuler(map: map)
+            TimelineRuler(map: map, interval: interval, label: label)
             playhead()
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -145,6 +157,10 @@ struct TimelineScrubStrip<Playhead: View>: View {
                 .onChanged { value in
                     guard let landed = map.locate(x: value.location.x) else { return }
                     scrub(landed.time, landed.segment)
+                }
+                .onEnded { value in
+                    guard let released, let landed = map.locate(x: value.location.x) else { return }
+                    released(landed.time)
                 }
         )
         .background(Color.primary.opacity(0.04))
@@ -160,8 +176,11 @@ struct TimelinePlayheadReadout<Source: TimelinePlayheadSource>: View {
     let source: Source
     let duration: Double
 
+    var text: ((Double) -> String)?
+
     var body: some View {
-        Text(String(format: "%.1f / %.1fs", source.timelinePlayheadTime, max(duration, 0.01)))
+        let t = source.timelinePlayheadTime
+        Text(text?(t) ?? String(format: "%.1f / %.1fs", t, max(duration, 0.01)))
             .font(.caption2.monospacedDigit())
             .foregroundStyle(.secondary)
 

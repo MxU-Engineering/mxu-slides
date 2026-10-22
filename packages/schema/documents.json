@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 140,
+  "schemaVersion": 141,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1623,6 +1623,100 @@
         "deck"
       ]
     },
+    "TimelineLane": {
+      "kind": "enum",
+      "cases": [
+        "overlays",
+        "slides",
+        "foregroundVideos",
+        "background",
+        "audio",
+        "actions"
+      ]
+    },
+    "TimelineCue": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "lane",
+          "type": "TimelineLane"
+        },
+        {
+          "name": "at",
+          "type": "double"
+        },
+        {
+          "name": "duration",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "sectionId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "sectionOccurrence",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "overlayId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction",
+          "optional": true
+        }
+      ]
+    },
+    "PresentationTimeline": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "arrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timecodeEnabled",
+          "type": "bool"
+        },
+        {
+          "name": "timecodeStart",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "cues",
+          "type": "list:TimelineCue"
+        }
+      ]
+    },
     "Presentation": {
       "kind": "record",
       "fields": [
@@ -1729,6 +1823,11 @@
         {
           "name": "origin",
           "type": "PresentationOrigin",
+          "optional": true
+        },
+        {
+          "name": "timelines",
+          "type": "list:PresentationTimeline",
           "optional": true
         }
       ]

@@ -117,6 +117,30 @@ public enum SlideSceneBuilder {
         return starts
     }
 
+    public static func timelineBlocks(
+        for presentation: Presentation,
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
+    ) -> [TimelinePlayedBlock] {
+        if let id = arrangementId, !id.isEmpty,
+           let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
+           !arrangement.sectionIds.isEmpty {
+            let blocks = playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce)
+            return zip(arrangement.sectionIds, blocks).map {
+                TimelinePlayedBlock(sectionId: $0, slideIds: $1.map(\.id))
+            }
+        }
+        var blocks: [TimelinePlayedBlock] = []
+        for slide in presentation.slides {
+            if let last = blocks.indices.last, blocks[last].sectionId == slide.sectionId {
+                blocks[last].slideIds.append(slide.id)
+            } else {
+                blocks.append(TimelinePlayedBlock(sectionId: slide.sectionId, slideIds: [slide.id]))
+            }
+        }
+        return blocks
+    }
+
     public static func showsArrangements(for presentation: Presentation) -> Bool {
         !arrangementBlockStarts(for: presentation).isEmpty
             || presentation.arrangements?.isEmpty == false

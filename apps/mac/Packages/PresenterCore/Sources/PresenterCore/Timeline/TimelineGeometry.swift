@@ -9,25 +9,29 @@ public enum TimelineZoom {
 
     public static let fitMinimumViewport: Double = 140
 
-    public static func clamped(_ pointsPerSecond: Double) -> Double {
+    public static let songRange: ClosedRange<Double> = 2...120
+
+    public static func clamped(_ pointsPerSecond: Double, in range: ClosedRange<Double> = range) -> Double {
         min(max(pointsPerSecond, range.lowerBound), range.upperBound)
     }
 
-    public static func pinched(base: Double, magnification: Double) -> Double {
-        clamped(base * magnification)
+    public static func pinched(base: Double, magnification: Double, in range: ClosedRange<Double> = range) -> Double {
+        clamped(base * magnification, in: range)
     }
 
-    public static func zoomedIn(_ pointsPerSecond: Double) -> Double {
+    public static func zoomedIn(_ pointsPerSecond: Double, in range: ClosedRange<Double> = range) -> Double {
         min(pointsPerSecond * stepFactor, range.upperBound)
     }
 
-    public static func zoomedOut(_ pointsPerSecond: Double) -> Double {
+    public static func zoomedOut(_ pointsPerSecond: Double, in range: ClosedRange<Double> = range) -> Double {
         max(pointsPerSecond / stepFactor, range.lowerBound)
     }
 
-    public static func fit(seconds: Double, viewportWidth: Double) -> Double? {
+    public static func fit(
+        seconds: Double, viewportWidth: Double, reserve: Double = fitReserve, in range: ClosedRange<Double> = range
+    ) -> Double? {
         guard seconds > 0, viewportWidth > fitMinimumViewport else { return nil }
-        return clamped((viewportWidth - fitReserve) / seconds)
+        return clamped((viewportWidth - reserve) / seconds, in: range)
     }
 }
 
