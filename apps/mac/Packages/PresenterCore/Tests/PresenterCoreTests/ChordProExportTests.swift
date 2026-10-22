@@ -13,8 +13,8 @@ struct ChordProExportTests {
         Amazing grace how sweet the sound
              G       D      G
         That saved a wretch like me
-        I once was lost
-        Was blind
+        I once was lost but now am found
+        Was blind but now I see
 
         Tag
         G  D
@@ -42,7 +42,7 @@ struct ChordProExportTests {
         let text = ChordProExport.text(for: presentation)
 
         #expect(text.hasPrefix("{title: Amazing Grace}\n{artist: Chris Tomlin}\n{key: G}\n{copyright: © 2006 sixsteps Music}\n{ccli: 4768151}\n"))
-        #expect(text.contains("{start_of_verse: Verse 1}\n[G]Amazing [Cmaj7]grace how [G]sweet the sound\nThat [G]saved a [D]wretch [G]like me\n\nI once was lost\nWas blind\n{end_of_verse}"))
+        #expect(text.contains("{start_of_verse: Verse 1}\n[G]Amazing [Cmaj7]grace how [G]sweet the sound\nThat [G]saved a [D]wretch [G]like me\n\nI once was lost but now am found\nWas blind but now I see\n{end_of_verse}"))
         #expect(text.contains("{start_of_part: Free Worship}\n[G][D]\n{end_of_part}"))
         #expect(text.contains("{start_of_chorus: Chorus}\n[G]My chains are gone\n{end_of_chorus}"))
         #expect(ChordProExport.fileName(for: presentation) == "Amazing Grace.txt", "plain text by default")
@@ -82,21 +82,22 @@ struct ChordProExportTests {
 
         let readLyrics = try #require(read.slides.first { !$0.objects.isEmpty }?.objects.first)
         let flippedLyrics = try #require(flipped.slides.first { !$0.objects.isEmpty }?.objects.first)
-        #expect(readLyrics.text == "Amazing grace\nsong of praise")
-        #expect(flippedLyrics.text == "Amazing grace\nA\nsong of praise")
+
+        #expect(readLyrics.text == "Amazing grace song of praise")
+        #expect(flippedLyrics.text == "Amazing grace a song of praise")
         #expect(flippedLyrics.chords?.map(\.symbol) == ["G", "C"])
     }
 
     @Test func reflowStartsFromTheSourceUntilTheSlidesMoveOn() throws {
         var presentation = LyricTextImporter.makePresentation(
-            "Verse 1\n[G]Amazing grace\nHow sweet\n\nChorus\n[C]My chains", linesPerSlide: 1)
+            "Verse 1\n[G]Amazing grace\nHow sweet the sound\n\nChorus\n[C]My chains", linesPerSlide: 1)
         let source = try #require(presentation.reflowSource)
         #expect(ChordProExport.reflowSeed(for: presentation) == source)
 
         let index = try #require(presentation.slides.firstIndex { $0.objects.first?.text == "Amazing grace" })
         presentation.slides[index].objects[0].chords = [ChordPlacement(line: 0, column: 8, symbol: "D")]
         let seed = ChordProExport.reflowSeed(for: presentation)
-        #expect(seed == "Verse 1\nAmazing [D]grace\n\nHow sweet\n\nChorus\n[C]My chains")
+        #expect(seed == "Verse 1\nAmazing [D]grace\n\nHow sweet the sound\n\nChorus\n[C]My chains")
         #expect(Reflow.build(from: seed, linesPerSlide: 1).slides.contains { $0.objects.first?.chords?.first?.symbol == "D" })
     }
 
