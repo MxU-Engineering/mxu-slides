@@ -55,7 +55,7 @@ import Testing
 
     @Test func headingsNeverRepeatTheirOnlyRow() {
         let present = SettingsLayout.page(id: "present")
-        #expect(present?.sections.compactMap(\.title) == ["Transitions", "Songs", "Music", "Service times", "Present view", "Layouts", "Volunteers"])
+        #expect(present?.sections.compactMap(\.title) == ["Transitions", "While presenting", "Present view", "Layouts", "Volunteers"])
         for page in SettingsLayout.pages {
             for section in page.sections where section.rows.count == 1 {
                 #expect(section.title != "Groups" && section.title != "Appearance", "\(page.id)")

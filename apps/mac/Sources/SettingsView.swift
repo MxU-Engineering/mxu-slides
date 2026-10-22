@@ -750,30 +750,11 @@ private struct PresentLayoutMenuControl: View {
                 }
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(active?.name ?? "Layouts")
-                    .font(.system(size: 10))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
+
+            Text(active?.name ?? "None")
+                .lineLimit(1)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
-        .background(
-            Color.primary.opacity(0.05),
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
         .alert("Save Layout", isPresented: $showingSave) {
             TextField("Name", text: $nameDraft)
             Button("Save") { layout.saveLayout(named: nameDraft) }

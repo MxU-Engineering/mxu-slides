@@ -36,9 +36,10 @@ public enum SettingsLayout {
         Page(id: "present", sections: [
             Section("Transitions", ["present.slideTransition", "present.mediaTransition"]),
             Section(nil, ["present.clearAllAudio"]),
-            Section("Songs", ["present.emptyRepeatsOnce"]),
-            Section("Music", ["audio.fadeEnabled", "audio.fadeSeconds"]),
-            Section("Service times", ["account.autoSwitchServiceTimes"]),
+
+            Section("While presenting", [
+                "present.emptyRepeatsOnce", "audio.fadeEnabled", "audio.fadeSeconds", "account.autoSwitchServiceTimes",
+            ]),
             Section("Present view", [
                 "present.continuous", "present.slidesAcross", "present.roundedCorners",
                 "present.transparencyGrid", "present.scopedBackgrounds",

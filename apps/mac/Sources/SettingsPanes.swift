@@ -1021,7 +1021,8 @@ private struct MIDIDevicesSection: View {
             }
             .fixedSize()
         } header: {
-            Text("MIDI Devices")
+
+            Text("MIDI")
         }
         .task { inventory.reload() }
     }
