@@ -65,7 +65,7 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
         case .controlBoard: .controlBoards
         case .groupPalette: .groups
         case .effectPresetBoard, .animationPresetBoard: .presetBoards
-        case .stationSettings, .slideBuildingSettings, .workspaceSettings: .settings
+        case .stationSettings, .slideBuildingSettings, .workspaceSettings, .trackChannelList: .settings
         case .font: .fonts
         }
     }

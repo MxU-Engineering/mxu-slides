@@ -1,6 +1,8 @@
+import AppKit
 import PresenterCore
 import SlideScene
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -10,6 +12,8 @@ final class PresentationTimelineCards {
     var expanded: Set<String> = []
 
     var addedLanes: [String: Set<TimelineLane>] = [:]
+
+    var addedTracks: Set<String> = []
 }
 
 struct PresentationTimelineButton: View {
@@ -547,6 +551,8 @@ struct PresentationTimelineLanes: View {
 
     @State private var editingActions: String?
 
+    @AppStorage("timeline.tracksExpanded") private var tracksExpanded = false
+
     private struct PlacingAction: Identifiable {
         var action: SlideAction
         var at: Double
@@ -595,7 +601,8 @@ struct PresentationTimelineLanes: View {
                         }
                         .frame(height: Self.laneHeight)
                     }
-                    addLaneMenu(visible)
+                    if showsTracks(cues) { trackLabels(cues) }
+                    addLaneMenu(visible, cues)
                 }
 
                 .frame(width: 104, alignment: .leading)
@@ -609,7 +616,10 @@ struct PresentationTimelineLanes: View {
             }
 
             .dropDestination(for: String.self) { payloads, _ in
-                drop(payloads, at: anchor.mouseLocal().flatMap { map.locate(x: max($0.x, 0))?.time } ?? 0)
+                let pointer = anchor.mouseLocal()
+                return drop(
+                    payloads, at: pointer.flatMap { map.locate(x: max($0.x, 0))?.time } ?? 0,
+                    track: trackRow(atY: pointer?.y, visible: visible, cues: cues))
             } isTargeted: { dropTargeted = $0 }
         }
         .padding(10)
@@ -743,14 +753,17 @@ struct PresentationTimelineLanes: View {
     }
 
     @ViewBuilder
-    private func addLaneMenu(_ visible: [TimelineLane]) -> some View {
+    private func addLaneMenu(_ visible: [TimelineLane], _ cues: [TimelineCue]) -> some View {
         let hidden = Self.lanes.filter { !visible.contains($0) }
-        if !hidden.isEmpty, !runOnly {
+        if !hidden.isEmpty || !showsTracks(cues), !runOnly {
             Menu {
                 ForEach(hidden, id: \.self) { lane in
                     Button(lane.title) {
                         PresentationTimelineCards.shared.addedLanes[context.item.id, default: []].insert(lane)
                     }
+                }
+                if !showsTracks(cues) {
+                    Button("Tracks") { PresentationTimelineCards.shared.addedTracks.insert(context.item.id) }
                 }
             } label: {
                 Image(systemName: "plus")
@@ -785,6 +798,7 @@ struct PresentationTimelineLanes: View {
                     ForEach(visible, id: \.self) { lane in
                         laneRow(lane, cues, map: map)
                     }
+                    if showsTracks(cues) { trackRows(cues, map: map) }
                 }
                 if context.isCurrent {
                     TimelinePlayheadLine(source: context.clock) { map.x(ofTime: $0) }
@@ -813,8 +827,8 @@ struct PresentationTimelineLanes: View {
         .frame(width: map.width, height: Self.laneHeight)
     }
 
-    private func card(_ cue: TimelineCue, _ cues: [TimelineCue], map: TimelineMap) -> some View {
-        let isBlock = cue.kind?.isBlock ?? false
+    private func card(_ cue: TimelineCue, _ cues: [TimelineCue], map: TimelineMap, title: String? = nil) -> some View {
+        let isBlock = cue.isBlock
         let left = map.x(ofTime: cue.at)
         let end = PresentationTimelines.end(of: cue, in: cues)
 
@@ -831,16 +845,17 @@ struct PresentationTimelineLanes: View {
         let orphan = cue.kind == .slide && PresentationTimelines.occurrence(of: cue, in: context.blocks) == nil
 
         let section = cue.kind == .slide ? context.presentation.sections?.first { $0.id == cue.sectionId } : nil
-        let tint = orphan ? .red : GroupColor.fill(section, palette: context.model.groupColors) ?? (cue.kind?.tint ?? .gray)
+        let tint = orphan ? .red : GroupColor.fill(section, palette: context.model.groupColors)
+            ?? cue.kind?.tint ?? (cue.trackChannelId != nil ? Self.tracksTint : .gray)
         let face: AnyView = pin
             ? AnyView(actionPin(cue, width: span.width, selected: selection == cue.id))
             : AnyView(TimelineBlockCard(width: span.width, tint: tint, selected: selection == cue.id) {
-                Text(cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue))
+                Text(title ?? (cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue)))
                     .font(.system(size: 10, weight: cue.kind == .slide ? .semibold : .regular).monospacedDigit())
                     .lineLimit(1)
             })
         return face
-        .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : context.label(cue))
+        .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : title ?? context.label(cue))
         .timelineBlockGestures(
             id: cue.id, anchor: anchor, edit: $edit, frames: $frames,
             frame: { frames[cue.id]?.offsetBy(dx: -lanesFrame.minX, dy: -lanesFrame.minY) },
@@ -869,6 +884,13 @@ struct PresentationTimelineLanes: View {
                 Button("Nudge 1 Frame Later") { move(cue, mode: .move, by: PresentationTimelines.frame, label: "Nudge Cue") }
                 Divider()
                 Button("Remove from Timeline") { delete(cue) }
+                if cue.trackChannelId != nil {
+                    Button("Remove These Stems") {
+                        let group = Set(TimelineTracks.group(of: cue, in: cues).map(\.id))
+                        selection = nil
+                        context.edit("Remove Stems") { $0.cues.removeAll { group.contains($0.id) } }
+                    }
+                }
             }
         }
 
@@ -902,8 +924,14 @@ struct PresentationTimelineLanes: View {
     ) {
         context.edit(label) { timeline in
             guard let index = timeline.cues.firstIndex(where: { $0.id == cue.id }) else { return }
-            timeline.cues[index] = PresentationTimelines.edited(
-                timeline.cues[index], in: timeline.cues, mode: mode, by: seconds, openEnd: openEnd)
+
+            let together = mode == .move || cue.trackChannelId != nil && mode == .trim
+                ? Set(TimelineTracks.group(of: timeline.cues[index], in: timeline.cues).map(\.id)) : [cue.id]
+            let before = timeline.cues
+            for (at, each) in before.enumerated() where together.contains(each.id) {
+                timeline.cues[at] = PresentationTimelines.edited(
+                    each, in: before, mode: mode, by: seconds, openEnd: each.id == cue.id ? openEnd : nil)
+            }
         }
     }
 
@@ -912,7 +940,7 @@ struct PresentationTimelineLanes: View {
         context.edit("Remove Cue") { $0.cues.removeAll { $0.id == cue.id } }
     }
 
-    private func drop(_ payloads: [String], at time: Double) -> Bool {
+    private func drop(_ payloads: [String], at time: Double, track: TrackRow? = nil) -> Bool {
         DiagnosticsStore.shared.note("timeline.drop.offered", detail: payloads.first ?? "none")
         guard !runOnly, let id = payloads.first, let entry = context.model.indexEntry(id) else { return false }
         let at = PresentationTimelines.snappedToFrame(time)
@@ -922,6 +950,13 @@ struct PresentationTimelineLanes: View {
             cue = TimelineCue(id: UUID().uuidString, lane: TimelineLane.overlays.rawValue, at: at, duration: 10, overlayId: id)
         case .alertPreset:
             cue = TimelineCue(id: UUID().uuidString, lane: TimelineLane.alerts.rawValue, at: at, duration: 10, alertId: id)
+        case .audio where track != nil:
+
+            let channel = if case .channel(let id) = track { id } else { String?.none }
+            let item = context.model.audio(id)
+            placeStems([TimelineStemImport(fileName: item?.fileName ?? entry.name, audioID: id, seconds: item?.durationSeconds)],
+                       at: at, channel: channel)
+            return true
         case .audio:
             cue = TimelineCue(
                 id: UUID().uuidString, lane: TimelineLane.audio.rawValue, at: at,
@@ -949,6 +984,154 @@ struct PresentationTimelineLanes: View {
     private func add(_ cue: TimelineCue) {
         context.edit("Add to Timeline") { $0.cues.append(cue) }
         selection = cue.id
+    }
+
+    static let tracksTint = Color.purple
+
+    enum TrackRow: Equatable {
+        case folded
+        case channel(String)
+    }
+
+    private func showsTracks(_ cues: [TimelineCue]) -> Bool {
+        !TimelineTracks.stems(cues).isEmpty || PresentationTimelineCards.shared.addedTracks.contains(context.item.id)
+    }
+
+    private func trackChannels(_ cues: [TimelineCue]) -> [TrackChannel] {
+        let channels = context.model.trackChannels
+        let lost = Set(TimelineTracks.stems(cues).compactMap(\.trackChannelId)).subtracting(channels.map(\.id))
+        return channels + lost.sorted().map { TrackChannel(id: $0, name: "Removed channel") }
+    }
+
+    private func trackRow(atY y: CGFloat?, visible: [TimelineLane], cues: [TimelineCue]) -> TrackRow? {
+        guard let y, showsTracks(cues) else { return nil }
+        let row = Int(floor((y - CGFloat(visible.count) * (Self.laneHeight + 1)) / (Self.laneHeight + 1)))
+        guard row >= 0 else { return nil }
+        let channels = trackChannels(cues)
+        return tracksExpanded && row >= 1 && row <= channels.count ? .channel(channels[row - 1].id) : .folded
+    }
+
+    private func trackLabels(_ cues: [TimelineCue]) -> some View {
+        let stems = TimelineTracks.stems(cues)
+        return VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 2) {
+                Button {
+                    tracksExpanded.toggle()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: tracksExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(stems.isEmpty ? "Tracks" : "Tracks · \(stems.count)")
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(tracksExpanded ? "Fold the track channels into one row" : "Show every track channel")
+                Spacer(minLength: 0)
+                if !runOnly {
+                    Menu {
+                        Button("Add Stems\u{2026}") { addStems() }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .controlSize(.mini)
+                    .help("Add a song's stems at the playhead; each lands on the channel its name says")
+                }
+            }
+            .frame(height: Self.laneHeight)
+            if tracksExpanded {
+                ForEach(trackChannels(cues)) { channel in
+                    HStack(spacing: 3) {
+                        Text(channel.name)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        if channel.trackRole != .music {
+                            Image(systemName: "metronome")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.orange)
+                                .help("\(channel.trackRole == .click ? "Click" : "Guide"): starts on no mix, so it never reaches the house unless you send it there")
+                        }
+                    }
+                    .padding(.leading, 11)
+                    .frame(height: Self.laneHeight)
+                }
+            }
+        }
+    }
+
+    private func trackRows(_ cues: [TimelineCue], map: TimelineMap) -> some View {
+        let stems = TimelineTracks.stems(cues)
+
+        let leaders = stems.reduce(into: [TimelineCue]()) { leaders, stem in
+            if !leaders.contains(where: { abs($0.at - stem.at) < PresentationTimelines.frame / 2 }) { leaders.append(stem) }
+        }
+        return VStack(alignment: .leading, spacing: 1) {
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
+                if !tracksExpanded {
+                    ForEach(leaders, id: \.id) { leader in
+                        let group = TimelineTracks.group(of: leader, in: cues)
+                        let longest = group.max { ($0.duration ?? 0) < ($1.duration ?? 0) } ?? leader
+                        card(longest, cues, map: map, title: group.count == 1 ? nil : "\(group.count) stems")
+                    }
+                }
+            }
+            .frame(width: map.width, height: Self.laneHeight)
+            if tracksExpanded {
+                ForEach(trackChannels(cues)) { channel in
+                    ZStack(alignment: .topLeading) {
+                        Rectangle()
+                            .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
+                        ForEach(stems.filter { $0.trackChannelId == channel.id }, id: \.id) { stem in
+                            card(stem, cues, map: map)
+                        }
+                    }
+                    .frame(width: map.width, height: Self.laneHeight)
+                }
+            }
+        }
+    }
+
+    private func addStems() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.allowedContentTypes = [.audio, .folder]
+        panel.message = "Choose a song's stems, or the folder they're in"
+        panel.prompt = "Add Stems"
+        let at = context.clock.insertionTime(for: context.item.id)
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in
+                let stems = await context.model.importStems(urls, song: context.presentation.name)
+                placeStems(stems, at: at)
+            }
+        }
+    }
+
+    private func placeStems(_ stems: [TimelineStemImport], at: Double, channel: String? = nil) {
+        guard !stems.isEmpty else { return }
+        let channels = context.model.trackChannels
+        var made: [TrackChannel] = []
+        context.edit("Add Stems") { timeline in
+            made = TimelineTracks.place(stems, at: at, channel: channel, channels: channels, into: &timeline.cues)
+        }
+        if !made.isEmpty {
+            let adding = made
+            context.model.updateTrackChannels { list in
+                list.channels += adding.filter { new in !list.channels.contains { $0.id == new.id } }
+            }
+        }
+        DiagnosticsStore.shared.note("timeline.stems", detail: "\(stems.count) at \(at), \(made.count) new channels")
     }
 
     static func interval(_ pointsPerSecond: Double) -> Double {
@@ -1039,7 +1222,8 @@ extension PresentationTimelineContext {
             guard let first = actions.first else { return "No actions" }
             return first.kind.displayName + (actions.count > 1 ? " +\(actions.count - 1)" : "")
         case nil:
-            return "Unknown lane"
+            guard cue.trackChannelId != nil else { return "Unknown lane" }
+            return cue.mediaId.flatMap { model.audio($0)?.name } ?? "Stem"
         }
     }
 }

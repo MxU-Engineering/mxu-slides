@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 144,
+  "schemaVersion": 145,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -4010,6 +4010,51 @@
       },
       "required": [
         "id"
+      ]
+    },
+    "TrackChannel": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "colorHex": {
+          "type": "string"
+        },
+        "matchNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "TrackChannelList": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TrackChannel"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "channels"
       ]
     }
   }

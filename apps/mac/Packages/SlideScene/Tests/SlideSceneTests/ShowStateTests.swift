@@ -564,7 +564,7 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
 }
 
 @Test func clearAllScopeDefaultsMigratesAndRoundTrips() {
-    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs, .tracks])
     #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs])
     #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio],
             "the old Music switch carries over")

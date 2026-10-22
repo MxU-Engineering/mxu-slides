@@ -11,6 +11,8 @@ public enum ShowFunction: String, CaseIterable, Sendable {
     case alerts
     case inputs
 
+    case tracks
+
     public var displayName: String {
         switch self {
         case .slides: "Slides"
@@ -19,6 +21,7 @@ public enum ShowFunction: String, CaseIterable, Sendable {
         case .audio: "Music"
         case .alerts: "Alerts"
         case .inputs: "Inputs"
+        case .tracks: "Tracks"
         }
     }
 }
@@ -33,20 +36,24 @@ public extension CueMedia {
 public enum ClearAllScope {
     public static let skipsKey = "serviceControls.clearAllSkips"
     public static let legacyIncludesAudioKey = "serviceControls.clearAllIncludesAudio"
-    public static let defaultSkips: Set<ShowFunction> = [.inputs]
 
-    public static func skips(stored: String?, legacyIncludesAudio: Bool?) -> Set<ShowFunction> {
-        if let stored {
+    public static let sweepsTracksKey = "serviceControls.clearAllSweepsTracks"
+    public static let defaultSkips: Set<ShowFunction> = [.inputs, .tracks]
+
+    public static func skips(stored: String?, legacyIncludesAudio: Bool?, sweepsTracks: Bool = false) -> Set<ShowFunction> {
+        var skips: Set<ShowFunction> = if let stored {
             Set(stored.split(separator: ",").compactMap { ShowFunction(rawValue: String($0)) })
         } else if legacyIncludesAudio == false {
             defaultSkips.union([.audio])
         } else {
             defaultSkips
         }
+        if sweepsTracks { skips.remove(.tracks) } else { skips.insert(.tracks) }
+        return skips
     }
 
     public static func encode(_ skips: Set<ShowFunction>) -> String {
-        ShowFunction.allCases.filter(skips.contains).map(\.rawValue).joined(separator: ",")
+        ShowFunction.allCases.filter { skips.contains($0) && $0 != .tracks }.map(\.rawValue).joined(separator: ",")
     }
 
     public static func swept(skips: Set<ShowFunction>) -> Set<ShowFunction> {
@@ -56,10 +63,15 @@ public enum ClearAllScope {
     public static func swept(defaults: UserDefaults = .standard) -> Set<ShowFunction> {
         swept(skips: skips(
             stored: defaults.string(forKey: skipsKey),
-            legacyIncludesAudio: defaults.object(forKey: legacyIncludesAudioKey) as? Bool))
+            legacyIncludesAudio: defaults.object(forKey: legacyIncludesAudioKey) as? Bool,
+            sweepsTracks: defaults.bool(forKey: sweepsTracksKey)))
     }
 
     public static func set(_ function: ShowFunction, swept: Bool, defaults: UserDefaults = .standard) {
+        if function == .tracks {
+            defaults.set(swept, forKey: sweepsTracksKey)
+            return
+        }
         var skips = skips(
             stored: defaults.string(forKey: skipsKey),
             legacyIncludesAudio: defaults.object(forKey: legacyIncludesAudioKey) as? Bool)
@@ -584,6 +596,7 @@ public struct ShowState: Sendable, Equatable {
             }
         case .audio: liveAudio = [] 
         case .alerts: clearAlert(atHostTime: atHostTime)
+        case .tracks: break
         }
     }
 

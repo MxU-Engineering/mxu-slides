@@ -1113,7 +1113,7 @@ struct LibrarySidebar: View {
         case .midiDevice: nil
         case .streamDestination: nil
         case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette,
-            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: nil
+            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList: nil
         }
     }
 

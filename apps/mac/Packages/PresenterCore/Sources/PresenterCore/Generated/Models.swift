@@ -2569,3 +2569,29 @@ public struct WorkspaceSettings: Codable, Sendable, Equatable, Identifiable {
         self.behavior = behavior
     }
 }
+
+public struct TrackChannel: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var role: String?
+    public var colorHex: String?
+    public var matchNames: [String]?
+
+    public init(id: String, name: String, role: String? = nil, colorHex: String? = nil, matchNames: [String]? = nil) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.colorHex = colorHex
+        self.matchNames = matchNames
+    }
+}
+
+public struct TrackChannelList: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var channels: [TrackChannel]
+
+    public init(id: String, channels: [TrackChannel]) {
+        self.id = id
+        self.channels = channels
+    }
+}

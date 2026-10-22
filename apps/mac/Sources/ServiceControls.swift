@@ -1,4 +1,6 @@
 import AVFoundation
+import AppKit
+import AudioEngine
 import Foundation
 import MediaEngine
 import NDIKit
@@ -34,6 +36,8 @@ final class ServiceControls {
 
     let timecode = TimecodeFollower()
 
+    let tracks = TracksController()
+
     private var liveMediaIDs: Set<String> = []
 
     private var transitionResweepScheduled = false
@@ -51,6 +55,16 @@ final class ServiceControls {
         self.mixer = AudioMixerController(audio: audio)
         self.timeline.controls = self
         self.timecode.controls = self
+        tracks.model = appModel
+        tracks.mixer = mixer
+        tracks.onFoundPlaying = { [weak self] status in self?.timeline.resume(fromTracks: status) }
+        tracks.start()
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tracks.quit() }
+        }
 
         timecode.start()
 
@@ -1303,6 +1317,7 @@ final class ServiceControls {
             refreshNextSlide()
         }
         if function == .audio { audio.stop() }
+        if function == .tracks { timeline.clearTracks() }
         apply()
         if function == .alerts { syncFlashClock() }
     }
@@ -1339,6 +1354,7 @@ final class ServiceControls {
         let swept = ClearAllScope.swept()
         state.clearAll(sweeping: swept, protecting: protecting)
         if swept.contains(.audio) { audio.stop() }
+        if swept.contains(.tracks) { timeline.clearTracks() }
 
         if state.liveSlide == nil {
             liveContextID = nil
@@ -1351,6 +1367,10 @@ final class ServiceControls {
         syncFlashClock()
     }
 
+    func audioFileURL(_ item: AudioItem) -> URL? {
+        blobs?.url(forHash: item.fileHash)
+    }
+
     func hasContent(function: ShowFunction) -> Bool {
         switch function {
         case .slides: state.liveSlide != nil
@@ -1358,6 +1378,7 @@ final class ServiceControls {
         case .overlays: !state.liveOverlays.isEmpty
         case .audio: !state.liveAudio.isEmpty
         case .alerts: state.liveAlert != nil
+        case .tracks: tracks.isPlaying
         }
     }
 

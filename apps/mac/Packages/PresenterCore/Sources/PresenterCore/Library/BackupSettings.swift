@@ -9,7 +9,7 @@ public enum BackupSettings {
         "audio.mixes", "audio.fadeEnabled", "audio.fadeSeconds", "audio.crossfadeSeconds",
         "serviceControls.timers", "serviceControls.timerBoard",
         "serviceControls.moduleOrder", "serviceControls.hiddenModules",
-        "serviceControls.clearAllIncludesAudio", "serviceControls.clearAllSkips",
+        "serviceControls.clearAllIncludesAudio", "serviceControls.clearAllSkips", "serviceControls.clearAllSweepsTracks",
         "present.layouts", "present.activeLayoutID", "present.continuous",
         "transition.slide.kind", "transition.slide.duration",
         "transition.media.kind", "transition.media.duration",
@@ -19,7 +19,7 @@ public enum BackupSettings {
         "confidence.nextSkipsBlankSlides",
         "lyricsImportThemeId", "messageNotesThemeId", "makeSlides.designMap",
     ]
-    static let portablePrefixes = ["audio.mix.", "audio.playlist.", "audio.media."]
+    static let portablePrefixes = ["audio.mix.", "audio.playlist.", "audio.media.", "audio.track.", "audio.tracks."]
 
     public static func isPortable(_ key: String) -> Bool {
         portableKeys.contains(key) || portablePrefixes.contains { key.hasPrefix($0) }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 144,
+  "schemaVersion": 145,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -4690,6 +4690,47 @@
           "name": "behavior",
           "type": "string",
           "optional": true
+        }
+      ]
+    },
+    "TrackChannel": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "matchNames",
+          "type": "list:string",
+          "optional": true
+        }
+      ]
+    },
+    "TrackChannelList": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "channels",
+          "type": "list:TrackChannel"
         }
       ]
     }

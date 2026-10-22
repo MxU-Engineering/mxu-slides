@@ -145,7 +145,7 @@ import Testing
             .streamRecordPreset, .streamDestination, .actionCombo, .scheduleTrigger,
             .confidenceLayout, .schedulerBoard, .controlBoard, .groupPalette,
             .effectPresetBoard, .animationPresetBoard, .serviceLinkRules,
-            .slideBuildingSettings, .outputPreset, .midiDevice,
+            .slideBuildingSettings, .outputPreset, .midiDevice, .trackChannelList,
         ])
         #expect(kinds.count == library.all.count)
     }

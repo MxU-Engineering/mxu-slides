@@ -17,6 +17,8 @@ final class AudioOutputInventory {
 
         var channelOffset: Int
 
+        var monoChannel: Int?
+
         var delayMs: Int?
 
         var isDeviceless: Bool { deviceUID == AudioOutputInventory.noDeviceUID }
@@ -24,13 +26,14 @@ final class AudioOutputInventory {
         init(
             id: String = UUID().uuidString, name: String,
             deviceUID: String? = nil, channelOffset: Int = 0,
-            delayMs: Int? = nil
+            delayMs: Int? = nil, monoChannel: Int? = nil
         ) {
             self.id = id
             self.name = name
             self.deviceUID = deviceUID
             self.channelOffset = channelOffset
             self.delayMs = delayMs
+            self.monoChannel = monoChannel
         }
 
         init(from decoder: Decoder) throws {
@@ -40,6 +43,7 @@ final class AudioOutputInventory {
             deviceUID = try container.decodeIfPresent(String.self, forKey: .deviceUID)
             channelOffset = try container.decodeIfPresent(Int.self, forKey: .channelOffset) ?? 0
             delayMs = try container.decodeIfPresent(Int.self, forKey: .delayMs)
+            monoChannel = try container.decodeIfPresent(Int.self, forKey: .monoChannel)
         }
     }
 

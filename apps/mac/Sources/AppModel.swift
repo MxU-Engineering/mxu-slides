@@ -1843,7 +1843,7 @@ final class AppModel {
         case .midiDevice: modify(MIDIDevice.self, id: entry.id) { $0.name = trimmed }
         case .streamDestination: modify(StreamDestination.self, id: entry.id) { $0.name = trimmed }
         case .note: return
-        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList: break
         }
 
         let oldName = entry.name
@@ -2166,7 +2166,7 @@ final class AppModel {
         case .note: break 
 
         case .streamDestination: copy(StreamDestination.self) { $0.id = newID; $0.name += " Copy" }
-        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList: break
         }
     }
 
@@ -2816,6 +2816,43 @@ final class AppModel {
         updateWellKnown(
             GroupPalette.self, id: GroupPalette.wellKnownID, failure: "groupPalette.saveFailed",
             orMake: { GroupPalette.defaults }, mutate)
+    }
+
+    var trackChannels: [TrackChannel] {
+        resident.trackChannelLists.value(TrackChannelList.wellKnownID)?.channels ?? []
+    }
+
+    @discardableResult
+    func updateTrackChannels(
+        _ mutate: @escaping @Sendable (inout TrackChannelList) -> Void
+    ) -> Task<LibraryBatch, any Error> {
+        updateWellKnown(
+            TrackChannelList.self, id: TrackChannelList.wellKnownID, failure: "trackChannels.saveFailed",
+            orMake: { TrackChannelList(id: TrackChannelList.wellKnownID, channels: []) }, mutate)
+    }
+
+    func importStems(_ urls: [URL], song: String) async -> [TimelineStemImport] {
+        isImporting = true
+        defer { isImporting = false }
+        var dedupe = MediaImportDedupe(media: [], audio: Array(resident.audio.values))
+        var stems: [TimelineStemImport] = []
+        for url in MediaImporter.files(in: urls) where MediaImporter.libraryKind(of: url) == .audio {
+            let name = "\(song) · \(url.deletingPathExtension().lastPathComponent)"
+            let (hash, seconds) = await Task.detached(priority: .userInitiated) {
+                (try? BlobStore.sha256(of: url),
+                 (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.processingFormat.sampleRate })
+            }.value
+            if let hash, case .sameFile(let id) = dedupe.match(hash: hash, name: name, kind: .audio) {
+                stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds))
+                continue
+            }
+            let result = await importer?.importFiles(at: [url], placement: newPlacement, names: [url: name]).first
+            guard case .audio(let id)? = result?.outcome else { continue }
+            if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+            stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds))
+        }
+        noteMutation(.audio)
+        return stems
     }
 
     var effectPresetBoard: EffectPresetBoard {

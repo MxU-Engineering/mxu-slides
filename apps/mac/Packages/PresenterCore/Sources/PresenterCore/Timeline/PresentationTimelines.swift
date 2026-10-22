@@ -106,9 +106,11 @@ public enum PresentationTimelines {
     }
 
     public static func end(of cue: TimelineCue, in cues: [TimelineCue]) -> Double {
-        guard cue.kind?.isBlock ?? false else { return cue.at }
+        guard cue.isBlock else { return cue.at }
         if let duration = cue.duration { return cue.at + max(duration, 0) }
-        return cues.filter { $0.kind == cue.kind && $0.id != cue.id && $0.at > cue.at }.map(\.at).min() ?? .infinity
+
+        let sameLane = { (other: TimelineCue) in cue.kind.map { other.kind == $0 } ?? (other.lane == cue.lane) }
+        return cues.filter { sameLane($0) && $0.id != cue.id && $0.at > cue.at }.map(\.at).min() ?? .infinity
     }
 
     public static func contentEnd(_ cues: [TimelineCue]) -> Double {
@@ -263,7 +265,9 @@ public enum PresentationTimelines {
         _ cue: TimelineCue, in cues: [TimelineCue], mode: TimelineBlockEdit.Mode, by seconds: Double,
         openEnd: Double? = nil
     ) -> TimelineCue {
-        guard cue.kind?.isBlock ?? false, mode != .move else { return moved(cue, by: seconds) }
+
+        let mode = cue.trackChannelId != nil && mode == .trim ? .move : mode
+        guard cue.isBlock, mode != .move else { return moved(cue, by: seconds) }
         var end = end(of: cue, in: cues)
         if !end.isFinite, let openEnd { end = openEnd }
         guard end.isFinite else { return mode == .trim ? moved(cue, by: seconds) : cue }

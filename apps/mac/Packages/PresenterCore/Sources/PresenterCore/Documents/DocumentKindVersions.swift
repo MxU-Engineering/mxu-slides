@@ -29,6 +29,7 @@ public final class DocumentKindVersions {
     private var slideBuildingSettings = 0
     private var font = 0
     private var workspaceSettings = 0
+    private var trackChannelList = 0
 
     @ObservationIgnored private var unobserved: [DocumentKind: Int] = [:]
 
@@ -67,6 +68,7 @@ public final class DocumentKindVersions {
         case .slideBuildingSettings: slideBuildingSettings
         case .font: font
         case .workspaceSettings: workspaceSettings
+        case .trackChannelList: trackChannelList
         }
     }
 
@@ -100,6 +102,7 @@ public final class DocumentKindVersions {
         case .slideBuildingSettings: slideBuildingSettings += 1
         case .font: font += 1
         case .workspaceSettings: workspaceSettings += 1
+        case .trackChannelList: trackChannelList += 1
         }
     }
 

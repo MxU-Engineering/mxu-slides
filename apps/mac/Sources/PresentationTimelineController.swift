@@ -1,3 +1,4 @@
+import AudioEngine
 import Foundation
 import LocalAPI
 import PresenterCore
@@ -35,6 +36,9 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private(set) var timecodeRecording: TimecodeRecording?
 
+    @ObservationIgnored private var tracksSong: String?
+    @ObservationIgnored private var tracksAsked: CFTimeInterval = 0
+
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
     func insertionTime(for itemID: String) -> Double {
@@ -54,12 +58,18 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         }
         anchor(at: timelinePlayheadTime)
         publishClock(position: timelinePlayheadTime, running: true)
+        startTracks(at: timelinePlayheadTime)
+        startTimer()
+        DiagnosticsStore.shared.note("timeline.play", detail: String(format: "%.2f", timelinePlayheadTime))
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        DiagnosticsStore.shared.note("timeline.play", detail: String(format: "%.2f", timelinePlayheadTime))
     }
 
     func stop() {
@@ -107,6 +117,10 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func stopTracks() {
+        if tracksSong != nil {
+            controls?.tracks.stop()
+            tracksSong = nil
+        }
         guard let controls, let deck = deck() else { return }
         for id in Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
         where controls.audio.player(forAudioItem: id) != nil {
@@ -124,8 +138,61 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         if playing {
             land(at: position)
             anchor(at: position)
+            if tracksSong != nil {
+                controls?.tracks.seek(to: position)
+                tracksAsked = CACurrentMediaTime()
+            }
         }
         publishClock(position: position, running: playing)
+    }
+
+    private func multitrackSong() -> MultitrackSong? {
+        guard let controls, let itemID, let presentationID, let deck = deck(),
+              let cues = timeline(of: deck)?.cues else { return nil }
+        let model = controls.appModel
+        var missing = 0
+        let stems = TimelineTracks.stems(cues).compactMap { cue -> MultitrackStem? in
+            guard let channel = cue.trackChannelId, let id = cue.mediaId, let item = model.audio(id),
+                  let url = controls.audioFileURL(item), FileManager.default.fileExists(atPath: url.path)
+            else { missing += 1; return nil }
+            return MultitrackStem(path: url.path, channelId: channel, at: cue.at, inPoint: item.inPoint, duration: cue.duration)
+        }
+        if missing > 0 { DiagnosticsStore.shared.note("tracks.missing", detail: "\(missing) stems not on this Mac") }
+        guard !stems.isEmpty else { return nil }
+        return MultitrackSong(id: [itemID, presentationID, arrangementId ?? ""].joined(separator: "|"), stems: stems)
+    }
+
+    private func startTracks(at position: Double) {
+        guard let song = multitrackSong() else { return }
+        tracksSong = song.id
+        tracksAsked = CACurrentMediaTime()
+        controls?.tracks.play(song, from: position)
+    }
+
+    func clearTracks() {
+        if tracksSong != nil, playing {
+            stop()
+        } else {
+            controls?.tracks.stop()
+            tracksSong = nil
+        }
+    }
+
+    func resume(fromTracks status: TracksPlayerStatus) {
+        guard let controls, let key = status.songID, !playing else { return }
+        let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3, let deck = controls.appModel.presentation(parts[1]) else { return }
+        select(itemID: parts[0], presentation: deck, arrangementId: parts[2].isEmpty ? nil : parts[2])
+        let position = status.position()
+        playing = true
+        tracksSong = key
+        tracksAsked = CACurrentMediaTime()
+        land(at: position)
+        anchor(at: position)
+        setPlayhead(position)
+        publishClock(position: position, running: true)
+        startTimer()
+        DiagnosticsStore.shared.note("timeline.resume", detail: "tracks at \(String(format: "%.2f", position))")
     }
 
     func follow(
@@ -159,6 +226,16 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             let sync = TimecodeFollow.audioSync(cues, at: command.position, playing: playing)
             if sync.contains(where: { if case .playAudio = $0 { true } else { false } }) { audioSyncHold = now + 0.5 }
             apply(sync, cues: cues, deck: deck)
+
+            if let song = multitrackSong() {
+                let heard = controls.tracks.position(of: song.id)
+                if tracksSong != song.id || heard.map({ abs($0 - command.position) > 0.5 }) ?? (now - tracksAsked > 1) {
+                    tracksSong = song.id
+                    tracksAsked = now
+                    audioSyncHold = now + 0.5
+                    controls.tracks.play(song, from: command.position)
+                }
+            }
         }
         setPlayhead(command.position)
         publishClock(position: command.position, running: true)
@@ -241,7 +318,22 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     private func tick() {
         guard playing else { return }
-        let position = anchorPosition + (CACurrentMediaTime() - anchorHost)
+        var position = anchorPosition + (CACurrentMediaTime() - anchorHost)
+        if let song = tracksSong {
+            if let heard = controls?.tracks.position(of: song) {
+
+                position = heard
+                anchorHost = CACurrentMediaTime()
+                anchorPosition = heard
+            } else if CACurrentMediaTime() - tracksAsked < 2 {
+
+                anchorHost = CACurrentMediaTime()
+                return
+            } else {
+                DiagnosticsStore.shared.note("tracks.silent", detail: "no answer from the Tracks Player; own clock")
+                tracksSong = nil
+            }
+        }
         advance(to: position)
         setPlayhead(position)
         if !recording, let deck = deck(), let timeline = timeline(of: deck),
