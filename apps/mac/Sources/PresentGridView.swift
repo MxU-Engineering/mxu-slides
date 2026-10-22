@@ -20,8 +20,6 @@ struct PresentGridView: View {
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @FocusState private var focused: Bool
 
-    @State private var deleteRequests = 0
-
     @State private var clipboardRequests = SlideClipboardRequests()
 
     @State private var previewArrangementID: String?
@@ -93,7 +91,6 @@ struct PresentGridView: View {
                         roundedCorners: roundedCorners,
                         hideScopedBackgrounds: hideScopedBackgrounds,
                         slidesAcross: slidesAcross,
-                        deleteRequests: deleteRequests,
                         clipboardRequests: clipboardRequests,
                         pastesAtEnd: true,
                         marqueeMargin: 12,
@@ -113,7 +110,7 @@ struct PresentGridView: View {
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(proxy) })
 
-                .onDeleteCommand { deleteRequests += 1 }
+                .onDeleteCommand { clipboardRequests.take(.delete) }
 
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
             }
@@ -274,12 +271,13 @@ final class SlidePasteboardChanges {
 }
 
 struct SlideClipboardRequests: Equatable {
-    enum Verb { case copy, cut, paste, selectAll }
+    enum Verb { case copy, cut, paste, selectAll, delete }
 
     var copies = 0
     var cuts = 0
     var pastes = 0
     var selectAlls = 0
+    var deletes = 0
 
     mutating func take(_ verb: Verb) {
         switch verb {
@@ -287,6 +285,7 @@ struct SlideClipboardRequests: Equatable {
         case .cut: cuts += 1
         case .paste: pastes += 1
         case .selectAll: selectAlls += 1
+        case .delete: deletes += 1
         }
     }
 }
@@ -356,14 +355,16 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
 
         private func verb(for event: NSEvent) -> SlideClipboardRequests.Verb? {
             let typing = event.window?.firstResponder is NSText
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function)
+            let backspace = event.keyCode == 51 || event.keyCode == 117
             if let window = view?.window, event.window === window, window.isKeyWindow,
-               window.attachedSheet == nil, !typing,
-               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
-                switch event.charactersIgnoringModifiers?.lowercased() {
-                case "c": return .copy
-                case "x": return .cut
-                case "v": return .paste
-                case "a": return .selectAll
+               window.attachedSheet == nil, !typing {
+                switch (flags, event.charactersIgnoringModifiers?.lowercased()) {
+                case (.command, "c"): return .copy
+                case (.command, "x"): return .cut
+                case (.command, "v"): return .paste
+                case (.command, "a"): return .selectAll
+                case ([], _) where backspace: return .delete
                 default: return nil
                 }
             } else {
@@ -414,8 +415,6 @@ struct SlideGridBody: View {
     let hideScopedBackgrounds: Bool
 
     let slidesAcross: Int
-
-    var deleteRequests = 0
 
     var clipboardRequests = SlideClipboardRequests()
 
@@ -659,7 +658,7 @@ struct SlideGridBody: View {
             DropLatency.relaid(count: slides.count)
         }
         .onChange(of: arrangementId) { _, _ in clearSelection() }
-        .onChange(of: deleteRequests) { _, _ in deleteSelectedSlides() }
+        .onChange(of: clipboardRequests.deletes) { _, _ in deleteSelectedSlides() }
         .onChange(of: clipboardRequests.copies) { _, _ in copySelectedSlides() }
         .onChange(of: clipboardRequests.cuts) { _, _ in
             if copySelectedSlides() { deleteSelectedSlides() }

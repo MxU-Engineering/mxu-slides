@@ -403,6 +403,7 @@ struct SlideEditorView: View {
             case .cut: model.cutSelectedSlides()
             case .paste: model.paste()
             case .selectAll: model.selectAllSlides()
+            case .delete: model.deleteSlides(Array(model.selectedSlideIDs))
             }
         }
     }
@@ -1014,6 +1015,7 @@ struct SlideEditorView: View {
             case .cut: model.cutSelectedObjects()
             case .paste: model.paste()
             case .selectAll: model.selectAllObjects(includingHidden: true)
+            case .delete: model.deleteSelectedObjects()
             }
         }
     }

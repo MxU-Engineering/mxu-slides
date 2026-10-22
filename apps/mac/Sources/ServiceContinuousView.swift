@@ -28,8 +28,6 @@ struct ServiceContinuousView: View {
     @Environment(\.runOnly) private var runOnly
     @FocusState private var focused: Bool
 
-    @State private var deleteRequests = 0
-
     @State private var clipboardRequests = SlideClipboardRequests()
 
     @State private var mediaMenuState = MediaCueMenuState()
@@ -140,7 +138,7 @@ struct ServiceContinuousView: View {
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(service) })
 
-                .onDeleteCommand { deleteRequests += 1 }
+                .onDeleteCommand { clipboardRequests.take(.delete) }
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
             }
             .onAppear { focused = true }
@@ -727,7 +725,6 @@ struct ServiceContinuousView: View {
                     roundedCorners: roundedCorners,
                     hideScopedBackgrounds: hideScopedBackgrounds,
                     slidesAcross: slidesAcross,
-                    deleteRequests: deleteRequests,
                     clipboardRequests: clipboardRequests,
                     pastesAtEnd: focusItemID == item.id,
                     newSlideContexts: ((try? model.service(serviceID))?.items ?? [])
