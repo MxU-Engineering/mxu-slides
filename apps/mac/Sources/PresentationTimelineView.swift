@@ -1033,6 +1033,7 @@ struct PresentationTimelineLanes: View {
         let role = TimelineTracks.role(forName: trimmed)
         let made = TrackChannel(id: UUID().uuidString, name: trimmed, role: role == .music ? nil : role.rawValue)
         context.model.updateTrackChannels { $0.channels.append(made) }
+        context.controls.tracks.refresh()
         addTrackRow(made.id)
     }
 
@@ -1199,6 +1200,8 @@ struct PresentationTimelineLanes: View {
             context.model.updateTrackChannels { list in
                 list.channels += adding.filter { new in !list.channels.contains { $0.id == new.id } }
             }
+
+            context.controls.tracks.refresh()
         }
         DiagnosticsStore.shared.note("timeline.stems", detail: "\(stems.count) at \(at), \(made.count) new channels")
     }

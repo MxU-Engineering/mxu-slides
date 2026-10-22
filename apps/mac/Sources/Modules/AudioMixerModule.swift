@@ -264,7 +264,8 @@ struct AudioMixerModule: View {
                 name: "Tracks",
                 live: controls.tracks.isPlaying,
                 tint: .purple,
-                topSlot: .blank,
+
+                topSlot: tracksMainSlot(channels),
                 bottomSlot: .static("\(channels.count) channels"),
                 gain: Binding(get: { TracksController.trim }, set: { TracksController.setTrim($0) }),
                 muted: Binding(get: { TracksController.trimMuted }, set: { TracksController.setTrimMuted($0) }),
@@ -311,6 +312,19 @@ struct AudioMixerModule: View {
     }
 
     static let tracksGroupKey = "tracks"
+
+    private func tracksMainSlot(_ channels: [TrackChannel]) -> ConsoleSlot {
+        let onMain = TracksController.musicOnMain(channels)
+        return .menu(onMain ? "On Main" : "Off Main", accent: !onMain, content: {
+            AnyView(Group {
+                Toggle("Tracks Play on Main", isOn: Binding(
+                    get: { onMain },
+                    set: { TracksController.setMusicOnMain($0, channels) }
+                ))
+                Text("Each track also feeds its family's bus in the Tracks folder. Patch the buses to outputs, then take tracks off Main so it doesn't carry them twice.")
+            })
+        })
+    }
 
     private func trackStrip(_ channel: TrackChannel, mixer: AudioMixerController) -> some View {
         let route = TracksController.mixId(channel)

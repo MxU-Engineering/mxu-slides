@@ -159,3 +159,19 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(next.assignments["Way Maker - EG 2.wav"] == byName["Electric Guitar 2"])
     #expect(next.assignments["Way Maker - Keys.wav"] == byName["Keys 1"])
 }
+
+@Test func everyChannelFeedsItsFamilysBus() {
+
+    let expected: [(String, String?, TimelineTracks.Family)] = [
+        ("Acoustic Guitar", nil, .acousticGuitars), ("Background Vocals", nil, .vocals), ("Bass", nil, .bass),
+        ("Click", "click", .click), ("Drums", nil, .drums), ("Electric Guitar 3", nil, .electricGuitars),
+        ("Electric Piano", nil, .keys), ("Guide", "guide", .guide), ("Keys 1", nil, .keys),
+        ("Mellotron", nil, .keys), ("Organ", nil, .keys), ("Percussion", nil, .percussion), ("Piano", nil, .keys),
+        ("Strings", nil, .strings), ("Synth Bass 2", nil, .bass), ("Synth Bass", nil, .bass),
+        ("Lead Vocal", nil, .vocals), ("Lead Guitar", nil, .electricGuitars), ("Pads", nil, .synths),
+        ("Track", nil, .other),
+    ]
+    for (name, role, family) in expected {
+        #expect(TimelineTracks.family(of: TrackChannel(id: name, name: name, role: role)) == family, "\(name)")
+    }
+}

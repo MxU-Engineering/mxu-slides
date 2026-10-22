@@ -163,11 +163,41 @@ final class TracksController {
     static func setTrimMuted(_ muted: Bool) { UserDefaults.standard.set(muted, forKey: "audio.tracks.muted") }
 
     private func seedSends(_ channels: [TrackChannel]) {
-        for channel in channels where channel.trackRole != .music {
+        for channel in channels {
+            let seeded = "audio.track.\(channel.id).busSeeded"
+            guard !UserDefaults.standard.bool(forKey: seeded) else { continue }
             let key = "audio.channel.track:\(channel.id).sends"
-            guard UserDefaults.standard.object(forKey: key) == nil,
-                  let data = try? JSONEncoder().encode([AudioMixInventory.mainID: Float(0)]) else { continue }
-            UserDefaults.standard.set(data, forKey: key)
+            var sends = mixer?.channelSends("track:\(channel.id)") ?? [:]
+            sends[Self.familyBus(TimelineTracks.family(of: channel)).id] = 1
+            if channel.trackRole != .music, sends[AudioMixInventory.mainID] == nil {
+                sends[AudioMixInventory.mainID] = 0
+            }
+            if let data = try? JSONEncoder().encode(sends) { UserDefaults.standard.set(data, forKey: key) }
+            UserDefaults.standard.set(true, forKey: seeded)
+        }
+    }
+
+    static func familyBus(_ family: TimelineTracks.Family) -> AudioMixInventory.Entry {
+        let inventory = AudioMixInventory.shared
+        let key = "audio.tracks.bus.\(family.rawValue)"
+        if let id = UserDefaults.standard.string(forKey: key), let mix = inventory.entry(id: id) { return mix }
+        let folder = inventory.folder(named: "Tracks")
+        let made = inventory.create(name: family.name)
+        inventory.setPrimary(mixId: made.id, token: AudioMixInventory.noOutputID)
+        inventory.move(made.id, toFolder: folder.id)
+        UserDefaults.standard.set(made.id, forKey: key)
+        return inventory.entry(id: made.id) ?? made
+    }
+
+    static func musicOnMain(_ channels: [TrackChannel]) -> Bool {
+        channels.filter { $0.trackRole == .music }.contains { mixId($0) == AudioMixInventory.mainID }
+    }
+
+    static func setMusicOnMain(_ on: Bool, _ channels: [TrackChannel]) {
+        for channel in channels where channel.trackRole == .music {
+            let route = mixId(channel)
+            if on, route == nil { setMix(AudioMixInventory.mainID, for: channel.id) }
+            if !on, route == AudioMixInventory.mainID { setMix(nil, for: channel.id) }
         }
     }
 

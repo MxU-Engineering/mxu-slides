@@ -197,6 +197,54 @@ public extension TimelineTracks {
 
 public extension TimelineTracks {
 
+    enum Family: String, CaseIterable, Sendable {
+        case click = "Click", guide = "Guide", drums = "Drums", percussion = "Percussion", bass = "Bass"
+        case electricGuitars = "Electric Guitars", acousticGuitars = "Acoustic Guitars", keys = "Keys"
+        case synths = "Synths & Pads", vocals = "Vocals", strings = "Strings", other = "Other"
+
+        public var name: String { rawValue }
+    }
+
+    internal static let familyWords: [(family: Family, phrases: [[String]])] = [
+        (.keys, [["electric", "piano"], ["keys"], ["key"], ["piano"], ["organ"], ["rhodes"], ["wurli"],
+                 ["wurlitzer"], ["mellotron"], ["ep"], ["b3"], ["clav"]]),
+        (.drums, [["drums"], ["drum"], ["kit"], ["kick"], ["snare"], ["toms"], ["overheads"]]),
+        (.percussion, [["percussion"], ["perc"], ["percs"], ["shaker"], ["tambourine"], ["tamb"], ["loops"],
+                       ["loop"], ["conga"], ["congas"]]),
+        (.electricGuitars, [["electric", "guitar"], ["lead", "guitar"], ["eg"], ["egtr"], ["electric"],
+                            ["guitar"], ["gtr"]]),
+        (.acousticGuitars, [["acoustic", "guitar"], ["acoustic"], ["ag"], ["agtr"]]),
+        (.synths, [["synth"], ["synths"], ["pad"], ["pads"], ["lead"], ["arp"], ["atmos"], ["ambient"], ["swell"]]),
+        (.vocals, [["lead", "vocal"], ["lead", "vocals"], ["background", "vocals"], ["vocals"], ["vocal"],
+                   ["vox"], ["bgv"], ["bgvs"], ["choir"]]),
+        (.strings, [["strings"], ["string"], ["orchestra"], ["orch"], ["brass"], ["horns"], ["cello"], ["violin"]]),
+    ]
+
+    static func family(of channel: TrackChannel) -> Family {
+        switch channel.trackRole {
+        case .click: return .click
+        case .guide: return .guide
+        case .music: break
+        }
+        let words = numbered(channel.name).words
+        if words.contains("bass") { return .bass }
+        var best: (family: Family, at: Int, length: Int)?
+        for (family, phrases) in familyWords {
+            for phrase in phrases {
+                guard let at = position(phrase, in: words) else { continue }
+                if best.map({ at < $0.at || (at == $0.at && phrase.count > $0.length) }) ?? true {
+                    best = (family, at, phrase.count)
+                }
+            }
+        }
+        return best?.family ?? .other
+    }
+
+    private static func position(_ phrase: [String], in words: [String]) -> Int? {
+        guard !phrase.isEmpty, phrase.count <= words.count else { return nil }
+        return (0 ... words.count - phrase.count).first { Array(words[$0 ..< $0 + phrase.count]) == phrase }
+    }
+
     static func rows(channels: [TrackChannel], cues: [TimelineCue], added: Set<String>) -> [TrackChannel] {
         let used = Set(stems(cues).compactMap(\.trackChannelId))
         let shown = used.union(added)
