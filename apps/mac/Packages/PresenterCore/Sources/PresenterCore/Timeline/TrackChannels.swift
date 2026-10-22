@@ -46,11 +46,10 @@ public extension TimelineTracks {
         return (from, to, next)
     }
 
-    static func dropping(_ id: String, onto target: String, in channels: [TrackChannel]) -> (before: String?, Void)? {
-        guard id != target, let from = channels.firstIndex(where: { $0.id == id }),
-              let to = channels.firstIndex(where: { $0.id == target }) else { return nil }
-        if from > to { return (target, ()) }
-        return (to + 1 < channels.count ? channels[to + 1].id : nil, ())
+    static func dropping(_ id: String, at target: String, above: Bool, in channels: [TrackChannel]) -> (before: String?, Void)? {
+        guard let to = channels.firstIndex(where: { $0.id == target }) else { return nil }
+        let before = above ? target : (to + 1 < channels.count ? channels[to + 1].id : nil)
+        return move(id, before: before, in: channels) == nil ? nil : (before, ())
     }
 
     static func edited(

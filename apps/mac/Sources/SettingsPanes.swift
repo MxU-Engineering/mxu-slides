@@ -893,7 +893,8 @@ private struct TrackChannelsForm: View {
     @State private var adding = false
     @State private var newName = ""
 
-    @State private var dropTarget: String?
+    @State private var drop = TrackRowDrop.State()
+    @State private var rowHeights: [String: CGFloat] = [:]
 
     static let dragPrefix = "mxutrackchannel::"
     static func channelID(_ payload: String) -> String? {
@@ -911,17 +912,15 @@ private struct TrackChannelsForm: View {
                     TrackChannelRow(channel: channel) { open(channel.id) }
 
                         .draggable(Self.dragPrefix + channel.id)
-                        .dropDestination(for: String.self) { payloads, _ in
-                            guard let id = payloads.first.flatMap(Self.channelID),
-                                  let drop = TimelineTracks.dropping(id, onto: channel.id, in: channels) else { return false }
-                            tracks?.moveChannel(id, before: drop.before)
-                            return true
-                        } isTargeted: { on in
-                            if on { dropTarget = channel.id } else if dropTarget == channel.id { dropTarget = nil }
-                        }
-                        .overlay {
-                            if dropTarget == channel.id {
-                                RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[channel.id] = $0 }
+                        .onDrop(of: [.plainText], delegate: TrackRowDrop(
+                            target: channel.id, channels: channels, height: rowHeights[channel.id] ?? 44, state: drop
+                        ) { id, before in tracks?.moveChannel(id, before: before) })
+                        .overlay(alignment: drop.gap?.above == false ? .bottom : .top) {
+                            if drop.gap?.target == channel.id {
+                                Rectangle().fill(Color.accentColor).frame(height: 2)
+                                    .offset(y: drop.gap?.above == false ? 1 : -1)
+                                    .allowsHitTesting(false)
                             }
                         }
                         .contextMenu {
@@ -945,6 +944,59 @@ private struct TrackChannelsForm: View {
             Button("Add") { tracks?.addChannel(named: newName) }
             Button("Cancel", role: .cancel) {}
         }
+    }
+}
+
+private struct TrackRowDrop: DropDelegate {
+    struct Gap: Equatable {
+        var target: String
+        var above: Bool
+    }
+
+    @MainActor @Observable final class State {
+        var gap: Gap?
+        var updates = 0
+    }
+
+    let target: String
+    let channels: [TrackChannel]
+    let height: CGFloat
+    let state: State
+    let move: (String, String?) -> Void
+
+    private var dragged: String? {
+        NSPasteboard(name: .drag).string(forType: .string).flatMap(TrackChannelsForm.channelID)
+    }
+
+    private func drop(_ info: DropInfo) -> (gap: Gap, before: String?)? {
+        guard let id = dragged else { return nil }
+        let above = info.location.y < height / 2
+        return TimelineTracks.dropping(id, at: target, above: above, in: channels)
+            .map { (Gap(target: target, above: above), $0.before) }
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { dragged != nil }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        let next = drop(info)?.gap
+        state.updates += 1
+        if state.gap != next { state.gap = next }
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        let state = state, target = target, seen = state.updates
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            if state.updates == seen, state.gap?.target == target { state.gap = nil }
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let landing = drop(info)
+        state.gap = nil
+        guard let landing, let id = dragged else { return false }
+        move(id, landing.before)
+        return true
     }
 }
 

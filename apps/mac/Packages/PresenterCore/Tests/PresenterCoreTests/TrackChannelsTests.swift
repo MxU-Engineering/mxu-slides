@@ -183,15 +183,19 @@ private let click = TrackChannel(id: "click", name: "Click", role: "click")
     #expect(joined.stems.map(\.audioId) == ["a", "b", "n"])
 }
 
-@Test func aRowDroppedOnAnotherTakesItsPlace() {
+@Test func aDraggedRowLandsInTheGapTheLineShows() {
     let list = ["a", "b", "c", "d"].map { TrackChannel(id: $0, name: $0) }
-    func order(_ id: String, onto target: String) -> [String]? {
-        guard let drop = TimelineTracks.dropping(id, onto: target, in: list) else { return nil }
+    func order(_ id: String, at target: String, above: Bool) -> [String]? {
+        guard let drop = TimelineTracks.dropping(id, at: target, above: above, in: list) else { return nil }
         return TimelineTracks.move(id, before: drop.before, in: list)?.next.map(\.id)
     }
-    #expect(order("d", onto: "b") == ["a", "d", "b", "c"])
-    #expect(order("a", onto: "c") == ["b", "c", "a", "d"])
-    #expect(order("a", onto: "d") == ["b", "c", "d", "a"])
-    #expect(TimelineTracks.dropping("a", onto: "a", in: list) == nil)
-    #expect(TimelineTracks.dropping("gone", onto: "a", in: list) == nil)
+    #expect(order("d", at: "b", above: true) == ["a", "d", "b", "c"])
+    #expect(order("d", at: "b", above: false) == ["a", "b", "d", "c"])
+    #expect(order("a", at: "c", above: false) == ["b", "c", "a", "d"])
+    #expect(order("a", at: "d", above: false) == ["b", "c", "d", "a"])
+
+    #expect(TimelineTracks.dropping("b", at: "b", above: true, in: list) == nil)
+    #expect(TimelineTracks.dropping("b", at: "a", above: false, in: list) == nil)
+    #expect(TimelineTracks.dropping("b", at: "c", above: true, in: list) == nil)
+    #expect(TimelineTracks.dropping("gone", at: "a", above: true, in: list) == nil)
 }
