@@ -32,7 +32,9 @@ enum MediaImportPrompt {
 
     private static func present<V: View>(_ make: (@escaping (Int) -> Void) -> V) async -> Int {
         let sheet = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
+        NSApp.activate()
         let parent = NSApp.keyWindow ?? NSApp.mainWindow
+            ?? NSApp.orderedWindows.first { $0.isVisible && $0.canBecomeMain }
         return await withCheckedContinuation { continuation in
             var answered = false
             let view = make { code in
@@ -41,7 +43,6 @@ enum MediaImportPrompt {
                     if let parent {
                         parent.endSheet(sheet)
                     } else {
-                        NSApp.stopModal()
                         sheet.orderOut(nil)
                     }
                     continuation.resume(returning: code)
@@ -51,7 +52,8 @@ enum MediaImportPrompt {
             if let parent {
                 parent.beginSheet(sheet)
             } else {
-                NSApp.runModal(for: sheet)
+                sheet.center()
+                sheet.makeKeyAndOrderFront(nil)
             }
         }
     }

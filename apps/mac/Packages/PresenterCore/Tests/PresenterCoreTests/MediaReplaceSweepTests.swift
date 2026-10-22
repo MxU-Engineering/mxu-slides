@@ -132,6 +132,8 @@ import Testing
         #expect(prompt.contains("PosterImage(model: model, mediaId: id)"), "the library item's picture")
         #expect(prompt.contains(".task(id: url) { image = await ThumbnailStore.filePoster(url: url) }"), "the new file's picture")
         #expect(prompt.contains("parent.beginSheet(sheet)"), "a sheet, never a modal loop over a drop")
+        #expect(!prompt.contains("runModal"), "a modal loop inside the continuation crashes")
+        #expect(prompt.contains("?? NSApp.orderedWindows.first { $0.isVisible && $0.canBecomeMain }"), "an inactive app's window")
         let flow = try source("ReplaceMediaFileFlow.swift")
         #expect(flow.contains("let panel = NSOpenPanel()"), "Replace Media File goes straight to disk")
         #expect(!flow.contains("LibraryPickerSheet"))
