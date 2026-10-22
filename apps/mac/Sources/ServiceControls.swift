@@ -1489,12 +1489,23 @@ final class ServiceControls {
         slidePosition = context.slidePosition
         currentItemName = context.currentItemName
         nextItemName = context.nextItemName
+        cueTracksAhead()
         if state.hasLinkedText {
 
             apply()
         } else {
             pushConfidence()
         }
+    }
+
+    private func cueTracksAhead() {
+        guard TracksController.enabled, let contextID = liveContextID, let serviceID = appModel.currentServiceID,
+              let service = try? appModel.service(serviceID) else { return }
+        let show = appModel.runOfShow(service).filter { $0.itemKind == .presentation }
+        guard let index = show.firstIndex(where: { $0.id == contextID }) else { return }
+        timeline.cueAhead(show[index...].prefix(2).compactMap { item in
+            appModel.presentation(item.refId).map { (item.id, $0, item.arrangementId) }
+        })
     }
 
     private struct ServicePosition {

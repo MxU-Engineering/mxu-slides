@@ -5,6 +5,7 @@ public final class TracksShareFeeder: @unchecked Sendable {
     public typealias Sink = @Sendable (_ slot: Int, _ buffer: AVAudioPCMBuffer) -> Void
 
     static let maxLagSeconds = 0.04
+    static let keepSeconds = 0.01
     private let share: TracksShare
     private let sink: Sink
     private let queue = DispatchQueue(label: "io.prodcontrol.tracks-share", qos: .userInitiated)
@@ -47,13 +48,14 @@ public final class TracksShareFeeder: @unchecked Sendable {
             converters = [:]
         }
         let lag = Int64(Self.maxLagSeconds * rate)
+        let keep = Int64(Self.keepSeconds * rate)
         for slot in 0 ..< TracksShare.slots {
             let written = share.writtenFrames(slot: slot)
 
-            var from = positions[slot].map { $0 > written ? written : $0 } ?? max(0, written - lag)
+            var from = positions[slot].map { $0 > written ? written : $0 } ?? max(0, written - keep)
             if written - from > lag {
-                droppedFrames += written - lag - from
-                from = written - lag
+                droppedFrames += written - keep - from
+                from = written - keep
             }
             positions[slot] = written
             let count = Int(written - from)

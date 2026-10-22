@@ -147,8 +147,13 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     private func multitrackSong() -> MultitrackSong? {
-        guard let controls, let itemID, let presentationID, let deck = deck(),
-              let cues = timeline(of: deck)?.cues else { return nil }
+        guard let itemID, let deck = deck() else { return nil }
+        return multitrackSong(itemID: itemID, deck: deck, arrangementId: arrangementId)
+    }
+
+    private func multitrackSong(itemID: String, deck: Presentation, arrangementId: String?) -> MultitrackSong? {
+        guard let controls, let cues = PresentationTimelines.timeline(for: arrangementId, in: deck)?.cues else { return nil }
+        let presentationID = deck.id
         let model = controls.appModel
         var missing = 0
         let stems = TimelineTracks.stems(cues).compactMap { cue -> MultitrackStem? in
@@ -160,6 +165,11 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         if missing > 0 { DiagnosticsStore.shared.note("tracks.missing", detail: "\(missing) stems not on this Mac") }
         guard !stems.isEmpty else { return nil }
         return MultitrackSong(id: [itemID, presentationID, arrangementId ?? ""].joined(separator: "|"), stems: stems)
+    }
+
+    func cueAhead(_ items: [(itemID: String, deck: Presentation, arrangementId: String?)]) {
+        let songs = items.compactMap { multitrackSong(itemID: $0.itemID, deck: $0.deck, arrangementId: $0.arrangementId) }
+        controls?.tracks.cueAhead(songs.filter { $0.id != tracksSong })
     }
 
     private func startTracks(at position: Double) {
@@ -340,6 +350,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
                 anchorHost = CACurrentMediaTime()
                 return
+            } else if controls?.tracks.reattaching == true {
+
             } else {
                 DiagnosticsStore.shared.note("tracks.silent", detail: "no answer from the Tracks Player; own clock")
                 tracksSong = nil

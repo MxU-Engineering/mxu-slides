@@ -257,6 +257,7 @@ final class AudioMixerController {
             applyRouting(toInput: id)
             applyLevels(toInput: id)
         }
+        for mixId in tracksReplays.keys { applyTracksReplay(mixId) }
     }
 
     private func applyLevels(toInput id: String) {
@@ -321,6 +322,7 @@ final class AudioMixerController {
             playthrough.isMuted = AudioController.outputMuted(outputId)
                 || AudioOutputInventory.shared.isDeviceless(outputId)
         }
+        for mixId in tracksReplays.keys { applyTracksReplay(mixId) }
         syncingFeeds = false
         syncMixFeeds()
     }
@@ -338,13 +340,15 @@ final class AudioMixerController {
 
     private final class FeedHub: @unchecked Sendable {
         let consumers = Locked<[UUID: AudioMixFeed.Consumer]>([:])
+
+        let dryConsumers = Locked<[UUID: AudioMixFeed.Consumer]>([:])
         var feed: AudioMixFeed?
     }
 
     private var feedHubs: [String: FeedHub] = [:]
 
     func addFeedConsumer(
-        mixId: String, consumer: @escaping AudioMixFeed.Consumer
+        mixId: String, withoutTracks: Bool = false, consumer: @escaping AudioMixFeed.Consumer
     ) -> UUID {
         let token = UUID()
         let hub = feedHubs[mixId] ?? {
@@ -358,8 +362,20 @@ final class AudioMixerController {
             feedHubs[mixId] = hub
             return hub
         }()
-        hub.consumers.withLock { $0[token] = consumer }
+        if withoutTracks {
+            hub.dryConsumers.withLock { $0[token] = consumer }
+            hub.feed?.setPartialConsumer(excluding: Self.tracksFeedMember) { [weak hub] buffer, when, host in
+                guard let hub else { return }
+                for consumer in hub.dryConsumers.withLock({ Array($0.values) }) {
+                    consumer(buffer, when, host)
+                }
+            }
+        } else {
+            hub.consumers.withLock { $0[token] = consumer }
+        }
         if !syncingFeeds { syncMixFeeds() }
+        rebuildTracksSinks()
+        tracks?.queueRefresh()
         DiagnosticsStore.shared.note("mixer", detail: "mix feed open: \(mixName(mixId))")
         return token
     }
@@ -378,15 +394,85 @@ final class AudioMixerController {
 
     func removeFeedConsumer(mixId: String, token: UUID) {
         guard let hub = feedHubs[mixId] else { return }
+        let dryLeft = hub.dryConsumers.withLock { consumers -> Bool in
+            consumers.removeValue(forKey: token)
+            return !consumers.isEmpty
+        }
+        if !dryLeft { hub.feed?.setPartialConsumer(excluding: Self.tracksFeedMember, nil) }
         let empty = hub.consumers.withLock { consumers -> Bool in
             consumers.removeValue(forKey: token)
             return consumers.isEmpty
-        }
+        } && !dryLeft
         if empty {
             feedHubs.removeValue(forKey: mixId)
             DiagnosticsStore.shared.note("mixer", detail: "mix feed closed: \(mixName(mixId))")
         }
         if !syncingFeeds { syncMixFeeds() }
+        rebuildTracksSinks()
+        tracks?.queueRefresh()
+    }
+
+    nonisolated static let tracksFeedMember = "tracks"
+
+    private var tracksDeviceUID: String?
+    private var tracksReach: Set<String> = []
+
+    private var tracksReplays: [String: (outputId: String?, playthrough: AudioInputPlaythrough)] = [:]
+    private struct TracksSink {
+        weak var feed: AudioMixFeed?
+        weak var replay: AudioInputPlaythrough?
+    }
+
+    private nonisolated let tracksSinks = Locked<[String: TracksSink]>([:])
+
+    var tracksFeedMixIDs: Set<String> {
+        Set(feedHubs.filter { !$0.value.consumers.withLock { $0.isEmpty } }.keys)
+    }
+
+    func setTracks(deviceUID: String?, reach: Set<String>, replays: [String: String?]) {
+        if deviceUID != tracksDeviceUID || reach != tracksReach {
+            tracksDeviceUID = deviceUID
+            tracksReach = reach
+            syncMixFeeds()
+        }
+        for (mixId, held) in tracksReplays where replays[mixId].map({ $0 != held.outputId }) ?? true {
+            held.playthrough.stop()
+            tracksReplays.removeValue(forKey: mixId)
+        }
+        for (mixId, outputId) in replays where tracksReplays[mixId] == nil {
+            let playthrough = AudioInputPlaythrough()
+            guard (try? playthrough.start()) != nil else { continue }
+            tracksReplays[mixId] = (outputId, playthrough)
+            applyTracksReplay(mixId)
+            DiagnosticsStore.shared.note("mixer", detail: "tracks replay: \(mixName(mixId))")
+        }
+        rebuildTracksSinks()
+    }
+
+    private func applyTracksReplay(_ mixId: String) {
+        guard let replay = tracksReplays[mixId] else { return }
+        applyOutput(replay.outputId, to: replay.playthrough)
+        replay.playthrough.gain = AudioController.outputTrim(replay.outputId)
+        replay.playthrough.isMuted = AudioController.outputMuted(replay.outputId)
+            || AudioOutputInventory.shared.isDeviceless(replay.outputId)
+    }
+
+    private func rebuildTracksSinks() {
+        var sinks: [String: TracksSink] = [:]
+        for mixId in Set(feedHubs.keys).union(tracksReplays.keys) {
+            sinks[mixId] = TracksSink(feed: feedHubs[mixId]?.feed, replay: tracksReplays[mixId]?.playthrough)
+        }
+        tracksSinks.value = sinks
+    }
+
+    nonisolated func pushTracksShare(mixId: String, buffer: AVAudioPCMBuffer) {
+        guard let sink = tracksSinks.value[mixId] else { return }
+        sink.feed?.push(member: Self.tracksFeedMember, buffer: buffer)
+        sink.replay?.push(buffer)
+    }
+
+    private func deviceUID(ofOutput outputId: String) -> String? {
+        AudioOutputInventory.shared.entry(id: outputId)?.deviceUID ?? AudioDeviceList.defaultOutputDevice()?.uid
     }
 
     func syncMixFeeds() {
@@ -625,6 +711,8 @@ final class AudioMixerController {
     private var sendPlaythroughs: [String: AudioInputPlaythrough] = [:]
     private var sendTokens: [String: UUID] = [:]
 
+    private var sendDry: [String: Bool] = [:]
+
     nonisolated static func streamGain(mixId: String) -> Float {
         guard let stored = UserDefaults.standard.object(
             forKey: "audio.mix.\(mixId).streamGain") as? Float else { return 1 }
@@ -665,9 +753,20 @@ final class AudioMixerController {
             if let token = sendTokens.removeValue(forKey: key) {
                 removeFeedConsumer(mixId: mixId, token: token)
             }
+            sendDry.removeValue(forKey: key)
             sendPlaythroughs.removeValue(forKey: key)?.stop()
         }
         for (key, send) in needed {
+
+            let dry = tracksDeviceUID != nil && deviceUID(ofOutput: send.outputId) == tracksDeviceUID
+            if let playthrough = sendPlaythroughs[key], sendDry[key] != dry, let token = sendTokens[key] {
+                removeFeedConsumer(mixId: send.mixId, token: token)
+                sendDry[key] = dry
+                sendTokens[key] = addFeedConsumer(mixId: send.mixId, withoutTracks: dry) {
+                    [weak playthrough] buffer, _, _ in
+                    playthrough?.push(buffer)
+                }
+            }
             if let playthrough = sendPlaythroughs[key] {
                 applyOutput(send.outputId, to: playthrough)
                 playthrough.gain = sendLevel(mixId: send.mixId, outputId: send.outputId)
@@ -688,7 +787,8 @@ final class AudioMixerController {
             playthrough.isMuted = AudioController.outputMuted(send.outputId)
                 || AudioOutputInventory.shared.isDeviceless(send.outputId)
             sendPlaythroughs[key] = playthrough
-            sendTokens[key] = addFeedConsumer(mixId: send.mixId) {
+            sendDry[key] = dry
+            sendTokens[key] = addFeedConsumer(mixId: send.mixId, withoutTracks: dry) {
                 [weak playthrough] buffer, _, _ in
                 playthrough?.push(buffer)
             }
@@ -722,7 +822,8 @@ final class AudioMixerController {
     }
 
     private func mixHasActiveMembers(_ mix: AudioMixInventory.Entry) -> Bool {
-        audio.players.contains { $0.targetKey == mix.id }
+        tracksReach.contains(mix.id)
+            || audio.players.contains { $0.targetKey == mix.id }
             || audioInputs.entries.contains {
                 mixId(forInput: $0.id) == mix.id && isLive(input: $0.id)
             }

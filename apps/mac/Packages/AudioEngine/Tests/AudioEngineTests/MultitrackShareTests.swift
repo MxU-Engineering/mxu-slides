@@ -148,7 +148,7 @@ private func mainOnPair(slot: Int?, delayMs: Double = 0) -> MultitrackRouting {
     #expect(feeder.droppedFrames == 0)
 }
 
-@Test func aStalledFeederSkipsToTheLastFortyMilliseconds() {
+@Test func aStalledFeederPicksUpJustBehindTheWriter() {
     let share = TracksShare()
     share.sampleRate = 48_000
     let received = Locked(0)
@@ -163,8 +163,8 @@ private func mainOnPair(slot: Int?, delayMs: Double = 0) -> MultitrackRouting {
         chunk.withUnsafeBufferPointer { share.write(slot: 0, left: $0.baseAddress, right: $0.baseAddress, count: 480) }
     }
     feeder.drainNow()
-    #expect(received.value == 480 + 1920)
-    #expect(feeder.droppedFrames == 24_000 - 1920)
+    #expect(received.value == 480 + 480)
+    #expect(feeder.droppedFrames == 24_000 - 480)
 }
 
 @Test func anOutputsDelayShiftsTheTracksOnIt() throws {

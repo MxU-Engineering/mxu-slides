@@ -1,13 +1,30 @@
+import AVFoundation
 import AudioEngine
 import Foundation
 import PresenterCore
+import QuartzCore
 import RenderEngine
 
 @MainActor
 final class TracksController {
     weak var model: AppModel?
-    weak var mixer: AudioMixerController?
+    weak var mixer: AudioMixerController? {
+        didSet {
+            let mixer = mixer
+            shareSink.value = { [weak mixer] mixId, buffer in mixer?.pushTracksShare(mixId: mixId, buffer: buffer) }
+        }
+    }
     private let client: TracksPlayerClient
+
+    private nonisolated let shareFeeder = Locked<TracksShareFeeder?>(nil)
+    private nonisolated let slotMixes = Locked<[Int: String]>([:])
+    private nonisolated let shareSink = Locked<(@Sendable (String, AVAudioPCMBuffer) -> Void)?>(nil)
+
+    private nonisolated let lostAt = Locked<CFTimeInterval?>(nil)
+
+    private var feedSlots: [String: Int] = [:]
+
+    private var preloaded: [MultitrackSong] = []
 
     nonisolated let latest = Locked<TracksPlayerStatus?>(nil)
 
@@ -37,6 +54,7 @@ final class TracksController {
         let path = TracksPlayerWire.socketPath(appIdentity: Bundle.main.bundleIdentifier ?? "io.prodcontrol.mxupresenter")
         client = TracksPlayerClient(socketPath: path) { Self.launchPlayer(socketPath: path) }
         let latest = latest, driving = driving, awaiting = awaitingStatus
+        let feeder = shareFeeder, slots = slotMixes, sink = shareSink, lost = lostAt
         client.onStatus = { [weak self] status in
             latest.value = status
             if awaiting.withLock({ let was = $0; $0 = false; return was }) {
@@ -54,11 +72,26 @@ final class TracksController {
 
         client.onConnect = {
             awaiting.value = true
-            DiagnosticsStore.shared.note("tracks.connect")
+            lost.value = nil
+
+            let share = TracksShare.open(name: TracksPlayerWire.shareName(socketPath: path))
+            feeder.withLock { held in
+                held?.stop()
+                held = share.map { share in
+                    TracksShareFeeder(share: share) { slot, buffer in
+                        guard let mix = slots.value[slot] else { return }
+                        sink.value?(mix, buffer)
+                    }
+                }
+            }
+            DiagnosticsStore.shared.note("tracks.connect", detail: share == nil ? "no mix shares (an older player)" : "")
         }
-        client.onDisconnect = {
-            DiagnosticsStore.shared.note("tracks.disconnect", detail: latest.value.map { "while \($0.playing ? "playing" : "stopped")" } ?? "")
+        client.onDisconnect = { reason in
+            feeder.withLock { $0?.stop(); $0 = nil }
+            let status = latest.value
             latest.value = nil
+            lost.value = CACurrentMediaTime()
+            Self.noteDisconnect(reason: reason, status: status)
         }
 
         NotificationCenter.default.addObserver(
@@ -75,6 +108,30 @@ final class TracksController {
     func quit() {
         guard client.isConnected else { return }
         client.send(.quit)
+    }
+
+    private nonisolated static func noteDisconnect(reason: String, status: TracksPlayerStatus?) {
+        var detail = reason
+        if let status { detail += ", while \(status.playing ? "playing" : "stopped")" }
+        let pid = status?.pid
+        if let pid { detail += kill(pid, 0) == 0 ? ", player \(pid) still running" : ", player \(pid) gone" }
+        DiagnosticsStore.shared.note("tracks.disconnect", detail: detail)
+        guard let pid, kill(pid, 0) != 0 else { return }
+        let lost = Date()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
+            let reports = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Logs/DiagnosticReports")
+            let newest = (try? FileManager.default.contentsOfDirectory(
+                at: reports, includingPropertiesForKeys: [.contentModificationDateKey]))?
+                .filter { $0.lastPathComponent.hasPrefix(playerName) }
+                .compactMap { url in
+                    (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                        .map { (url.lastPathComponent, $0) }
+                }
+                .filter { $0.1 >= lost.addingTimeInterval(-10) }
+                .max { $0.1 < $1.1 }
+            DiagnosticsStore.shared.note("tracks.playerCrash", detail: newest?.0 ?? "no crash report")
+        }
     }
 
     nonisolated static func launchPlayer(socketPath: String) {
@@ -114,6 +171,13 @@ final class TracksController {
         client.send(.seek(seconds: position))
     }
 
+    func cueAhead(_ songs: [MultitrackSong]) {
+        guard Self.enabled, songs != preloaded else { return }
+        preloaded = songs
+        client.send(.preload(songs: songs))
+        DiagnosticsStore.shared.note("tracks.cueAhead", detail: songs.map(\.id).joined(separator: ", "))
+    }
+
     nonisolated func position(of songID: String) -> Double? {
         latest.withLock { status in
             guard let status, status.playing, status.songID == songID else { return nil }
@@ -122,6 +186,8 @@ final class TracksController {
     }
 
     nonisolated var isPlaying: Bool { latest.value?.playing == true }
+
+    nonisolated var reattaching: Bool { lostAt.value.map { CACurrentMediaTime() - $0 < 1.2 } ?? false }
 
     nonisolated var meters: [String: [AudioLevel.Reading]] {
         (latest.value?.meters ?? [:]).compactMapValues { values in
@@ -239,7 +305,7 @@ final class TracksController {
         }
     }
 
-    private func queueRefresh() {
+    func queueRefresh() {
         guard !refreshQueued else { return }
         refreshQueued = true
         DispatchQueue.main.async { [weak self] in
@@ -257,14 +323,22 @@ final class TracksController {
             seedSends(channels)
         }
         let resolved = Self.routing(channels: channels, extra: heardChannels(), mixer: mixer)
+
+        let reach = Self.enabled ? resolved.routing.reachedMixIds : []
+        let replays = Self.replays(reach: reach, tracksDevice: resolved.deviceUID)
+        mixer.setTracks(deviceUID: resolved.deviceUID, reach: reach, replays: replays)
+        let fed = mixer.tracksFeedMixIDs.intersection(reach).union(replays.keys)
+        feedSlots = MultitrackRouting.assignSlots(fed, held: feedSlots)
+        let routing = resolved.routing.feeding(fed, slots: feedSlots)
+        slotMixes.value = Dictionary(feedSlots.filter { fed.contains($0.key) }.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         guard client.isConnected || driving.value != nil else { return }
         if sentDevice != .some(resolved.deviceUID) {
             sentDevice = .some(resolved.deviceUID)
             client.send(.attach(deviceUID: resolved.deviceUID))
         }
-        if sentRouting != resolved.routing {
-            sentRouting = resolved.routing
-            client.send(.routing(resolved.routing))
+        if sentRouting != routing {
+            sentRouting = routing
+            client.send(.routing(routing))
         }
     }
 
@@ -272,6 +346,20 @@ final class TracksController {
         sentRouting = nil
         sentDevice = nil
         refresh()
+
+        if !preloaded.isEmpty { client.send(.preload(songs: preloaded)) }
+    }
+
+    static func replays(reach: Set<String>, tracksDevice: String?) -> [String: String?] {
+        let defaultUID = AudioDeviceList.defaultOutputDevice()?.uid
+        var replays: [String: String?] = [:]
+        for mix in AudioMixInventory.shared.entries where reach.contains(mix.id) && !AudioMixInventory.isVirtual(mix.outputIds) {
+            let first = mix.outputIds.first.flatMap { $0 == AudioMixInventory.defaultOutputID ? nil : $0 }
+            let entry = first.flatMap { AudioOutputInventory.shared.entry(id: $0) }
+            if entry?.isDeviceless == true { continue }
+            if (entry?.deviceUID ?? defaultUID) != (tracksDevice ?? defaultUID) { replays[mix.id] = .some(first) }
+        }
+        return replays
     }
 
     private func heardChannels() -> Set<String> {
@@ -308,7 +396,9 @@ final class TracksController {
                     let pair = offset >= 0 && offset + 1 < count ? offset : 0
                     let channels = entry?.monoChannel.flatMap { $0 < count ? [$0] : nil } ?? [pair, pair + 1]
                     let send = index == 0 ? 1 : (id.map { mixer.sendLevel(mixId: mix.id, outputId: $0) } ?? 1)
-                    landings.append((uid, .init(channels: channels, level: send * AudioController.outputTrim(id))))
+                    landings.append((uid, .init(
+                        channels: channels, level: send * AudioController.outputTrim(id),
+                        delayMs: Double(entry?.delayMs ?? 0))))
                 }
             }
             return .init(
