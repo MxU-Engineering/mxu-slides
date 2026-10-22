@@ -538,6 +538,8 @@ struct ServiceContinuousView: View {
             cardHeader(item, glyph: .presentations) {
 
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
+
+                PresentationSettingsButton(model: model, render: render, controls: controls, presentation: presentation)
             } leading: {
 
                 if SlideSceneBuilder.showsArrangements(for: presentation) {
@@ -562,7 +564,6 @@ struct ServiceContinuousView: View {
                     }
                 }
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
-                SlideShowChip(model: model, controls: controls, presentation: presentation)
             } accessory: {
 
                 if SlideSceneBuilder.showsArrangements(for: presentation) {

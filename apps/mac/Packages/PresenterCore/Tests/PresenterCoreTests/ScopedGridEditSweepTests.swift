@@ -59,7 +59,7 @@ import Testing
         var matched = Set<String>()
         var violations: [String] = []
         var scoped = 0
-        for fileName in ["PresentGridView.swift"] {
+        for fileName in ["PresentGridView.swift", "PresentationSettingsButton.swift"] {
             let lines = try lines(of: fileName)
             for (index, line) in lines.enumerated() {
                 if line.contains("updatePresentation(") {

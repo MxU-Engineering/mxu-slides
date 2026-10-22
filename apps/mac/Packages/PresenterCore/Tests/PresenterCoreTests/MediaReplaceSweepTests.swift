@@ -28,7 +28,8 @@ import Testing
 
     @Test func cueMediaMenuOpensTheEditorAndTheFile() throws {
         let menu = try source("MediaCueMenu.swift")
-        #expect(menu.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item)\n            Button(\"Rename…\")"))
+        #expect(menu.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item)\n                Button(\"Rename…\")"))
+        #expect(menu.contains("playbackRows(item)\n                Divider()\n                Button(\"Edit Media…\")"))
         #expect(menu.contains("model.openInEditor(entryID: mediaID)\n            UserDefaults.standard.set(AppMode.edit.rawValue, forKey: \"appMode\")"))
         #expect(menu.contains("NSWorkspace.shared.activateFileViewerSelecting([url])"))
         for name in ["MediaCueMenu.swift", "LibraryView.swift"] {

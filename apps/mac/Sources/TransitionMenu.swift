@@ -5,13 +5,15 @@ import SwiftUI
 struct TransitionMenu: View {
     let current: MediaTransition?
     var mixed = false
+    var inherited: MediaTransition?
+    var prefix = "Transition: "
     let apply: (@escaping @Sendable (MediaTransition?) -> MediaTransition?) -> Void
 
     private static let kinds: [TransitionKind] = [.cut, .dissolve, .fadeBlack, .fadeWhite, .fadeColor, .blurDissolve, .filmBurn]
 
     var body: some View {
-        Menu(title) {
-            Toggle("Room Default", isOn: Binding(
+        Menu(prefix + TransitionEdit.menuValue(current: current, mixed: mixed, inherited: inherited)) {
+            Toggle(inherited == nil ? "Room Default" : "Presentation Default", isOn: Binding(
                 get: { !mixed && current == nil },
                 set: { _ in apply { _ in nil } }
             ))
@@ -31,32 +33,6 @@ struct TransitionMenu: View {
                     ))
                 }
             }
-        }
-    }
-
-    private var title: String {
-        if mixed {
-            "Transition: Mixed"
-        } else if let current, current.transitionKind != .cut {
-            "Transition: \(current.transitionKind.menuName) \(TransitionEdit.label(seconds: TransitionEdit.seconds(current)))"
-        } else if current != nil {
-            "Transition: Cut"
-        } else {
-            "Transition: Room Default"
-        }
-    }
-}
-
-extension TransitionKind {
-    var menuName: String {
-        switch self {
-        case .cut: "Cut"
-        case .dissolve: "Dissolve"
-        case .fadeBlack: "Fade Black"
-        case .fadeWhite: "Fade White"
-        case .fadeColor: "Fade Color"
-        case .blurDissolve: "Blur Dissolve"
-        case .filmBurn: "Film Burn"
         }
     }
 }

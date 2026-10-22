@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 138,
+  "schemaVersion": 139,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1714,6 +1714,11 @@
         {
           "name": "autoAdvance",
           "type": "AutoAdvance",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "Transition",
           "optional": true
         },
         {

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 138,
+  "schemaVersion": 139,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1387,6 +1387,9 @@
         },
         "autoAdvance": {
           "$ref": "#/components/schemas/AutoAdvance"
+        },
+        "transition": {
+          "$ref": "#/components/schemas/Transition"
         },
         "displayKey": {
           "type": "string"

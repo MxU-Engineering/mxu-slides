@@ -139,9 +139,9 @@ struct PresentGridView: View {
                     .background(.quaternary, in: Capsule())
             }
             SongKeyChip(model: model, controls: controls, presentation: presentation)
-            SlideShowChip(model: model, controls: controls, presentation: presentation)
             Spacer()
 
+            PresentationSettingsButton(model: model, render: render, controls: controls, presentation: presentation)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -567,24 +567,11 @@ struct SlideGridBody: View {
         var id: String { draft.id }
     }
 
-    @State private var slideShowPresented = false
-
     @State private var newSlideTarget: NewSlideTarget?
 
     @State private var applyThemeTarget: ApplyThemeTarget?
 
     @State private var mediaMenuState = MediaCueMenuState()
-
-    private func presentationAutoAdvanceBinding() -> Binding<AutoAdvance?> {
-        Binding(
-            get: { model.presentation(presentation.id)?.autoAdvance },
-            set: { advance in
-                model.updatePresentationField(
-                    presentation.id, \.autoAdvance, key: "autoAdvance", to: advance, undoLabel: "Slide Show")
-                controls?.presentationEdited(presentation.id)
-            }
-        )
-    }
 
     private var effectiveArrangement: Arrangement? {
         guard let arrangementId, !arrangementId.isEmpty else { return nil }
@@ -748,13 +735,6 @@ struct SlideGridBody: View {
                 advance: autoAdvanceBinding(target.slideIDs)
             )
         }
-        .sheet(isPresented: $slideShowPresented) {
-            AutoAdvanceSheet(
-                slideName: presentation.name,
-                advance: presentationAutoAdvanceBinding(),
-                presentationScope: true
-            )
-        }
         .mediaCueSheets(model: model, state: mediaMenuState)
         .alert(
             "Edit a Repeated Section?",
@@ -866,65 +846,66 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func bulkMenu(slideIDs: [String]) -> some View {
         Text("\(slideIDs.count) Slides")
-        Menu("Add Action") {
-            AddActionMenuItems(
-                model: model,
-                timers: actionRouter?.timerChoices ?? []
-            ) { action in
-
-                actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
+        Section("Playback") {
+            Button("Auto Advance: \(SlideBulkEdit.autoAdvanceValue(autoAdvances(slideIDs)))…") {
+                autoAdvanceTarget = AutoAdvanceTarget(
+                    slideIDs: slideIDs, name: "\(slideIDs.count) Slides")
             }
-        }
-        let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
-        if !kinds.isEmpty {
-            Menu("Remove Action") {
-                ForEach(kinds, id: \.rawValue) { kind in
-                    Button(kind.displayName, role: .destructive) {
-                        model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Action") {
-                            SlideBulkEdit.removeActions(
-                                ofKind: kind, from: slideIDs, in: &$0)
+            let transitions = presentation.slides.filter { slideIDs.contains($0.id) }.map(\.transition)
+            let first = transitions.first ?? nil
+            TransitionMenu(current: first, mixed: transitions.contains { $0 != first }, inherited: presentation.transition) { transform in
+                setTransition(transform, on: slideIDs)
+            }
+            Menu("Actions") {
+                Section("Add") {
+                    AddActionMenuItems(
+                        model: model,
+                        timers: actionRouter?.timerChoices ?? []
+                    ) { action in
+
+                        actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
+                    }
+                }
+                let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
+                if !kinds.isEmpty {
+                    Section("Remove") {
+                        ForEach(kinds, id: \.rawValue) { kind in
+                            Button(kind.displayName, role: .destructive) {
+                                model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Action") {
+                                    SlideBulkEdit.removeActions(
+                                        ofKind: kind, from: slideIDs, in: &$0)
+                                }
+                            }
+                        }
+                        Button("All Actions", role: .destructive) {
+                            removeAllActions(from: slideIDs)
                         }
                     }
                 }
-                Divider()
-                Button("All Actions", role: .destructive) {
-                    model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Actions") {
-                        SlideBulkEdit.removeActions(
-                            ofKind: nil, from: slideIDs, in: &$0)
-                    }
-                }
             }
         }
-        Button(anyHasAutoAdvance(slideIDs) ? "Auto Advance… ✓" : "Auto Advance…") {
-            autoAdvanceTarget = AutoAdvanceTarget(
-                slideIDs: slideIDs, name: "\(slideIDs.count) Slides")
+        Section("Look") {
+            Button("Apply Theme…") {
+                applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
+            }
         }
-        let transitions = presentation.slides.filter { slideIDs.contains($0.id) }.map(\.transition)
-        let first = transitions.first ?? nil
-        TransitionMenu(current: first, mixed: transitions.contains { $0 != first }) { transform in
-            setTransition(transform, on: slideIDs)
-        }
-        Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
-            slideShowPresented = true
-        }
-        Button("Apply Theme…") {
-            applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
+        Section("Slides") {
+            Button("Duplicate \(slideIDs.count) Slides") {
+                confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
+
+                    var copied = presentation.slides
+                    SlideBulkEdit.duplicateSlides(slideIDs, in: &copied)
+                    if let insertion = ListInsertion(before: presentation.slides, after: copied, id: { $0.id }) {
+                        model.updatePresentation(presentation.id, value: { insertion.restore(into: &$0.slides) }, op: { document in
+                            try document.updateSlideList { insertion.restore(into: &$0) }
+                        })
+                    }
+                    clearSelection()
+                }
+            }
+            Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
         }
         Divider()
-        Button("Duplicate \(slideIDs.count) Slides") {
-            confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
-
-                var copied = presentation.slides
-                SlideBulkEdit.duplicateSlides(slideIDs, in: &copied)
-                if let insertion = ListInsertion(before: presentation.slides, after: copied, id: { $0.id }) {
-                    model.updatePresentation(presentation.id, value: { insertion.restore(into: &$0.slides) }, op: { document in
-                        try document.updateSlideList { insertion.restore(into: &$0) }
-                    })
-                }
-                clearSelection()
-            }
-        }
-        Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
         Button("Delete \(slideIDs.count) Slides", role: .destructive) {
             deleteSlides(slideIDs)
         }
@@ -1014,10 +995,6 @@ struct SlideGridBody: View {
         }
     }
 
-    private func anyHasAutoAdvance(_ slideIDs: [String]) -> Bool {
-        presentation.slides.contains { slideIDs.contains($0.id) && $0.autoAdvance != nil }
-    }
-
     private func cueMediaIDs(of slide: Slide) -> [String] {
         var ids: [String] = []
         if let id = slide.background?.mediaId, !id.isEmpty, !id.contains("::") {
@@ -1058,104 +1035,114 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func singleMenu(slide: Slide) -> some View {
 
+        Button("Quick Edit…") { quickEditSlide = slide }
         Button("Edit…") {
             model.openInEditor(
                 entryID: presentation.id, slideID: slide.id
             )
             appModeRaw = AppMode.edit.rawValue
         }
-        Button("Quick Edit…") { quickEditSlide = slide }
-        Button("Rename Slide…") {
+        Button("Rename…") {
             renameText = slide.name
             renamingSlide = slide
         }
+        Section("Playback") {
 
-        ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
-            Menu(model.media(mediaID)?.name ?? "Media") {
-
-                MediaCueMenuItems(
-                    model: model, actionRouter: actionRouter,
-                    mediaID: mediaID, state: mediaMenuState,
-                    includesCueGrammar: false,
-
-                    replace: SpotReplace(label: "Replace on This Slide…") {
-                        [presentationID = presentation.id, slideID = slide.id] oldID, newID in
-                        model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
-                            SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
-                        }
-                    }
-                )
+            Button("Auto Advance: \(SlideBulkEdit.autoAdvanceValue([slide.autoAdvance]))…") {
+                autoAdvanceTarget = AutoAdvanceTarget(slideIDs: [slide.id], name: slide.name)
             }
-        }
 
-        Menu("Add Action") {
-            AddActionMenuItems(
-                model: model,
-                timers: actionRouter?.timerChoices ?? []
-            ) { action in
-                actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: action)
+            TransitionMenu(current: slide.transition, inherited: presentation.transition) { transform in
+                setTransition(transform, on: [slide.id])
             }
-        }
+            slideActionsMenu(slide)
 
-        let slideActions = slide.actions ?? []
-        if !slideActions.isEmpty {
+            ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
+                Menu("Media: \(model.media(mediaID)?.name ?? "Missing")") {
 
-            let timers = actionRouter?.timerChoices ?? []
-            Menu("Edit Action") {
-                ForEach(slideActions) { action in
-                    Button(slideActionLabel(
-                        action, model: model, timers: timers,
-                        confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])) {
-                        actionEditorSlide = slide
-                    }
-                }
-            }
-            Menu("Remove Action") {
-                ForEach(slideActions) { action in
-                    Button(slideActionLabel(
-                        action, model: model, timers: timers,
-                        confidenceScreens: actionRouter?.confidenceScreenChoices ?? []), role: .destructive) {
-                        removeSlideAction(action.id, from: slide)
-                    }
+                    MediaCueMenuItems(
+                        model: model, actionRouter: actionRouter,
+                        mediaID: mediaID, state: mediaMenuState,
+                        includesCueGrammar: false,
+
+                        replace: SpotReplace(label: "Replace on This Slide…") {
+                            [presentationID = presentation.id, slideID = slide.id] oldID, newID in
+                            model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
+                                SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
+                            }
+                        },
+                        inheritedTransition: presentation.transition
+                    )
                 }
             }
         }
+        Section("Look") {
+            Button("Apply Theme…") {
+                applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
+            }
+        }
+        Section("Slide") {
+            Button("New Slide After…") { newSlideTarget = NewSlideTarget(after: slide) }
+            Button("Duplicate") {
+                confirmingRepeatedSectionEdit(sections: [slide.sectionId]) {
+                    model.insertSlide(
+                        presentation.id, slide: slide.freshIDCopy(),
+                        afterSlideID: slide.id
+                    )
+                }
+            }
+            Button("Copy") { SlidePasteboard.copy(slide) }
 
-        Button(slide.autoAdvance == nil
-            ? "Auto Advance…" : "Auto Advance… ✓"
-        ) {
-            autoAdvanceTarget = AutoAdvanceTarget(slideIDs: [slide.id], name: slide.name)
-        }
-
-        TransitionMenu(current: slide.transition) { transform in
-            setTransition(transform, on: [slide.id])
-        }
-        Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
-            slideShowPresented = true
-        }
-        Button("Apply Theme…") {
-            applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
+            let _ = SlidePasteboardChanges.shared.count
+            Button("Paste After") { pasteSlides(after: slide) }
+                .disabled(!SlidePasteboard.hasSlide)
         }
         Divider()
-        Button("New Slide After…") { newSlideTarget = NewSlideTarget(after: slide) }
-        Button("Duplicate Slide") {
-            confirmingRepeatedSectionEdit(sections: [slide.sectionId]) {
-                model.insertSlide(
-                    presentation.id, slide: slide.freshIDCopy(),
-                    afterSlideID: slide.id
-                )
-            }
-        }
-        Button("Copy Slide") { SlidePasteboard.copy(slide) }
 
-        let _ = SlidePasteboardChanges.shared.count
-        Button("Paste Slide After") { pasteSlides(after: slide) }
-            .disabled(!SlidePasteboard.hasSlide)
-
-        Button("Delete Slide", role: .destructive) {
+        Button("Delete", role: .destructive) {
             deleteSlides([slide.id])
         }
         .disabled(presentation.slides.count == 1)
+    }
+
+    @ViewBuilder
+    private func slideActionsMenu(_ slide: Slide) -> some View {
+        let slideActions = slide.actions ?? []
+        Menu(slideActions.isEmpty ? "Actions: None" : "Actions: \(slideActions.count)") {
+            Section("Add") {
+                AddActionMenuItems(
+                    model: model,
+                    timers: actionRouter?.timerChoices ?? []
+                ) { action in
+                    actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: action)
+                }
+            }
+            if !slideActions.isEmpty {
+                let timers = actionRouter?.timerChoices ?? []
+                Section("On This Slide") {
+                    ForEach(slideActions) { action in
+                        Button(slideActionLabel(
+                            action, model: model, timers: timers,
+                            confidenceScreens: actionRouter?.confidenceScreenChoices ?? []) + "…") {
+                            actionEditorSlide = slide
+                        }
+                    }
+                    Button("Remove All", role: .destructive) {
+                        removeAllActions(from: [slide.id])
+                    }
+                }
+            }
+        }
+    }
+
+    private func removeAllActions(from slideIDs: [String]) {
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Actions") {
+            SlideBulkEdit.removeActions(ofKind: nil, from: slideIDs, in: &$0)
+        }
+    }
+
+    private func autoAdvances(_ slideIDs: [String]) -> [AutoAdvance?] {
+        presentation.slides.filter { slideIDs.contains($0.id) }.map(\.autoAdvance)
     }
 
     private func applyThemeScope(_ slideIDs: [String]) -> String {
@@ -1398,15 +1385,6 @@ struct SlideGridBody: View {
                 }
             }
         )
-    }
-
-    private func removeSlideAction(_ actionID: String, from slide: Slide) {
-        model.updateSlide(presentationID: presentation.id, slideID: slide.id, undoLabel: "Remove Action") { target in
-            var actions = target.actions ?? []
-            actions.removeAll { $0.id == actionID }
-
-            target.actions = actions.isEmpty ? nil : actions
-        }
     }
 
     private func slideActionsBinding(_ slideID: String) -> Binding<[SlideAction]> {
@@ -2534,61 +2512,6 @@ struct SongKeyChip: View {
     private func setKey(_ name: String) {
         model.updatePresentationField(presentation.id, \.musicKey, key: "musicKey", to: name, undoLabel: "Set Key")
         controls?.presentationEdited(presentation.id)
-    }
-
-    private func chipLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(.quaternary, in: Capsule())
-    }
-}
-
-struct SlideShowChip: View {
-    let model: AppModel
-    let controls: ServiceControls?
-    let presentation: Presentation
-
-    @Environment(\.runOnly) private var runOnly
-    @State private var sheetPresented = false
-
-    var body: some View {
-        if let slideShow = presentation.autoAdvance {
-            if runOnly {
-                chipLabel(text(slideShow))
-            } else {
-                Button {
-                    sheetPresented = true
-                } label: {
-                    chipLabel(text(slideShow))
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
-                .sheet(isPresented: $sheetPresented) {
-                    AutoAdvanceSheet(
-                        slideName: presentation.name,
-                        advance: Binding(
-                            get: { model.presentation(presentation.id)?.autoAdvance },
-                            set: { advance in
-                                model.updatePresentationField(
-                                    presentation.id, \.autoAdvance, key: "autoAdvance", to: advance,
-                                    undoLabel: "Slide Show")
-                                controls?.presentationEdited(presentation.id)
-                            }
-                        ),
-                        presentationScope: true
-                    )
-                }
-            }
-        }
-    }
-
-    private func text(_ slideShow: AutoAdvance) -> String {
-        let seconds = slideShow.delaySeconds
-        let interval = seconds == seconds.rounded()
-            ? "\(Int(seconds))s" : String(format: "%.1fs", seconds)
-        return "Slide Show: \(interval)\((slideShow.loopToStart ?? false) ? " · Loop" : "")"
     }
 
     private func chipLabel(_ text: String) -> some View {

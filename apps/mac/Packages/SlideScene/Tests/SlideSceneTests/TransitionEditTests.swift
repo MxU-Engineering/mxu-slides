@@ -26,4 +26,20 @@ final class TransitionEditTests: XCTestCase {
         XCTAssertEqual(TransitionEdit.withDuration(45, from: dissolve)?.durationSeconds, 30, "clamped to what can be typed")
         XCTAssertNil(TransitionEdit.withDuration(1, from: nil), "no transition stays none")
     }
+
+    func testEntranceOrderOwnThenPresentation() {
+        let own = Transition(transitionKind: .cut)
+        let deck = Transition(transitionKind: .dissolve, durationSeconds: 1)
+        XCTAssertEqual(TransitionEdit.entrance(own: own, presentation: deck), own, "own wins, even a cut")
+        XCTAssertEqual(TransitionEdit.entrance(own: nil, presentation: deck), deck)
+        XCTAssertNil(TransitionEdit.entrance(own: nil, presentation: nil), "room default")
+    }
+
+    func testMenuValueNamesTheLevelItFollows() {
+        let deck = Transition(transitionKind: .dissolve, durationSeconds: 1)
+        XCTAssertEqual(TransitionEdit.menuValue(current: nil), "Room Default")
+        XCTAssertEqual(TransitionEdit.menuValue(current: nil, inherited: deck), "Presentation Default (Dissolve 1 s)")
+        XCTAssertEqual(TransitionEdit.menuValue(current: Transition(transitionKind: .cut), inherited: deck), "Cut")
+        XCTAssertEqual(TransitionEdit.menuValue(current: deck, mixed: true), "Mixed")
+    }
 }

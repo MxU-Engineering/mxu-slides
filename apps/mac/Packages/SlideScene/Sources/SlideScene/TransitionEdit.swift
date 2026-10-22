@@ -27,6 +27,28 @@ public enum TransitionEdit {
             : String(format: "%g s", rounded)
     }
 
+    public static func entrance(own: Transition?, presentation: Transition?) -> Transition? {
+        own ?? presentation
+    }
+
+    public static func describe(_ transition: Transition) -> String {
+        transition.transitionKind == .cut
+            ? TransitionKind.cut.menuName
+            : "\(transition.transitionKind.menuName) \(label(seconds: seconds(transition)))"
+    }
+
+    public static func menuValue(current: Transition?, mixed: Bool = false, inherited: Transition? = nil) -> String {
+        if mixed {
+            "Mixed"
+        } else if let current {
+            describe(current)
+        } else if let inherited {
+            "Presentation Default (\(describe(inherited)))"
+        } else {
+            "Room Default"
+        }
+    }
+
     public static func withKind(_ kind: TransitionKind?, from current: Transition?) -> Transition? {
         kind.map {
             Transition(transitionKind: $0, durationSeconds: current?.durationSeconds, colorHex: current?.colorHex)
@@ -38,6 +60,20 @@ public enum TransitionEdit {
             var out = $0
             out.durationSeconds = min(max(seconds, typedRange.lowerBound), typedRange.upperBound)
             return out
+        }
+    }
+}
+
+extension TransitionKind {
+    public var menuName: String {
+        switch self {
+        case .cut: "Cut"
+        case .dissolve: "Dissolve"
+        case .fadeBlack: "Fade Black"
+        case .fadeWhite: "Fade White"
+        case .fadeColor: "Fade Color"
+        case .blurDissolve: "Blur Dissolve"
+        case .filmBurn: "Film Burn"
         }
     }
 }

@@ -69,6 +69,24 @@ public enum SlideBulkEdit {
         }
     }
 
+    public static func autoAdvanceValue(_ advances: [AutoAdvance?]) -> String {
+        if let first = advances.first, advances.allSatisfy({ $0 == first }) {
+            if let advance = first {
+                if advance.afterPlayback == true {
+                    advance.delaySeconds > 0
+                        ? "After Video + \(TransitionEdit.label(seconds: advance.delaySeconds))"
+                        : "After Video"
+                } else {
+                    TransitionEdit.label(seconds: advance.delaySeconds)
+                }
+            } else {
+                "Off"
+            }
+        } else {
+            "Mixed"
+        }
+    }
+
     public static func setTransition(
         _ transition: (Transition?) -> Transition?, on slideIDs: [String], in presentation: inout Presentation
     ) {

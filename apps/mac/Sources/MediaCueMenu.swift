@@ -44,6 +44,8 @@ struct MediaCueMenuItems: View {
 
     var replace: SpotReplace? = nil
 
+    var inheritedTransition: MediaTransition? = nil
+
     var body: some View {
         if model.media(mediaID) == nil {
 
@@ -68,47 +70,27 @@ struct MediaCueMenuItems: View {
             }
         }
         if let item = model.media(mediaID) {
-
-            MediaEditorDoors(model: model, mediaID: mediaID, item: item)
-            Button("Rename…") {
-                state.renameText = item.name
-                state.renameTargetID = mediaID
-            }
-            Divider()
             if includesCueGrammar {
+
+                MediaEditorDoors(model: model, mediaID: mediaID, item: item)
+                Button("Rename…") {
+                    state.renameText = item.name
+                    state.renameTargetID = mediaID
+                }
+                Divider()
                 MediaCueGrammarItems(
                     model: model, actionRouter: actionRouter, mediaID: mediaID, state: state
                 )
                 Divider()
-            }
+                playbackRows(item)
+            } else {
 
-            Picker("Classification", selection: Binding(
-                get: { model.media(mediaID)?.classification ?? .foreground },
-                set: { value in model.updateMedia(mediaID) { $0.classification = value } }
-            )) {
-                Text("Foreground").tag(MediaClassification.foreground)
-                Text("Background").tag(MediaClassification.background)
-            }
-            if item.mediaKind == .video {
-
-                Picker("Loop", selection: Binding(
-                    get: { model.media(mediaID)?.loops ?? false },
-                    set: { value in model.updateMedia(mediaID) { $0.loops = value } }
-                )) {
-                    Text("On").tag(true)
-                    Text("Off").tag(false)
+                playbackRows(item)
+                Divider()
+                Button("Edit Media…") {
+                    model.openInEditor(entryID: mediaID)
+                    UserDefaults.standard.set(AppMode.edit.rawValue, forKey: "appMode")
                 }
-            }
-
-            TransitionMenu(current: item.transition) { transform in
-                model.updateMedia(mediaID) { $0.transition = transform($0.transition) }
-            }
-            Picker("Favorite", selection: Binding(
-                get: { model.media(mediaID)?.favorite ?? false },
-                set: { value in model.updateMedia(mediaID) { $0.favorite = value } }
-            )) {
-                Text("Yes").tag(true)
-                Text("No").tag(false)
             }
 
             if let replace {
@@ -117,6 +99,32 @@ struct MediaCueMenuItems: View {
                     state.replacing = .init(id: mediaID) { newID in replace.swap(mediaID, newID) }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func playbackRows(_ item: MediaItem) -> some View {
+
+        Picker("Classification", selection: Binding(
+            get: { model.media(mediaID)?.classification ?? .foreground },
+            set: { value in model.updateMedia(mediaID) { $0.classification = value } }
+        )) {
+            Text("Foreground").tag(MediaClassification.foreground)
+            Text("Background").tag(MediaClassification.background)
+        }
+        if item.mediaKind == .video {
+
+            Picker("Loop", selection: Binding(
+                get: { model.media(mediaID)?.loops ?? false },
+                set: { value in model.updateMedia(mediaID) { $0.loops = value } }
+            )) {
+                Text("On").tag(true)
+                Text("Off").tag(false)
+            }
+        }
+
+        TransitionMenu(current: item.transition, inherited: inheritedTransition) { transform in
+            model.updateMedia(mediaID) { $0.transition = transform($0.transition) }
         }
     }
 }

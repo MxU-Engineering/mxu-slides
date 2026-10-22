@@ -467,8 +467,9 @@ final class ServiceControls {
 
         actionRouter?.applyPresetSwitches(for: slide, contextID: contextID)
 
-        if let own = RenderContext.sceneTransition(from: slide.transition) {
-            render.nextLiveTransitions[.slide] = own
+        if let entrance = RenderContext.sceneTransition(
+            from: TransitionEdit.entrance(own: slide.transition, presentation: presentation.transition)) {
+            render.nextLiveTransitions[.slide] = entrance
         }
         let deckWasLive = livePresentationID == presentation.id
         state.fire(
@@ -479,6 +480,13 @@ final class ServiceControls {
 
             arrivesSettled: nextFireArrivesSettled
         )
+
+        for (layer, cue) in state.liveMedia where layer != .slide {
+            if let entrance = RenderContext.sceneTransition(
+                from: TransitionEdit.entrance(own: appModel.media(cue.mediaId)?.transition, presentation: presentation.transition)) {
+                render.nextLiveTransitions[layer] = entrance
+            }
+        }
         liveContextID = contextID
         liveOccurrence = occurrence
 

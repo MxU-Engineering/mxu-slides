@@ -292,4 +292,12 @@ final class SlideBulkEditTests: XCTestCase {
         SlideBulkEdit.moveSlide("s1", after: "s1", in: &doc)
         XCTAssertEqual(doc.slides.map(\.id), ["s2", "s3", "s1"], "onto itself: unchanged")
     }
+
+    func testAutoAdvanceRowSaysWhatIsSet() {
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([nil]), "Off")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 5)]), "5 s")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 0, afterPlayback: true)]), "After Video")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 2, afterPlayback: true)]), "After Video + 2 s")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 5), nil]), "Mixed")
+    }
 }
