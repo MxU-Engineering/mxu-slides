@@ -159,7 +159,7 @@ private func blocks(_ order: [String]) -> [TimelinePlayedBlock] {
 }
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MXU_REAL_ALS"] != nil))
-func codysRunToTheFatherReadsAsTwentyOneLocators() throws {
+func runToTheFatherReadsAsTwentyOneLocators() throws {
     let data = try Data(contentsOf: URL(fileURLWithPath: ProcessInfo.processInfo.environment["MXU_REAL_ALS"]!))
     let set = try #require(SongMaps.abletonSet(data))
     #expect(set.locators.count == 21)

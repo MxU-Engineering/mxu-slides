@@ -84,7 +84,7 @@ def build(port, token, fixtures, count):
 
 
 def timeline_service(songs=12):
-    """The service the timeline scenario plays (2026-10-17): its first song
+    """The service the timeline scenario plays: its first song
     has a ten-minute timeline with no cues, so its clock ticks the whole
     run while the Present grid shows every song's slides."""
     items = []

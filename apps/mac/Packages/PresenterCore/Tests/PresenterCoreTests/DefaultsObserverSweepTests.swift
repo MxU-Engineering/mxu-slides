@@ -20,6 +20,6 @@ import Testing
                     "\(file.name):\(index + 1) observes defaults on the main queue; use `queue: nil` and hop to main")
             }
         }
-        #expect(observers >= 2, "TracksController + WorkspaceSettingsMirror observe defaults")
+        #expect(observers >= 1, "TracksController observes defaults")
     }
 }

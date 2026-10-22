@@ -632,20 +632,20 @@ private func arrangedSong() -> Presentation {
             PresentationSection(id: "b", name: "Bridge"),
         ]
     )
-    song.arrangements = [Arrangement(id: "pco", name: "Bethel Music", sectionIds: ["c", "c", "i", "i", "i2", "b", "i"])]
+    song.arrangements = [Arrangement(id: "live", name: "Bethel Music", sectionIds: ["c", "c", "i", "i", "i2", "b", "i"])]
 
-    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "pco", emptyRepeatsOnce: false).map(\.id)
+    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "live", emptyRepeatsOnce: false).map(\.id)
         == ["c1", "c1", "i1", "i1", "i2", "b1", "i1"])
     #expect(SlideSceneBuilder.playedBlocks(sectionIds: ["i", "i"], in: song, emptyRepeatsOnce: false).map(\.count) == [1, 1])
 
-    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "pco", emptyRepeatsOnce: true).map(\.id)
+    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "live", emptyRepeatsOnce: true).map(\.id)
         == ["c1", "c1", "i1", "i2", "b1", "i1"])
-    #expect(SlideSceneBuilder.arrangementBlockStarts(for: song, arrangementId: "pco", emptyRepeatsOnce: true) == [0, 1, 2, 3, 3, 4, 5])
-    #expect(SlideSceneBuilder.blockSectionNames(for: song, arrangementId: "pco", emptyRepeatsOnce: true).map(\.start) == [0, 1, 2, 3, 3, 4, 5])
+    #expect(SlideSceneBuilder.arrangementBlockStarts(for: song, arrangementId: "live", emptyRepeatsOnce: true) == [0, 1, 2, 3, 3, 4, 5])
+    #expect(SlideSceneBuilder.blockSectionNames(for: song, arrangementId: "live", emptyRepeatsOnce: true).map(\.start) == [0, 1, 2, 3, 3, 4, 5])
     #expect(SlideSceneBuilder.playedBlocks(sectionIds: ["c", "i", "i"], in: song, emptyRepeatsOnce: true).map(\.count) == [1, 1, 0])
 
     song.slides[1].background = CueMedia(mediaId: "loop")
-    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "pco", emptyRepeatsOnce: true).map(\.id)
+    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "live", emptyRepeatsOnce: true).map(\.id)
         == ["c1", "c1", "i1", "i1", "i2", "b1", "i1"])
 }
 

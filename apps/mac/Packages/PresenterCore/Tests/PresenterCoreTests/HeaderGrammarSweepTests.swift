@@ -24,7 +24,7 @@ import Testing
 
     @Test func editorHeaderKeepsOnlyTheRepeatedTools() throws {
         let editor = try source("SlideEditorView.swift")
-        let header = try slice(editor, from: "private func editorToolbar(", to: "// MARK: - Canvas")
+        let header = try slice(editor, from: "private func editorToolbar(", to: "private func canvas(_ model: SlideEditorModel)")
         for gone in ["ArrangementPopover", "exportPresentation", "toggleThemeContent", "setTheme(", "setBackgroundFill", ".pickerStyle(.segmented)"] {
             #expect(!header.contains(gone), "\(gone) left the editor header")
         }

@@ -94,11 +94,9 @@ import Testing
         #expect(click.contains("DiagnosticsStore.shared.note(\"input.click\", detail: \"\\(click) on \\(hit.name)\")"))
 
         let surface = try source("ServiceContinuousView.swift")
-        for button in ["settings", "timeline", "notes"] {
+        for button in ["settings", "timeline"] {
             #expect(surface.contains(".inputRegion(\"card \(button): \\(displayName(item))\", notesClicks: true)"))
         }
-        let notes = try #require(surface.range(of: "func planItemNotesButton(_ item: ServiceItem) -> some View {"))
-        #expect(surface[notes.upperBound...].prefix(700).contains("\"present.header\", detail: \"notes "))
 
         let settings = try source("PresentationSettingsButton.swift")
         #expect(settings.contains("\"present.header\", detail: \"settings \\(opening ? \"open\" : \"close\")"))

@@ -571,9 +571,9 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [], "a saved checklist wins")
     #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts])
     #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio],
-            "a skip saved before Digital Signage left (2026-10-16) drops")
+            "a skip saved before Digital Signage left drops")
     #expect(ClearAllScope.skips(stored: "tracks,inputs", legacyIncludesAudio: nil) == [.inputs],
-            "M1's Tracks row is gone: Music covers it (Cody 2026-10-19)")
+            "the old Tracks row is gone: Music covers it")
     #expect(ClearAllScope.swept(skips: [.inputs]) == Set(ShowFunction.allCases).subtracting([.inputs]))
 
     let defaults = UserDefaults(suiteName: "ClearAllScopeTests-\(UUID().uuidString)")!

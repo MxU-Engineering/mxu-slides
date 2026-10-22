@@ -350,6 +350,8 @@ private func link(_ source: TextSourceKind) -> TextLink { TextLink(source: sourc
     #expect(!LinkedText.authoringSources(current: .clock).contains(.nextServiceTitle))
     #expect(LinkedText.authoringSources(current: .nextServiceTitle).contains(.nextServiceTitle))
     #expect(LinkedText.authoringSources(current: nil).count == TextSourceKind.allCases.count - 1)
+}
+
 @Test func timecodeSourceCountsHoldsAndHidesWithNoInput() {
     var info = ConfidenceInfo()
     #expect(LinkedText.resolve(link(.timecode), info: info, at: fixedDate) == nil, "no input, nothing shown")

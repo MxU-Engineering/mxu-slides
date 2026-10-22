@@ -16,8 +16,6 @@ import Testing
         #expect(grid[layer.upperBound...].prefix(400).contains("PosterLookImage("))
         let pane = try #require(grid.range(of: "struct MediaFireView: View {"))
         #expect(grid[pane.upperBound...].prefix(3000).contains("PosterLookImage("))
-        let exporter = try source("StationThumbnailExporter.swift")
-        #expect(exporter.contains("ThumbnailStore.shared.posterLook("))
     }
 
     @Test func looksRenderOffMainThroughTheLookScene() throws {

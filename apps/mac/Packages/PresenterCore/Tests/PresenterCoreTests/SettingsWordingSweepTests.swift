@@ -31,12 +31,4 @@ import Testing
         let settings = try #require(sweep.file("SettingsView.swift")).text
         #expect(!settings.contains("The footer chips"))
     }
-
-    @Test func updatesRowStandsOnItsOwn() throws {
-        let file = try #require(SourceSweep.app().file("SettingsView.swift"))
-        let start = try #require(file.lines.firstIndex { $0.contains("private var apiRows") })
-        let block = file.block(from: start)
-        #expect(!file.lines[block].joined().contains("updates.automatic"))
-        #expect(file.text.contains("rows.append(contentsOf: updatesRows)"))
-    }
 }

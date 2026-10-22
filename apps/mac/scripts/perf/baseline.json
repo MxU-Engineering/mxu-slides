@@ -1,7 +1,7 @@
 {
- "note": "Reference run and limits for scripts/perf/run.sh. metrics: perf guardrails package 4 on this M3 Pro (2026-09-25, Release, 302-deck sandbox library); playback.mainBusy and timeline.mainBusy from the 2026-10-17 run of labs ab75ecbcb7, where the playhead draws with Core Animation layers (PlayheadLayerView: no display-list walk per 30 Hz tick, so playback fell from 18.2); a run over any threshold fails. drag/resize passes: package 4 removed the ~110 ms library-list pass after each save, so any perf.pass line (100 ms or more) after a later drag or a resize fails.",
+ "note": "Reference run and limits for scripts/perf/run.sh. metrics: perf guardrails package 4 on this M3 Pro (2026-09-25, Release, 302-deck sandbox library); playback.mainBusy and timeline.mainBusy from a later run where the playhead draws with Core Animation layers (PlayheadLayerView: no display-list walk per 30 Hz tick, so playback fell from 18.2); a run over any threshold fails. drag/resize passes: package 4 removed the ~110 ms library-list pass after each save, so any perf.pass line (100 ms or more) after a later drag or a resize fails.",
  "machine": "Apple M3 Pro",
- "commit": "perf guardrails 4; labs ab75ecbcb7 for playback and timeline",
+ "commit": "perf guardrails 4; playhead layers for playback and timeline",
  "metrics": {
   "animateIdle.mainBusy": 0.9,
   "playback.mainBusy": 3.4,

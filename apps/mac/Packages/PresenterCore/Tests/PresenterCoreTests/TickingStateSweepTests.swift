@@ -217,8 +217,8 @@ import Testing
         let sweep = try SourceSweep.app()
         let panel = try #require(sweep.file("AnimationTimelinePanel.swift")).text
         let shared = try #require(sweep.file("TimelineControls.swift")).text
-        let leaves = try #require(shared.range(of: "// MARK: - Playhead leaves"))
-        let leavesEnd = shared[leaves.upperBound...].range(of: "// MARK: - ")?.lowerBound ?? shared.endIndex
+        let leaves = try #require(shared.range(of: "@MainActor protocol TimelinePlayheadSource"))
+        let leavesEnd = try #require(shared.range(of: "struct TimelineBlockCard")).lowerBound
         let leafSection = shared[leaves.upperBound..<leavesEnd]
         let outsideLeaves = shared[..<leaves.lowerBound] + shared[leavesEnd...]
         #expect(!panel.contains("animationPreviewShownTime"), "the panel body must not read the ticking time")
