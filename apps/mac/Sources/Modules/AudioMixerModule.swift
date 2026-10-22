@@ -621,7 +621,8 @@ struct AudioMixerModule: View {
                 name: name, symbol: "hifispeaker.2", count: members.count, expanded: expanded,
 
                 meter: .output("device:\(uid)"), mixer: mixer,
-                toggle: { groupStore.toggle(key) }, rename: nil, remove: nil)
+                toggle: { groupStore.toggle(key) }, rename: nil, remove: nil,
+                colorKey: key, colorName: "Orange")
             if expanded {
                 ForEach(members) { output in
                     outputStrip(output, mixer: mixer)
@@ -689,7 +690,8 @@ struct AudioMixerModule: View {
                 meter: .loudestMix(members.map(\.id)), mixer: mixer,
                 toggle: { groupStore.toggle(key) },
                 rename: runOnly ? nil : { mixInventory.renameFolder(id: folder.id, to: $0) },
-                remove: runOnly ? nil : { mixInventory.removeFolder(id: folder.id) })
+                remove: runOnly ? nil : { mixInventory.removeFolder(id: folder.id) },
+                colorKey: key, colorName: "Blue")
             if expanded {
                 ForEach(members) { mix in
                     mixStrip(mix, audio: audio, mixer: mixer)
@@ -1731,42 +1733,62 @@ private struct FoldCard: View {
     let toggle: () -> Void
     let rename: ((String) -> Void)?
     let remove: (() -> Void)?
+
+    var colorKey = ""
+    var colorName = "Blue"
     @Environment(\.runOnly) private var runOnly
     @Environment(\.moduleViewportHeight) private var viewportHeight
     @State private var renaming = false
     @State private var draft = ""
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 3) {
+            Image(systemName: symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(height: 15)
+
+            Spacer(minLength: 0)
+            FoldMeter(source: meter, mixer: mixer)
+                .frame(height: MixerStripLayout.faderHeight(
+                    viewportHeight: viewportHeight, scrollerHeight: ConsoleScrolling.scrollerHeight))
+            Color.clear.frame(height: 14)
             Button(action: toggle) {
-                VStack(spacing: 4) {
-                    Image(systemName: symbol)
-                        .font(.system(size: 12))
-                    Text(name)
-                        .font(.system(size: 9, weight: .medium))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                    Text("\(count)")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
+                HStack(spacing: 3) {
                     Image(systemName: expanded ? "chevron.left" : "chevron.right")
                         .font(.system(size: 8, weight: .semibold))
+                    Text(expanded ? "Fold" : "\(count)")
+                        .font(.system(size: 9, weight: .medium))
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
+                .frame(height: 15)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+                .overlay(
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(Color.separator.opacity(0.4), lineWidth: 1)
+                )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(expanded ? "Fold \(name)" : "Show \(name) (\(count))")
-            FoldMeter(source: meter, mixer: mixer)
-                .frame(maxHeight: .infinity)
+            Text(name)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(height: 20, alignment: .top)
+                .help(name)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(StripColorStore.shared.color(for: colorKey, defaultName: colorName))
+                .frame(height: 4)
+                .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, 8)
-        .frame(width: 46)
-
+        .padding(4)
+        .frame(width: 58)
         .frame(height: MixerStripLayout.stripHeight(
             viewportHeight: viewportHeight, scrollerHeight: ConsoleScrolling.scrollerHeight))
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
         .contextMenu {
             if !runOnly, let rename {
                 Button("Rename\u{2026}") {
