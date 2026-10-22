@@ -100,6 +100,14 @@ import Testing
         #expect(chooser.contains("allowsMultipleSelection: linkTarget == nil"), "the panel picks one file for Link")
         #expect(chooser.contains("ServiceItemChooserLogic.refusal(urls, linking: linkTarget != nil)"), "drops and picks go through the one rule")
         #expect(!chooser.contains("NSSound"), "never a system sound: a skipped file is named in the pane (Cody 2026-10-13)")
+
+        let create = try source("LyricsCreateSheet.swift")
+        #expect(create.contains("Button(\"Create and Edit\") { create(edit: true) }"), "Present offers Create and Edit")
+        #expect(create.contains("Button(\"Create\") { create(edit: !presenting) }"), "Create stays in Present")
+        #expect(chooser.contains("showItem?(linkTarget.itemID)"))
+        #expect(planner.contains("showItem: { selectedItemID = $0 }"), "Present brings the linked row forward")
+        #expect(create.contains("Button(name) { insertBlank(name, at: index) }"), "the order strip's + adds Blank / Instrumental")
+        #expect(create.contains("origin: origin, blankSections: blankSections"))
         let library = try source("LibraryView.swift")
         #expect(library.contains("await model.runProPresenterImport(urls)") && library.contains("await model.runPowerPointImport(urls)"),
                 "the File menu runs the same import flows")

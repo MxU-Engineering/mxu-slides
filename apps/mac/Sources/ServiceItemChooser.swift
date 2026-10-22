@@ -19,6 +19,8 @@ struct ServiceItemChooser: View {
 
     let openInEditor: (String) -> Void
 
+    var showItem: ((String) -> Void)? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var tab: ServiceItemChooserLogic.Tab = .library
     @State private var query = ""
@@ -63,8 +65,14 @@ struct ServiceItemChooser: View {
 
                 LyricsCreateSheet(
                     appModel: model, render: render, planSync: linkTarget.planSync,
-                    serviceID: serviceID, itemID: linkTarget.itemID, onCreated: openInEditor
-                )
+                    serviceID: serviceID, itemID: linkTarget.itemID
+                ) { id, edit in
+                    if edit {
+                        openInEditor(id)
+                    } else {
+                        showItem?(linkTarget.itemID)
+                    }
+                }
             } else {
                 Group {
                     switch tab {

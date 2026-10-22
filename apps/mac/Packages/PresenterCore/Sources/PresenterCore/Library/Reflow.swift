@@ -25,15 +25,23 @@ public enum Reflow {
         public func openingOnBlank() -> ParseResult {
             guard !sections.isEmpty else { return self }
             var result = self
-            if result.sections[0].slides.isEmpty, Reflow.isIntro(result.sections[0].name) {
-                result.sections[0].slides = [""]
-                return result
+            if Reflow.isIntro(result.sections[0].name) {
+                if result.sections[0].slides.isEmpty {
+                    result.sections[0].slides = [""]
+                    return result
+                } else if result.sections[0].slides.allSatisfy(Reflow.isWordless) {
+                    return result
+                }
             }
             let name = result.sections.contains { Reflow.isIntro($0.name) } ? "Blank" : "Intro"
             result.sections.insert(ParsedSection(name: name, slides: [""]), at: 0)
             result.order = [0] + result.order.map { $0 + 1 }
             return result
         }
+    }
+
+    static func isWordless(_ slide: String) -> Bool {
+        ChordMath.extract(slide).text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func isIntro(_ name: String) -> Bool {
