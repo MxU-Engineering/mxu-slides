@@ -4,7 +4,10 @@ import SwiftUI
 
 struct TracksMixerButton: View {
     let model: AppModel
+    let tracks: TracksController
+    @Environment(\.runOnly) private var runOnly
     @State private var open = false
+    @State private var newName = ""
 
     var body: some View {
         let tracksOn = TimelineTracks.hasTracks(model.trackChannels)
@@ -29,15 +32,32 @@ struct TracksMixerButton: View {
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Tracks").font(.headline)
-                    Text("No tracks yet. In a song's timeline, add the Tracks layer with +, then choose Import Audio… from its +. The Tracks strips and mixes then show up here.")
+                    Text("No tracks yet. Add one here, or import a song's stems in its timeline (+ › Tracks, then Import Audio…).")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        TextField("Track name", text: $newName)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(addTrack)
+                        Button("Add Track", action: addTrack)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    .disabled(runOnly)
                 }
                 .padding(16)
                 .frame(width: 320)
             }
         }
+    }
+}
+
+extension TracksMixerButton {
+
+    private func addTrack() {
+        guard tracks.addChannel(named: newName) != nil else { return }
+        newName = ""
     }
 }
 

@@ -38,7 +38,7 @@ struct AudioMixerModule: View {
                 }
                 .buttonStyle(.plain)
                 .help(audio.isMuted ? "Unmute music" : "Mute music")
-                TracksMixerButton(model: model)
+                TracksMixerButton(model: model, tracks: controls.tracks)
                 if !runOnly {
 
                     Button {
@@ -61,6 +61,10 @@ struct AudioMixerModule: View {
                 options: [(0, "Inputs"), (1, "Mixes"), (2, "Outputs"), (3, "All")],
                 selection: $scope
             )
+
+            .onChange(of: TimelineTracks.hasTracks(model.trackChannels)) { _, has in
+                if has { controls.tracks.queueRefresh() }
+            }
 
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 4) {

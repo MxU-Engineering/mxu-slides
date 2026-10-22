@@ -420,8 +420,12 @@ extension TracksController {
         guard let model else { return nil }
         var preview = model.trackChannels
         guard let made = TimelineTracks.adding(named: name, to: &preview) else { return nil }
-        model.updateTrackChannels { $0.channels.insert(made, at: TimelineTracks.insertionIndex(for: made, in: $0.channels)) }
-        refresh()
+        let written = model.updateTrackChannels { $0.channels.insert(made, at: TimelineTracks.insertionIndex(for: made, in: $0.channels)) }
+
+        Task { [weak self] in
+            _ = await written.result
+            self?.refresh()
+        }
         return made
     }
 

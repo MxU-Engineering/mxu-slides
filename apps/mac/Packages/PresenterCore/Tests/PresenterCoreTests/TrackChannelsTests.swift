@@ -199,3 +199,13 @@ private let click = TrackChannel(id: "click", name: "Click", role: "click")
     #expect(TimelineTracks.dropping("b", at: "c", above: true, in: list) == nil)
     #expect(TimelineTracks.dropping("gone", at: "a", above: true, in: list) == nil)
 }
+
+@Test func aTrackAddedInSettingsShowsTheMixersTracksWithNoStems() {
+
+    var list: [TrackChannel] = []
+    let mixes: [(id: String, folderId: String?)] = [("main", nil), ("bus-keys", "tracks")]
+    #expect(TimelineTracks.shownMixes(mixes, folders: ["tracks"], buses: ["bus-keys"], hasTracks: TimelineTracks.hasTracks(list)).mixes == ["main"])
+    _ = TimelineTracks.adding(named: "Keys", to: &list)
+    #expect(TimelineTracks.hasTracks(list))
+    #expect(TimelineTracks.shownMixes(mixes, folders: ["tracks"], buses: ["bus-keys"], hasTracks: TimelineTracks.hasTracks(list)).mixes == ["main", "bus-keys"])
+}
