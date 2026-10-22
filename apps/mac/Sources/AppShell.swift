@@ -407,6 +407,12 @@ struct ShellView: View {
 
     static let headerHeight: CGFloat = 52
 
+    static let editContextRowHeight: CGFloat = 32
+
+    static let editHeaderHeight: CGFloat = headerHeight + editContextRowHeight
+
+    static let editorHeaderReserve: CGFloat = editHeaderHeight - CornerStandard.panelInset
+
     static func trafficLightSlot(fullScreen: Bool) -> CGFloat {
         fullScreen ? 10 : 94
     }
@@ -438,7 +444,7 @@ struct ShellView: View {
 
             TitlebarBehavior()
                 .frame(maxWidth: .infinity)
-                .frame(height: Self.headerHeight)
+                .frame(height: mode == .edit ? Self.editHeaderHeight : Self.headerHeight)
                 .padding(
                     .leading,
                     sidebarVisible
@@ -454,17 +460,20 @@ struct ShellView: View {
         }
         .overlay(alignment: .top) {
 
-            HStack(spacing: 8) {
-                if isRunOnly {
-                    runOnlyLockChip
-                } else {
-                    ModeSwitcher(modeRaw: $modeRaw)
-                    if mode == .edit {
-                        EditContextSwitcher(model: model)
+            VStack(spacing: 0) {
+                Group {
+                    if isRunOnly {
+                        runOnlyLockChip
+                    } else {
+                        ModeSwitcher(modeRaw: $modeRaw)
                     }
                 }
+                .frame(height: Self.headerHeight)
+                if mode == .edit, !isRunOnly {
+                    EditContextSwitcher(model: model)
+                        .frame(height: Self.editContextRowHeight)
+                }
             }
-            .frame(height: Self.headerHeight)
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
@@ -1387,7 +1396,7 @@ struct ShellView: View {
         VStack(spacing: 0) {
             if !editorTakesOver {
                 Color.clear
-                    .frame(height: Self.headerHeight)
+                    .frame(height: mode == .edit ? Self.editHeaderHeight : Self.headerHeight)
             }
 
             HStack(spacing: 0) {

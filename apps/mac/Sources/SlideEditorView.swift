@@ -128,7 +128,7 @@ struct SlideEditorView: View {
             VStack(spacing: 0) {
 
                 Color.clear
-                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
+                    .frame(height: ShellView.editorHeaderReserve)
 
                 if !model.isSingleComposition {
                     slideList(model)
@@ -141,7 +141,7 @@ struct SlideEditorView: View {
             .floatingPanel()
             VStack(spacing: 0) {
                 Color.clear
-                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
+                    .frame(height: ShellView.editorHeaderReserve)
                 editorToolbar(model)
                 Divider()
                 canvas(model)
@@ -156,7 +156,7 @@ struct SlideEditorView: View {
             VStack(spacing: 0) {
 
                 Color.clear
-                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
+                    .frame(height: ShellView.editorHeaderReserve)
                 SlideObjectInspector(model: model)
             }
 
