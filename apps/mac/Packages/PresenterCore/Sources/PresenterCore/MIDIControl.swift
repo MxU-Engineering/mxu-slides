@@ -264,6 +264,9 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     case resetTimer
     case triggerActionCombo
     case fireAlert
+    case startTimeline
+    case stopTimeline
+    case rewindTimeline
 
     public var defaultNote: Int {
         switch self {
@@ -295,6 +298,9 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .resetTimer: 27
         case .triggerActionCombo: 29
         case .fireAlert: 33
+        case .startTimeline: 14
+        case .stopTimeline: 15
+        case .rewindTimeline: 16
         }
     }
 
@@ -309,7 +315,8 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
             .clears
         case .videoGoToBeginning, .videoPlayPause, .videoPlay, .videoPause:
             .video
-        case .nextServiceItem, .previousServiceItem, .nextSlide, .previousSlide:
+        case .nextServiceItem, .previousServiceItem, .nextSlide, .previousSlide,
+             .startTimeline, .stopTimeline, .rewindTimeline:
             .presentation
         case .selectService, .selectServiceItem, .triggerSlide,
              .selectAudioPlaylist, .triggerAudio,
@@ -349,6 +356,9 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .resetTimer: "Reset Timer"
         case .triggerActionCombo: "Run Action Combo"
         case .fireAlert: "Fire Alert"
+        case .startTimeline: "Start Timeline"
+        case .stopTimeline: "Stop Timeline"
+        case .rewindTimeline: "Rewind Timeline"
         }
     }
 }

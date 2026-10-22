@@ -34,35 +34,19 @@ public struct TimecodeClock: Sendable {
 
     public static let freewheel = 0.5
 
-    private struct Mark: Sendable {
-        var position: Double
-        var hostTime: Double
-        var label: TimecodeLabel
-        var rate: TimecodeRate
-        var reverse: Bool
+    private var anchor: TimecodeHeard?
 
-        func position(at time: Double) -> Double {
-            position + (time - hostTime) * (reverse ? -1 : 1)
-        }
-
-        func continues(_ next: Mark) -> Bool {
-            next.reverse == reverse && next.rate.nominal == rate.nominal
-                && abs(next.position - position(at: next.hostTime)) <= 1.5 / rate.actual
-        }
-    }
-
-    private var anchor: Mark?
-
-    private var candidate: Mark?
+    private var candidate: TimecodeHeard?
     private var good = 0
 
     public init() {}
 
     public mutating func receive(_ frame: LTCFrame, rate: TimecodeRate, hostTime: Double) {
+        receive(TimecodeHeard(ltc: frame, rate: rate, hostTime: hostTime))
+    }
 
-        let next = Mark(
-            position: rate.seconds(frame.label) + (frame.reverse ? 0 : 1 / rate.actual),
-            hostTime: hostTime, label: frame.label, rate: rate, reverse: frame.reverse)
+    public mutating func receive(_ next: TimecodeHeard) {
+        let hostTime = next.hostTime
         guard let anchor, hostTime - anchor.hostTime <= Self.dropout + Self.freewheel else {
 
             self.anchor = next
@@ -112,7 +96,11 @@ public enum TimecodeStation {
     public static let offsetKey = "timecode.offsetFrames"
 
     public static let followKey = "timecode.follow"
-    public static let keys = [deviceKey, channelKey, offsetKey, followKey]
+
+    public static let sourceKey = "timecode.source"
+
+    public static let midiSourceKey = "timecode.midiSourceUID"
+    public static let keys = [deviceKey, channelKey, offsetKey, followKey, sourceKey, midiSourceKey]
     public static let offsetRange = -30...30
 }
 
