@@ -326,6 +326,8 @@ struct ShellView: View {
 
     @AppStorage(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
 
+    @AppStorage("editor.inspectorWidth") private var editorPanelWidth = PanelWidthGrip.minPanelWidth
+
     @State private var shellWidth: CGFloat = 1480
 
     @State private var isFullScreen = false
@@ -357,6 +359,16 @@ struct ShellView: View {
 
     private var railVisible: Bool {
         (mode == .present || mode == .scheduler) && !rightRailHidden
+    }
+
+    private var rightPanelWidth: CGFloat? {
+        if railVisible {
+            draftRightRailWidth ?? rightRailWidth
+        } else if editorTakesOver {
+            max(editorPanelWidth, PanelWidthGrip.minPanelWidth)
+        } else {
+            nil
+        }
     }
 
     static let headerHeight: CGFloat = 52
@@ -399,12 +411,7 @@ struct ShellView: View {
                         ? (draftSidebarWidth ?? sidebarWidth) + CornerStandard.panelInset
                         : 0
                 )
-                .padding(
-                    .trailing,
-                    railVisible
-                        ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset
-                        : 0
-                )
+                .padding(.trailing, rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)
         }
         .overlay(alignment: .top) {
 
@@ -463,11 +470,7 @@ struct ShellView: View {
                     ClearChip(controls: controls)
                         .padding(.leading, 8)
                     Spacer()
-                        .frame(
-                            width: railVisible
-                                ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset + 16
-                                : 16
-                        )
+                        .frame(width: rightPanelWidth.map { $0 + CornerStandard.panelInset + 16 } ?? 16)
                 }
                 .frame(height: Self.headerHeight)
             }
@@ -1390,7 +1393,7 @@ struct ShellView: View {
     private var centerWidth: CGFloat {
         shellWidth
             - (sidebarVisible ? (draftSidebarWidth ?? sidebarWidth) : 0)
-            - (railVisible ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset : 0)
+            - (rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)
     }
 
     private var showTransitionSliders: Bool { centerWidth > 950 }

@@ -99,4 +99,13 @@ import Testing
         #expect(commands.contains("Button(\"Export Presentation\\u{2026}\")"))
         #expect(!commands.contains(".disabled(editor?.presentation"), "a menu that reads the deck rebuilds on every edit")
     }
+
+    @Test func titlebarControlsSitLeftOfTheRightCardInEveryMode() throws {
+        let shell = try source("AppShell.swift")
+        let width = try slice(shell, from: "private var rightPanelWidth: CGFloat? {", to: "static let headerHeight")
+        #expect(width.contains("if railVisible {") && width.contains("} else if editorTakesOver {"))
+        #expect(shell.contains(".padding(.trailing, rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)"), "the drag-catcher stops at the right card")
+        #expect(shell.contains(".frame(width: rightPanelWidth.map { $0 + CornerStandard.panelInset + 16 } ?? 16)"), "the controls stand left of it")
+        #expect(shell.contains("- (rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)"), "the header's shrink priority counts the editor card too")
+    }
 }

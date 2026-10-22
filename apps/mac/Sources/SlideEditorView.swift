@@ -149,12 +149,8 @@ struct SlideEditorView: View {
             }
 
             .frame(minWidth: 0, maxWidth: .infinity)
-            VStack(spacing: 0) {
 
-                Color.clear
-                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
-                SlideObjectInspector(model: model)
-            }
+            SlideObjectInspector(model: model)
 
             .frame(width: max(inspectorWidth, PanelWidthGrip.minPanelWidth))
             .floatingPanel()
