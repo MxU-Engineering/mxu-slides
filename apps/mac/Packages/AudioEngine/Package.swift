@@ -10,7 +10,8 @@ let package = Package(
         .library(name: "AudioEngine", targets: ["AudioEngine"])
     ],
     targets: [
-        .target(name: "AudioEngine"),
+        .target(name: "CAudioAtomics"),
+        .target(name: "AudioEngine", dependencies: ["CAudioAtomics"]),
         .testTarget(name: "AudioEngineTests", dependencies: ["AudioEngine"]),
     ]
 )
