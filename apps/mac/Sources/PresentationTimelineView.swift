@@ -36,6 +36,7 @@ struct PresentationTimelineButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Timeline")
         .help(shown ? "Hide timeline" : hasTimeline ? "Show timeline" : "Show timeline (none recorded yet)")
     }
 }
@@ -116,6 +117,8 @@ struct PresentationTimelineStrip: View {
         let clock = context.clock
         let timeline = context.timeline
         let length = max(timeline.map(PresentationTimelines.length) ?? 0, 1)
+
+        let shown = timeline?.length ?? length + max(2, length * 0.08)
         let start = timeline?.timecodeStart ?? 0
         let clashes = context.window.map { mine in
             context.windows().filter { mine.overlaps($0.window) }
@@ -139,11 +142,12 @@ struct PresentationTimelineStrip: View {
                         .frame(width: 14)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(recording ? "Stop Recording" : "Record")
                 .help(recording
                     ? "Stop recording"
                     : "Record: plays from the playhead and makes each slide you click a cue (its actions stay on the slide)")
             }
-            sections(timeline, length: length)
+            sections(timeline, length: shown)
             if context.isCurrent {
                 TimelinePlayheadReadout(source: clock, duration: length) { t in
                     PresentationTimelines.timecode(frames: start + Int((t * Double(PresentationTimelines.framesPerSecond)).rounded(.down)))
@@ -162,6 +166,7 @@ struct PresentationTimelineStrip: View {
                     .frame(width: 14)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Timecode Start")
             .help(clashes.isEmpty
                 ? "Timecode start"
                 : "This start overlaps \(clashes.map(\.name).joined(separator: ", "))")
@@ -179,6 +184,7 @@ struct PresentationTimelineStrip: View {
                     .frame(width: 14)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(expanded ? "Hide Lanes" : "Show Lanes")
             .help(expanded ? "Hide the lanes" : "Show the lanes")
         }
         .font(.caption)
@@ -216,6 +222,14 @@ struct PresentationTimelineStrip: View {
                     .clipped()
                     .position(x: left + spanWidth / 2, y: 9)
             }
+
+            ForEach(slideTicks(timeline), id: \.self) { at in
+                Rectangle()
+                    .fill(Color.primary.opacity(0.55))
+                    .frame(width: 1, height: 12)
+                    .position(x: x(at), y: 9)
+                    .allowsHitTesting(false)
+            }
             if context.isCurrent {
                 TimelinePlayheadLine(source: context.clock, x: x)
             }
@@ -233,6 +247,16 @@ struct PresentationTimelineStrip: View {
                     if context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
                 }
         )
+    }
+}
+
+extension PresentationTimelineStrip {
+
+    fileprivate func slideTicks(_ timeline: PresentationTimeline?) -> [Double] {
+        let blocks = context.blocks
+        return (timeline?.cues ?? [])
+            .filter { $0.lane == .slides && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
+            .map(\.at)
     }
 }
 
@@ -314,7 +338,7 @@ struct PresentationTimelineLanes: View {
     @State private var lanesFrame: CGRect = .zero
     @State private var anchor = TimelinePointerAnchor()
     @State private var autoScroll = TimelineEdgeAutoScroll()
-    @State private var dropLane: TimelineLane?
+    @State private var dropTargeted = false
 
     static let lanes: [TimelineLane] = [.overlays, .slides, .foregroundVideos, .background, .actions]
     static let laneHeight: CGFloat = 26
@@ -349,6 +373,10 @@ struct PresentationTimelineLanes: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
                 .timelinePinchZoom(current: { pps }, range: TimelineZoom.songRange) { pointsPerSecond = $0 }
             }
+
+            .dropDestination(for: String.self) { payloads, _ in
+                drop(payloads, at: anchor.mouseLocal().flatMap { map.locate(x: max($0.x, 0))?.time } ?? 0)
+            } isTargeted: { dropTargeted = $0 }
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
@@ -428,7 +456,7 @@ struct PresentationTimelineLanes: View {
                         .onChange(of: geo.frame(in: .global)) { _, f in lanesFrame = f }
                 }
             )
-            .background(TimelineScreenAnchor(anchor: anchor))
+            .background(TimelineScreenAnchor(anchor: anchor, passesThrough: true))
         }
         .frame(width: map.width, alignment: .topLeading)
     }
@@ -436,26 +464,23 @@ struct PresentationTimelineLanes: View {
     private func laneRow(_ lane: TimelineLane, _ cues: [TimelineCue], map: TimelineMap) -> some View {
         ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(dropLane == lane ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.04))
+                .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
             ForEach(cues.filter { $0.lane == lane }, id: \.id) { cue in
                 card(cue, cues, map: map)
             }
         }
         .frame(width: map.width, height: Self.laneHeight)
-        .dropDestination(for: String.self) { payloads, location in
-            drop(payloads, at: map.locate(x: location.x)?.time ?? 0)
-        } isTargeted: { over in
-            if over { dropLane = lane } else if dropLane == lane { dropLane = nil }
-        }
     }
 
     private func card(_ cue: TimelineCue, _ cues: [TimelineCue], map: TimelineMap) -> some View {
         let isBlock = PresentationTimelines.isBlock(cue.lane)
         let left = map.x(ofTime: cue.at)
         let end = PresentationTimelines.end(of: cue, in: cues)
+
+        let next = cues.filter { $0.lane == cue.lane && $0.at > cue.at }.map(\.at).min()
         let width: CGFloat = isBlock
             ? (end.isFinite ? map.x(ofTime: end) - left : max(map.width - left, TimelineBlockEdit.minimumWidth))
-            : 44
+            : min(max((next.map { map.x(ofTime: $0) } ?? left + 90) - left - 1, 10), 90)
 
         let mode = edit.mode(of: cue.id).map { isBlock ? $0 : .move }
         let span = TimelineBlockEdit.liveSpan(x: left, width: width, mode: mode, delta: edit.delta)
@@ -508,6 +533,7 @@ struct PresentationTimelineLanes: View {
     }
 
     private func drop(_ payloads: [String], at time: Double) -> Bool {
+        DiagnosticsStore.shared.note("timeline.drop.offered", detail: payloads.first ?? "none")
         guard !runOnly, let id = payloads.first, let entry = context.model.entry(id) else { return false }
         let at = PresentationTimelines.snappedToFrame(time)
         let cue: TimelineCue

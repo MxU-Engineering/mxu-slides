@@ -419,6 +419,12 @@ final class TimelinePointerAnchor {
 struct TimelineScreenAnchor: NSViewRepresentable {
     let anchor: TimelinePointerAnchor
 
+    var passesThrough = false
+
+    private final class PassThroughView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
     final class Coordinator {
         var monitor: Any?
         deinit {
@@ -429,7 +435,7 @@ struct TimelineScreenAnchor: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+        let view = passesThrough ? PassThroughView() : NSView()
         anchor.view = view
         let anchor = anchor
         context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(
