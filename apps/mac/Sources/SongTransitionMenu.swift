@@ -1,3 +1,4 @@
+import AppKit
 import PresenterCore
 import SwiftUI
 
@@ -69,34 +70,43 @@ struct SongTransitionGlyph: View {
     var size: CGFloat = 13
 
     var body: some View {
-        Mark(kind: kind)
-            .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
-            .frame(width: size + 3, height: size * 0.8)
+        Image(nsImage: Self.image(kind, size: size))
             .accessibilityLabel(SongTransitionMenuItems.title(kind))
     }
 
-    private struct Mark: Shape {
-        let kind: SongTransitions.Kind
+    @MainActor private static var images: [String: NSImage] = [:]
 
-        func path(in rect: CGRect) -> Path {
-            func at(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-                CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
+    @MainActor static func image(_ kind: SongTransitions.Kind, size: CGFloat) -> NSImage {
+        let key = "\(kind.rawValue)|\(size)"
+        if let held = images[key] { return held }
+        let image = NSImage(size: NSSize(width: size + 3, height: (size * 0.8).rounded()), flipped: true) { rect in
+            func at(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+                NSPoint(x: rect.minX + 1 + (rect.width - 2) * x, y: rect.minY + 1 + (rect.height - 2) * y)
             }
-            var path = Path()
+            let path = NSBezierPath()
             switch kind {
             case .stop:
-                path.move(to: at(0.15, 0.5)); path.addLine(to: at(0.7, 0.5))
-                path.move(to: at(0.85, 0.2)); path.addLine(to: at(0.85, 0.8))
+                path.move(to: at(0.1, 0.5)); path.line(to: at(0.72, 0.5))
+                path.move(to: at(0.9, 0.1)); path.line(to: at(0.9, 0.9))
             case .fade:
-                path.move(to: at(0.1, 0.2)); path.addLine(to: at(0.9, 0.8)); path.addLine(to: at(0.1, 0.8))
+                path.move(to: at(0.05, 0.1)); path.line(to: at(0.95, 0.9)); path.line(to: at(0.05, 0.9))
             case .overlap:
-                path.move(to: at(0.05, 0.35)); path.addLine(to: at(0.65, 0.35))
-                path.move(to: at(0.35, 0.65)); path.addLine(to: at(0.95, 0.65))
+                path.move(to: at(0.0, 0.3)); path.line(to: at(0.62, 0.3))
+                path.move(to: at(0.38, 0.7)); path.line(to: at(1.0, 0.7))
             case .crossfade:
-                path.move(to: at(0.1, 0.2)); path.addLine(to: at(0.9, 0.8))
-                path.move(to: at(0.1, 0.8)); path.addLine(to: at(0.9, 0.2))
+                path.move(to: at(0.05, 0.1)); path.line(to: at(0.95, 0.9))
+                path.move(to: at(0.05, 0.9)); path.line(to: at(0.95, 0.1))
             }
-            return path
+            path.lineWidth = 1.4
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            NSColor.black.setStroke()
+            path.stroke()
+            return true
         }
+        image.isTemplate = true
+        image.accessibilityDescription = SongTransitionMenuItems.title(kind)
+        images[key] = image
+        return image
     }
 }

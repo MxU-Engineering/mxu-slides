@@ -42,13 +42,50 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var chaseSong: (key: String, song: MultitrackSong?)?
 
+    @ObservationIgnored private var armedGo: ArmedGo?
+
+    @ObservationIgnored private var heldItemID: String?
+
+    @ObservationIgnored private var stemsTail = false
+
+    private(set) var pendingGo: PendingGo?
+
+    struct ArmedGo: Equatable {
+        var itemID: String
+        var plan: SongTransitions.Plan
+        var next: ServiceItem?
+
+        var nextSong: MultitrackSong?
+
+        var inPlayer: Bool
+    }
+
+    struct PendingGo: Equatable {
+        var itemID: String
+        var kind: SongTransitions.Kind
+        var nextName: String?
+        var firesAt: Date
+    }
+
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
     func insertionTime(for itemID: String) -> Double {
         self.itemID == itemID ? PresentationTimelines.snappedToFrame(timelinePlayheadTime) : 0
     }
 
-    func play(itemID: String, presentation: Presentation, arrangementId: String?) {
+    func play(
+        itemID: String, presentation: Presentation, arrangementId: String?, adoptingTracks: String? = nil,
+        handingOver: Bool = false
+    ) {
+
+        var crossfade: Double?
+        if SongTransitions.manualJumpCrossfades(
+            anotherSong: self.itemID != itemID, playing: playing, stemsSounding: tracksSong != nil || stemsTail,
+            handingOver: handingOver) {
+            crossfade = SongTransitions.manualCrossfade(currentTransition())
+            tracksSong = nil
+            stemsTail = false
+        }
         if self.itemID != itemID { select(itemID: itemID, presentation: presentation, arrangementId: arrangementId) }
         guard !playing else { return }
 
@@ -61,8 +98,21 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         }
         anchor(at: timelinePlayheadTime)
         publishClock(position: timelinePlayheadTime, running: true)
-        startTracks(at: timelinePlayheadTime)
+        if let adoptingTracks {
+
+            tracksSong = adoptingTracks
+            tracksAsked = CACurrentMediaTime()
+        } else if let crossfade {
+            let song = multitrackSong()
+            tracksSong = song?.id
+            tracksAsked = CACurrentMediaTime()
+            stemsTail = song == nil
+            controls?.tracks.crossfade(to: song, from: timelinePlayheadTime, seconds: crossfade)
+        } else {
+            startTracks(at: timelinePlayheadTime)
+        }
         startTimer()
+        refreshTransition()
         DiagnosticsStore.shared.note("timeline.play", detail: String(format: "%.2f", timelinePlayheadTime))
     }
 
@@ -87,6 +137,9 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             return
         }
 
+        disarmGo()
+        if stemsTail, tracksSong == nil { controls?.tracks.stop() }
+        stemsTail = false
         stopTracks()
         playing = false
         publishClock(position: timelinePlayheadTime, running: false)
@@ -153,6 +206,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                 controls?.tracks.seek(to: position)
                 tracksAsked = CACurrentMediaTime()
             }
+            refreshTransition()
         }
         publishClock(position: position, running: playing)
     }
@@ -207,11 +261,14 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func clearTracks() {
+
+        disarmGo()
         if TracksClear.stopsTimeline(ownClockPlaying: playing, playingTracks: tracksSong != nil) {
             stop()
         } else {
             controls?.tracks.stop()
             tracksSong = nil
+            stemsTail = false
         }
     }
 
@@ -338,6 +395,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     private func select(itemID: String, presentation: Presentation, arrangementId: String?) {
         stop()
+        if heldItemID != itemID { heldItemID = nil }
         self.itemID = itemID
         presentationID = presentation.id
         self.arrangementId = arrangementId
@@ -358,12 +416,21 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     private func tick() {
         guard playing else { return }
         var position = anchorPosition + (CACurrentMediaTime() - anchorHost)
+
+        if let go = armedGo, go.itemID == itemID, let next = go.nextSong, controls?.tracks.latest.value?.songID == next.id {
+            advance(to: max(min(position, go.plan.nextAt), lastPosition))
+            handOver(go)
+            return
+        }
         if let song = tracksSong {
             if let heard = controls?.tracks.position(of: song) {
 
                 position = heard
                 anchorHost = CACurrentMediaTime()
                 anchorPosition = heard
+            } else if let go = armedGo, go.nextSong == nil, position >= go.plan.nextAt - 0.25 {
+
+                position = max(position, go.plan.nextAt)
             } else if CACurrentMediaTime() - tracksAsked < 2 {
 
                 anchorHost = CACurrentMediaTime()
@@ -375,11 +442,119 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                 tracksSong = nil
             }
         }
+        if let go = armedGo, go.itemID == itemID {
+
+            let reported = go.nextSong.map { controls?.tracks.latest.value?.songID == $0.id } ?? false
+            switch SongTransitions.step(
+                go.plan, position: position, inPlayer: go.inPlayer && go.nextSong != nil, playerHandedOver: reported) {
+            case .handOver(let at):
+                advance(to: max(at, lastPosition))
+                handOver(go)
+                return
+            case .play(let to):
+                position = to
+            }
+        }
+        if let lastFrame = stemsTailEnds, CACurrentMediaTime() > lastFrame { stemsTail = false; stemsTailEnds = nil }
         advance(to: position)
         setPlayhead(position)
         if !recording, let deck = deck(), let timeline = timeline(of: deck),
            position > PresentationTimelines.length(timeline) + 1 {
             stop()
+        }
+    }
+
+    @ObservationIgnored private var stemsTailEnds: CFTimeInterval?
+
+    private func currentTransition() -> SongTransition? {
+        guard let controls, let itemID, let serviceID = controls.appModel.currentServiceID,
+              let service = try? controls.appModel.service(serviceID) else { return nil }
+        return service.items.first { $0.id == itemID }?.transition
+    }
+
+    func refreshTransition() {
+        guard playing, !recording, let controls, let itemID, let deck = deck(), let timeline = timeline(of: deck),
+              let serviceID = controls.appModel.currentServiceID, let service = try? controls.appModel.service(serviceID),
+              let item = service.items.first(where: { $0.id == itemID })
+        else { return disarmGo() }
+        let kind = SongTransitions.kind(item.transition)
+        guard SongTransitions.arms(kind, ownClock: true, recording: recording, held: heldItemID == itemID)
+        else { return disarmGo() }
+        let model = controls.appModel
+        let next = ServiceRunOrder.nextFireable(in: model.fireableItems(service), after: itemID)
+        let nextDeck = next.flatMap { $0.itemKind == .presentation ? model.presentation($0.refId) : nil }
+        let nextTimeline = nextDeck.flatMap { PresentationTimelines.timeline(for: next?.arrangementId, in: $0) }
+        let nextBlocks = nextDeck.map { SlideSceneBuilder.timelineBlocks(for: $0, arrangementId: next?.arrangementId) } ?? []
+        guard var plan = SongTransitions.plan(
+            item.transition, timeline: timeline, blocks: blocks(of: deck), next: nextTimeline.map { ($0, nextBlocks) })
+        else { return disarmGo() }
+        plan = SongTransitions.landing(plan, at: timelinePlayheadTime) ?? plan
+        var nextSong: MultitrackSong?
+        if let next, let nextDeck { nextSong = multitrackSong(itemID: next.id, deck: nextDeck, arrangementId: next.arrangementId) }
+        let go = ArmedGo(itemID: itemID, plan: plan, next: next, nextSong: nextSong, inPlayer: tracksSong != nil)
+        if let song = tracksSong {
+
+            controls.tracks.transition(MultitrackTransition(
+                fromSongID: song, next: nextSong, nextAt: nextSong == nil ? plan.end : plan.nextAt,
+                fadeFrom: plan.fadeFrom, fadeSeconds: plan.fadeSeconds, fadeInSeconds: nextSong == nil ? 0 : plan.fadeInSeconds,
+                end: plan.end))
+        }
+        armedGo = go
+        let firesAt = Date().addingTimeInterval(max(plan.nextAt - timelinePlayheadTime, 0))
+        let name = next.map { model.entry($0.refId)?.name ?? $0.name }
+        let pending = PendingGo(itemID: itemID, kind: kind, nextName: name, firesAt: firesAt)
+        if pendingGo.map({ $0.itemID != pending.itemID || $0.kind != pending.kind || $0.nextName != pending.nextName
+            || abs($0.firesAt.timeIntervalSince(pending.firesAt)) > 0.25 }) ?? true {
+            pendingGo = pending
+            DiagnosticsStore.shared.note(
+                "timeline.transition", detail: "armed \(kind.rawValue) at \(String(format: "%.2f", plan.nextAt)) into \(name ?? "nothing")")
+        }
+    }
+
+    func holdGo() {
+        guard let itemID else { return }
+        heldItemID = itemID
+        disarmGo()
+        DiagnosticsStore.shared.note("timeline.transition", detail: "held")
+    }
+
+    private func disarmGo() {
+        guard armedGo != nil || pendingGo != nil else { return }
+        if armedGo?.inPlayer == true { controls?.tracks.transition(nil) }
+        armedGo = nil
+        pendingGo = nil
+    }
+
+    private func handOver(_ go: ArmedGo) {
+        armedGo = nil
+        pendingGo = nil
+        DiagnosticsStore.shared.note(
+            "timeline.transition", detail: "\(go.plan.kind.rawValue) into \(go.next?.name ?? "nothing") at \(String(format: "%.2f", go.plan.nextAt))")
+        guard let controls, let next = go.next else { return }
+        let handedInPlayer = go.nextSong.map { controls.tracks.latest.value?.songID == $0.id } ?? false
+
+        let tail = (tracksSong != nil && !handedInPlayer) || stemsTail
+        tracksSong = nil
+        stemsTail = false
+        let deck = next.itemKind == .presentation ? controls.appModel.presentation(next.refId) : nil
+        APIFireSource.$current.withValue(APIFireSource(kind: .timeline)) {
+            switch SongTransitions.nextStart(
+                next, hasTimeline: deck.flatMap { PresentationTimelines.timeline(for: next.arrangementId, in: $0) } != nil) {
+            case .playTimeline:
+                guard let deck else { return }
+                PresentationTimelineCards.shared.open.insert(next.id)
+                play(itemID: next.id, presentation: deck, arrangementId: next.arrangementId,
+                     adoptingTracks: handedInPlayer ? go.nextSong?.id : nil, handingOver: true)
+            case .fire:
+                stop()
+                controls.fireServiceItem(next)
+            case .nothing:
+                break
+            }
+        }
+        if tail {
+            stemsTail = true
+            stemsTailEnds = CACurrentMediaTime() + max(go.plan.end - go.plan.nextAt, 0) + 0.5
         }
     }
 

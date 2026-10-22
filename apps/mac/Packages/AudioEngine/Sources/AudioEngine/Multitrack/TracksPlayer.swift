@@ -16,6 +16,10 @@ public enum TracksPlayerMessage: Codable, Equatable, Sendable {
 
     case chase(song: MultitrackSong?, songID: String, position: Double, hostTime: UInt64)
 
+    case transition(MultitrackTransition?)
+
+    case crossfade(song: MultitrackSong?, at: Double, seconds: Double)
+
     case quit
 
     case status(TracksPlayerStatus)
@@ -53,7 +57,7 @@ public struct TracksPlayerStatus: Codable, Equatable, Sendable {
 
 public enum TracksPlayerWire {
 
-    public static let version = 3
+    public static let version = 4
 
     public static func socketPath(appIdentity: String) -> String {
         var hash: UInt32 = 2_166_136_261
@@ -216,6 +220,8 @@ public final class TracksPlayerServer: @unchecked Sendable {
         }
         unlink(path)
 
+        engine.onHandover = { [weak self] in self?.queue.async { self?.sendStatus() } }
+
         if let share = TracksShare.create(name: TracksPlayerWire.shareName(socketPath: path)) {
             self.share = share
             engine.setShare(share)
@@ -331,6 +337,12 @@ public final class TracksPlayerServer: @unchecked Sendable {
             engine.preload(songs)
         case .chase(let song, let id, let position, let hostTime):
             engine.chase(song: song, songID: id, position: position, hostTime: hostTime)
+        case .transition(let transition):
+            engine.transition(transition)
+        case .crossfade(let song?, let at, let seconds):
+            engine.crossfade(to: song, at: at, over: seconds)
+        case .crossfade(nil, _, let seconds):
+            engine.fadeOut(over: seconds)
         case .quit:
             engine.stop()
             queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.finish(code: 0) }

@@ -196,6 +196,10 @@ struct PresentationTimelineStrip: View {
                     : "Record: plays from the playhead and makes each slide you click a cue (its actions stay on the slide)")
             }
 
+            if context.isCurrent, let go = clock.pendingGo, go.itemID == context.item.id {
+                SongTransitionChip(go: go) { clock.holdGo() }
+            }
+
             if expanded {
                 Spacer(minLength: 0)
             } else {
@@ -1631,5 +1635,35 @@ struct SongTransitionTail: View {
         let seconds = plan.kind == .fade || plan.kind == .crossfade ? plan.fadeSeconds : plan.end - plan.nextAt
         let what = "\(SongTransitionMenuItems.title(plan.kind)) \(Int(seconds.rounded())) s"
         return nextName.map { "\(what) → \($0)" } ?? what
+    }
+}
+
+struct SongTransitionChip: View {
+    let go: PresentationTimelineController.PendingGo
+    let hold: () -> Void
+    @Environment(\.runOnly) private var runOnly
+
+    var body: some View {
+        HStack(spacing: 5) {
+            SongTransitionGlyph(kind: go.kind, size: 10)
+            Text(SongTransitionMenuItems.title(go.kind) + (go.nextName.map { " → \($0)" } ?? ""))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(timerInterval: min(Date(), go.firesAt) ... go.firesAt, countsDown: true)
+                .monospacedDigit()
+                .frame(minWidth: 30, alignment: .leading)
+            if !runOnly {
+                Button("Hold", action: hold)
+                    .buttonStyle(.link)
+                    .help("Don't go on by itself: the song plays to its end and stops")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(Color.accentColor.opacity(0.1), in: Capsule())
+        .frame(maxWidth: 260)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

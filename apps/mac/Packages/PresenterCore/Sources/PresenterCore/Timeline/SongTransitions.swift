@@ -84,6 +84,41 @@ public enum SongTransitions {
         from < plan.nextAt && to >= plan.nextAt
     }
 
+    public enum Step: Equatable, Sendable {
+
+        case play(to: Double)
+
+        case handOver(at: Double)
+    }
+
+    public static func step(
+        _ plan: Plan, position: Double, inPlayer: Bool, playerHandedOver: Bool, grace: Double = 0.5
+    ) -> Step {
+        if playerHandedOver { return .handOver(at: min(position, plan.nextAt)) }
+        if position >= plan.nextAt, !inPlayer || position >= plan.nextAt + grace { return .handOver(at: plan.nextAt) }
+        return .play(to: min(position, plan.nextAt))
+    }
+
+    public enum NextStart: Equatable, Sendable {
+
+        case playTimeline
+
+        case fire
+
+        case nothing
+    }
+
+    public static func nextStart(_ item: ServiceItem?, hasTimeline: Bool) -> NextStart {
+        guard let item else { return .nothing }
+        return item.itemKind == .presentation && hasTimeline ? .playTimeline : .fire
+    }
+
+    public static func manualJumpCrossfades(
+        anotherSong: Bool, playing: Bool, stemsSounding: Bool, handingOver: Bool
+    ) -> Bool {
+        anotherSong && playing && stemsSounding && !handingOver
+    }
+
     public static func arms(_ kind: Kind, ownClock: Bool, recording: Bool, held: Bool) -> Bool {
         kind != .stop && ownClock && !recording && !held
     }

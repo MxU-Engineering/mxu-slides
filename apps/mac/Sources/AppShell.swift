@@ -1187,6 +1187,7 @@ struct ShellView: View {
                 Menu("Set All Transitions") {
                     SongTransitionMenuItems(current: nil) {
                         model.setServiceItemTransition(entry.id, itemIDs: nil, transition: $0)
+                        controls?.timeline.refreshTransition()
                     }
                 }
                 Button("New Version…") {

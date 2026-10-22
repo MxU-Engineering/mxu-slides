@@ -37,6 +37,8 @@ final class TracksController {
 
     private var songChannels: Set<String> = []
 
+    private var armed: MultitrackTransition?
+
     var onFoundPlaying: ((TracksPlayerStatus) -> Void)?
 
     nonisolated static let playerName = "MxU Tracks Player"
@@ -152,6 +154,7 @@ final class TracksController {
     }
 
     func play(_ song: MultitrackSong, from position: Double) {
+        armed = nil
         driving.value = song.id
         songChannels = Set(song.stems.map(\.channelId))
         refresh()
@@ -161,6 +164,7 @@ final class TracksController {
     }
 
     func stop() {
+        armed = nil
         guard driving.value != nil else { return }
         client.send(.stop)
         DiagnosticsStore.shared.note("tracks.stop")
@@ -168,6 +172,33 @@ final class TracksController {
 
     func seek(to position: Double) {
         client.send(.seek(seconds: position))
+    }
+
+    func transition(_ transition: MultitrackTransition?) {
+        guard transition != armed else { return }
+        armed = transition
+        if let next = transition?.next {
+            let channels = Set(next.stems.map(\.channelId))
+            if !channels.isSubset(of: songChannels) {
+                songChannels.formUnion(channels)
+                refresh()
+            }
+        }
+        client.send(.transition(transition))
+        DiagnosticsStore.shared.note("tracks.transition", detail: transition.map {
+            "\($0.next == nil ? "end" : "next") at \(String(format: "%.2f", $0.nextAt))"
+        } ?? "disarmed")
+    }
+
+    func crossfade(to song: MultitrackSong?, from position: Double = 0, seconds: Double) {
+        armed = nil
+        if let song {
+            driving.value = song.id
+            songChannels.formUnion(song.stems.map(\.channelId))
+            refresh()
+        }
+        client.send(.crossfade(song: song, at: position, seconds: seconds))
+        DiagnosticsStore.shared.note("tracks.crossfade", detail: "\(song.map { "\($0.stems.count) stems" } ?? "out") over \(seconds) s")
     }
 
     func chase(_ song: MultitrackSong, position: Double, hostTime: UInt64) {

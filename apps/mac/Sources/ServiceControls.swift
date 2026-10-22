@@ -1490,6 +1490,8 @@ final class ServiceControls {
         currentItemName = context.currentItemName
         nextItemName = context.nextItemName
         cueTracksAhead()
+
+        timeline.refreshTransition()
         if state.hasLinkedText {
 
             apply()

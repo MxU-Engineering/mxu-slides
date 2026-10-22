@@ -99,3 +99,33 @@ private typealias S = SongTransitions
     #expect(S.plan(SongTransition(kind: "overlap"), timeline: a, blocks: aBlocks)?.nextAt == 295)
     #expect(S.plan(nil, timeline: a, blocks: aBlocks) == nil)
 }
+
+@Test func aGoHandsOverOnTheTickThatReachesIt() {
+    let plan = S.plan(.crossfade, end: 300, length: 5)!
+
+    #expect(S.step(plan, position: 290, inPlayer: false, playerHandedOver: false) == .play(to: 290))
+
+    #expect(S.step(plan, position: 295.02, inPlayer: false, playerHandedOver: false) == .handOver(at: 295))
+
+    #expect(S.step(plan, position: 295.2, inPlayer: true, playerHandedOver: false) == .play(to: 295))
+    #expect(S.step(plan, position: 295.1, inPlayer: true, playerHandedOver: true) == .handOver(at: 295))
+
+    #expect(S.step(plan, position: 295.5, inPlayer: true, playerHandedOver: false) == .handOver(at: 295))
+}
+
+@Test func theNextThingIsTheRunOrdersNextFireableItem() {
+    let song = ServiceItem(id: "s", itemKind: .presentation, name: "Song", refId: "d")
+    let video = ServiceItem(id: "v", itemKind: .media, name: "Video", refId: "m")
+    #expect(S.nextStart(song, hasTimeline: true) == .playTimeline)
+    #expect(S.nextStart(song, hasTimeline: false) == .fire, "a slides-only song fires its first slide")
+    #expect(S.nextStart(video, hasTimeline: false) == .fire)
+    #expect(S.nextStart(nil, hasTimeline: false) == .nothing)
+}
+
+@Test func onlyAManualPlayOnAnotherSongCrossfades() {
+    #expect(S.manualJumpCrossfades(anotherSong: true, playing: true, stemsSounding: true, handingOver: false))
+    #expect(!S.manualJumpCrossfades(anotherSong: true, playing: true, stemsSounding: true, handingOver: true), "a go's own handover")
+    #expect(!S.manualJumpCrossfades(anotherSong: true, playing: true, stemsSounding: false, handingOver: false), "no stems: nothing to fade")
+    #expect(!S.manualJumpCrossfades(anotherSong: false, playing: true, stemsSounding: true, handingOver: false), "the same song: a jump")
+    #expect(!S.manualJumpCrossfades(anotherSong: true, playing: false, stemsSounding: true, handingOver: false))
+}

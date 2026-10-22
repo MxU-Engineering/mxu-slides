@@ -406,6 +406,7 @@ struct RunOrderList: View {
         Menu("Transition") {
             SongTransitionMenuItems(current: nil) {
                 model.setServiceItemTransition(serviceID, itemIDs: ids, transition: $0)
+                controls?.timeline.refreshTransition()
             }
         }
         Divider()
@@ -420,6 +421,7 @@ struct RunOrderList: View {
             Menu {
                 SongTransitionMenuItems(current: item.transition) {
                     model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                    controls?.timeline.refreshTransition()
                 }
             } label: {
                 SongTransitionGlyph(kind: kind, size: 11)
@@ -539,6 +541,7 @@ struct RunOrderList: View {
                         Menu("Transition") {
                             SongTransitionMenuItems(current: item.transition) {
                                 model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                    controls?.timeline.refreshTransition()
                             }
                         }
 

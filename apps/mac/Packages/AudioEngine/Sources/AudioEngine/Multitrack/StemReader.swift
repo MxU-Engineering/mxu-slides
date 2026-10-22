@@ -24,6 +24,29 @@ public struct MultitrackSong: Codable, Equatable, Sendable {
     }
 }
 
+public struct MultitrackTransition: Codable, Equatable, Sendable {
+    public var fromSongID: String
+    public var next: MultitrackSong?
+    public var nextAt: Double
+    public var fadeFrom: Double?
+    public var fadeSeconds: Double
+    public var fadeInSeconds: Double
+    public var end: Double
+
+    public init(
+        fromSongID: String, next: MultitrackSong?, nextAt: Double, fadeFrom: Double?, fadeSeconds: Double,
+        fadeInSeconds: Double, end: Double
+    ) {
+        self.fromSongID = fromSongID
+        self.next = next
+        self.nextAt = nextAt
+        self.fadeFrom = fadeFrom
+        self.fadeSeconds = fadeSeconds
+        self.fadeInSeconds = fadeInSeconds
+        self.end = end
+    }
+}
+
 final class StemReader {
     let ring: StemRing
     private let file: AVAudioFile?
