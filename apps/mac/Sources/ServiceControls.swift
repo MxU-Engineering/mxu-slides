@@ -1209,8 +1209,8 @@ final class ServiceControls {
         apply()
     }
 
-    func stopAudio(audioItemID: String) {
-        if let cue = audio.stop(audioItemID: audioItemID) { state.dismissAudio(cue) }
+    func stopAudio(audioItemID: String, fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
+        if let cue = audio.stop(audioItemID: audioItemID, fade: fade, curve: curve) { state.dismissAudio(cue) }
         apply()
     }
 

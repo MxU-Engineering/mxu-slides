@@ -49,6 +49,13 @@ struct SongTransitionMenuItems: View {
         }
     }
 
+    static func summary(_ transition: SongTransition?) -> String {
+        let kind = SongTransitions.kind(transition)
+        guard kind != .stop else { return title(kind) }
+        if let seconds = transition?.seconds { return "\(title(kind)) \(SongTransitionCurves.seconds(seconds))" }
+        return kind == .overlap ? "\(title(kind)) · auto" : "\(title(kind)) 5 s"
+    }
+
     static func help(_ transition: SongTransition?) -> String {
         let kind = SongTransitions.kind(transition)
         let length = transition?.seconds.map { "\(Int($0)) s" }

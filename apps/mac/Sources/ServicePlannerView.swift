@@ -415,9 +415,35 @@ struct RunOrderList: View {
     }
 
     @ViewBuilder
+    private func transitionLine(_ item: ServiceItem) -> some View {
+        let kind = SongTransitions.kind(item.transition)
+        if item.itemKind == .presentation, kind != .stop {
+            Menu {
+                SongTransitionMenuItems(current: item.transition) {
+                    model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                    controls?.timeline.refreshTransition()
+                }
+            } label: {
+                Label {
+                    Text(SongTransitionMenuItems.summary(item.transition))
+                } icon: {
+                    SongTransitionGlyph(kind: kind, size: 10)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .font(.caption)
+            .foregroundStyle(Color.accentColor)
+            .help(SongTransitionMenuItems.help(item.transition))
+            .disabled(runOnly)
+        }
+    }
+
+    @ViewBuilder
     private func transitionButton(_ item: ServiceItem) -> some View {
         let kind = SongTransitions.kind(item.transition)
-        if item.itemKind == .presentation, kind != .stop || TimelineTracks.hasTracks(model.trackChannels) {
+        if item.itemKind == .presentation, kind == .stop, TimelineTracks.hasTracks(model.trackChannels) {
             Menu {
                 SongTransitionMenuItems(current: item.transition) {
                     model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
@@ -439,11 +465,15 @@ struct RunOrderList: View {
     private func itemRow(_ item: ServiceItem, order: [String], changed: Bool) -> some View {
         HStack(spacing: 8) {
 
-            Text(displayName(item))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .layoutPriority(0)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(displayName(item))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+
+                transitionLine(item)
+            }
+            .layoutPriority(0)
             Spacer(minLength: 4)
 
             if changed {

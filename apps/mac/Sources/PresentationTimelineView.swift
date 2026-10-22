@@ -76,6 +76,13 @@ struct PresentationTimelineContext {
     }
     var isPlaying: Bool { isCurrent && clock.playing }
 
+    func setTransitionSeconds(_ seconds: Double) {
+        guard let transition = item.transition else { return }
+        model.setServiceItemTransition(
+            serviceID, itemIDs: [item.id], transition: SongTransition(kind: transition.kind, seconds: seconds))
+        clock.refreshTransition()
+    }
+
     var transition: (plan: SongTransitions.Plan, nextName: String?)? {
         guard let timeline, SongTransitions.kind(item.transition) != .stop,
               let service = try? model.service(serviceID) else { return nil }
@@ -270,6 +277,11 @@ struct PresentationTimelineStrip: View {
                         context: context, length: length, page: viewport * 0.85, waveformZoom: pps, x: x)
                         .frame(width: contentWidth, height: 24, alignment: .leading)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+                        .overlay(alignment: .topLeading) {
+                            if let transition = context.transition {
+                                SongTransitionMarker(plan: transition.plan, nextName: transition.nextName, x: x)
+                            }
+                        }
                     PresentationTimelineStepsRow(context: context, x: x)
                         .frame(width: contentWidth, height: 12, alignment: .leading)
                 }
@@ -900,15 +912,31 @@ struct PresentationTimelineLanes: View {
             ) { map.x(ofTime: $0) }
                 .frame(width: map.width, height: Self.sectionsHeight, alignment: .leading)
                 .allowsHitTesting(false)
+            let transition = context.transition
+            let tracks = showsTracks(cues)
+
+            let curves = { (handle: Bool) in
+                transition.map { transition in
+                    SongTransitionCurves(
+                        plan: transition.plan, x: { map.x(ofTime: $0) },
+                        time: { map.locate(x: max($0, 0))?.time ?? 0 },
+                        setSeconds: runOnly || !handle ? nil : { context.setTransitionSeconds($0) })
+                }
+            }
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 1) {
+
                     ForEach(visible, id: \.self) { lane in
                         laneRow(lane, cues, map: map)
+                            .overlay(alignment: .topLeading) { if lane == .audio { curves(!tracks) } }
                     }
-                    if showsTracks(cues) { trackRows(cues, map: map) }
+                    if tracks {
+                        trackRows(cues, map: map).overlay(alignment: .topLeading) { curves(true) }
+                    }
                 }
-                if let transition = context.transition {
-                    SongTransitionTail(plan: transition.plan, nextName: transition.nextName) { map.x(ofTime: $0) }
+
+                if let transition {
+                    SongTransitionHandoverLine(plan: transition.plan, nextName: transition.nextName) { map.x(ofTime: $0) }
                 }
                 if context.isCurrent {
                     TimelinePlayheadLine(source: context.clock) { map.x(ofTime: $0) }
@@ -1603,38 +1631,157 @@ struct TrackRowResizeHandle: View {
     }
 }
 
-struct SongTransitionTail: View {
+struct SongTransitionCurves: View {
+    let plan: SongTransitions.Plan
+    let x: (Double) -> CGFloat
+    let time: (CGFloat) -> Double
+    let setSeconds: ((Double) -> Void)?
+
+    @State private var dragging: Double?
+
+    private var shown: SongTransitions.Plan {
+        dragging.flatMap { SongTransitions.plan(plan.kind, end: plan.end, length: $0) } ?? plan
+    }
+
+    private var length: Double {
+        plan.kind == .overlap ? plan.end - plan.nextAt : plan.fadeSeconds
+    }
+
+    var body: some View {
+        let plan = shown
+        let start = min(plan.nextAt, plan.fadeFrom ?? plan.nextAt)
+        let left = x(start), right = x(plan.end), handover = x(plan.nextAt)
+        ZStack(alignment: .topLeading) {
+            Canvas { context, size in
+                let inset: CGFloat = 3
+                let height = max(size.height - inset * 2, 1)
+                func y(_ level: Double) -> CGFloat { inset + height * CGFloat(1 - level) }
+
+                if right > handover + 1 {
+                    let clip = CGRect(x: handover, y: inset, width: right - handover, height: height)
+                    context.fill(Path(roundedRect: clip, cornerRadius: 4), with: .color(.secondary.opacity(0.16)))
+                }
+                let steps = 32
+                var outgoing = Path(), incoming = Path()
+                for step in 0 ... steps {
+                    let t = start + (plan.end - start) * Double(step) / Double(steps)
+                    let levels = SongTransitions.levels(plan, at: min(t, plan.end - 0.0001))
+                    let point = CGPoint(x: x(t), y: y(levels.outgoing))
+                    step == 0 ? outgoing.move(to: point) : outgoing.addLine(to: point)
+                    if t >= plan.nextAt {
+                        let rising = CGPoint(x: x(t), y: y(levels.incoming))
+                        incoming.isEmpty ? incoming.move(to: CGPoint(x: x(t), y: y(0))) : ()
+                        incoming.addLine(to: rising)
+                    }
+                }
+
+                var under = outgoing
+                under.addLine(to: CGPoint(x: right, y: y(0)))
+                under.addLine(to: CGPoint(x: left, y: y(0)))
+                under.closeSubpath()
+                context.fill(under, with: .color(.accentColor.opacity(0.10)))
+                context.stroke(outgoing, with: .color(.accentColor), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                if !incoming.isEmpty {
+                    context.stroke(incoming, with: .color(.primary.opacity(0.55)),
+                                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 3]))
+                }
+            }
+            .allowsHitTesting(false)
+            if let setSeconds {
+                Circle()
+                    .fill(Color.accentColor)
+                    .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
+                    .frame(width: 10, height: 10)
+                    .contentShape(Rectangle().inset(by: -5))
+                    .offset(x: left - 5, y: -2)
+                    .gesture(DragGesture(minimumDistance: 1)
+                        .onChanged { drag in
+
+                            let saved = x(min(self.plan.nextAt, self.plan.fadeFrom ?? self.plan.nextAt))
+                            dragging = Self.clamp(self.plan.end - time(saved + drag.translation.width), end: self.plan.end)
+                        }
+                        .onEnded { drag in
+                            let saved = x(min(self.plan.nextAt, self.plan.fadeFrom ?? self.plan.nextAt))
+                            let seconds = Self.clamp(self.plan.end - time(saved + drag.translation.width), end: self.plan.end)
+                            dragging = nil
+                            setSeconds(seconds)
+                        })
+                    .help("Drag to set how long the transition takes")
+                    .accessibilityLabel("Transition length")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    static func clamp(_ seconds: Double, end: Double) -> Double {
+        min(max((seconds * 2).rounded() / 2, 0.5), max(min(30, end), 0.5))
+    }
+
+    static func seconds(_ value: Double) -> String {
+        value == value.rounded() ? "\(Int(value)) s" : String(format: "%.1f s", value)
+    }
+}
+
+struct SongTransitionHandoverLine: View {
     let plan: SongTransitions.Plan
     let nextName: String?
     let x: (Double) -> CGFloat
 
     var body: some View {
-        let from = x(min(plan.nextAt, plan.fadeFrom ?? plan.nextAt))
-        let to = x(plan.end)
+        let at = x(plan.nextAt)
         ZStack(alignment: .topLeading) {
-            Rectangle().fill(Color.accentColor.opacity(0.08))
-            Rectangle().fill(Color.accentColor.opacity(0.5)).frame(width: 1)
+            Rectangle()
+                .stroke(Color.accentColor.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
+                .offset(x: at)
+
             HStack(spacing: 4) {
                 SongTransitionGlyph(kind: plan.kind, size: 10)
                 Text(label).lineLimit(1)
             }
-            .font(.caption2)
+            .font(.caption2.weight(.medium))
             .foregroundStyle(Color.accentColor)
-            .padding(.horizontal, 4)
-            .padding(.top, 2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.background, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.4)))
             .fixedSize()
+            .offset(x: at + 4, y: 2)
         }
-        .frame(width: max(to - from, 1))
-        .frame(maxHeight: .infinity)
-        .offset(x: from)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
-        .help(label)
+        .help(nextName.map { "The slides go on to \($0) here" } ?? "The service ends here")
     }
 
     private var label: String {
-        let seconds = plan.kind == .fade || plan.kind == .crossfade ? plan.fadeSeconds : plan.end - plan.nextAt
-        let what = "\(SongTransitionMenuItems.title(plan.kind)) \(Int(seconds.rounded())) s"
-        return nextName.map { "\(what) → \($0)" } ?? what
+        let seconds = plan.kind == .overlap ? plan.end - plan.nextAt : plan.fadeSeconds
+        let what = "\(SongTransitionMenuItems.title(plan.kind)) \(SongTransitionCurves.seconds(seconds))"
+        return nextName.map { "\(what) → \($0)" } ?? "\(what), then the end"
+    }
+}
+
+struct SongTransitionMarker: View {
+    let plan: SongTransitions.Plan
+    let nextName: String?
+    let x: (Double) -> CGFloat
+
+    var body: some View {
+        let start = x(min(plan.nextAt, plan.fadeFrom ?? plan.nextAt))
+        ZStack(alignment: .topLeading) {
+            Capsule()
+                .fill(Color.accentColor.opacity(0.8))
+                .frame(width: max(x(plan.end) - start, 2), height: 3)
+                .offset(x: start, y: 21)
+            SongTransitionGlyph(kind: plan.kind, size: 10)
+                .foregroundStyle(Color.accentColor)
+                .padding(2)
+                .background(.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 3))
+                .offset(x: start + 2, y: 2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(false)
+        .help(SongTransitionMenuItems.title(plan.kind) + (nextName.map { " into \($0)" } ?? ""))
     }
 }
 
@@ -1646,9 +1793,11 @@ struct SongTransitionChip: View {
     var body: some View {
         HStack(spacing: 5) {
             SongTransitionGlyph(kind: go.kind, size: 10)
-            Text(SongTransitionMenuItems.title(go.kind) + (go.nextName.map { " → \($0)" } ?? ""))
+
+            Text(SongTransitionMenuItems.title(go.kind) + (go.nextName.map { " into \($0)" } ?? " to the end"))
                 .lineLimit(1)
                 .truncationMode(.middle)
+            Text("in")
             Text(timerInterval: min(Date(), go.firesAt) ... go.firesAt, countsDown: true)
                 .monospacedDigit()
                 .frame(minWidth: 30, alignment: .leading)
@@ -1664,7 +1813,7 @@ struct SongTransitionChip: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
         .background(Color.accentColor.opacity(0.1), in: Capsule())
-        .frame(maxWidth: 260)
+        .frame(maxWidth: 340)
         .fixedSize(horizontal: false, vertical: true)
     }
 }

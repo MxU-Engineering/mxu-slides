@@ -116,8 +116,8 @@ final class AudioPlayer {
         startPolling()
     }
 
-    func stop() {
-        engine.stop(fade: transportFade())
+    func stop(fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
+        engine.stop(fade: fade ?? transportFade(), curve: curve)
         defer { onTransportChanged?() }
         queue = nil
         repeatOverride = nil
@@ -541,7 +541,11 @@ final class AudioController {
         return replaced
     }
 
+    @ObservationIgnored private var fading: [AudioPlayer] = []
+
     func stop() {
+        for player in fading { player.stop() }
+        fading = []
         for player in players { player.stop() }
         players = []
         onPlayersChanged?()
@@ -552,13 +556,22 @@ final class AudioController {
         stopPlayer { $0.playlistID == playlistID }
     }
 
-    func stop(audioItemID: String) -> CueAudio? {
-        stopPlayer { $0.singleItemID == audioItemID }
+    func stop(audioItemID: String, fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) -> CueAudio? {
+        stopPlayer(fade: fade, curve: curve) { $0.singleItemID == audioItemID }
     }
 
-    private func stopPlayer(where match: (AudioPlayer) -> Bool) -> CueAudio? {
+    private func stopPlayer(
+        fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear, where match: (AudioPlayer) -> Bool
+    ) -> CueAudio? {
         guard let player = players.first(where: match) else { return nil }
-        player.stop()
+        player.stop(fade: fade, curve: curve)
+
+        if let fade, fade > 0 {
+            fading.append(player)
+            DispatchQueue.main.asyncAfter(deadline: .now() + fade + 0.2) { [weak self] in
+                self?.fading.removeAll { $0 === player }
+            }
+        }
         players.removeAll { $0 === player }
         onPlayersChanged?()
         onTransportChanged?()

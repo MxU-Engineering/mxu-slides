@@ -129,3 +129,16 @@ private typealias S = SongTransitions
     #expect(!S.manualJumpCrossfades(anotherSong: false, playing: true, stemsSounding: true, handingOver: false), "the same song: a jump")
     #expect(!S.manualJumpCrossfades(anotherSong: true, playing: false, stemsSounding: true, handingOver: false))
 }
+
+@Test func theDrawnLevelsAreThePlayersCurves() {
+    let crossfade = S.plan(.crossfade, end: 300, length: 4)!
+    #expect(S.levels(crossfade, at: 290) == (1, 0))
+    let middle = S.levels(crossfade, at: 298)
+    #expect(abs(middle.outgoing - cos(Double.pi / 4)) < 1e-9 && abs(middle.incoming - sin(Double.pi / 4)) < 1e-9, "equal power")
+    #expect(S.levels(crossfade, at: 300) == (0, 1))
+    let fade = S.plan(.fade, end: 300, length: 4)!
+    #expect(abs(S.levels(fade, at: 298).outgoing - 0.5) < 1e-9, "a raised cosine, half way down")
+    #expect(S.levels(fade, at: 299).incoming == 0, "the next song waits for the end")
+    let overlap = S.plan(.overlap, end: 300, length: 4)!
+    #expect(S.levels(overlap, at: 299) == (1, 1), "both at full level")
+}

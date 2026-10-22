@@ -62,6 +62,19 @@ public enum SongTransitions {
         return plan(kind(transition), end: end, length: length)
     }
 
+    public static func levels(_ plan: Plan, at time: Double) -> (outgoing: Double, incoming: Double) {
+        var outgoing = time >= plan.end ? 0.0 : 1.0
+        if let fadeFrom = plan.fadeFrom, time > fadeFrom, time < plan.end {
+            let t = min((time - fadeFrom) / max(plan.fadeSeconds, 0.001), 1)
+            outgoing = plan.fadeInSeconds > 0 ? cos(t * .pi / 2) : 0.5 * (1 + cos(t * .pi))
+        }
+        var incoming = time >= plan.nextAt ? 1.0 : 0.0
+        if plan.fadeInSeconds > 0, time >= plan.nextAt {
+            incoming = sin(min((time - plan.nextAt) / plan.fadeInSeconds, 1) * .pi / 2)
+        }
+        return (outgoing, incoming)
+    }
+
     public static func manualPlan(at position: Double, seconds: Double) -> Plan {
         Plan(kind: .crossfade, nextAt: position, fadeFrom: position, fadeSeconds: seconds, fadeInSeconds: seconds, end: position + seconds)
     }

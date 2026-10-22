@@ -238,3 +238,11 @@ private func biggestStep(_ samples: ArraySlice<Float>) -> Float {
     #expect(try JSONDecoder().decode(TracksPlayerMessage.self, from: JSONEncoder().encode(TracksPlayerMessage.transition(nil)))
         == .transition(nil))
 }
+
+@Test func theMusicLayerFadesOnTheStemsCurves() {
+
+    #expect(AudioFadeCurve.linear.falling(0.25) == 0.75)
+    #expect(abs(AudioFadeCurve.equalPower.falling(0.5) - Float(cos(Double.pi / 4))) < 1e-6)
+    #expect(abs(AudioFadeCurve.cosine.falling(0.5) - 0.5) < 1e-6)
+    #expect(AudioFadeCurve.cosine.falling(1) < 1e-6 && AudioFadeCurve.equalPower.falling(0) == 1)
+}

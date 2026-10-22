@@ -58,6 +58,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         var nextSong: MultitrackSong?
 
         var inPlayer: Bool
+
+        var musicFaded = false
     }
 
     struct PendingGo: Equatable {
@@ -91,12 +93,13 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
         if timecodeRecording != nil { endRecording() }
         playing = true
+        anchor(at: timelinePlayheadTime)
         if timelinePlayheadTime <= 0 {
+
             lastPosition = -PresentationTimelines.frame
         } else {
             land(at: timelinePlayheadTime)
         }
-        anchor(at: timelinePlayheadTime)
         publishClock(position: timelinePlayheadTime, running: true)
         if let adoptingTracks {
 
@@ -185,7 +188,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func stopMusic() {
-        guard let controls, let deck = deck() else { return }
+
+        guard !keepingMusic, let controls, let deck = deck() else { return }
         for id in Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
         where controls.audio.player(forAudioItem: id) != nil {
             controls.stopAudio(audioItemID: id)
@@ -453,6 +457,11 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                 return
             case .play(let to):
                 position = to
+
+                if let fadeFrom = go.plan.fadeFrom, position >= fadeFrom, !go.musicFaded {
+                    armedGo?.musicFaded = true
+                    fadeMusic(over: max(go.plan.end - position, 0.01), curve: go.plan.fadeInSeconds > 0 ? .equalPower : .cosine)
+                }
             }
         }
         if let lastFrame = stemsTailEnds, CACurrentMediaTime() > lastFrame { stemsTail = false; stemsTailEnds = nil }
@@ -462,6 +471,18 @@ final class PresentationTimelineController: TimelinePlayheadSource {
            position > PresentationTimelines.length(timeline) + 1 {
             stop()
         }
+    }
+
+    @ObservationIgnored private var keepingMusic = false
+
+    private func playingMusic() -> [String] {
+        guard let controls, let deck = deck() else { return [] }
+        return Set((cues(of: deck) ?? []).filter { $0.kind == .audio }.compactMap(\.contentId))
+            .filter { controls.audio.player(forAudioItem: $0)?.isPlaying == true }
+    }
+
+    private func fadeMusic(over seconds: Double, curve: AudioFadeCurve) {
+        for id in playingMusic() { controls?.stopAudio(audioItemID: id, fade: seconds, curve: curve) }
     }
 
     @ObservationIgnored private var stemsTailEnds: CFTimeInterval?
@@ -526,8 +547,14 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     private func handOver(_ go: ArmedGo) {
+        let musicFaded = armedGo?.musicFaded ?? go.musicFaded
         armedGo = nil
         pendingGo = nil
+
+        if let fadeFrom = go.plan.fadeFrom, !musicFaded {
+            fadeMusic(over: max(go.plan.end - max(fadeFrom, go.plan.nextAt), 0.01),
+                      curve: go.plan.fadeInSeconds > 0 ? .equalPower : .cosine)
+        }
         DiagnosticsStore.shared.note(
             "timeline.transition", detail: "\(go.plan.kind.rawValue) into \(go.next?.name ?? "nothing") at \(String(format: "%.2f", go.plan.nextAt))")
         guard let controls, let next = go.next else { return }
@@ -536,6 +563,17 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         let tail = (tracksSong != nil && !handedInPlayer) || stemsTail
         tracksSong = nil
         stemsTail = false
+
+        let music = go.plan.fadeFrom == nil ? playingMusic() : []
+        if !music.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(go.plan.end - go.plan.nextAt, 0)) { [weak controls] in
+                for id in music where controls?.audio.player(forAudioItem: id)?.isPlaying == true {
+                    controls?.stopAudio(audioItemID: id)
+                }
+            }
+        }
+        keepingMusic = true
+        defer { keepingMusic = false }
         let deck = next.itemKind == .presentation ? controls.appModel.presentation(next.refId) : nil
         APIFireSource.$current.withValue(APIFireSource(kind: .timeline)) {
             switch SongTransitions.nextStart(

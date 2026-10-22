@@ -14,6 +14,18 @@ enum CrossfadeCurve {
     }
 }
 
+public enum AudioFadeCurve: Sendable {
+    case linear, equalPower, cosine
+
+    func falling(_ progress: Double) -> Float {
+        switch self {
+        case .linear: Float(1 - progress)
+        case .equalPower: Float(cos(progress * .pi / 2))
+        case .cosine: Float(0.5 * (1 + cos(progress * .pi)))
+        }
+    }
+}
+
 public final class AudioEngine: @unchecked Sendable {
 
     let engine = AVAudioEngine()
@@ -151,7 +163,7 @@ public final class AudioEngine: @unchecked Sendable {
         }
     }
 
-    public func stop(fade: TimeInterval = 0) {
+    public func stop(fade: TimeInterval = 0, curve: AudioFadeCurve = .linear) {
         lock.withLock {
             transportPlaying = false
             let deck = decks[activeIndex]
@@ -162,7 +174,7 @@ public final class AudioEngine: @unchecked Sendable {
             }
             cancelRamp(resolving: true)
             decks[1 - activeIndex].clear()
-            beginFade(deck: deck, to: 0, duration: fade) { deck.clear() }
+            beginFade(deck: deck, to: 0, duration: fade, curve: curve) { deck.clear() }
         }
     }
 
@@ -521,7 +533,7 @@ public final class AudioEngine: @unchecked Sendable {
     }
 
     private func beginFade(
-        deck: AudioDeck, to target: Float, duration: TimeInterval,
+        deck: AudioDeck, to target: Float, duration: TimeInterval, curve: AudioFadeCurve = .linear,
         onDone: (@Sendable () -> Void)? = nil
     ) {
         let start = DispatchTime.now()
@@ -534,7 +546,10 @@ public final class AudioEngine: @unchecked Sendable {
                 guard self.rampTimer === timer else { return }
                 let seconds = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
                 let progress = min(1, seconds / max(duration, 0.01))
-                deck.player.volume = from + (target - from) * Float(progress)
+
+                deck.player.volume = curve == .linear || target > from
+                    ? from + (target - from) * Float(progress)
+                    : target + (from - target) * curve.falling(progress)
                 if progress >= 1 {
                     self.rampTimer = nil
                     self.rampKind = nil
