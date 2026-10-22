@@ -344,7 +344,7 @@ struct AudioMixerModule: View {
             meter: .display("track:\(channel.id)"), mixer: mixer,
             meterAppliesGain: true,
             colorKey: "track:\(channel.id)",
-            defaultColorName: "Purple",
+            defaultColorName: TimelineTracks.family(of: channel).colorName,
             extraMenu: {
                 AnyView(Group {
 
@@ -545,7 +545,8 @@ struct AudioMixerModule: View {
                 mixInventory.rename(id: mix.id, to: newName)
             },
             colorKey: "mix:\(mix.id)",
-            defaultColorName: "Blue",
+
+            defaultColorName: TimelineTracks.Family.allCases.first { TracksController.existingBus($0)?.id == mix.id }?.colorName ?? "Blue",
             extraMenu: {
                 self.runOnly
                     ? AnyView(EmptyView())
@@ -912,10 +913,10 @@ struct AudioMixerModule: View {
         let addable = mixInventory.entries.filter {
             $0.id != routedMix && sends[$0.id] == nil
         }
-        let title = sends.isEmpty ? "+ send"
-            : (sends.count == 1
-                ? (mixInventory.entry(id: sends.keys.first ?? "")?.name ?? "1 send")
-                : "\(sends.count) sends")
+
+        let loudest = sends.max { ($0.value, $1.key) < ($1.value, $0.key) }
+        let name = loudest.flatMap { mixInventory.entry(id: $0.key)?.name } ?? "\(sends.count) sends"
+        let title = sends.isEmpty ? "+ send" : sends.count == 1 ? name : "\(name) +\(sends.count - 1)"
         _ = addable
         return .popover(title, accent: !sends.isEmpty, quiet: sends.isEmpty, content: {
             AnyView(self.sendsPopover(channel: channel, routedMix: routedMix, mixer: mixer))

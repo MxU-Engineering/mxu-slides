@@ -181,6 +181,9 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     for (name, role, family) in expected {
         #expect(TimelineTracks.family(of: TrackChannel(id: name, name: name, role: role)) == family, "\(name)")
     }
+
+    #expect(TimelineTracks.Family.click.colorName == "Orange")
+    #expect(TimelineTracks.Family.drums.colorName == TimelineTracks.Family.percussion.colorName)
 }
 
 @Test func aComputerThatDoesntPlayTracksShowsNoBuses() {
@@ -209,17 +212,32 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
 }
 
 @Test func layoutsByOutputCountPutClickAndGuideFirst() {
-    let two = TimelineTracks.layoutRows(outputs: 2)
-    #expect(two.count == 2)
-    #expect(two[0].channels == [0] && two[0].families == [.click, .guide])
-    #expect(two[1].channels == [1] && two[1].families.count == 10)
-    #expect(TimelineTracks.layoutRows(outputs: 3).map(\.channels) == [[0], [1, 2]])
-    let four = TimelineTracks.layoutRows(outputs: 4)
-    #expect(four.map(\.channels) == [[0], [1], [2, 3]])
+    let two = TimelineTracks.layout(outputs: 2)
+    #expect(two[.click] == [0] && two[.guide] == [0])
+    #expect(two[.drums] == [1] && two[.other] == [1])
+    let three = TimelineTracks.layout(outputs: 3)
+    #expect(three[.click] == [0] && three[.keys] == [1, 2])
+    let four = TimelineTracks.layout(outputs: 4)
+    #expect(four[.click] == [0] && four[.guide] == [1] && four[.bass] == [2, 3])
     for size in TimelineTracks.layoutSizes {
         let layout = TimelineTracks.layout(outputs: size)
-        #expect(layout.count == TimelineTracks.Family.allCases.count)
+
+        #expect(layout.count == TimelineTracks.Family.allCases.count - (size == 1 ? 2 : 0))
         #expect(layout.values.allSatisfy { $0.allSatisfy { $0 < size } })
     }
+
+    #expect(TimelineTracks.layout(fitting: 6) == TimelineTracks.layout(outputs: 4))
+    #expect(TimelineTracks.layout(fitting: 32) == TimelineTracks.layout(outputs: 22))
+    #expect(TimelineTracks.layout(fitting: 22)[.other] == [20, 21])
     #expect(TimelineTracks.layout(outputs: 0).isEmpty)
+}
+
+@Test func soloQuietsTheOtherMusicChannelsButNeverClickOrGuide() {
+    let channels = [TrackChannel(id: "c", name: "Click", role: "click"), TrackChannel(id: "k", name: "Keys"),
+                    TrackChannel(id: "b", name: "Bass"), TrackChannel(id: "d", name: "Drums")]
+    #expect(TimelineTracks.silencedBySolo(channels, soloed: []).isEmpty)
+    #expect(TimelineTracks.silencedBySolo(channels, soloed: ["k"]) == ["b", "d"])
+    #expect(TimelineTracks.silencedBySolo(channels, soloed: ["k", "b"]) == ["d"])
+
+    #expect(TimelineTracks.silencedBySolo(channels, soloed: ["c"]).isEmpty)
 }

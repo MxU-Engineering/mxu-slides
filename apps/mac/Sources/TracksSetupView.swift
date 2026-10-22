@@ -12,11 +12,17 @@ struct TracksMixerButton: View {
         Button {
             open = true
         } label: {
-            Image(systemName: "square.stack.3d.down.right")
-                .moduleHeaderGlyph(tracksOn ? AnyShapeStyle(Color.purple) : AnyShapeStyle(.secondary))
+
+            HStack(spacing: 3) {
+                Image(systemName: "square.stack.3d.down.right")
+                Text("Tracks").font(.caption)
+            }
+            .foregroundStyle(tracksOn ? AnyShapeStyle(Color.purple) : AnyShapeStyle(.secondary))
+            .font(.system(size: 12))
+            .frame(height: 24)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Tracks")
         .help(tracksOn ? "Tracks: where click, guide and the tracks go" : "Tracks: play songs' stems from this computer")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             if tracksOn {
@@ -46,72 +52,50 @@ struct TracksSetupGuide: View {
     @State private var outputs = AudioOutputInventory.shared
     @State private var devices: [AudioOutputDevice] = []
     @AppStorage("tracks.setupInterface") private var interfaceUID = ""
-    @AppStorage("tracks.setupOutputs") private var layoutSize = 2
-    @AppStorage("tracks.setupStart") private var layoutStart = 0
-    @State private var applied: String?
+    @AppStorage("tracks.setupOutputs") private var count = 2
+    @AppStorage("tracks.setupStart") private var start = 0
     @Environment(\.runOnly) private var runOnly
 
-    private static let roomFamilies = TimelineTracks.Family.allCases.filter { $0 != .click && $0 != .guide }
-
-    private static let notYet = -1
-    private static let pairBase = 1000
+    static let maxOutputs = 32
 
     var body: some View {
         let device = devices.first { $0.uid == interfaceUID }
-        let fits = TimelineTracks.layoutSizes.filter { $0 <= (device?.channelCount ?? 0) }
+        let most = min(Self.maxOutputs, device?.channelCount ?? 0)
         VStack(alignment: .leading, spacing: 14) {
             Text("Set Up Tracks").font(.headline)
             Picker("Audio interface", selection: $interfaceUID) {
                 ForEach(devices, id: \.uid) { Text("\($0.name) (\($0.channelCount) outputs)").tag($0.uid) }
             }
             .frame(width: 400)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("How many outputs go to your sound board?").font(.subheadline.weight(.medium))
-                ChipPicker(options: [(0, "None")] + fits.map { ($0, "\($0)") }, selection: $layoutSize)
-                if layoutSize == 0 {
-                    Text("No sound board: the tracks play from this computer's main output. Click and guide wait until you give them outputs below.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if let device {
-                    HStack(spacing: 6) {
-                        Text("Starting at output")
-                        Picker("", selection: $layoutStart) {
-                            ForEach(0 ... max(0, device.channelCount - layoutSize), id: \.self) { Text("\($0 + 1)").tag($0) }
-                        }
-                        .labelsHidden()
-                        .frame(width: 70)
+            HStack(spacing: 6) {
+                Text("Outputs to your sound board")
+                TextField("", value: Binding(get: { count }, set: { count = min(max($0, 0), most) }), format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 44)
+                Stepper("", value: $count, in: 0 ... max(most, 0)).labelsHidden()
+                if count > 0, let device {
+                    Text("starting at")
+                    Picker("", selection: $start) {
+                        ForEach(0 ... max(0, device.channelCount - count), id: \.self) { Text("\($0 + 1)").tag($0) }
                     }
-                    .font(.caption)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(TimelineTracks.layoutRows(outputs: layoutSize).enumerated()), id: \.offset) { _, row in
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(Self.outputLabel(row.channels.map { $0 + layoutStart }))
-                                    .font(.caption.monospacedDigit())
-                                    .frame(width: 110, alignment: .leading)
-                                Text(Self.carries(row.families))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .padding(8)
-                    .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+                    .labelsHidden()
+                    .frame(width: 64)
                 }
-                Button(layoutSize == 0 ? "Play Tracks from This Computer" : "Set Up These Outputs") { apply(device) }
-                    .disabled(runOnly || (layoutSize > 0 && device == nil))
-                if let applied { Text(applied).font(.caption).foregroundStyle(.secondary) }
             }
-            DisclosureGroup("Change which mixes go where") {
-                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-                    ForEach(TimelineTracks.Family.allCases, id: \.self) { family in
-                        GridRow {
-                            Text(family.name).gridColumnAlignment(.trailing)
-                            outputRow(family, device)
-                        }
+            Text(count == 0
+                ? "None: the tracks play from this computer's main output. Give click and guide outputs below for the band."
+                : "Each mix below goes to its own output on \(device?.name ?? "the interface"). Change any of them.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+                ForEach(TimelineTracks.Family.allCases, id: \.self) { family in
+                    GridRow {
+                        Text(family.name).gridColumnAlignment(.trailing)
+                        mixRow(family, device)
                     }
                 }
-                .padding(.top, 4)
             }
             .font(.callout)
             HStack {
@@ -124,7 +108,7 @@ struct TracksSetupGuide: View {
                     }
                     done()
                 }
-                .keyboardShortcut(.defaultAction)
+
             }
         }
         .padding(16)
@@ -136,71 +120,84 @@ struct TracksSetupGuide: View {
                 interfaceUID = (devices.first { $0.channelCount > 2 } ?? devices.first)?.uid ?? ""
             }
         }
-        .onChange(of: fits) { _, fits in
 
-            if layoutSize > 0, !fits.contains(layoutSize) { layoutSize = fits.last ?? 0 }
-            layoutStart = min(layoutStart, max(0, (device?.channelCount ?? 0) - layoutSize))
+        .onChange(of: count) { lay(device) }
+        .onChange(of: start) { lay(device) }
+        .onChange(of: interfaceUID) { old, _ in
+
+            guard !old.isEmpty else { return }
+            let fresh = devices.first { $0.uid == interfaceUID }
+            count = min(count, min(Self.maxOutputs, fresh?.channelCount ?? 0))
+            start = min(start, max(0, (fresh?.channelCount ?? 0) - count))
+            lay(fresh)
         }
     }
 
-    static func outputLabel(_ channels: [Int]) -> String {
-        channels.count == 2 ? "Outputs \(channels[0] + 1)\u{2013}\(channels[1] + 1)" : "Output \(channels[0] + 1)"
-    }
-
-    static func carries(_ families: [TimelineTracks.Family]) -> String {
-        families.count == roomFamilies.count && Set(families) == Set(roomFamilies)
-            ? "All the tracks" : families.map(\.name).joined(separator: ", ")
-    }
-
-    private func apply(_ device: AudioOutputDevice?) {
-        guard layoutSize > 0, let device else {
+    private func lay(_ device: AudioOutputDevice?) {
+        guard count > 0, let device else {
             TracksController.setMusicOnMain(true, model.trackChannels)
-            applied = "The tracks play from this computer's main output."
             return
         }
-        for (family, channels) in TimelineTracks.layout(outputs: layoutSize) {
-            let first = layoutStart + channels[0]
-            assign(family, device, channels.count == 2 ? Self.pairBase + first : first)
+        let layout = TimelineTracks.layout(fitting: count)
+        for family in TimelineTracks.Family.allCases {
+            guard let channels = layout[family] else {
+                assign(family, device, channel: nil, stereo: false)
+                continue
+            }
+            assign(family, device, channel: start + channels[0], stereo: channels.count == 2)
         }
         TracksController.setMusicOnMain(false, model.trackChannels)
-        applied = "Set up \(layoutSize) outputs on \(device.name), from output \(layoutStart + 1)."
     }
 
-    private func outputRow(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?) -> some View {
-        Picker("", selection: Binding(
-            get: { current(family, device) },
-            set: { assign(family, device, $0) }
-        )) {
-            Text("Not yet").tag(Self.notYet)
-            if let device {
-                ForEach(0 ..< device.channelCount, id: \.self) { Text("Output \($0 + 1)").tag($0) }
-                Divider()
-
-                ForEach(0 ..< max(0, device.channelCount - 1), id: \.self) {
-                    Text("Outputs \($0 + 1)\u{2013}\($0 + 2) (stereo)").tag(Self.pairBase + $0)
+    private func mixRow(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?) -> some View {
+        let now = current(family, device)
+        let last = (device?.channelCount ?? 0) - (now.stereo ? 1 : 0)
+        return HStack(spacing: 6) {
+            Picker("", selection: Binding(
+                get: { now.channel ?? -1 },
+                set: { assign(family, device, channel: $0 < 0 ? nil : $0, stereo: now.stereo) }
+            )) {
+                Text("Not yet").tag(-1)
+                ForEach(0 ..< max(0, last), id: \.self) { channel in
+                    Text(now.stereo ? "Outputs \(channel + 1)\u{2013}\(channel + 2)" : "Output \(channel + 1)").tag(channel)
                 }
             }
+            .labelsHidden()
+            .fixedSize()
+            .frame(width: 150, alignment: .leading)
+            Picker("", selection: Binding(
+                get: { now.stereo },
+                set: { stereo in
+
+                    let channel = now.channel.map { stereo ? min($0, (device?.channelCount ?? 2) - 2) : $0 }
+                    assign(family, device, channel: channel, stereo: stereo)
+                }
+            )) {
+                Text("Mono").tag(false)
+                Text("Stereo").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 120)
         }
-        .labelsHidden()
-        .frame(width: 240)
     }
 
-    private func current(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?) -> Int {
+    private func current(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?) -> (channel: Int?, stereo: Bool) {
         guard let device, let mix = TracksController.existingBus(family),
               let output = outputs.entry(id: mixes.primaryToken(mixId: mix.id)), output.deviceUID == device.uid
-        else { return Self.notYet }
-        return output.monoChannel ?? (Self.pairBase + output.channelOffset)
+        else { return (nil, family != .click && family != .guide) }
+        return output.monoChannel.map { ($0, false) } ?? (output.channelOffset, true)
     }
 
-    private func assign(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?, _ tag: Int) {
+    private func assign(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?, channel: Int?, stereo: Bool) {
         let mix = TracksController.familyBus(family)
-        guard let device, tag != Self.notYet else {
+        guard let device, let channel else {
             mixes.setPrimary(mixId: mix.id, token: AudioMixInventory.noOutputID)
             return
         }
-        let output = tag >= Self.pairBase
-            ? outputs.ensurePair(device: device, offset: tag - Self.pairBase)
-            : outputs.ensureMono(device: device, channel: tag)
+        let output = stereo
+            ? outputs.ensurePair(device: device, offset: channel)
+            : outputs.ensureMono(device: device, channel: channel)
         mixes.setPrimary(mixId: mix.id, token: output.id)
     }
 }

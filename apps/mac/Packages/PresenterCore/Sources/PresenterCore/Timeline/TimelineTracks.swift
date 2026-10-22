@@ -138,6 +138,12 @@ public enum TimelineTracks {
         return (channels, assignments)
     }
 
+    public static func silencedBySolo(_ channels: [TrackChannel], soloed: Set<String>) -> Set<String> {
+        let soloing = channels.contains { soloed.contains($0.id) && $0.trackRole == .music }
+        guard soloing else { return [] }
+        return Set(channels.filter { $0.trackRole == .music && !soloed.contains($0.id) }.map(\.id))
+    }
+
     public static func insertionIndex(for channel: TrackChannel, in channels: [TrackChannel]) -> Int {
         func rank(_ channel: TrackChannel) -> Int { Family.allCases.firstIndex(of: family(of: channel)) ?? 0 }
         let mine = rank(channel)
@@ -211,6 +217,20 @@ public extension TimelineTracks {
         case synths = "Synths & Pads", vocals = "Vocals", strings = "Strings", other = "Other"
 
         public var name: String { rawValue }
+
+        public var colorName: String {
+            switch self {
+            case .click, .guide: "Orange"
+            case .drums, .percussion: "Red"
+            case .bass: "Purple"
+            case .electricGuitars: "Yellow"
+            case .acousticGuitars: "Green"
+            case .keys: "Blue"
+            case .synths, .strings: "Teal"
+            case .vocals: "Pink"
+            case .other: "Gray"
+            }
+        }
     }
 
     internal static let familyWords: [(family: Family, phrases: [[String]])] = [
@@ -228,7 +248,7 @@ public extension TimelineTracks {
         (.strings, [["strings"], ["string"], ["orchestra"], ["orch"], ["brass"], ["horns"], ["cello"], ["violin"]]),
     ]
 
-    static func family(of channel: TrackChannel) -> Family {
+    public static func family(of channel: TrackChannel) -> Family {
         switch channel.trackRole {
         case .click: return .click
         case .guide: return .guide
@@ -290,11 +310,17 @@ public extension TimelineTracks {
 
 public extension TimelineTracks {
 
-    static let layoutSizes = [2, 3, 4, 8, 16]
+    static let layoutSizes = [1, 2, 3, 4, 8, 16, 22]
+
+    static func layout(fitting outputs: Int) -> [Family: [Int]] {
+        layout(outputs: layoutSizes.last { $0 <= outputs } ?? 0)
+    }
 
     static func layout(outputs: Int) -> [Family: [Int]] {
         let music = Family.allCases.filter { $0 != .click && $0 != .guide }
         switch outputs {
+        case 1:
+            return Dictionary(uniqueKeysWithValues: music.map { ($0, [0]) })
         case 2:
             return Dictionary(uniqueKeysWithValues: [(.click, [0]), (.guide, [0])] + music.map { ($0, [1]) })
         case 3:
@@ -307,23 +333,12 @@ public extension TimelineTracks {
         case 16:
             return [.click: [0], .guide: [1], .drums: [2], .percussion: [3], .bass: [4], .electricGuitars: [5],
                     .acousticGuitars: [6], .keys: [7, 8], .synths: [9, 10], .vocals: [11], .strings: [12, 13], .other: [14]]
+        case 22:
+            return Dictionary(uniqueKeysWithValues: [(.click, [0]), (.guide, [1])]
+                + music.enumerated().map { ($1, [2 + 2 * $0, 3 + 2 * $0]) })
         default:
             return [:]
         }
-    }
-
-    static func layoutRows(outputs: Int) -> [(channels: [Int], families: [Family])] {
-        let layout = layout(outputs: outputs)
-        var rows: [(channels: [Int], families: [Family])] = []
-        for family in Family.allCases {
-            guard let channels = layout[family] else { continue }
-            if let index = rows.firstIndex(where: { $0.channels == channels }) {
-                rows[index].families.append(family)
-            } else {
-                rows.append((channels, [family]))
-            }
-        }
-        return rows.sorted { $0.channels[0] < $1.channels[0] }
     }
 }
 

@@ -18,6 +18,8 @@ struct TimelineTransportButtons: View {
     var startHelp = "Go to the top"
     let playHelp: String
     let stopHelp: String
+
+    var holds = false
     let goToStart: () -> Void
     let playOrStop: () -> Void
 
@@ -25,7 +27,10 @@ struct TimelineTransportButtons: View {
         Button {
             goToStart()
         } label: {
-            Image(systemName: "backward.end.fill").frame(width: 14)
+            Image(systemName: "backward.end.fill")
+                .font(.system(size: 11))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Go to Start")
@@ -33,10 +38,13 @@ struct TimelineTransportButtons: View {
         Button {
             playOrStop()
         } label: {
-            Image(systemName: playing ? "stop.fill" : "play.fill")
-                .frame(width: 14)
+            Image(systemName: playing ? (holds ? "pause.fill" : "stop.fill") : "play.fill")
+                .font(.system(size: 15))
+                .frame(width: 28, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(playing ? (holds ? "Pause" : "Stop") : "Play")
         .help(playing ? stopHelp : playHelp)
     }
 }

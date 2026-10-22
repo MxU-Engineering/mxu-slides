@@ -141,6 +141,8 @@ final class TracksController {
         (UserDefaults.standard.object(forKey: "audio.track.\(id).pan") as? Float).map { min(max($0, -1), 1) } ?? 0
     }
 
+    nonisolated static func soloKey(_ id: String) -> String { "audio.track.\(id).solo" }
+
     nonisolated static func muted(_ id: String) -> Bool {
         UserDefaults.standard.bool(forKey: "audio.track.\(id).muted")
     }
@@ -283,11 +285,14 @@ final class TracksController {
         let devices = AudioDeviceList.outputDevices()
         let known = Set(channels.map(\.id))
         let all = channels + extra.subtracting(known).sorted().map { TrackChannel(id: $0, name: $0) }
+        let quiet = TimelineTracks.silencedBySolo(
+            all, soloed: Set(all.map(\.id).filter { UserDefaults.standard.bool(forKey: soloKey($0)) }))
         let trackChannels = all.map { channel -> MultitrackRouting.Channel in
             var sends = mixer.channelSends("track:\(channel.id)")
             if let route = mixId(channel) { sends[route] = 1 }
             return .init(
-                id: channel.id, gain: gain(channel.id), pan: pan(channel.id), muted: muted(channel.id), sends: sends,
+                id: channel.id, gain: gain(channel.id), pan: pan(channel.id),
+                muted: muted(channel.id) || quiet.contains(channel.id), sends: sends,
                 mono: channel.mono == true)
         }
         let mixes = AudioMixInventory.shared.entries.map { mix -> MultitrackRouting.ConsoleMix in
