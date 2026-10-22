@@ -28,9 +28,6 @@ struct COMRef {
     }
 };
 
-/// Host seconds on CACurrentMediaTime's clock — mach absolute time is
-/// system-wide, so the app reads completions on the same timeline as its
-/// own mirror ticks.
 double hostSeconds() {
     static const mach_timebase_info_data_t timebase = [] {
         mach_timebase_info_data_t info;
@@ -296,7 +293,7 @@ struct DLKOutput {
 
     std::chrono::steady_clock::time_point lastCompletion =
         std::chrono::steady_clock::now();
-    /// The card's clock and wire accounting, under `mutex`.
+
     DLKOutputTiming timing = {};
     int32_t width = 0;
     int32_t height = 0;
@@ -592,8 +589,7 @@ void dlk_tally_completion(
     if (!timing) return;
     timing->completions += 1;
     timing->lastCompletionHostTime = hostTime;
-    // Before the app's first latch the wire carries preroll black — there
-    // is no frame yet to repeat or skip.
+
     if (timing->latched > 0) {
         uint64_t fresh = timing->latched - timing->shownLatch;
         if (fresh == 0) {

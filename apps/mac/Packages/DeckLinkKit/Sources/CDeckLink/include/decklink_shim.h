@@ -62,28 +62,20 @@ DLKOutput *dlk_output_open(
 bool dlk_output_display(
     DLKOutput *output, const uint8_t *bgra, size_t bytesPerRow);
 
-/// The card's frame clock and what reached the wire, cumulative for one
-/// open — the 2026-10-11 booth TV feed doubled and skipped frames on motion
-/// and nothing in the log could say where. The app paces its mirror by the
-/// completions (the card's own clock) and logs the rest.
 typedef struct {
-    /// Frames the card finished playing, and when the newest finished on
-    /// the host clock (seconds, CACurrentMediaTime's timebase).
+
     uint64_t completions;
     double lastCompletionHostTime;
-    /// Frames the app latched, and the latch count the newest completion
-    /// copied onto the wire.
+
     uint64_t latched;
     uint64_t shownLatch;
-    /// Completions that found no new latch (the wire showed a frame twice),
-    /// and latches overwritten before any completion copied them (the wire
-    /// never showed them).
+
     uint64_t repeats;
     uint64_t skips;
-    /// Frames the card reports it displayed late or dropped.
+
     uint64_t late;
     uint64_t dropped;
-    /// Times the schedule fell behind the card's clock and jumped ahead.
+
     uint64_t jumps;
 } DLKOutputTiming;
 
@@ -94,14 +86,10 @@ typedef enum {
     DLKCompletionFlushed = 3,
 } DLKCompletionResult;
 
-/// One completion's accounting, applied by the completion callback as it
-/// copies the latest latch onto the wire. Pure, so the rules test without
-/// a card.
 void dlk_tally_completion(
     DLKOutputTiming *timing, double hostTime, DLKCompletionResult result,
     bool jumped);
 
-/// The open output's counters so far.
 DLKOutputTiming dlk_output_timing(DLKOutput *output);
 
 void dlk_output_close(DLKOutput *output);
