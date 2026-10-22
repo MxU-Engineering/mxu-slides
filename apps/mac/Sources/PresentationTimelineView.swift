@@ -64,6 +64,8 @@ struct PresentationTimelineContext {
     let item: ServiceItem
     let presentation: Presentation
 
+    var render: RenderContext? = nil
+
     var clock: PresentationTimelineController { controls.timeline }
     var timeline: PresentationTimeline? {
         PresentationTimelines.timeline(for: item.arrangementId, in: presentation)
@@ -218,6 +220,7 @@ struct PresentationTimelineStrip: View {
             if context.isCurrent, let next = clock.nextCue, next.itemID == context.item.id,
                let cue = timeline?.cues.first(where: { $0.id == next.cueID }) {
                 TimelineNextCueChip(name: context.label(cue), firesAt: next.firesAt)
+                    .timelineSlidePeek(context, cue: cue)
             }
 
             if expanded {
@@ -619,6 +622,53 @@ struct TimelineNextCueChip: View {
         .frame(maxWidth: 240)
         .fixedSize(horizontal: false, vertical: true)
         .help("The next slide change on the timeline")
+    }
+}
+
+private struct TimelineSlidePeek: ViewModifier {
+    let context: PresentationTimelineContext
+    let cue: TimelineCue
+    let enabled: Bool
+    @State private var hovering = false
+    @State private var peeking = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering = $0 }
+
+            .task(id: hovering && enabled) {
+                if hovering, enabled, context.render != nil {
+                    try? await Task.sleep(for: .milliseconds(450))
+                    if !Task.isCancelled { peeking = true }
+                } else {
+                    peeking = false
+                }
+            }
+            .popover(isPresented: $peeking, arrowEdge: .top) {
+                if let slide = context.presentation.slides.first(where: { $0.id == cue.slideId }) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        SlideThumbnailView(
+                            model: context.model, render: context.render, slide: slide,
+                            presentation: context.presentation, theme: context.model.theme(context.presentation.themeId),
+                            arrangementId: context.item.arrangementId, hideScopedBackgrounds: false)
+                            .aspectRatio(SlideGridMetrics.tileAspect(for: context.presentation), contentMode: .fit)
+                            .clipShape(.rect(cornerRadius: CornerStandard.element, style: .continuous))
+                        Text("\(context.label(cue)) · \(PresentationTimelines.playheadClock(cue.at))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(10)
+                    .frame(width: 260)
+
+                    .interactiveDismissDisabled()
+                }
+            }
+    }
+}
+
+extension View {
+    func timelineSlidePeek(_ context: PresentationTimelineContext, cue: TimelineCue, enabled: Bool = true) -> some View {
+        modifier(TimelineSlidePeek(context: context, cue: cue, enabled: enabled))
     }
 }
 
@@ -1176,7 +1226,10 @@ struct PresentationTimelineLanes: View {
                     .lineLimit(1)
             })
         return face
-        .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : title ?? context.label(cue))
+        .timelineSlidePeek(context, cue: cue, enabled: cue.kind == .slide && !orphan && edit.id == nil)
+
+        .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire"
+            : cue.kind == .slide && context.render != nil ? "" : title ?? context.label(cue))
         .timelineBlockGestures(
             id: cue.id, anchor: anchor, edit: $edit, frames: $frames,
             frame: { frames[cue.id]?.offsetBy(dx: -lanesFrame.minX, dy: -lanesFrame.minY) },
@@ -1248,9 +1301,7 @@ struct PresentationTimelineLanes: View {
     private func pinFace(_ cue: TimelineCue, width: CGFloat, height: CGFloat, selected: Bool, tint: Color) -> some View {
         let slide = cue.kind == .slide
 
-        let room = width - Self.pinSize - 3
-        let full = context.slideBadge(cue, width: .infinity)
-        let badge = CGFloat(full.count) * 6.5 <= room ? full : context.slideBadge(cue, width: min(room, 75))
+        let badge = slide ? context.slideWords(cue, room: width - Self.pinSize - 3) : ""
         return HStack(spacing: 3) {
             Rectangle()
                 .fill(selected ? Color.accentColor : tint)
@@ -1981,13 +2032,12 @@ extension TimelineLane {
 
 extension PresentationTimelineContext {
 
-    func slideBadge(_ cue: TimelineCue, width: CGFloat) -> String {
-        guard let occurrence = PresentationTimelines.occurrence(of: cue, in: blocks) else { return "?" }
-        let number = "\(occurrence + 1)"
-        let section = presentation.sections?.first { $0.id == cue.sectionId }?.name ?? ""
-        if width >= 76, !section.isEmpty { return "\(number) \(section)" }
-        if width >= 32, let initial = section.first { return number + String(initial).uppercased() }
-        return number
+    func slideWords(_ cue: TimelineCue, room: CGFloat) -> String {
+        let number = PresentationTimelines.occurrence(of: cue, in: blocks).map { "\($0 + 1)" } ?? "?"
+
+        guard let slide = presentation.slides.first(where: { $0.id == cue.slideId }) else { return number }
+        let words = PresentationTimelines.leadingWords(ConfidenceSceneBuilder.lyricText(for: slide), fitting: Double(room))
+        return words.isEmpty ? number : words
     }
 
     func label(_ cue: TimelineCue) -> String {

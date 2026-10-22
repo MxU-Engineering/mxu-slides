@@ -126,6 +126,16 @@ public enum PresentationTimelines {
         return (cues, missing)
     }
 
+    public static func leadingWords(_ text: String, fitting room: Double) -> String {
+        var words = ""
+        for word in text.split(whereSeparator: { $0.isWhitespace }) {
+            let next = words.isEmpty ? String(word) : words + " " + word
+            guard Double(next.count) * 6.5 <= room else { break }
+            words = next
+        }
+        return words
+    }
+
     public static func end(of cue: TimelineCue, in cues: [TimelineCue]) -> Double {
         guard cue.isBlock else { return cue.at }
         if let duration = cue.duration { return cue.at + max(duration, 0) }

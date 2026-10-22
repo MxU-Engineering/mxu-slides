@@ -227,6 +227,13 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     #expect(cues.first?.id == "pro-0")
 }
 
+@Test func slideMarkersShowTheWordsThatFit() {
+    let text = "Amazing grace\nhow sweet the sound"
+    #expect(T.leadingWords(text, fitting: 1000) == "Amazing grace how sweet the sound")
+    #expect(T.leadingWords(text, fitting: 90) == "Amazing grace")
+    #expect(T.leadingWords(text, fitting: 20) == "")
+}
+
 @Test func theNextSlideCueSkipsOrphans() {
     let orphan = TimelineCue(id: "o", lane: "slide", at: 4, sectionId: "x", sectionOccurrence: 0, slideId: "nope")
     let cues = [slide("a", at: 2, occurrence: 0), orphan, slide("b", at: 6, occurrence: 1)]

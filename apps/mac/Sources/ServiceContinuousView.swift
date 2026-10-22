@@ -655,7 +655,7 @@ struct ServiceContinuousView: View {
     private func timelineContext(_ item: ServiceItem, _ presentation: Presentation) -> PresentationTimelineContext? {
         guard let controls, PresentationTimelineCards.shared.open.contains(item.id) else { return nil }
         return PresentationTimelineContext(
-            model: model, controls: controls, serviceID: serviceID, item: item, presentation: presentation)
+            model: model, controls: controls, serviceID: serviceID, item: item, presentation: presentation, render: render)
     }
 
     private func activeArrangementName(
