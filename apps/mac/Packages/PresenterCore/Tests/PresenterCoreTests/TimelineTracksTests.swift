@@ -195,4 +195,24 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
 
     let late = TimelineTracks.patchPlan(start: 8, deviceChannels: 16)
     #expect(late.count == 8 && late.last!.channel == 15)
+
+    let room = TimelineTracks.patchPlan(
+        TimelineTracks.Family.allCases.filter { $0 != .click && $0 != .guide }, start: 2, deviceChannels: 16)
+    #expect(room.first! == (.drums, 2) && room.count == 10)
+}
+
+@Test func layoutsByOutputCountPutClickAndGuideFirst() {
+    let two = TimelineTracks.layoutRows(outputs: 2)
+    #expect(two.count == 2)
+    #expect(two[0].channels == [0] && two[0].families == [.click, .guide])
+    #expect(two[1].channels == [1] && two[1].families.count == 10)
+    #expect(TimelineTracks.layoutRows(outputs: 3).map(\.channels) == [[0], [1, 2]])
+    let four = TimelineTracks.layoutRows(outputs: 4)
+    #expect(four.map(\.channels) == [[0], [1], [2, 3]])
+    for size in TimelineTracks.layoutSizes {
+        let layout = TimelineTracks.layout(outputs: size)
+        #expect(layout.count == TimelineTracks.Family.allCases.count)
+        #expect(layout.values.allSatisfy { $0.allSatisfy { $0 < size } })
+    }
+    #expect(TimelineTracks.layout(outputs: 0).isEmpty)
 }

@@ -138,6 +138,17 @@ final class AudioOutputInventory {
         return made
     }
 
+    @discardableResult
+    func ensurePair(device: AudioOutputDevice, offset: Int) -> Entry {
+        if let found = entries.first(where: { $0.deviceUID == device.uid && $0.monoChannel == nil && $0.channelOffset == offset }) {
+            return found
+        }
+        let made = Entry(name: "\(device.name) \(offset + 1)-\(offset + 2)", deviceUID: device.uid, channelOffset: offset)
+        entries.append(made)
+        persist()
+        return made
+    }
+
     func channelWords(_ entry: Entry) -> String {
         entry.monoChannel.map { "\($0 + 1)" } ?? "\(entry.channelOffset + 1)-\(entry.channelOffset + 2)"
     }

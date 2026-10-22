@@ -270,11 +270,52 @@ public extension TimelineTracks {
 
 public extension TimelineTracks {
 
-    static func patchPlan(start: Int, deviceChannels: Int) -> [(family: Family, channel: Int)] {
-        Family.allCases.enumerated().compactMap { index, family in
+    static func patchPlan(
+        _ families: [Family] = Family.allCases, start: Int, deviceChannels: Int
+    ) -> [(family: Family, channel: Int)] {
+        families.enumerated().compactMap { index, family in
             let channel = start + index
             return channel >= 0 && channel < deviceChannels ? (family, channel) : nil
         }
+    }
+}
+
+public extension TimelineTracks {
+
+    static let layoutSizes = [2, 3, 4, 8, 16]
+
+    static func layout(outputs: Int) -> [Family: [Int]] {
+        let music = Family.allCases.filter { $0 != .click && $0 != .guide }
+        switch outputs {
+        case 2:
+            return Dictionary(uniqueKeysWithValues: [(.click, [0]), (.guide, [0])] + music.map { ($0, [1]) })
+        case 3:
+            return Dictionary(uniqueKeysWithValues: [(.click, [0]), (.guide, [0])] + music.map { ($0, [1, 2]) })
+        case 4:
+            return Dictionary(uniqueKeysWithValues: [(.click, [0]), (.guide, [1])] + music.map { ($0, [2, 3]) })
+        case 8:
+            return [.click: [0], .guide: [1], .drums: [2], .percussion: [2], .bass: [3], .electricGuitars: [4],
+                    .acousticGuitars: [4], .keys: [5], .synths: [6, 7], .vocals: [6, 7], .strings: [6, 7], .other: [6, 7]]
+        case 16:
+            return [.click: [0], .guide: [1], .drums: [2], .percussion: [3], .bass: [4], .electricGuitars: [5],
+                    .acousticGuitars: [6], .keys: [7, 8], .synths: [9, 10], .vocals: [11], .strings: [12, 13], .other: [14]]
+        default:
+            return [:]
+        }
+    }
+
+    static func layoutRows(outputs: Int) -> [(channels: [Int], families: [Family])] {
+        let layout = layout(outputs: outputs)
+        var rows: [(channels: [Int], families: [Family])] = []
+        for family in Family.allCases {
+            guard let channels = layout[family] else { continue }
+            if let index = rows.firstIndex(where: { $0.channels == channels }) {
+                rows[index].families.append(family)
+            } else {
+                rows.append((channels, [family]))
+            }
+        }
+        return rows.sorted { $0.channels[0] < $1.channels[0] }
     }
 }
 
