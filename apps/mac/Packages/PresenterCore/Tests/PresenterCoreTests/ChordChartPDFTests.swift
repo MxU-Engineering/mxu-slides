@@ -175,6 +175,16 @@ struct ChordChartPDFTests {
         #expect(ChordChartPDF.joinedSyllables(lyric) == expected)
     }
 
+    @Test(arguments: [
+        ("Than [F2]able- - [Am7][G]", "Than [F2]able [Am7][G]"),
+        ("Can [Fm6]do-[Edim7][Fm6]", "Can [Fm6]do[Edim7][Fm6]"),
+        ("Receive joy -", "Receive joy"),
+        ("Our God is an all-consuming fire", "Our God is an all-consuming fire"),
+    ])
+    func heldWordsLoseTheirDash(lyric: String, expected: String) {
+        #expect(ChordChartPDF.withoutLoneDashes(lyric) == expected)
+    }
+
     private static func glyphs(_ text: String, x: CGFloat = 70, y: CGFloat = 100) -> [PDFGlyph] {
         text.enumerated().map { index, character in
             PDFGlyph(text: String(character), x: x + CGFloat(index) * 6, y: y, width: 6, size: 13)

@@ -66,7 +66,7 @@ public enum ChordChartPDF {
                         line = chords.map { "[\($0.symbol)]" }.joined()
                     }
                 } else {
-                    line = joinedSyllables(row.text)
+                    line = withoutLoneDashes(joinedSyllables(row.text))
                 }
                 if sections.isEmpty { leading.append(line) } else { sections[sections.count - 1].lines.append(line) }
             }
@@ -337,14 +337,21 @@ public enum ChordChartPDF {
     }
 
     static func withoutLoneDashes(_ line: String) -> String {
-        line.split(separator: " ", omittingEmptySubsequences: true)
+        let dashes = "-–—_"
+        var words = line.split(separator: " ", omittingEmptySubsequences: true)
             .map { word in
                 let bare = ChordMath.extractLine(String(word)).text
-                return bare.allSatisfy({ "-–—_".contains($0) }) && !bare.isEmpty
+                return bare.allSatisfy({ dashes.contains($0) }) && !bare.isEmpty
                     ? word.replacingOccurrences(of: bare, with: "") : String(word)
             }
             .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        if let last = words.indices.last(where: { !ChordMath.extractLine(words[$0]).text.isEmpty }) {
+            while ChordMath.extractLine(words[last]).text.last.map({ dashes.contains($0) }) == true,
+                  let dash = words[last].lastIndex(where: { dashes.contains($0) }) {
+                words[last].remove(at: dash)
+            }
+        }
+        return words.joined(separator: " ")
     }
 
     struct Section {
