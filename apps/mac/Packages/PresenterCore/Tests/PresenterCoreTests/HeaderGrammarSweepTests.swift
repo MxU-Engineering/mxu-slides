@@ -111,4 +111,12 @@ import Testing
         let inspector = try source("SlideObjectInspector.swift")
         #expect(inspector.contains("ToolbarSegments(options: tabOptions, selection: $tab, fillsWidth: true)"))
     }
+
+    @Test func theKeyPickerShowsOnlyForASongWithChordsOrAKey() throws {
+        let inspector = try source("SlideObjectInspector.swift")
+        #expect(inspector.contains("if let musicKey = model.presentation.musicKey {\n                musicKeyPicker"))
+        #expect(inspector.contains("} else if ChordMath.hasChords(in: model.presentation) {\n                musicKeyPicker"))
+        let chart = try source("ChordEditorSheet.swift")
+        #expect(chart.contains("presentation.musicKey != nil || ChordMath.hasChords(in: presentation) {\n                Picker(\"Key\""))
+    }
 }

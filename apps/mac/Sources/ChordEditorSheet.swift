@@ -79,17 +79,21 @@ struct ChordEditorSheet: View {
         HStack(spacing: 12) {
             Text(model.presentation(presentationID)?.name ?? "Chords")
                 .font(.headline)
-            Picker("Key", selection: musicKeyBinding()) {
-                Text("None").tag("")
-                Divider()
-                ForEach(Self.keyNames, id: \.self) { Text($0).tag($0) }
-                ForEach(Self.keyNames, id: \.self) { Text($0 + "m").tag($0 + "m") }
+
+            if let presentation = model.presentation(presentationID),
+               presentation.musicKey != nil || ChordMath.hasChords(in: presentation) {
+                Picker("Key", selection: musicKeyBinding()) {
+                    Text("None").tag("")
+                    Divider()
+                    ForEach(Self.keyNames, id: \.self) { Text($0).tag($0) }
+                    ForEach(Self.keyNames, id: \.self) { Text($0 + "m").tag($0 + "m") }
+                }
+                .fixedSize()
+                .help("The key these chords are written in — display keys transpose from here")
+                Text("Chords are stored in this key; pick a display key in Present or the inspector.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .fixedSize()
-            .help("The key these chords are written in — display keys transpose from here")
-            Text("Chords are stored in this key; pick a display key in Present or the inspector.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Spacer()
             if let presentation = model.presentation(presentationID), ChordProExport.isSong(presentation) {
                 Button("Export…") { model.exportPresentation(presentation, render: render, preferred: .plainText) }

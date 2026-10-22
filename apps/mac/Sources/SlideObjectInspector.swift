@@ -300,17 +300,8 @@ struct SlideObjectInspector: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            InspectorPicker("Key", selection: musicKeyBinding()) {
-                Text("None").tag("")
-                Divider()
-                ForEach(Self.keyNames, id: \.self) { name in
-                    Text(name).tag(name)
-                }
-                ForEach(Self.keyNames, id: \.self) { name in
-                    Text(name + "m").tag(name + "m")
-                }
-            }
             if let musicKey = model.presentation.musicKey {
+                musicKeyPicker
                 InspectorPicker("Display Key", selection: displayKeyBinding(musicKey: musicKey)) {
                     ForEach(ChordMath.keyChoices(matching: musicKey), id: \.self) { name in
                         if name.caseInsensitiveCompare(musicKey) == .orderedSame {
@@ -321,6 +312,21 @@ struct SlideObjectInspector: View {
                     }
                 }
                 .help("Chords transpose to this key on every screen that shows them")
+            } else if ChordMath.hasChords(in: model.presentation) {
+                musicKeyPicker
+            }
+        }
+    }
+
+    private var musicKeyPicker: some View {
+        InspectorPicker("Key", selection: musicKeyBinding()) {
+            Text("None").tag("")
+            Divider()
+            ForEach(Self.keyNames, id: \.self) { name in
+                Text(name).tag(name)
+            }
+            ForEach(Self.keyNames, id: \.self) { name in
+                Text(name + "m").tag(name + "m")
             }
         }
     }
