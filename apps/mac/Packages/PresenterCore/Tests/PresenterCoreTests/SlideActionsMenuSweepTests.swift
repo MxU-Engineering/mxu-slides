@@ -42,7 +42,9 @@ import Testing
         #expect(glyphs.contains("model.actionCombo($0).iconName"))
     }
 
-    @Test func combosCanUseTheLightIcon() throws {
-        #expect(try source("Modules/ActionCombosModule.swift").contains("(.light, \"Light\")"))
+    @Test func combosCanUseTheLightIconAndSeeEachGlyph() throws {
+        let combos = try source("Modules/ActionCombosModule.swift")
+        #expect(combos.contains("(.light, \"Light\")"))
+        #expect(combos.contains("Image(nsImage: choice.kind.menuImage)"), "the Icon menu shows each glyph")
     }
 }

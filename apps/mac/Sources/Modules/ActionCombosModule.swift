@@ -969,14 +969,20 @@ struct ActionCombosModule: View {
     private func iconMenu(_ combos: [ActionCombo]) -> some View {
         Menu("Icon") {
             ForEach(Self.icons, id: \.kind) { choice in
-                Toggle(choice.name, isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { combos.allSatisfy { icon(of: $0) == choice.kind } },
                     set: { _ in
                         setLook(combos) {
                             $0.iconName = choice.kind == .combos ? nil : choice.kind.rawValue
                         }
                     }
-                ))
+                )) {
+                    Label {
+                        Text(choice.name)
+                    } icon: {
+                        Image(nsImage: choice.kind.menuImage)
+                    }
+                }
             }
         }
     }
