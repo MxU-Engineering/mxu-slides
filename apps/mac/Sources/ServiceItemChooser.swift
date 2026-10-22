@@ -96,7 +96,7 @@ struct ServiceItemChooser: View {
         }
         .fileImporter(
             isPresented: $choosingFiles, allowedContentTypes: ServiceItemChooserLogic.importTypes,
-            allowsMultipleSelection: true
+            allowsMultipleSelection: linkTarget == nil
         ) { result in
             if case .success(let urls) = result { importUsable(urls) }
         }
@@ -241,7 +241,7 @@ struct ServiceItemChooser: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
-            Text(linkTarget == nil ? "Each file becomes a service item." : "The first file links this item; the rest go to the library.")
+            Text(linkTarget == nil ? "Each file becomes a service item." : "One file links this item.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             if let skippedNote {
@@ -265,12 +265,11 @@ struct ServiceItemChooser: View {
 
     @discardableResult
     private func importUsable(_ urls: [URL]) -> Bool {
-        let usable = urls.filter { ServiceItemChooserLogic.route($0) != nil }
-        if usable.isEmpty {
-            skippedNote = "MxU Slides can't import " + urls.map(\.lastPathComponent).joined(separator: ", ")
+        if let refusal = ServiceItemChooserLogic.refusal(urls, linking: linkTarget != nil) {
+            skippedNote = refusal
             return false
         } else {
-            importNow(usable)
+            importNow(urls.filter { ServiceItemChooserLogic.route($0) != nil })
             return true
         }
     }

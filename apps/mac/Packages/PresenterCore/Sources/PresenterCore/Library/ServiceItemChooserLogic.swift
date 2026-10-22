@@ -104,6 +104,16 @@ public enum ServiceItemChooserLogic {
         }
     }
 
+    public static func refusal(_ urls: [URL], linking: Bool) -> String? {
+        if linking, urls.count > 1 {
+            "A plan item links one file. Choose just one, or use Add Item to add several."
+        } else if !urls.contains(where: { route($0) != nil }) {
+            "MxU Slides can't import " + urls.map(\.lastPathComponent).joined(separator: ", ")
+        } else {
+            nil
+        }
+    }
+
     public static var importTypes: [UTType] {
         [.image, .movie, .video]
             + (slidesFileExtensions.union(proPresenterExtensions).union(powerPointExtensions).union(lyricsExtensions))

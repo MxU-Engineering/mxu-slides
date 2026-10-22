@@ -59,6 +59,16 @@ import Testing
         #expect(ServiceItemChooserLogic.ImportRoute.allCases.first == .slidesFile, "decks land first: a link takes the first")
     }
 
+    @Test func linkTakesOneFileAndAddTakesMany() {
+        let song = URL(fileURLWithPath: "/tmp/Song.txt"), still = URL(fileURLWithPath: "/tmp/Still.png")
+        let notes = URL(fileURLWithPath: "/tmp/Notes.md")
+        #expect(ServiceItemChooserLogic.refusal([song], linking: true) == nil)
+        #expect(ServiceItemChooserLogic.refusal([song, still], linking: true)?.hasPrefix("A plan item links one file") == true)
+        #expect(ServiceItemChooserLogic.refusal([song, still], linking: false) == nil, "Add makes a row of each")
+        #expect(ServiceItemChooserLogic.refusal([notes], linking: false) == "MxU Slides can't import Notes.md")
+        #expect(ServiceItemChooserLogic.refusal([notes, still], linking: false) == nil, "the usable ones go in")
+    }
+
     private var appSources: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -87,6 +97,8 @@ import Testing
         #expect(chooser.contains("case .lyrics: await importLyricsFiles(files)"))
         #expect(chooser.contains("case .media: await importFiles(files)"))
         #expect(chooser.contains("await client.settled()"), "imports are listed before a link or a row reads them")
+        #expect(chooser.contains("allowsMultipleSelection: linkTarget == nil"), "the panel picks one file for Link")
+        #expect(chooser.contains("ServiceItemChooserLogic.refusal(urls, linking: linkTarget != nil)"), "drops and picks go through the one rule")
         #expect(!chooser.contains("NSSound"), "never a system sound: a skipped file is named in the pane (Cody 2026-10-13)")
         let library = try source("LibraryView.swift")
         #expect(library.contains("await model.runProPresenterImport(urls)") && library.contains("await model.runPowerPointImport(urls)"),
