@@ -206,6 +206,19 @@ private func buffer(filledWith value: Float, frames: AVAudioFrameCount = 480) ->
     #expect(playthrough.isRunning == false)
 }
 
+@Test func playthroughRestartsBehindTheSourceOnlyWhenDry() {
+
+    #expect(AudioInputPlaythrough.leadFrames(pending: 0) == 1_440)
+    #expect(AudioInputPlaythrough.leadFrames(pending: 1) == 0)
+    #expect(AudioInputPlaythrough.leadFrames(pending: 1_602) == 0)
+    let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+    let lead = AudioInputPlaythrough.silence(frames: 1_440, format: format)!
+    #expect(lead.frameLength == 1_440)
+    #expect((0 ..< 2).allSatisfy { channel in
+        (0 ..< 1_440).allSatisfy { lead.floatChannelData![channel][$0] == 0 }
+    })
+}
+
 @Test func playthroughIsBornMutedUntilRouted() {
 
     let playthrough = AudioInputPlaythrough()
