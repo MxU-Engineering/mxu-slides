@@ -1721,6 +1721,8 @@ extension FocusedValues {
 
     @Entry var presentLyricImport: MenuAction?
 
+    @Entry var presentMessageNotesImport: MenuAction?
+
     @Entry var presentNewSlide: MenuAction?
 
     @Entry var presentWorkspaceImport: MenuAction?

@@ -328,7 +328,7 @@ private struct ImportLyricsPreview: View {
     }
 }
 
-private struct ImportSlideThumbnail: View {
+struct ImportSlideThumbnail: View {
     let model: AppModel
     let render: RenderContext?
     let slide: Slide

@@ -1594,7 +1594,8 @@
         "chartFile",
         "pastedLyrics",
         "slidesFile",
-        "duplicate"
+        "duplicate",
+        "messageNotes"
       ]
     },
     "PresentationOrigin": {

@@ -20,6 +20,7 @@ public extension PresentationOrigin {
         case .pastedLyrics: "Pasted lyrics"
         case .slidesFile: "MxU Slides file"
         case .duplicate: "Copy"
+        case .messageNotes: "Message notes"
         }
         return ([source] + [detail].compactMap { $0 }).joined(separator: " · ")
     }
