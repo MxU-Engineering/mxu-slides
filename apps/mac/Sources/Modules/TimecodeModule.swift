@@ -7,6 +7,7 @@ struct TimecodeModule: View {
     let controls: ServiceControls
 
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.runOnly) private var runOnly
 
     var body: some View {
         let follower = controls.timecode
@@ -21,6 +22,7 @@ struct TimecodeModule: View {
                     .font(.caption)
                     .help("Songs with a timecode start play from it on this computer")
             }
+            startTimesPicker
             if !follower.hasInput {
                 Text("No timecode input on this computer.")
                     .font(.caption)
@@ -34,6 +36,35 @@ struct TimecodeModule: View {
                 TimecodeModuleReadout(follower: follower)
                 songsSection
             }
+        }
+    }
+
+    @ViewBuilder
+    private var startTimesPicker: some View {
+        if let serviceID = model.currentServiceID, let service = try? model.service(serviceID) {
+            let byOrder = service.timecodeByOrder == true
+            HStack(spacing: 4) {
+                Text("Start times:")
+                    .foregroundStyle(.secondary)
+                Menu {
+                    Picker("Start times", selection: Binding(
+                        get: { byOrder },
+                        set: { on in model.updateService(serviceID) { $0.timecodeByOrder = on ? true : nil } }
+                    )) {
+                        Text("Saved with each song").tag(false)
+                        Text("In service order").tag(true)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } label: {
+                    Text(byOrder ? "In service order" : "Saved with each song")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(runOnly)
+                .help("In service order: songs with a timeline start at 01:00, 02:00, … in run order, for this service only")
+            }
+            .font(.caption)
         }
     }
 
@@ -87,7 +118,7 @@ struct TimecodeModule: View {
         if current {
             let deck = followed.presentation
             let rows = TimecodeFollow.cueRows(
-                followed.timeline,
+                followed.timeline, start: followed.song.startFrames,
                 blocks: SlideSceneBuilder.timelineBlocks(for: deck, arrangementId: followed.arrangementId)
             ) { id in deck.sections?.first { $0.id == id }?.name ?? "Slides" }
             ForEach(rows, id: \.id) { row in

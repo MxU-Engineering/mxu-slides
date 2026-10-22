@@ -1353,8 +1353,9 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
     public var mxuDerivedName: String?
     public var mxuSyncPaused: Bool?
     public var versions: [ServiceVersion]?
+    public var timecodeByOrder: Bool?
 
-    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil) {
+    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, timecodeByOrder: Bool? = nil) {
         self.id = id
         self.name = name
         self.serviceDate = serviceDate
@@ -1369,6 +1370,7 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
         self.mxuDerivedName = mxuDerivedName
         self.mxuSyncPaused = mxuSyncPaused
         self.versions = versions
+        self.timecodeByOrder = timecodeByOrder
     }
 }
 

@@ -75,25 +75,37 @@ struct PresentationTimelineContext {
     func record() {
         clock.record(
             itemID: item.id, presentation: presentation, arrangementId: item.arrangementId,
-            newStart: suggestedStart(length: 0))
+            newStart: suggestedStart(length: 0), start: start)
     }
+
+    var byOrder: Bool { (try? model.service(serviceID))?.timecodeByOrder == true }
+
+    func setByOrder(_ on: Bool) {
+        model.updateService(serviceID) { $0.timecodeByOrder = on ? true : nil }
+    }
+
+    var start: Int? { (try? model.service(serviceID)).flatMap { TimecodeFollower.starts(model, service: $0)[item.id] } }
 
     func windows() -> [(window: PresentationTimelines.Window, name: String)] {
         guard let service = try? model.service(serviceID) else { return [] }
+        let starts = TimecodeFollower.starts(model, service: service)
         return model.runOfShow(service).compactMap { other in
             guard other.itemKind == .presentation, other.id != item.id,
                   let deck = model.presentation(other.refId),
                   let timeline = PresentationTimelines.timeline(for: other.arrangementId, in: deck)
             else { return nil }
             let length = PresentationTimelines.frames(seconds: PresentationTimelines.length(timeline))
-            return (PresentationTimelines.Window(id: other.id, start: timeline.timecodeStart, length: length), other.name)
+            return (
+                PresentationTimelines.Window(
+                    id: other.id, start: starts[other.id] ?? timeline.timecodeStart, length: length),
+                other.name)
         }
     }
 
     var window: PresentationTimelines.Window? {
         timeline.map {
             PresentationTimelines.Window(
-                id: item.id, start: $0.timecodeStart,
+                id: item.id, start: start ?? $0.timecodeStart,
                 length: PresentationTimelines.frames(seconds: PresentationTimelines.length($0)))
         }
     }
@@ -129,7 +141,7 @@ struct PresentationTimelineStrip: View {
         let timeline = context.timeline
         let length = max(timeline.map(PresentationTimelines.length) ?? 0, 1)
         let shown = context.shownLength
-        let start = timeline?.timecodeStart ?? 0
+        let start = context.start ?? timeline?.timecodeStart ?? 0
         let clashes = context.window.map { mine in
             context.windows().filter { mine.overlaps($0.window) }
         } ?? []
@@ -432,13 +444,29 @@ struct PresentationTimelineStartPopover: View {
         let typed = PresentationTimelines.frames(timecode: text)
         let length = context.timeline.map(PresentationTimelines.length) ?? 0
         let others = context.windows()
+        let byOrder = context.byOrder
+
+        let ordered = byOrder ? context.start : nil
         let mine = PresentationTimelines.Window(
-            id: context.item.id, start: typed ?? context.timeline?.timecodeStart ?? 0,
+            id: context.item.id, start: ordered ?? typed ?? context.timeline?.timecodeStart ?? 0,
             length: PresentationTimelines.frames(seconds: length))
         let clashes = others.filter { mine.overlaps($0.window) }
         VStack(alignment: .leading, spacing: 10) {
             Text("Timecode Start")
                 .font(.headline)
+            if byOrder {
+                HStack(spacing: 6) {
+                    Text(ordered.map(Self.hours) ?? "--:--")
+                        .font(.body.monospacedDigit())
+                    Text("· by order in this service")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Use the song's own start") { context.setByOrder(false) }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+                    .disabled(runOnly)
+                    .help("Start times for this service: Saved with each song")
+            }
             HStack {
                 TextField("HH:MM:SS:FF", text: $text)
                     .font(.body.monospacedDigit())
@@ -466,10 +494,19 @@ struct PresentationTimelineStartPopover: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-                let free = PresentationTimelines.suggestedStart(
-                    length: mine.length, avoiding: others.map(\.window), id: mine.id)
-                Button("Use \(PresentationTimelines.timecode(frames: free))") { set(free) }
+
+                if !byOrder {
+                    let free = PresentationTimelines.suggestedStart(
+                        length: mine.length, avoiding: others.map(\.window), id: mine.id)
+                    HStack(spacing: 10) {
+                        Button("Use \(PresentationTimelines.timecode(frames: free))") { set(free) }
+                        Button("Use service order") { context.setByOrder(true) }
+                            .buttonStyle(.link)
+                            .controlSize(.small)
+                            .help("Start times for this service: In service order (01:00, 02:00, … in run order)")
+                    }
                     .disabled(runOnly)
+                }
             }
         }
         .padding(16)
@@ -478,6 +515,11 @@ struct PresentationTimelineStartPopover: View {
             text = PresentationTimelines.timecode(
                 frames: context.timeline?.timecodeStart ?? context.suggestedStart(length: 0))
         }
+    }
+
+    static func hours(_ frames: Int) -> String {
+        let minutes = frames / PresentationTimelines.framesPerSecond / 60
+        return String(format: "%02d:%02d", minutes / 60, minutes % 60)
     }
 
     private func set(_ frames: Int) {

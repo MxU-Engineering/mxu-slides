@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 143,
+  "schemaVersion": 144,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -2122,6 +2122,9 @@
           "items": {
             "$ref": "#/components/schemas/ServiceVersion"
           }
+        },
+        "timecodeByOrder": {
+          "type": "boolean"
         }
       },
       "required": [

@@ -86,11 +86,11 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         timecodeRecording = nil
     }
 
-    func record(itemID: String, presentation: Presentation, arrangementId: String?, newStart: Int) {
+    func record(itemID: String, presentation: Presentation, arrangementId: String?, newStart: Int, start: Int? = nil) {
         stop()
         if self.itemID != itemID { select(itemID: itemID, presentation: presentation, arrangementId: arrangementId) }
         if let follower = controls?.timecode, case .timecode(let start) = TimecodeRecording.mode(
-            timeline: timeline(of: presentation), hasInput: follower.hasInput, follows: follower.follows) {
+            timeline: timeline(of: presentation), start: start, hasInput: follower.hasInput, follows: follower.follows) {
             timecodeRecording = TimecodeRecording(itemID: itemID, start: start)
             recording = true
             DiagnosticsStore.shared.note("timeline.record", detail: "armed for timecode")

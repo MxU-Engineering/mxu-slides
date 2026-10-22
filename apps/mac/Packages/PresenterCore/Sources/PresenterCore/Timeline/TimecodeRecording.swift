@@ -19,10 +19,12 @@ public struct TimecodeRecording: Equatable, Sendable {
         case timecode(start: Int?)
     }
 
-    public static func mode(timeline: PresentationTimeline?, hasInput: Bool, follows: Bool) -> Mode {
+    public static func mode(
+        timeline: PresentationTimeline?, start: Int? = nil, hasInput: Bool, follows: Bool
+    ) -> Mode {
         guard hasInput, follows else { return .ownClock }
         guard let timeline else { return .timecode(start: nil) }
-        return timeline.timecodeEnabled ? .timecode(start: timeline.timecodeStart) : .ownClock
+        return timeline.timecodeEnabled ? .timecode(start: start ?? timeline.timecodeStart) : .ownClock
     }
 
     public static func start(from label: TimecodeLabel) -> Int {

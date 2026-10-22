@@ -328,6 +328,16 @@ public enum PresentationTimelines {
         others.filter { $0.id != window.id && window.overlaps($0) }
     }
 
+    public static func serviceStarts(
+        _ items: [(id: String, timeline: PresentationTimeline?)], byOrder: Bool
+    ) -> [String: Int] {
+        let songs = items.compactMap { item in item.timeline.map { (item.id, $0) } }
+
+        return Dictionary(
+            songs.enumerated().map { ($1.0, byOrder ? ($0 + 1) * 3600 * framesPerSecond : $1.1.timecodeStart) },
+            uniquingKeysWith: { first, _ in first })
+    }
+
     public static func suggestedStart(length: Int, avoiding others: [Window], id: String = "") -> Int {
         let hour = 3600 * framesPerSecond
         let others = others.filter { $0.id != id }

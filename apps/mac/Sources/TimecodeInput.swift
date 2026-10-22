@@ -327,15 +327,27 @@ final class TimecodeFollower {
 
     static func songs(_ model: AppModel) -> [FollowedSong] {
         guard let serviceID = model.currentServiceID, let service = try? model.service(serviceID) else { return [] }
+        let starts = starts(model, service: service)
         return model.runOfShow(service).compactMap { item in
             guard item.itemKind == .presentation, let deck = model.presentation(item.refId),
                   let timeline = PresentationTimelines.timeline(for: item.arrangementId, in: deck),
                   timeline.timecodeEnabled
             else { return nil }
             return FollowedSong(
-                song: TimecodeFollow.Song(itemID: item.id, timeline: timeline), item: item, presentation: deck,
-                timeline: timeline)
+                song: TimecodeFollow.Song(itemID: item.id, timeline: timeline, start: starts[item.id]), item: item,
+                presentation: deck, timeline: timeline)
         }
+    }
+
+    static func starts(_ model: AppModel, service: Service) -> [String: Int] {
+        PresentationTimelines.serviceStarts(
+            model.runOfShow(service).compactMap { item in
+                guard item.itemKind == .presentation else { return nil }
+                return (item.id, model.presentation(item.refId).flatMap {
+                    PresentationTimelines.timeline(for: item.arrangementId, in: $0)
+                })
+            },
+            byOrder: service.timecodeByOrder == true)
     }
 }
 

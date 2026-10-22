@@ -122,10 +122,10 @@ public struct TimecodeFollow: Sendable {
             self.tail = tail
         }
 
-        public init(itemID: String, timeline: PresentationTimeline) {
+        public init(itemID: String, timeline: PresentationTimeline, start: Int? = nil) {
             self.init(
-                itemID: itemID, startFrames: timeline.timecodeStart, length: PresentationTimelines.length(timeline),
-                tail: timeline.length == nil ? 1 : 0)
+                itemID: itemID, startFrames: start ?? timeline.timecodeStart,
+                length: PresentationTimelines.length(timeline), tail: timeline.length == nil ? 1 : 0)
         }
     }
 
@@ -202,7 +202,8 @@ public struct TimecodeFollow: Sendable {
     }
 
     public static func cueRows(
-        _ timeline: PresentationTimeline, blocks: [TimelinePlayedBlock], sectionName: (String?) -> String
+        _ timeline: PresentationTimeline, start: Int? = nil, blocks: [TimelinePlayedBlock],
+        sectionName: (String?) -> String
     ) -> [CueRow] {
         var starts: [Int] = []
         var index = 0
@@ -213,7 +214,7 @@ public struct TimecodeFollow: Sendable {
         return timeline.cues.filter { $0.kind == .slide }.sorted { $0.at < $1.at }.compactMap { cue in
             guard let occurrence = PresentationTimelines.occurrence(of: cue, in: blocks),
                   let block = starts.lastIndex(where: { $0 <= occurrence }) else { return nil }
-            let frames = timeline.timecodeStart + Int((cue.at * Double(PresentationTimelines.framesPerSecond)).rounded())
+            let frames = (start ?? timeline.timecodeStart) + Int((cue.at * Double(PresentationTimelines.framesPerSecond)).rounded())
             return CueRow(
                 id: cue.id, timecode: PresentationTimelines.timecode(frames: frames),
                 label: "\(sectionName(blocks[block].sectionId)) · \(occurrence - starts[block] + 1)", at: cue.at)
