@@ -540,7 +540,7 @@ struct ServiceContinuousView: View {
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
             } leading: {
 
-                if presentation.sections?.isEmpty == false {
+                if SlideSceneBuilder.showsArrangements(for: presentation) {
                     if runOnly {
                         if let name = activeArrangementName(item, presentation) {
                             Text(name)
@@ -565,7 +565,7 @@ struct ServiceContinuousView: View {
                 SlideShowChip(model: model, controls: controls, presentation: presentation)
             } accessory: {
 
-                if presentation.sections?.isEmpty == false {
+                if SlideSceneBuilder.showsArrangements(for: presentation) {
                     ArrangementStrip(
                         model: model, presentation: presentation,
                         selection: Binding(
@@ -1373,11 +1373,14 @@ struct ArrangementPicker: View {
                     ))
                 }
             }
-            Divider()
-            Button("New Arrangement") {
 
-                model.addArrangement(presentation.id) { created in
-                    selection = created.id
+            if !SlideSceneBuilder.arrangementBlockStarts(for: presentation).isEmpty {
+                Divider()
+                Button("New Arrangement") {
+
+                    model.addArrangement(presentation.id) { created in
+                        selection = created.id
+                    }
                 }
             }
             if let arrangement = activeArrangement {

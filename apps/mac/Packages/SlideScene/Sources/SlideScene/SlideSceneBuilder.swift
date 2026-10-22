@@ -92,6 +92,11 @@ public enum SlideSceneBuilder {
         return starts
     }
 
+    public static func showsArrangements(for presentation: Presentation) -> Bool {
+        !arrangementBlockStarts(for: presentation).isEmpty
+            || presentation.arrangements?.isEmpty == false
+    }
+
     public static func autoAdvanceTarget(
         occurrence: Int, count: Int, loopToStart: Bool
     ) -> Int? {

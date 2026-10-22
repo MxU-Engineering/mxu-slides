@@ -610,6 +610,24 @@ private func arrangedSong() -> Presentation {
     #expect(SlideSceneBuilder.arrangementBlockStarts(for: withEmpty, arrangementId: "a") == [0, 2, 2])
 }
 
+@Test func arrangementControlsNeedASectionedSlide() {
+    let song = arrangedSong()
+    #expect(SlideSceneBuilder.showsArrangements(for: song))
+
+    var unsectioned = song
+    unsectioned.arrangements = nil
+    unsectioned.slides = unsectioned.slides.map { slide in
+        var copy = slide
+        copy.sectionId = nil
+        return copy
+    }
+    #expect(!SlideSceneBuilder.showsArrangements(for: unsectioned))
+
+    var arranged = unsectioned
+    arranged.arrangements = song.arrangements
+    #expect(SlideSceneBuilder.showsArrangements(for: arranged))
+}
+
 @Test func sectionBackgroundSitsBetweenSlideAndSongScopes() {
     var song = arrangedSong()
     song.sections![1].background = CueMedia(mediaId: "chorus-bg")
