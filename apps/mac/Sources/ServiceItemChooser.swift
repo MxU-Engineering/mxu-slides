@@ -4,28 +4,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ServiceItemChooser: View {
-    enum Purpose {
-
-        case link(itemID: String, planSync: PlanSyncController)
-
-        case add
-    }
-
     let model: AppModel
     let serviceID: String
-    let purpose: Purpose
 
     var render: RenderContext? = nil
-
-    let openInEditor: (String) -> Void
-
-    var showItem: ((String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var tab: ServiceItemChooserLogic.Tab = .library
     @State private var query = ""
     @State private var filter: ServiceItemChooserLogic.KindFilter = .all
-    @State private var suggestions: [LibraryIndex.Entry] = []
 
     @State private var queryHits: [LibraryIndex.Hit] = []
 
@@ -40,20 +27,10 @@ struct ServiceItemChooser: View {
     @State private var newThemeId = ""
     @FocusState private var searchFocused: Bool
 
-    private var linkTarget: (itemID: String, planSync: PlanSyncController)? {
-        if case .link(let itemID, let planSync) = purpose { (itemID, planSync) } else { nil }
-    }
-
-    private var tabs: [ServiceItemChooserLogic.Tab] {
-        ServiceItemChooserLogic.tabs(offersPlanningCenter: linkTarget.map {
-            $0.planSync.canCreateFromLyrics(serviceID: serviceID, itemID: $0.itemID)
-        } ?? false)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             Picker("Source", selection: $tab) {
-                ForEach(tabs, id: \.self) { tab in
+                ForEach(ServiceItemChooserLogic.Tab.allCases, id: \.self) { tab in
                     Label(tab.title, systemImage: tab.symbol).tag(tab)
                 }
             }
@@ -61,50 +38,30 @@ struct ServiceItemChooser: View {
             .labelsHidden()
             .padding(10)
             Divider()
-            if tab == .planningCenter, let linkTarget {
-
-                LyricsCreateSheet(
-                    appModel: model, render: render, planSync: linkTarget.planSync,
-                    serviceID: serviceID, itemID: linkTarget.itemID
-                ) { id, edit in
-                    if edit {
-                        openInEditor(id)
-                    } else {
-                        showItem?(linkTarget.itemID)
-                    }
+            Group {
+                switch tab {
+                case .importFile: importPane
+                case .new: newPane
+                default: libraryPane
                 }
-            } else {
-                Group {
-                    switch tab {
-                    case .importFile: importPane
-                    case .new: newPane
-                    default: libraryPane
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                footer
-                    .padding(10)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            footer
+                .padding(10)
         }
-        .frame(width: tab == .planningCenter ? nil : 600, height: tab == .planningCenter ? nil : 480)
+        .frame(width: 600, height: 480)
         .onAppear {
             searchFocused = true
             idleOrder = ServiceItemChooserLogic.results(query: "", hits: [], idle: idleEntries, filter: .all).map(\.entry.id)
         }
         .task { proPresenterIDs = await model.proPresenterImportIDs() }
-        .task {
-            if let linkTarget {
-                suggestions = await linkTarget.planSync.linkSuggestions(serviceID: serviceID, itemID: linkTarget.itemID)
-                newName = linkTarget.planSync.newPresentationName(serviceID: serviceID, itemID: linkTarget.itemID) ?? ""
-            }
-        }
         .task(id: query) {
             queryHits = await model.search(query)
         }
         .fileImporter(
             isPresented: $choosingFiles, allowedContentTypes: ServiceItemChooserLogic.importTypes,
-            allowsMultipleSelection: linkTarget == nil
+            allowsMultipleSelection: true
         ) { result in
             if case .success(let urls) = result { importUsable(urls) }
         }
@@ -135,22 +92,6 @@ struct ServiceItemChooser: View {
             }
             .padding(10)
             Divider()
-            if !suggestions.isEmpty, query.trimmingCharacters(in: .whitespaces).isEmpty {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Suggested")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.top, 6)
-                    ForEach(suggestions.filter { filter.includes($0.kind) }, id: \.id) { entry in
-                        row(LibraryIndex.Hit(entry: entry, snippet: nil))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 3)
-                    }
-                }
-                .padding(.bottom, 6)
-                Divider()
-            }
             let hits = results
             List(hits, id: \.entry.id) { hit in
                 row(hit)
@@ -185,7 +126,7 @@ struct ServiceItemChooser: View {
 
     @ViewBuilder
     private func row(_ hit: LibraryIndex.Hit) -> some View {
-        let accessory = linkTarget == nil ? "plus.circle" : nil
+        let accessory: String? = "plus.circle"
         if hit.entry.kind == .presentation {
             LibraryPickerDeckRow(
                 appModel: model, render: render, entry: hit.entry,
@@ -229,12 +170,7 @@ struct ServiceItemChooser: View {
     }
 
     private func pick(_ entry: LibraryIndex.Entry) {
-        if let linkTarget {
-            linkTarget.planSync.link(serviceID: serviceID, itemID: linkTarget.itemID, to: entry)
-            dismiss()
-        } else {
-            model.addServiceItem(serviceID, refID: entry.id)
-        }
+        model.addServiceItem(serviceID, refID: entry.id)
     }
 
     private var importPane: some View {
@@ -249,7 +185,7 @@ struct ServiceItemChooser: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
-            Text(linkTarget == nil ? "Each file becomes a service item." : "One file links this item.")
+            Text("Each file becomes a service item.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             if let skippedNote {
@@ -273,7 +209,7 @@ struct ServiceItemChooser: View {
 
     @discardableResult
     private func importUsable(_ urls: [URL]) -> Bool {
-        if let refusal = ServiceItemChooserLogic.refusal(urls, linking: linkTarget != nil) {
+        if let refusal = ServiceItemChooserLogic.refusal(urls) {
             skippedNote = refusal
             return false
         } else {
@@ -285,15 +221,10 @@ struct ServiceItemChooser: View {
     private func importNow(_ urls: [URL]) {
         let serviceID = serviceID
         let model = model
-        let linkTarget = linkTarget
         dismiss()
         Task { @MainActor in
-            if let linkTarget {
-                await linkTarget.planSync.importAndLink(serviceID: serviceID, itemID: linkTarget.itemID, urls: urls)
-            } else {
-                for id in await model.importForService(urls) {
-                    model.addServiceItem(serviceID, refID: id)
-                }
+            for id in await model.importForService(urls) {
+                model.addServiceItem(serviceID, refID: id)
             }
         }
     }
@@ -314,13 +245,7 @@ struct ServiceItemChooser: View {
     private func createNew() {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
         let name = trimmed.isEmpty ? "Untitled Presentation" : trimmed
-        if let linkTarget {
-            if let id = linkTarget.planSync.createPresentationAndLink(
-                serviceID: serviceID, itemID: linkTarget.itemID, name: name, themeId: newThemeId) {
-                dismiss()
-                openInEditor(id)
-            }
-        } else if let id = model.createPresentation(named: name, themeId: newThemeId) {
+        if let id = model.createPresentation(named: name, themeId: newThemeId) {
             model.addServiceItem(serviceID, refID: id)
             dismiss()
         }
@@ -332,7 +257,7 @@ struct ServiceItemChooser: View {
                 Button("Choose Files…") { choosingFiles = true }
             }
             Spacer()
-            if linkTarget == nil, tab == .library {
+            if tab == .library {
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             } else {
@@ -340,7 +265,7 @@ struct ServiceItemChooser: View {
                     .keyboardShortcut(.cancelAction)
             }
             if tab == .new {
-                Button(linkTarget == nil ? "Create and Add" : "Create and Link") { createNew() }
+                Button("Create and Add") { createNew() }
                     .keyboardShortcut(.defaultAction)
             }
         }

@@ -9,9 +9,8 @@ import Testing
             lastUsedAt: used.map { Date(timeIntervalSince1970: $0) })
     }
 
-    @Test func tabsKeepCodysOrderAndPCOOnlyForASyncedSong() {
-        #expect(ServiceItemChooserLogic.tabs(offersPlanningCenter: true) == [.library, .planningCenter, .importFile, .new])
-        #expect(ServiceItemChooserLogic.tabs(offersPlanningCenter: false) == [.library, .importFile, .new])
+    @Test func tabsOpenOnTheLibrary() {
+        #expect(ServiceItemChooserLogic.Tab.allCases == [.library, .importFile, .new])
     }
 
     @Test func idleListsBothKindsLastUsedFirst() {
@@ -56,17 +55,15 @@ import Testing
         #expect(route("Still.png") == .media)
         #expect(route("Track.mp3") == nil, "music stays in the Music library's import")
         #expect(route("Show.proPlaylist") == nil, "playlists import as services, not one item")
-        #expect(ServiceItemChooserLogic.ImportRoute.allCases.first == .slidesFile, "decks land first: a link takes the first")
+        #expect(ServiceItemChooserLogic.ImportRoute.allCases.first == .slidesFile, "decks land first")
     }
 
-    @Test func linkTakesOneFileAndAddTakesMany() {
+    @Test func aFileItCantImportIsNamed() {
         let song = URL(fileURLWithPath: "/tmp/Song.txt"), still = URL(fileURLWithPath: "/tmp/Still.png")
         let notes = URL(fileURLWithPath: "/tmp/Notes.md")
-        #expect(ServiceItemChooserLogic.refusal([song], linking: true) == nil)
-        #expect(ServiceItemChooserLogic.refusal([song, still], linking: true)?.hasPrefix("A plan item links one file") == true)
-        #expect(ServiceItemChooserLogic.refusal([song, still], linking: false) == nil, "Add makes a row of each")
-        #expect(ServiceItemChooserLogic.refusal([notes], linking: false) == "MxU Slides can't import Notes.md")
-        #expect(ServiceItemChooserLogic.refusal([notes, still], linking: false) == nil, "the usable ones go in")
+        #expect(ServiceItemChooserLogic.refusal([song, still]) == nil, "Add makes a row of each")
+        #expect(ServiceItemChooserLogic.refusal([notes]) == "MxU Slides can't import Notes.md")
+        #expect(ServiceItemChooserLogic.refusal([notes, still]) == nil, "the usable ones go in")
     }
 
     private var appSources: URL {
@@ -83,12 +80,9 @@ import Testing
         try String(contentsOf: appSources.appendingPathComponent(name), encoding: .utf8)
     }
 
-    @Test func linkAndAddFromLibraryOpenTheOneChooser() throws {
+    @Test func addFromLibraryOpensTheChooser() throws {
         let planner = try source("ServicePlannerView.swift")
-        #expect(planner.contains("model: model, serviceID: serviceID, purpose: .add, render: render,"))
-        for file in ["ServicePlannerView.swift", "ServiceContinuousView.swift"] {
-            #expect(try source(file).contains("purpose: .link(itemID: pick.itemID, planSync: planSync), render: render,"), "\(file) links through the chooser")
-        }
+        #expect(planner.contains("ServiceItemChooser(model: model, serviceID: serviceID, render: render)"))
         let chooser = try source("ServiceItemChooser.swift")
         #expect(chooser.contains("@State private var tab: ServiceItemChooserLogic.Tab = .library"), "always opens on From Library")
         #expect(chooser.contains("case .slidesFile: await importPresentationFiles(files)"))
@@ -96,18 +90,9 @@ import Testing
         #expect(chooser.contains("case .powerPoint: await runPowerPointImport(files)"))
         #expect(chooser.contains("case .lyrics: await importLyricsFiles(files)"))
         #expect(chooser.contains("case .media: await importFiles(files)"))
-        #expect(chooser.contains("await client.settled()"), "imports are listed before a link or a row reads them")
-        #expect(chooser.contains("allowsMultipleSelection: linkTarget == nil"), "the panel picks one file for Link")
-        #expect(chooser.contains("ServiceItemChooserLogic.refusal(urls, linking: linkTarget != nil)"), "drops and picks go through the one rule")
-        #expect(!chooser.contains("NSSound"), "never a system sound: a skipped file is named in the pane (Cody 2026-10-13)")
-
-        let create = try source("LyricsCreateSheet.swift")
-        #expect(create.contains("Button(\"Create and Edit\") { create(edit: true) }"), "Present offers Create and Edit")
-        #expect(create.contains("Button(\"Create\") { create(edit: !presenting) }"), "Create stays in Present")
-        #expect(chooser.contains("showItem?(linkTarget.itemID)"))
-        #expect(planner.contains("showItem: { selectedItemID = $0 }"), "Present brings the linked row forward")
-        #expect(create.contains("Button(name) { insertBlank(name, at: index) }"), "the order strip's + adds Blank / Instrumental")
-        #expect(create.contains("origin: origin, blankSections: blankSections"))
+        #expect(chooser.contains("await client.settled()"), "imports are listed before a row reads them")
+        #expect(chooser.contains("ServiceItemChooserLogic.refusal(urls)"), "drops and picks go through the one rule")
+        #expect(!chooser.contains("NSSound"), "never a system sound: a skipped file is named in the pane")
         let library = try source("LibraryView.swift")
         #expect(library.contains("await model.runProPresenterImport(urls)") && library.contains("await model.runPowerPointImport(urls)"),
                 "the File menu runs the same import flows")

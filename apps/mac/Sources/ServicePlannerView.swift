@@ -109,9 +109,7 @@ struct RunOrderList: View {
                 Text("This renames the item in the library too — everywhere it's used.")
             }
             .sheet(isPresented: $addingFromLibrary) {
-                ServiceItemChooser(
-                    model: model, serviceID: serviceID, purpose: .add, render: render,
-                    openInEditor: openInEditor)
+                ServiceItemChooser(model: model, serviceID: serviceID, render: render)
             }
             .mediaCueSheets(model: model, state: mediaMenuState)
         } else {
@@ -583,11 +581,6 @@ struct RunOrderList: View {
                 ))
             }
         }
-    }
-
-    private func openInEditor(_ id: String) {
-        model.openInEditor(entryID: id)
-        appModeRaw = AppMode.edit.rawValue
     }
 
     private func importMediaIntoService() {

@@ -4,12 +4,11 @@ import UniformTypeIdentifiers
 @MainActor
 public enum ServiceItemChooserLogic {
     public enum Tab: String, CaseIterable, Sendable {
-        case library, planningCenter, importFile, new
+        case library, importFile, new
 
         public var title: String {
             switch self {
             case .library: "Search Library"
-            case .planningCenter: "From PCO"
             case .importFile: "Import File"
             case .new: "New"
             }
@@ -18,15 +17,10 @@ public enum ServiceItemChooserLogic {
         public var symbol: String {
             switch self {
             case .library: "magnifyingglass"
-            case .planningCenter: "music.note.list"
             case .importFile: "square.and.arrow.down"
             case .new: "plus"
             }
         }
-    }
-
-    public static func tabs(offersPlanningCenter: Bool) -> [Tab] {
-        Tab.allCases.filter { $0 != .planningCenter || offersPlanningCenter }
     }
 
     public enum KindFilter: String, CaseIterable, Sendable {
@@ -104,14 +98,10 @@ public enum ServiceItemChooserLogic {
         }
     }
 
-    public static func refusal(_ urls: [URL], linking: Bool) -> String? {
-        if linking, urls.count > 1 {
-            "A plan item links one file. Choose just one, or use Add Item to add several."
-        } else if !urls.contains(where: { route($0) != nil }) {
-            "MxU Slides can't import " + urls.map(\.lastPathComponent).joined(separator: ", ")
-        } else {
-            nil
-        }
+    public static func refusal(_ urls: [URL]) -> String? {
+        urls.contains(where: { route($0) != nil })
+            ? nil
+            : "MxU Slides can't import " + urls.map(\.lastPathComponent).joined(separator: ", ")
     }
 
     public static var importTypes: [UTType] {
