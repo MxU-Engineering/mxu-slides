@@ -92,6 +92,34 @@ extension AppModel {
     }
 }
 
+extension AppModel {
+
+    func exportRecording(_ id: String) {
+        guard let item = media(id), let blob = blobs?.url(forHash: item.fileHash) else { return }
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = item.fileName
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                let activity = ImportActivityModel(title: "Export “\(item.name)”")
+                activity.finishedHeadline = "Export finished"
+                activity.emptyHeadline = "Nothing was exported."
+                ImportActivityWindow.present(activity)
+                activity.phase = "Copying the file…"
+                do {
+                    try await Task.detached(priority: .userInitiated) {
+                        try RecordingLibrary.exportCopy(of: blob, to: url)
+                    }.value
+                    activity.finish(summaryLines: ["Saved “\(url.lastPathComponent)”"], warnings: [])
+                } catch {
+                    activity.finish(summaryLines: [], warnings: ["✕ \(error.localizedDescription)"])
+                }
+            }
+        }
+    }
+}
+
 @MainActor
 final class ExportOptionsAccessory: NSObject {
     struct Choice {

@@ -67,6 +67,29 @@ struct RecordingLibraryTests {
         #expect(RecordingLibrary.latestRecording(in: items, folder: "Recordings") == nil)
     }
 
+    @Test func recordingsAreCapturesOrAnythingUnderRecordings() {
+        #expect(RecordingLibrary.isRecording(item(folder: "Sermons", recordedAt: 100)))
+        #expect(RecordingLibrary.isRecording(item(folder: "Recordings/2026", recordedAt: nil)))
+        #expect(!RecordingLibrary.isRecording(item(folder: "Recordings Archive", recordedAt: nil)))
+        #expect(!RecordingLibrary.isRecording(item(folder: nil, recordedAt: nil)))
+    }
+
+    @Test func exportCopyIsTheSameBytesAndEditable() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let blob = dir.appendingPathComponent("abc.mov")
+        try Data("recording".utf8).write(to: blob)
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: blob.path)
+        let out = dir.appendingPathComponent("Quick Record.mov")
+        try Data("older".utf8).write(to: out)
+
+        try RecordingLibrary.exportCopy(of: blob, to: out)
+        #expect(try Data(contentsOf: out) == Data("recording".utf8))
+        #expect(FileManager.default.isWritableFile(atPath: out.path))
+        #expect(!FileManager.default.isWritableFile(atPath: blob.path))
+    }
+
     private func writeVideo(to url: URL, frames: Int = 8) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [

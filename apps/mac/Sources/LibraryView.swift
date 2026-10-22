@@ -1100,6 +1100,10 @@ struct LibrarySidebar: View {
                         Button("Locate Missing Media…") { locatePanelShown = true }
                     }
                 }
+                if entry.kind == .media, let item = model.media(entry.id),
+                   RecordingLibrary.isRecording(item), !model.isMediaFileMissing(item) {
+                    Button("Export To…") { model.exportRecording(entry.id) }
+                }
                 Button("Show in Finder") { showInFinder([entry]) }
             }
         }
