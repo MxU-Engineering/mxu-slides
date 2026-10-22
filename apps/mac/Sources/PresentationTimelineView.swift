@@ -20,6 +20,8 @@ final class PresentationTimelineCards {
     var rowHeight: CGFloat = PresentationTimelineLanes.defaultRowHeight
 
     var trackScale: [String: CGFloat] = [:]
+
+    var clipboard: [TimelineCue] = []
 }
 
 struct PresentationTimelineButton: View {
@@ -609,6 +611,11 @@ struct PresentationTimelineLanes: View {
     @State private var trackNameDraft = ""
     @Environment(\.openSettings) private var openSettings
 
+    @State private var range: ClosedRange<Double>?
+    @State private var rangeStart: Double?
+
+    @FocusState private var lanesFocused: Bool
+
     struct UnmatchedStems: Identifiable {
         let id = UUID()
         var stems: [TimelineStemImport]
@@ -763,7 +770,24 @@ struct PresentationTimelineLanes: View {
 
     private func toolbar(_ cues: [TimelineCue], pps: Double, display: Double) -> some View {
         HStack(spacing: 8) {
-            if let cue = cues.first(where: { $0.id == selection }) {
+            if let range {
+                Text("\(Self.clock(range.lowerBound))–\(Self.clock(range.upperBound)) · \(SongTransitionCurves.seconds(range.upperBound - range.lowerBound))")
+                    .font(.caption.weight(.medium).monospacedDigit())
+                    .lineLimit(1)
+                if !runOnly {
+                    Button("Copy") { copy(cues) }
+                        .help("Copy everything in the range (⌘C)")
+                    Button("Ripple Delete") { rippleDelete() }
+                        .help("Take the range out of every layer; everything after moves up (⇧⌫)")
+                }
+                Button {
+                    self.range = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .help("Clear the range")
+            } else if let cue = cues.first(where: { $0.id == selection }) {
                 Text(context.label(cue))
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
@@ -938,10 +962,26 @@ struct PresentationTimelineLanes: View {
                 if let transition {
                     SongTransitionHandoverLine(plan: transition.plan, nextName: transition.nextName) { map.x(ofTime: $0) }
                 }
+                if let range {
+                    TimelineRangeOverlay(range: range) { map.x(ofTime: $0) }
+                }
                 if context.isCurrent {
                     TimelinePlayheadLine(source: context.clock) { map.x(ofTime: $0) }
                 }
             }
+            .focusable(!runOnly)
+            .focusEffectDisabled()
+            .focused($lanesFocused)
+            .background(TimelineClipKeyMonitor(active: lanesFocused && !runOnly) { verb in
+                let cues = context.timeline?.cues ?? []
+                switch verb {
+                case .split: splitAtPlayhead(cues)
+                case .copy: copy(cues)
+                case .paste: paste()
+                case .delete: if range == nil, let cue = cues.first(where: { $0.id == selection }) ?? selectedFolded(cues) { delete(cue) }
+                case .rippleDelete: rippleDelete()
+                }
+            })
             .background(
                 GeometryReader { geo in
                     Color.clear
@@ -955,14 +995,53 @@ struct PresentationTimelineLanes: View {
     }
 
     private func laneRow(_ lane: TimelineLane, _ cues: [TimelineCue], map: TimelineMap) -> some View {
-        ZStack(alignment: .topLeading) {
+        let row = cues.filter { $0.kind == lane }
+        return ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
-            ForEach(cues.filter { $0.kind == lane }, id: \.id) { cue in
+                .gesture(rangeGesture(map: map))
+            ForEach(row, id: \.id) { cue in
                 card(cue, cues, map: map, height: height(of: lane))
             }
+            if lane == .audio { fades(row, cues, map: map) }
         }
         .frame(width: map.width, height: height(of: lane))
+    }
+
+    private func fades(_ clips: [TimelineCue], _ cues: [TimelineCue], map: TimelineMap) -> some View {
+        ClipFadesOverlay(
+            clips: clips.filter { ($0.fadeIn != nil || $0.fadeOut != nil) && edit.id != $0.id }, cues: cues,
+            x: { map.x(ofTime: $0) }, pointsPerSecond: map.pointsPerSecond, editable: !runOnly
+        ) { id, out, fade in
+            context.edit("Change Fade") { timeline in
+                guard let index = timeline.cues.firstIndex(where: { $0.id == id }) else { return }
+                if out { timeline.cues[index].fadeOut = fade } else { timeline.cues[index].fadeIn = fade }
+                timeline.cues[index] = TimelineClips.fitted(timeline.cues[index])
+            }
+        }
+    }
+
+    private func rangeGesture(map: TimelineMap) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in
+                guard let press = anchor.pressLocal(), let mouse = anchor.mouseLocal() else { return }
+                let start = rangeStart ?? map.locate(x: max(press.x, 0))?.time ?? 0
+                rangeStart = start
+                guard abs(mouse.x - press.x) > TimelineBlockEdit.engageDistance else { return }
+                let end = map.locate(x: max(mouse.x, 0))?.time ?? start
+                let a = PresentationTimelines.snappedToFrame(min(start, end)), b = PresentationTimelines.snappedToFrame(max(start, end))
+                range = b > a ? a ... b : nil
+                selection = nil
+            }
+            .onEnded { _ in
+                if let press = anchor.pressLocal(), let mouse = anchor.mouseLocal(),
+                   abs(mouse.x - press.x) <= TimelineBlockEdit.engageDistance {
+                    range = nil
+                    selection = nil
+                }
+                rangeStart = nil
+                lanesFocused = true
+            }
     }
 
     private func card(
@@ -1016,6 +1095,8 @@ struct PresentationTimelineLanes: View {
             ended: { mode, dx in
                 autoScroll.stop()
                 selection = cue.id
+                range = nil
+                lanesFocused = true
                 guard let mode, !runOnly, dx != 0 else { return }
                 move(
                     cue, mode: mode, by: Double(dx / map.pointsPerSecond), label: "Move Cue",
@@ -1033,6 +1114,7 @@ struct PresentationTimelineLanes: View {
                 Divider()
                 Button("Nudge 1 Frame Earlier") { move(cue, mode: .move, by: -PresentationTimelines.frame, label: "Nudge Cue") }
                 Button("Nudge 1 Frame Later") { move(cue, mode: .move, by: PresentationTimelines.frame, label: "Nudge Cue") }
+                if TimelineClips.isClip(cue) || folded(cue) { clipMenu(cue, cues) }
                 Divider()
                 Button("Remove from Timeline") { delete(cue) }
                 if cue.trackChannelId != nil {
@@ -1081,8 +1163,7 @@ struct PresentationTimelineLanes: View {
             guard let index = timeline.cues.firstIndex(where: { $0.id == id }) else { return }
 
             let together = folded ? TimelineTracks.reach(of: cue, in: timeline.cues)
-                : mode == .move || cue.trackChannelId != nil && mode == .trim
-                ? TimelineTracks.reach(of: timeline.cues[index], in: timeline.cues) : [id]
+                : mode == .move ? TimelineTracks.reach(of: timeline.cues[index], in: timeline.cues) : [id]
             let before = timeline.cues
             for (at, each) in before.enumerated() where together.contains(each.id) {
                 timeline.cues[at] = PresentationTimelines.edited(
@@ -1097,6 +1178,131 @@ struct PresentationTimelineLanes: View {
             let gone = cue.id.hasPrefix(TimelineTracks.foldedPrefix) ? TimelineTracks.reach(of: cue, in: timeline.cues) : [cue.id]
             timeline.cues.removeAll { gone.contains($0.id) }
         }
+    }
+
+    private func folded(_ cue: TimelineCue) -> Bool { cue.id.hasPrefix(TimelineTracks.foldedPrefix) }
+
+    private func selectedFolded(_ cues: [TimelineCue]) -> TimelineCue? {
+        guard let selection, selection.hasPrefix(TimelineTracks.foldedPrefix) else { return nil }
+        return TimelineTracks.folded(TimelineTracks.stems(cues), in: cues)
+    }
+
+    private func reach(_ cue: TimelineCue, _ cues: [TimelineCue]) -> Set<String> {
+        folded(cue) ? TimelineTracks.reach(of: cue, in: cues) : [cue.id]
+    }
+
+    @ViewBuilder
+    private func clipMenu(_ cue: TimelineCue, _ cues: [TimelineCue]) -> some View {
+        Divider()
+        Button("Split at Playhead (⌘B)") { split(reach(cue, cues), cues) }
+        Button("Copy (⌘C)") { copy(cues, ids: reach(cue, cues)) }
+        Button("Paste at Playhead (⌘V)") { paste() }
+            .disabled(PresentationTimelineCards.shared.clipboard.isEmpty)
+        if !folded(cue) {
+            Divider()
+            fadeMenu(cue, out: false)
+            fadeMenu(cue, out: true)
+            let overlapping = TimelineClips.overlapping(cue, in: cues)
+            if !overlapping.isEmpty {
+                Menu("Crossfade") {
+                    ForEach(overlapping, id: \.id) { other in
+                        if overlapping.count > 1 { Text("With the clip at \(Self.clock(other.at))") }
+                        ClipFadeShapeItems { shape in crossfade(cue, other, shape: shape) }
+                    }
+                }
+            }
+            Toggle("Edge Fades (5 ms)", isOn: Binding(get: { cue.edgeFades ?? true }, set: { on in
+                context.edit("Edge Fades") { timeline in
+                    guard let index = timeline.cues.firstIndex(where: { $0.id == cue.id }) else { return }
+                    timeline.cues[index].edgeFades = on ? nil : false
+                }
+            }))
+        }
+        if range != nil {
+            Divider()
+            Button("Ripple Delete Range (⇧⌫)") { rippleDelete() }
+        }
+    }
+
+    @ViewBuilder
+    private func fadeMenu(_ cue: TimelineCue, out: Bool) -> some View {
+        let name = out ? "Fade Out" : "Fade In"
+        if let fade = out ? cue.fadeOut : cue.fadeIn {
+            let shape = TimelineClips.Shape(fade.shape)
+            Menu("\(name): \(shape.title), \(SongTransitionCurves.seconds(fade.seconds))") {
+                ClipFadeShapeItems(out: out, current: shape) { setFade(cue, out: out, shape: $0) }
+                Divider()
+                Button("Remove \(name)") { setFade(cue, out: out, shape: nil) }
+            }
+        } else {
+            Menu("Add \(name)") {
+                ClipFadeShapeItems(out: out) { setFade(cue, out: out, shape: $0) }
+            }
+        }
+    }
+
+    private func setFade(_ cue: TimelineCue, out: Bool, shape: TimelineClips.Shape?) {
+        context.edit(shape == nil ? "Remove Fade" : "Fade") { timeline in
+            guard let index = timeline.cues.firstIndex(where: { $0.id == cue.id }) else { return }
+            var clip = timeline.cues[index]
+            let current = out ? clip.fadeOut : clip.fadeIn
+            let fade = shape.map {
+                ClipFade(seconds: current?.seconds ?? TimelineClips.defaultFadeSeconds(clip), shape: $0.rawValue, midpoint: current?.midpoint)
+            }
+            if out { clip.fadeOut = fade } else { clip.fadeIn = fade }
+            timeline.cues[index] = TimelineClips.fitted(clip)
+        }
+    }
+
+    private func crossfade(_ a: TimelineCue, _ b: TimelineCue, shape: TimelineClips.Shape) {
+        context.edit("Crossfade") { timeline in
+            guard let made = TimelineClips.crossfaded(a, b, in: timeline.cues, shape: shape) else { return }
+            for clip in [made.left, made.right] {
+                if let index = timeline.cues.firstIndex(where: { $0.id == clip.id }) { timeline.cues[index] = clip }
+            }
+        }
+    }
+
+    private func splitAtPlayhead(_ cues: [TimelineCue]) {
+        let picked = cues.first { $0.id == selection } ?? selectedFolded(cues)
+        let ids = picked.map { reach($0, cues) } ?? Set(cues.filter(TimelineClips.isClip).map(\.id))
+        split(ids, cues)
+    }
+
+    private func split(_ ids: Set<String>, _ cues: [TimelineCue]) {
+        let at = context.clock.insertionTime(for: context.item.id)
+        context.edit("Split") { timeline in
+            timeline.cues = TimelineClips.splitting(ids, at: at, in: timeline.cues)
+        }
+        DiagnosticsStore.shared.note("timeline.split", detail: "\(ids.count) at \(at)")
+    }
+
+    private func copy(_ cues: [TimelineCue], ids: Set<String>? = nil) {
+        let copied: [TimelineCue]
+        if ids == nil, let range {
+            copied = TimelineClips.copied(cues, range: range, all: cues)
+        } else {
+            let picked = ids ?? (cues.first { $0.id == selection } ?? selectedFolded(cues)).map { reach($0, cues) } ?? []
+            copied = TimelineClips.copied(cues.filter { picked.contains($0.id) }, all: cues)
+        }
+        guard !copied.isEmpty else { return }
+        PresentationTimelineCards.shared.clipboard = copied
+    }
+
+    private func paste() {
+        let clipboard = PresentationTimelineCards.shared.clipboard
+        guard !clipboard.isEmpty else { return }
+        let pasted = TimelineClips.pasted(clipboard, at: context.clock.insertionTime(for: context.item.id))
+        context.edit("Paste") { $0.cues += pasted }
+        selection = pasted.count == 1 ? pasted[0].id : nil
+    }
+
+    private func rippleDelete() {
+        guard let range else { return }
+        context.edit("Ripple Delete") { $0 = TimelineClips.rippleDeleted($0, range: range) }
+        self.range = nil
+        selection = nil
+        DiagnosticsStore.shared.note("timeline.rippleDelete", detail: "\(range.lowerBound)–\(range.upperBound)")
     }
 
     private func drop(_ payloads: [String], at time: Double, track: TrackRow? = nil) -> Bool {
@@ -1378,6 +1584,7 @@ struct PresentationTimelineLanes: View {
             ZStack(alignment: .topLeading) {
                 Rectangle()
                     .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
+                    .gesture(rangeGesture(map: map))
                 if stems.isEmpty, !runOnly {
                     Text("Import Audio with + beside Tracks, or drag a song's Tracks from the library")
                         .font(.caption2)
@@ -1397,9 +1604,12 @@ struct PresentationTimelineLanes: View {
                     ZStack(alignment: .topLeading) {
                         Rectangle()
                             .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
-                        ForEach(stems.filter { $0.trackChannelId == channel.id }, id: \.id) { stem in
+                            .gesture(rangeGesture(map: map))
+                        let row = stems.filter { $0.trackChannelId == channel.id }
+                        ForEach(row, id: \.id) { stem in
                             card(stem, cues, map: map, height: trackHeight(channel.id))
                         }
+                        fades(row, cues, map: map)
                     }
                     .frame(width: map.width, height: trackHeight(channel.id))
                 }
