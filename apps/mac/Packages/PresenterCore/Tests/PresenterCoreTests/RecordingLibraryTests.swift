@@ -121,6 +121,10 @@ struct RecordingLibraryTests {
         let blobs = try BlobStore(libraryRoot: root)
         #expect(blobs.url(forHash: item.fileHash) != nil)
 
+        #expect(!FileManager.default.isWritableFile(atPath: blobs.url(forHash: item.fileHash)!.path))
+        #expect(FileManager.default.isWritableFile(
+            atPath: exportDir.appendingPathComponent(item.fileName).path))
+
         #expect(FileManager.default.fileExists(
             atPath: exportDir.appendingPathComponent(item.fileName).path))
 

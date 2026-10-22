@@ -306,6 +306,7 @@ final class AppModel {
         importer = try? MediaImporter(client: client)
         transcodeQueue = try? TranscodeQueue(client: client)
         blobs = try? BlobStore(libraryRoot: root)
+        if let blobs { Task.detached(priority: .utility) { blobs.lockAll() } }
 
         FontActivator.activateStored(libraryRoot: root)
         posterStore = try? MediaPosterStore(libraryRoot: root)

@@ -31,6 +31,9 @@ public enum RecordingLibrary {
                     at: exportFolder, withIntermediateDirectories: true)
                 try? FileManager.default.copyItem(
                     at: blob, to: exportFolder.appendingPathComponent(fileName))
+
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o644], ofItemAtPath: exportFolder.appendingPathComponent(fileName).path)
             }
             return hash
         }.value
