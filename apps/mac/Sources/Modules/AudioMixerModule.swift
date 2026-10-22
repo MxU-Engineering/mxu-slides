@@ -192,11 +192,12 @@ struct AudioMixerModule: View {
             }
         }
 
-        .padding(2)
-        .background(
-            expanded ? Color.primary.opacity(0.04) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.primary.opacity(0.04) : .clear)
+                .padding(.vertical, -2)
+        }
     }
 
     private func compactedName(_ name: String, deviceName: String) -> String? {
@@ -311,11 +312,13 @@ struct AudioMixerModule: View {
                 }
             }
         }
-        .padding(2)
-        .background(
-            expanded ? Color.primary.opacity(0.04) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
+
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.primary.opacity(0.04) : .clear)
+                .padding(.vertical, -2)
+        }
     }
 
     static let tracksGroupKey = "tracks"
@@ -629,11 +632,13 @@ struct AudioMixerModule: View {
                 }
             }
         }
-        .padding(2)
-        .background(
-            expanded ? Color.orange.opacity(0.05) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
+
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.orange.opacity(0.05) : .clear)
+                .padding(.vertical, -2)
+        }
     }
 
     private enum MixRow: Identifiable {
@@ -698,11 +703,13 @@ struct AudioMixerModule: View {
                 }
             }
         }
-        .padding(2)
-        .background(
-            expanded ? Color.blue.opacity(0.05) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
+
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.blue.opacity(0.05) : .clear)
+                .padding(.vertical, -2)
+        }
     }
 
     private func mixRouteSlot(_ mix: AudioMixInventory.Entry) -> ConsoleSlot {
@@ -1742,13 +1749,17 @@ private struct FoldCard: View {
     @State private var draft = ""
 
     var body: some View {
-        VStack(spacing: 3) {
-            Image(systemName: symbol)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .frame(height: 15)
 
-            Spacer(minLength: 0)
+        VStack(spacing: 3) {
+            SlotChip(slot: .blank)
+                .overlay {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            SlotChip(slot: .blank)
+            Color.clear.frame(height: 10)
+            Color.clear.frame(height: 10)
             FoldMeter(source: meter, mixer: mixer)
                 .frame(height: MixerStripLayout.faderHeight(
                     viewportHeight: viewportHeight, scrollerHeight: ConsoleScrolling.scrollerHeight))
@@ -1786,8 +1797,6 @@ private struct FoldCard: View {
         }
         .padding(4)
         .frame(width: 58)
-        .frame(height: MixerStripLayout.stripHeight(
-            viewportHeight: viewportHeight, scrollerHeight: ConsoleScrolling.scrollerHeight))
         .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
         .contextMenu {
             if !runOnly, let rename {
