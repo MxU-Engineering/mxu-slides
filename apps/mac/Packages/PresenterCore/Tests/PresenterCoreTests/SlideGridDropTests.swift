@@ -30,3 +30,23 @@ private func spot(_ x: CGFloat, _ y: CGFloat, count: Int = 6) -> SlideGridDrop.S
     #expect(spot(10, 500) == .after(5))
     #expect(SlideGridDrop.spot(at: .zero, tileFrames: [:], count: 0, rowGap: 12) == .before(0), "an empty deck")
 }
+
+@Test func aTilesTrailingGutterInsertsMediaAfterIt() {
+    #expect(SlideDropZone.tile(at: CGPoint(x: 10, y: 30), width: 160, reorder: false, insertOnly: false) == .before)
+    #expect(SlideDropZone.tile(at: CGPoint(x: 80, y: 30), width: 160, reorder: false, insertOnly: false) == .on, "the body is still the background")
+    #expect(SlideDropZone.tile(at: CGPoint(x: 150, y: 30), width: 160, reorder: false, insertOnly: false) == .after)
+}
+
+@Test func slideReordersPickTheirSideByHalf() {
+    #expect(SlideDropZone.tile(at: CGPoint(x: 70, y: 30), width: 160, reorder: true, insertOnly: false) == .before)
+    #expect(SlideDropZone.tile(at: CGPoint(x: 90, y: 30), width: 160, reorder: true, insertOnly: false) == .after)
+}
+
+@Test func aRowsBandsInsertAroundIt() {
+    let size = CGSize(width: 240, height: 28)
+    #expect(SlideDropZone.row(at: CGPoint(x: 120, y: 3), size: size, insertOnly: false) == .before)
+    #expect(SlideDropZone.row(at: CGPoint(x: 120, y: 14), size: size, insertOnly: false) == .on)
+    #expect(SlideDropZone.row(at: CGPoint(x: 120, y: 25), size: size, insertOnly: false) == .after)
+    #expect(SlideDropZone.row(at: CGPoint(x: 10, y: 14), size: size, insertOnly: false) == .before, "the leading gutter")
+    #expect(SlideDropZone.row(at: CGPoint(x: 120, y: 14), size: size, insertOnly: true) == .before)
+}

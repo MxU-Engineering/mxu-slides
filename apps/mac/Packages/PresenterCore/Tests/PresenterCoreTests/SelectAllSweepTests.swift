@@ -4,11 +4,11 @@ import Testing
 @Suite struct SelectAllSweepTests {
     private var appSources: URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appendingPathComponent("Sources", isDirectory: true)
     }
 
@@ -20,13 +20,13 @@ import Testing
         let grid = try source("PresentGridView.swift")
         let continuous = try source("ServiceContinuousView.swift")
         #expect(grid.contains(".padding(-marqueeMargin)"), "the catcher reaches out over the host's padding")
-        #expect(grid.contains("pastesAtEnd: true,\n                        marqueeMargin: 12\n                    )\n                    .padding(12)"), "the deck view hands its padding to the band")
+        #expect(grid.contains("pastesAtEnd: true,\n                        marqueeMargin: 12,\n                        minimumHeight: scrollHeight - 24\n                    )\n                    .padding(12)"), "the deck view hands its padding to the band")
         #expect(continuous.contains("marqueeMargin: 12"), "the continuous view's cards hand their padding to the band")
     }
 
     @Test func presentGridTakesCommandA() throws {
         let grid = try source("PresentGridView.swift")
-        #expect(grid.contains("case \"a\": return .selectAll"), "the grid's key monitor hears ⌘A")
+        #expect(grid.contains("case (.command, \"a\"): return .selectAll"), "the grid's key monitor hears ⌘A")
         #expect(grid.contains(".onChange(of: clipboardRequests.selectAlls) { _, _ in selectAllFromKeyboard() }"))
         #expect(grid.contains("NewSlideRouter.shared.route.answers(contextID, contexts: contexts, isHostTarget: pastesAtEnd)"), "⌘A lands on the deck last pointed at, New Slide's rule")
     }

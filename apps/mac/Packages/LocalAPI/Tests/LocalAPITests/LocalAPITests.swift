@@ -134,6 +134,12 @@ final class FakeBridge: LocalAPIBridge {
         APISchedulerStatus(enabled: false, nextFire: nil, triggers: [])
     }
     func fireScheduleTrigger(id: String) throws { calls.append("fireScheduleTrigger:\(id)") }
+    func timecodeStatus() -> APITimecodeStatus {
+        APITimecodeStatus(
+            hasInput: true, source: "mtc", follows: true, state: "locked", label: "01:00:04:12", rate: "25",
+            serviceItemId: "item-a",
+            anchor: .init(seconds: 3604.48, anchoredAt: Date(timeIntervalSince1970: 1_700_000_000), running: true))
+    }
     func midiDevices() -> [APIMIDIDeviceStatus] {
         [APIMIDIDeviceStatus(
             id: "console-item", name: "Console", enabled: true, direction: "both",
@@ -440,6 +446,19 @@ final class APIRouterTests: XCTestCase {
         let response = try await toggle.route.handler(context)
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(bridge.calls, ["setMIDIDeviceEnabled:console-item:false"])
+    }
+
+    func testTimecodeStatusIsAView() async throws {
+        let (router, _) = makeRouter()
+        let match = try XCTUnwrap(router.match(method: "GET", path: "/v1/timecode"))
+        XCTAssertEqual(match.route.scope, .view)
+        let response = try await match.route.handler(APIRequestContext(scope: .view))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
+        XCTAssertEqual(body["state"] as? String, "locked")
+        XCTAssertEqual(body["source"] as? String, "mtc")
+        XCTAssertEqual(body["serviceItemId"] as? String, "item-a")
+        XCTAssertEqual((body["anchor"] as? [String: Any])?["running"] as? Bool, true)
+        XCTAssertEqual(AsyncAPIDocument.payloadSchemas[.timecode]?.name, "TimecodeStatus")
     }
 
     func testMIDIDeviceEnableUnknownIdIs404() async throws {

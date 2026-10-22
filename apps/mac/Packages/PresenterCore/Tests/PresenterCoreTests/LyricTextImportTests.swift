@@ -194,6 +194,15 @@ struct LyricTextImportTests {
         #expect(stage.chords.isEmpty)
     }
 
+    @Test func bracketedSkipsEmptyChords() {
+        let chords = [
+            ChordPlacement(line: 0, column: 3, symbol: ""),
+            ChordPlacement(line: 0, column: 5, symbol: "G"),
+            ChordPlacement(line: 0, column: 7, symbol: " "),
+        ]
+        #expect(ChordMath.bracketed("Step two", chords: chords) == "Step [G]two")
+    }
+
     @Test func bracketedSerializationRoundTrips() {
         let source = "How great the chasm that lay between us"
         let chords = [

@@ -109,7 +109,7 @@ struct RunOrderList: View {
                 Text("This renames the item in the library too — everywhere it's used.")
             }
             .sheet(isPresented: $addingFromLibrary) {
-                LibrarySearchSheet(model: model, serviceID: serviceID, render: render)
+                ServiceItemChooser(model: model, serviceID: serviceID, render: render)
             }
             .mediaCueSheets(model: model, state: mediaMenuState)
         } else {
@@ -403,19 +403,77 @@ struct RunOrderList: View {
     private func bulkMenu(_ ids: [String]) -> some View {
         Text("\(ids.count) Items")
         Divider()
+        Menu("Transition") {
+            SongTransitionMenuItems(current: nil) {
+                model.setServiceItemTransition(serviceID, itemIDs: ids, transition: $0)
+                controls?.timeline.refreshTransition()
+            }
+        }
+        Divider()
         Button("Hide") { hide(ids) }
         Button("Remove from Service", role: .destructive) { requestRemoval(ids) }
+    }
+
+    @ViewBuilder
+    private func transitionLine(_ item: ServiceItem) -> some View {
+        let kind = SongTransitions.kind(item.transition)
+        if item.itemKind == .presentation, kind != .stop {
+            Menu {
+                SongTransitionMenuItems(current: item.transition) {
+                    model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                    controls?.timeline.refreshTransition()
+                }
+            } label: {
+                Label {
+                    Text(SongTransitionMenuItems.summary(item.transition))
+                } icon: {
+                    SongTransitionGlyph(kind: kind, size: 10)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .font(.caption)
+            .foregroundStyle(Color.accentColor)
+            .help(SongTransitionMenuItems.help(item.transition))
+            .disabled(runOnly)
+        }
+    }
+
+    @ViewBuilder
+    private func transitionButton(_ item: ServiceItem) -> some View {
+        let kind = SongTransitions.kind(item.transition)
+        if item.itemKind == .presentation, kind == .stop, TimelineTracks.hasTracks(model.trackChannels) {
+            Menu {
+                SongTransitionMenuItems(current: item.transition) {
+                    model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                    controls?.timeline.refreshTransition()
+                }
+            } label: {
+                SongTransitionGlyph(kind: kind, size: 11)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .foregroundStyle(kind == .stop ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
+            .help(SongTransitionMenuItems.help(item.transition))
+            .disabled(runOnly)
+        }
     }
 
     @ViewBuilder
     private func itemRow(_ item: ServiceItem, order: [String], changed: Bool) -> some View {
         HStack(spacing: 8) {
 
-            Text(displayName(item))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .layoutPriority(0)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(displayName(item))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+
+                transitionLine(item)
+            }
+            .layoutPriority(0)
             Spacer(minLength: 4)
 
             if changed {
@@ -437,6 +495,7 @@ struct RunOrderList: View {
                     .lineLimit(1)
             }
             if item.itemKind != .info {
+                transitionButton(item)
                 Glyph(
                     kind: item.itemKind == .presentation ? .presentations
                         : item.itemKind == .audio || item.itemKind == .playlist ? .audio
@@ -480,32 +539,41 @@ struct RunOrderList: View {
                 bulkMenu(batch)
             } else if !runOnly {
 
-                if let entry = model.entry(item.refId), entry.kind.opensInEditor {
+                if let entry = model.entry(item.refId), entry.kind.opensInEditor, item.itemKind != .media {
                     Button("Edit…") {
                         model.openInEditor(entryID: entry.id)
                         appModeRaw = AppMode.edit.rawValue
                     }
-                    Divider()
                 }
-
-                if item.itemKind == .media {
-
-                    MediaCueMenuItems(
-                        model: model, actionRouter: controls?.actionRouter,
-                        mediaID: item.refId, state: mediaMenuState,
-                        fallbackName: item.name
-                    )
-                    Divider()
-                    outputPresetMenu(item)
-                } else if item.itemKind != .info {
-
+                if item.itemKind != .media, item.itemKind != .info {
                     Button("Rename…") {
                         renamingItem = item
                         itemRenameText = displayName(item)
                     }
-                    if item.itemKind == .presentation {
+                }
+                if item.itemKind == .media {
+
+                    Section("Media") {
+                        MediaCueMenuItems(
+                            model: model, actionRouter: controls?.actionRouter,
+                            mediaID: item.refId, state: mediaMenuState,
+                            fallbackName: item.name,
+                            replace: SpotReplace(label: "Replace in This Service…") { _, newID in
+                                model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)
+                            }
+                        )
+                        outputPresetMenu(item)
+                    }
+                } else if item.itemKind == .presentation {
+                    Section("Presentation") {
                         arrangementMenu(item)
                         outputPresetMenu(item)
+                        Menu("Transition") {
+                            SongTransitionMenuItems(current: item.transition) {
+                                model.setServiceItemTransition(serviceID, itemIDs: [item.id], transition: $0)
+                    controls?.timeline.refreshTransition()
+                            }
+                        }
 
                         Button("Apply Theme…") {
                             applyThemeTarget = ApplyThemeTarget(presentationID: item.refId, slideIDs: nil)
@@ -521,7 +589,7 @@ struct RunOrderList: View {
             }
         }
 
-        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))")
+        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))|\(SongTransitions.kind(item.transition).rawValue)")
     }
 
     private func displayName(_ item: ServiceItem) -> String {
@@ -825,7 +893,10 @@ struct ServiceItemDetailView: View {
                 )
                 .id(item.id)
             case .media:
-                MediaFireView(model: model, controls: controls, mediaID: item.refId, serviceItemID: item.id)
+                MediaFireView(
+                    model: model, controls: controls, mediaID: item.refId,
+                    serviceItemID: item.id, serviceID: serviceID
+                )
             case .audio:
                 AudioFireView(model: model, controls: controls, audioID: item.refId)
             case .playlist:
@@ -844,146 +915,6 @@ struct ServiceItemDetailView: View {
                 "No Item Selected", systemImage: "rectangle.grid.3x2",
                 description: Text("Select a service item to see its slides.")
             )
-        }
-    }
-}
-
-struct LibrarySearchSheet: View {
-    let model: AppModel
-    let serviceID: String
-    var render: RenderContext? = nil
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var searchText = ""
-    @State private var scopes: Set<LibrarySection> = []
-
-    @State private var searchHits: [LibraryIndex.Hit] = []
-    @State private var proPresenterIDs: Set<String> = []
-    @FocusState private var fieldFocused: Bool
-
-    private var addableTabs: [LibrarySection] { [.presentations, .media] }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                HStack(spacing: 5) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                        .imageScale(.small)
-                    TextField("Search the library", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .focused($fieldFocused)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(
-                    Color.primary.opacity(0.06),
-                    in: RoundedRectangle.standard(CornerStandard.element)
-                )
-                Menu {
-                    ForEach(addableTabs) { section in
-                        Toggle(section.displayName, isOn: Binding(
-                            get: { scopes.isEmpty || scopes.contains(section) },
-                            set: { include in
-                                var next = scopes.isEmpty ? Set(addableTabs) : scopes
-                                if include { next.insert(section) } else { next.remove(section) }
-                                scopes = next.count == addableTabs.count ? [] : next
-                            }
-                        ))
-                    }
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .imageScale(.small)
-                        .foregroundStyle(scopes.isEmpty ? .secondary : .primary)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(10)
-            Divider()
-            resultsList
-        }
-        .frame(width: 480, height: 460)
-        .onAppear { fieldFocused = true }
-        .task { proPresenterIDs = await model.proPresenterImportIDs() }
-        .task(id: searchText) {
-            searchHits = await model.search(searchText)
-        }
-    }
-
-    @ViewBuilder
-    private var resultsList: some View {
-        let hits = results
-        List(hits, id: \.entry.id) { hit in
-            if hit.entry.kind == .presentation {
-                LibraryPickerDeckRow(
-                    appModel: model, render: render, entry: hit.entry,
-                    proPresenterIDs: proPresenterIDs, snippet: hit.snippet, accessory: "plus.circle"
-                ) {
-                    model.addServiceItem(serviceID, refID: hit.entry.id)
-                }
-            } else {
-            Button {
-                model.addServiceItem(serviceID, refID: hit.entry.id)
-            } label: {
-                HStack(alignment: .firstTextBaseline) {
-                    Glyph(
-                        kind: hit.entry.kind == .presentation ? .presentations : .media,
-                        size: 13
-                    )
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(hit.entry.name)
-                        if let snippet = hit.snippet {
-                            Text(snippet)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                    Spacer()
-                    if let used = hit.entry.lastUsedAt {
-                        Text("Used \(used, format: .relative(presentation: .named))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Image(systemName: "plus.circle")
-                        .foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            }
-        }
-        .listStyle(.inset)
-        .scrollContentBackground(.hidden)
-        .overlay {
-            if hits.isEmpty {
-                if searchText.isEmpty {
-                    ContentUnavailableView(
-                        "Search the Library", systemImage: "magnifyingglass",
-                        description: Text("Matches names and lyrics; click a result to add it.")
-                    )
-                } else {
-                    ContentUnavailableView.search(text: searchText)
-                }
-            }
-        }
-    }
-
-    private var results: [LibraryIndex.Hit] {
-        let hits = searchText.isEmpty
-            ? addableTabs.flatMap { section in
-                model.entries(in: section).map { LibraryIndex.Hit(entry: $0, snippet: nil) }
-            }
-            : searchHits
-        return hits.filter { hit in
-            guard [.presentation, .media, .audio].contains(hit.entry.kind) else { return false }
-            let section: LibrarySection = hit.entry.kind == .presentation ? .presentations : .media
-            return scopes.isEmpty || scopes.contains(section)
         }
     }
 }

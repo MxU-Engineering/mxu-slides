@@ -227,7 +227,10 @@ final class AlignmentGridTests: XCTestCase {
             onWall.layers.flatMap(\.items).map(\.content),
             [.media(id: OutputManager.syncTestMediaID, scaleMode: .fit, sourceRect: nil)])
         XCTAssertEqual(onWall.canvasSize, CGSize(width: 384, height: 108))
-        XCTAssertEqual(outputs.previewProvider(for: stream.id.uuidString)(), program)
+
+        XCTAssertEqual(
+            outputs.previewProvider(for: stream.id.uuidString)(),
+            program.scaled(toScreen: CGSize(width: 192, height: 108), mode: .fit))
         outputs.setSyncTest(true, forScreen: stream.id)
         XCTAssertEqual(outputs.previewProvider(for: stream.id.uuidString)().canvasSize, CGSize(width: 192, height: 108))
         outputs.setSyncTest(false, forScreen: wall.id)

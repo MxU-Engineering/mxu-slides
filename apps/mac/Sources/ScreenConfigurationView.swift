@@ -16,14 +16,6 @@ struct ScreenConfigurationView: View {
     let render: RenderContext
     let presets: OutputPresetsController?
 
-    @Environment(\.signage) private var signage
-    @State private var renamingChannel: RenamingChannel?
-    @State private var channelRenameText = ""
-
-    private struct RenamingChannel: Identifiable {
-        let id: String
-    }
-
     private var outputs: OutputManager { render.outputs }
 
     private enum Selection: Hashable {
@@ -31,8 +23,6 @@ struct ScreenConfigurationView: View {
         case display(DisplayUUID)
 
         case preset(String)
-
-        case signage(String)
     }
 
     @State private var selection: Selection?
@@ -65,7 +55,6 @@ struct ScreenConfigurationView: View {
         }
         .onChange(of: outputs.placeholderScreens.map(\.id)) { ensureSelection() }
         .onChange(of: outputs.displays.map(\.uuid)) { ensureSelection() }
-        .onChange(of: (signage?.channels ?? []).map(\.id)) { ensureSelection() }
     }
 
     private func consumePresetRoute() {
@@ -85,8 +74,6 @@ struct ScreenConfigurationView: View {
         case .display(let uuid) where outputs.displays.contains(where: { $0.uuid == uuid }):
             return
         case .preset(let id) where presets?.preset(id) != nil:
-            return
-        case .signage(let id) where signage?.channel(id) != nil:
             return
         default:
             selection = outputs.placeholderScreens.first.map { .screen($0.id) }
@@ -140,9 +127,6 @@ struct ScreenConfigurationView: View {
                         presetListRow(entry, presets: presets)
                     }
                 }
-                if let signage {
-                    signageSection(signage)
-                }
             }
             .padding(10)
 
@@ -161,114 +145,6 @@ struct ScreenConfigurationView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .alert("Rename Signage", isPresented: Binding(
-            get: { renamingChannel != nil },
-            set: { if !$0 { renamingChannel = nil } }
-        )) {
-            TextField("Name", text: $channelRenameText)
-            Button("Rename") {
-                if let target = renamingChannel {
-                    signage?.renameChannel(target.id, to: channelRenameText)
-                }
-                renamingChannel = nil
-            }
-            Button("Cancel", role: .cancel) { renamingChannel = nil }
-        }
-    }
-
-    @ViewBuilder
-    private func signageSection(_ signage: SignageController) -> some View {
-        HStack {
-            sectionLabel("Digital Signage")
-            Spacer()
-            Button {
-                signage.addChannel()
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("New Digital Signage — a named destination screens can point at (Lobby, Kids Hallway…)")
-        }
-        .padding(.top, 12)
-        if signage.channels.isEmpty {
-            Text("A signage is a named loop destination — create Lobby or Café here, give it content from the Signage module, and point any screen at it.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 2)
-        }
-        ForEach(signage.channels, id: \.id) { channel in
-            signageChannelRow(channel, signage: signage)
-        }
-    }
-
-    private func signageChannelRow(
-        _ channel: SignageChannel, signage: SignageController
-    ) -> some View {
-        let selected = selection == .signage(channel.id)
-        return Button {
-            selection = .signage(channel.id)
-        } label: {
-            signageChannelRowLabel(channel, signage: signage)
-        }
-        .buttonStyle(.plain)
-        .background(
-            selected ? Color.primary.opacity(0.08) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .contextMenu {
-            Button("Rename…") {
-                channelRenameText = channel.name
-                renamingChannel = RenamingChannel(id: channel.id)
-            }
-            Button("Delete", role: .destructive) {
-                signage.removeChannel(channel.id)
-            }
-        }
-    }
-
-    private func signageChannelRowLabel(
-        _ channel: SignageChannel, signage: SignageController
-    ) -> some View {
-        HStack(spacing: 8) {
-            RoundedRectangle.standard(4)
-                .fill(Color.primary.opacity(0.08))
-                .overlay {
-                    Image(systemName: "play.tv")
-                        .font(.system(size: 9))
-                        .foregroundStyle(
-                            channel.playlistId == nil
-                                ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
-                }
-                .overlay(
-                    RoundedRectangle.standard(4)
-                        .strokeBorder(Color.separator.opacity(0.5), lineWidth: 1)
-                )
-                .frame(width: 46, height: 26)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(channel.name)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                Text(signageContentCaption(channel, signage: signage))
-                    .font(.caption2)
-                    .foregroundStyle(channel.playlistId == nil ? .secondary : Color.green)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 4)
-        }
-        .padding(6)
-        .contentShape(RoundedRectangle.standard(CornerStandard.element))
-    }
-
-    private func signageContentCaption(
-        _ channel: SignageChannel, signage: SignageController
-    ) -> String {
-        guard channel.playlistId != nil else { return "dark — assign content in the Signage module" }
-        let screens = signage.screenNames(showing: channel.id)
-        return screens.isEmpty ? "content set — no screens" : "on \(screens.joined(separator: ", "))"
     }
 
     private func addPresetMenu(_ presets: OutputPresetsController) -> some View {
@@ -587,10 +463,6 @@ struct ScreenConfigurationView: View {
                     if let presets, presets.preset(id) != nil {
                         PresetDetail(outputs: outputs, presets: presets, render: render, presetID: id)
                     }
-                case .signage(let id):
-                    if let signage, let channel = signage.channel(id) {
-                        SignageDetail(signage: signage, channel: channel)
-                    }
                 case nil:
                     ContentUnavailableView(
                         "No Screens", systemImage: "display",
@@ -730,6 +602,20 @@ private struct ScreenDetail: View {
             .controlSize(.small)
             .fixedSize()
             .help("Render cadence — match the venue or stream rate")
+            if outputs.role(forScreen: screen.id) == .audience {
+
+                Picker("", selection: Binding(
+                    get: { outputs.scaleMode(forScreen: screen.id) },
+                    set: { outputs.setScaleMode($0, forScreen: screen.id) }
+                )) {
+                    Text("Fit Slides").tag(OutputScaleMode.fit)
+                    Text("Fill Slides").tag(OutputScaleMode.fill)
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .fixedSize()
+                .help("When a presentation is a different shape than this screen: Fit shows the whole slide with its background filling the sides; Fill covers the screen and crops the edges")
+            }
             Spacer()
             Picker("", selection: Binding(
                 get: { outputs.role(forScreen: screen.id) },
@@ -1174,95 +1060,6 @@ struct OutputSourcePicker: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.tertiary)
             }
-    }
-}
-
-private struct SignageDetail: View {
-    let signage: SignageController
-    let channel: SignageChannel
-
-    @State private var name = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                TextField("Name", text: $name)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .frame(maxWidth: 220)
-                    .onSubmit { signage.renameChannel(channel.id, to: name) }
-                Spacer()
-            }
-            Text("A named loop destination. Give it a media playlist as content and point screens at it below — every screen showing this signage follows content changes. The Set Screen Source action flips the same routing from combos and slides.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Text("Content")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 72, alignment: .leading)
-                QuietMenuChip(title: signage.playlistName(channel.playlistId) ?? "Dark — no content") {
-                    Button("Dark — no content") {
-                        signage.assign(playlistID: nil, toSignage: channel.id)
-                    }
-                    let playlists = signage.playlistChoices
-                    if !playlists.isEmpty { Divider() }
-                    ForEach(playlists, id: \.id) { playlist in
-                        Button(playlist.id == channel.playlistId
-                            ? "✓ \(playlist.name)" : playlist.name
-                        ) {
-                            signage.assign(playlistID: playlist.id, toSignage: channel.id)
-                        }
-                    }
-                }
-                .help("The media playlist this signage loops — also assignable from the Signage module")
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("On screens")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 72, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(signage.screens, id: \.id) { screen in
-                        Toggle(isOn: Binding(
-                            get: { signage.screenAssignments[screen.id] == channel.id },
-                            set: { showing in
-                                signage.setSource(
-                                    showing ? channel.id : nil, forScreen: screen.id)
-                            }
-                        )) {
-                            Text(screen.name)
-                                .font(.caption)
-                                .foregroundStyle(
-                                    signage.screenAssignments[screen.id] == channel.id
-                                        ? Color.green : .primary)
-                        }
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
-                    }
-                    Text("This machine's screens — each machine points its own screens at a signage.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            HStack {
-                Spacer()
-                Button {
-                    signage.removeChannel(channel.id)
-                } label: {
-                    Text("Remove Signage")
-                        .font(.caption)
-                        .foregroundStyle(.red.opacity(0.85))
-                }
-                .buttonStyle(.plain)
-                .help("Screens pointed here fall back to the program")
-            }
-        }
-        .onAppear { name = channel.name }
-        .onChange(of: channel.id) { name = channel.name }
     }
 }
 
@@ -1800,7 +1597,7 @@ private struct ThemeSlidePreview: View {
             model: model, render: render,
             slide: slide, presentation: presentation, theme: nil,
             arrangementId: nil,
-            hideScopedBackgrounds: false, legibleText: false,
+            hideScopedBackgrounds: false,
             contentStamp: "\(model.entry(themeID)?.updatedAt.timeIntervalSince1970 ?? 0)"
         )
     }

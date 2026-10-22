@@ -51,4 +51,23 @@ final class ConfidenceRoutingTests: XCTestCase {
         outputs.setRole(.audience, forScreen: screen)
         XCTAssertEqual(provider().canvasSize.width, 100)
     }
+
+    func testScaleModeShapesTheProgramForItsScreen() throws {
+        let outputs = try makeManager()
+        outputs.sceneProvider = { RenderScene(canvasSize: CGSize(width: 1024, height: 768)) }
+        let screen = try XCTUnwrap(outputs.addPlaceholderScreen(name: "Wide", width: 192, height: 108))
+        let provider = outputs.previewProvider(for: screen.id.uuidString)
+        XCTAssertEqual(outputs.scaleMode(forScreen: screen.id), .fit)
+        XCTAssertEqual(provider().canvasSize.height, 768)
+        XCTAssertEqual(provider().canvasSize.width, 768 * 16 / 9, accuracy: 0.001)
+        XCTAssertEqual(screen.sceneProvider?().canvasSize, provider().canvasSize)
+        outputs.setScaleMode(.fill, forScreen: screen.id)
+        XCTAssertEqual(provider().canvasSize.width, 1024)
+        XCTAssertEqual(provider().canvasSize.height, 576, accuracy: 0.001)
+        outputs.addSlice(toScreen: screen.id, sourceRect: CGRect(x: 0, y: 0, width: 0.5, height: 1))
+        XCTAssertEqual(provider().canvasSize, CGSize(width: 1024, height: 768))
+        outputs.setScaleMode(.fit, forScreen: screen.id)
+        XCTAssertTrue(outputs.scaleModes.isEmpty)
+        outputs.removePlaceholderScreen(id: screen.id)
+    }
 }

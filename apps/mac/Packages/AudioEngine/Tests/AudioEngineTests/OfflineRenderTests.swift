@@ -125,3 +125,15 @@ func realLibraryFilesRenderCleanly() throws {
     #expect(try #require(engine.position).elapsed > 0.4, "playing forward from the top")
     #expect(discontinuities(in: after) == 0)
 }
+
+@Test func aMonoOutputFoldsToUnity() throws {
+
+    let file = try tone(seconds: 1, hertz: 100, rate: 48_000, name: "mono100")
+    let engine = AudioEngine()
+    try engine.enableManualRenderingForTests(mono: true)
+    try engine.play(url: file)
+    let out = try engine.renderOfflineForTests(frames: 24_000)
+    #expect(out.format.channelCount == 1)
+    let peak = (0 ..< Int(out.frameLength)).map { abs(out.floatChannelData![0][$0]) }.max() ?? 0
+    #expect(abs(peak - 0.5) < 0.01, "peak \(peak)")
+}

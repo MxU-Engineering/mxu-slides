@@ -102,17 +102,12 @@ struct BroadcastStatusChip: View {
             }
         }
         .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .headerItemLabel()
+
         .background(
-            (tint ?? .primary).opacity(tint == nil ? 0.06 : 0.1),
-            in: Capsule()
+            (tint ?? .clear).opacity(0.12),
+            in: RoundedRectangle.standard(CornerStandard.element)
         )
-        .overlay {
-            Capsule().strokeBorder(
-                Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        }
-        .contentShape(Capsule())
     }
 
     private var liveCaption: String? {

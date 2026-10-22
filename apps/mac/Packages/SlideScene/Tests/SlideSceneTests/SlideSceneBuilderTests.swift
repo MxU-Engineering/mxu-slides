@@ -610,6 +610,63 @@ private func arrangedSong() -> Presentation {
     #expect(SlideSceneBuilder.arrangementBlockStarts(for: withEmpty, arrangementId: "a") == [0, 2, 2])
 }
 
+@Test func emptySectionPlayedTwiceInARowShowsOnceOnlyWhenChosen() {
+
+    func lyric(_ id: String, section: String, text: String, chords: [ChordPlacement]? = nil) -> Slide {
+        var object = SlideObject(id: "\(id)-t", objectKind: .text, name: "Lyrics", text: text)
+        object.chords = chords
+        return Slide(id: id, name: "", objects: [object], sectionId: section)
+    }
+    var song = Presentation(
+        id: "p", name: "The Blood", presentationKind: .deck, themeId: "",
+        slides: [
+            lyric("c1", section: "c", text: "Hallelujah"),
+            lyric("i1", section: "i", text: "", chords: [ChordPlacement(line: 0, column: 0, symbol: "D")]),
+            lyric("i2", section: "i2", text: "", chords: [ChordPlacement(line: 0, column: 0, symbol: "Bm")]),
+            lyric("b1", section: "b", text: "It's never been about"),
+        ],
+        sections: [
+            PresentationSection(id: "c", name: "Chorus"),
+            PresentationSection(id: "i", name: "Interlude"),
+            PresentationSection(id: "i2", name: "Interlude 2"),
+            PresentationSection(id: "b", name: "Bridge"),
+        ]
+    )
+    song.arrangements = [Arrangement(id: "live", name: "Bethel Music", sectionIds: ["c", "c", "i", "i", "i2", "b", "i"])]
+
+    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "live", emptyRepeatsOnce: false).map(\.id)
+        == ["c1", "c1", "i1", "i1", "i2", "b1", "i1"])
+    #expect(SlideSceneBuilder.playedBlocks(sectionIds: ["i", "i"], in: song, emptyRepeatsOnce: false).map(\.count) == [1, 1])
+
+    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "live", emptyRepeatsOnce: true).map(\.id)
+        == ["c1", "c1", "i1", "i2", "b1", "i1"])
+    #expect(SlideSceneBuilder.arrangementBlockStarts(for: song, arrangementId: "live", emptyRepeatsOnce: true) == [0, 1, 2, 3, 3, 4, 5])
+    #expect(SlideSceneBuilder.blockSectionNames(for: song, arrangementId: "live", emptyRepeatsOnce: true).map(\.start) == [0, 1, 2, 3, 3, 4, 5])
+    #expect(SlideSceneBuilder.playedBlocks(sectionIds: ["c", "i", "i"], in: song, emptyRepeatsOnce: true).map(\.count) == [1, 1, 0])
+
+    song.slides[1].background = CueMedia(mediaId: "loop")
+    #expect(SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "live", emptyRepeatsOnce: true).map(\.id)
+        == ["c1", "c1", "i1", "i1", "i2", "b1", "i1"])
+}
+
+@Test func arrangementControlsNeedASectionedSlide() {
+    let song = arrangedSong()
+    #expect(SlideSceneBuilder.showsArrangements(for: song))
+
+    var unsectioned = song
+    unsectioned.arrangements = nil
+    unsectioned.slides = unsectioned.slides.map { slide in
+        var copy = slide
+        copy.sectionId = nil
+        return copy
+    }
+    #expect(!SlideSceneBuilder.showsArrangements(for: unsectioned))
+
+    var arranged = unsectioned
+    arranged.arrangements = song.arrangements
+    #expect(SlideSceneBuilder.showsArrangements(for: arranged))
+}
+
 @Test func sectionBackgroundSitsBetweenSlideAndSongScopes() {
     var song = arrangedSong()
     song.sections![1].background = CueMedia(mediaId: "chorus-bg")
@@ -1566,4 +1623,30 @@ private func conditioned(_ conditions: [VisibilityCondition], match: VisibilityM
         #expect(preset.id.hasPrefix("builtin."), "\(preset.name)")
     }
     #expect(Set(EffectPreset.recommended.map(\.id)).count == EffectPreset.recommended.count)
+}
+
+@Test func timelineBlocksLayEndToEndAsThePlayedOrder() {
+
+    var song = Presentation(
+        id: "p", name: "Song", presentationKind: .deck, themeId: "",
+        slides: [
+            Slide(id: "v1", name: "", objects: [], sectionId: "v"),
+            Slide(id: "c1", name: "", objects: [], sectionId: "c"),
+            Slide(id: "c2", name: "", objects: [], sectionId: "c"),
+            Slide(id: "end", name: "", objects: []),
+        ],
+        sections: [PresentationSection(id: "v", name: "Verse"), PresentationSection(id: "c", name: "Chorus")]
+    )
+    song.arrangements = [Arrangement(id: "a", name: "Live", sectionIds: ["c", "v", "c"])]
+    let base = SlideSceneBuilder.timelineBlocks(for: song)
+    #expect(base == [
+        TimelinePlayedBlock(sectionId: "v", slideIds: ["v1"]),
+        TimelinePlayedBlock(sectionId: "c", slideIds: ["c1", "c2"]),
+        TimelinePlayedBlock(sectionId: nil, slideIds: ["end"]),
+    ])
+    #expect(base.flatMap(\.slideIds) == SlideSceneBuilder.arrangedSlides(for: song).map(\.id))
+    let arranged = SlideSceneBuilder.timelineBlocks(for: song, arrangementId: "a", emptyRepeatsOnce: false)
+    #expect(arranged.map(\.sectionId) == ["c", "v", "c"])
+    #expect(arranged.flatMap(\.slideIds)
+        == SlideSceneBuilder.arrangedSlides(for: song, arrangementId: "a", emptyRepeatsOnce: false).map(\.id))
 }

@@ -59,6 +59,19 @@ public enum SlideBulkEdit {
         }
     }
 
+    public static func replacing(
+        _ action: SlideAction, in actions: [SlideAction]?
+    ) -> [SlideAction]? {
+        actions?.map { $0.id == action.id ? action : $0 }
+    }
+
+    public static func removing(
+        actionID: String, from actions: [SlideAction]?
+    ) -> [SlideAction]? {
+        let kept = (actions ?? []).filter { $0.id != actionID }
+        return kept.isEmpty ? nil : kept
+    }
+
     public static func setAutoAdvance(
         _ advance: AutoAdvance?, on slideIDs: [String], in presentation: inout Presentation
     ) {
@@ -66,6 +79,51 @@ public enum SlideBulkEdit {
         for index in presentation.slides.indices
         where targets.contains(presentation.slides[index].id) {
             presentation.slides[index].autoAdvance = advance
+        }
+    }
+
+    public static func autoAdvanceValue(_ advances: [AutoAdvance?]) -> String {
+        if let first = advances.first, advances.allSatisfy({ $0 == first }) {
+            if let advance = first {
+                if advance.afterPlayback == true {
+                    advance.delaySeconds > 0
+                        ? "After Video + \(TransitionEdit.label(seconds: advance.delaySeconds))"
+                        : "After Video"
+                } else {
+                    TransitionEdit.label(seconds: advance.delaySeconds)
+                }
+            } else {
+                "Off"
+            }
+        } else {
+            "Mixed"
+        }
+    }
+
+    public static func setTransition(
+        _ transition: (Transition?) -> Transition?, on slideIDs: [String], in presentation: inout Presentation
+    ) {
+        let targets = Set(slideIDs)
+        for index in presentation.slides.indices
+        where targets.contains(presentation.slides[index].id) {
+            presentation.slides[index].transition = transition(presentation.slides[index].transition)
+        }
+    }
+
+    public static func replaceMedia(
+        _ oldID: String, with newID: String, onSlide slideID: String, in presentation: inout Presentation
+    ) {
+        for index in presentation.slides.indices where presentation.slides[index].id == slideID {
+            if presentation.slides[index].background?.mediaId == oldID {
+                presentation.slides[index].background?.mediaId = newID
+            }
+            presentation.slides[index].actions = presentation.slides[index].actions?.map { action in
+                var next = action
+                if action.kind == .fireMedia, action.mediaId == oldID {
+                    next.mediaId = newID
+                }
+                return next
+            }
         }
     }
 
@@ -94,7 +152,7 @@ public enum SlideBulkEdit {
     public static func deleteSlides(_ slideIDs: [String], in slides: inout [Slide]) -> Bool {
         let targets = Set(slideIDs)
         let remaining = slides.filter { !targets.contains($0.id) }
-        let deletes = !remaining.isEmpty && remaining.count < slides.count
+        let deletes = remaining.count < slides.count
         if deletes {
             slides = remaining
         }
@@ -219,6 +277,30 @@ public enum SlideBulkEdit {
             return true
         }
     }
+
+    @discardableResult
+    public static func splitSlide(
+        _ slideID: String, objectID: String, at position: Int, in presentation: inout Presentation
+    ) -> (slideID: String, objectID: String)? {
+        var made: (slideID: String, objectID: String)?
+        if let slideIndex = presentation.slides.firstIndex(where: { $0.id == slideID }),
+           let objectIndex = presentation.slides[slideIndex].objects.firstIndex(where: { $0.id == objectID }) {
+            let characters = Array(presentation.slides[slideIndex].objects[objectIndex].text)
+            let cut = min(max(0, position), characters.count)
+            var keptEnd = cut
+            while keptEnd > 0, characters[keptEnd - 1].isWhitespace { keptEnd -= 1 }
+            var movedStart = cut
+            while movedStart < characters.count, characters[movedStart].isWhitespace { movedStart += 1 }
+            var copy = presentation.slides[slideIndex].freshIDCopy()
+            copy.notes = nil
+            copy.history = nil
+            copy.objects[objectIndex].replaceText(0..<movedStart, with: "")
+            presentation.slides[slideIndex].objects[objectIndex].replaceText(keptEnd..<characters.count, with: "")
+            presentation.slides.insert(copy, at: slideIndex + 1)
+            made = (copy.id, copy.objects[objectIndex].id)
+        }
+        return made
+    }
 }
 
 extension Slide {
@@ -226,10 +308,19 @@ extension Slide {
     public func freshIDCopy() -> Slide {
         var copy = self
         copy.id = UUID().uuidString
+        let fresh = Dictionary(uniqueKeysWithValues: objects.map { ($0.id, UUID().uuidString) })
         copy.objects = copy.objects.map { object in
             var object = object
-            object.id = UUID().uuidString
+            object.id = fresh[object.id] ?? UUID().uuidString
+            if let mask = object.maskObjectId, let moved = fresh[mask] {
+                object.maskObjectId = moved
+            }
             return object
+        }
+        copy.actions = copy.actions?.map { action in
+            var action = action
+            action.id = UUID().uuidString
+            return action
         }
         return copy
     }

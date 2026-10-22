@@ -22,8 +22,6 @@ final class PresentLayoutController {
 
     private(set) var runOnly = false
 
-    private(set) var attempts = RunOnlyAttempts()
-
     private(set) var runOnlyModules: [ServiceControlsModule]?
 
     private static let poppedKey = "serviceControls.poppedOut"
@@ -34,7 +32,8 @@ final class PresentLayoutController {
     private static let activeKey = "present.activeLayoutID"
     static let lockedKey = "present.runOnly"
     private static let runOnlyModulesKey = "present.runOnlyModules"
-    private static let pinKey = "present.runOnlyPIN"
+
+    private static let retiredPINKey = "present.runOnlyPIN"
     private static let preRunOnlyKey = "present.preRunOnly"
 
     init() {
@@ -100,35 +99,12 @@ final class PresentLayoutController {
         }
         activeLayoutID = UserDefaults.standard.string(forKey: Self.activeKey)
         runOnly = UserDefaults.standard.bool(forKey: Self.lockedKey)
+        UserDefaults.standard.removeObject(forKey: Self.retiredPINKey)
         runOnlyModules = UserDefaults.standard.string(forKey: Self.runOnlyModulesKey)
             .map(Self.modules(from:))
     }
 
-    var hasPIN: Bool {
-        UserDefaults.standard.string(forKey: Self.pinKey) != nil
-    }
-
-    func setPIN(_ pin: String) {
-        UserDefaults.standard.set(RunOnlyPasscode.record(for: pin), forKey: Self.pinKey)
-    }
-
-    func verifyPIN(_ pin: String) -> Bool {
-        let record = UserDefaults.standard.string(forKey: Self.pinKey)
-        let matched = record.map { RunOnlyPasscode.matches(pin, record: $0) } ?? false
-        if matched {
-            attempts.noteSuccess()
-        } else {
-            attempts.noteFailure(at: Date())
-        }
-        return matched
-    }
-
-    func pinWaitSeconds() -> Int {
-        attempts.secondsLeft(at: Date())
-    }
-
     func enterRunOnly(applying apply: (() -> Void)? = nil) {
-        guard hasPIN else { return }
         if let data = try? JSONEncoder().encode(captureCurrent()) {
             UserDefaults.standard.set(data, forKey: Self.preRunOnlyKey)
         }

@@ -101,6 +101,40 @@ final class RecorderTests: XCTestCase {
         XCTAssertEqual(codec, kCMVideoCodecType_HEVC)
     }
 
+    func testAverageBitrateGovernsTheFile() async throws {
+        func dataRate(_ bitrate: Int) async throws -> Float {
+            let configuration = RecordingConfiguration(
+                codec: .h264, width: 640, height: 360, frameRate: 30, averageBitrate: bitrate)
+            let url = scratchURL.appendingPathComponent("rate-\(bitrate).mov")
+            let recorder = try Recorder(url: url, configuration: configuration)
+            for frame in 0..<60 {
+                let buffer = try makeBuffer(width: 640, height: 360)
+                CVPixelBufferLockBaseAddress(buffer, [])
+                let base = try XCTUnwrap(CVPixelBufferGetBaseAddress(buffer))
+                    .assumingMemoryBound(to: UInt32.self)
+                let rowPixels = CVPixelBufferGetBytesPerRow(buffer) / 4
+                for blockY in 0..<45 {
+                    for blockX in 0..<80 {
+                        let color = UInt32.random(in: 0...0xFFFFFF) | 0xFF00_0000
+                        for y in blockY * 8..<blockY * 8 + 8 {
+                            for x in blockX * 8..<blockX * 8 + 8 { base[y * rowPixels + x] = color }
+                        }
+                    }
+                }
+                CVPixelBufferUnlockBaseAddress(buffer, [])
+                recorder.append(buffer, atHostSeconds: 1000 + Double(frame) / 30)
+                try await Task.sleep(nanoseconds: 33_000_000)
+            }
+            await recorder.finish()
+            return try await videoTrack(of: url).load(.estimatedDataRate)
+        }
+        let low = try await dataRate(2_000_000)
+        let high = try await dataRate(6_000_000)
+        XCTAssertLessThan(low, 2_500_000)
+        XCTAssertLessThan(high, 7_500_000)
+        XCTAssertGreaterThan(high, low * 2)
+    }
+
     func testSameInstantAppendsNudgeForwardInsteadOfDropping() async throws {
         let configuration = RecordingConfiguration(codec: .h264, width: 320, height: 180)
         let url = scratchURL.appendingPathComponent("nudge.mov")

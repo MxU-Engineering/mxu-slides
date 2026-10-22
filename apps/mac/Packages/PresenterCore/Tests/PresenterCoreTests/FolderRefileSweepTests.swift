@@ -55,7 +55,7 @@ import Testing
         #expect(admit.contains("!(upcomingOnly && UpcomingUse.kinds.contains(kind)) || upcomingIds.contains(id)"))
 
         let library = try source("LibraryView.swift")
-        #expect(library.contains("rows: (model.librarySorts[section] ?? .name).merged(items, cloud: cloud),"))
+        #expect(library.contains("rows: (model.librarySorts[section] ?? .name).merged(items, cloud: cloud, addedAt: model.mediaAddedAt),"))
         let refresh = try block(after: "private func refreshUpcoming() {", in: model)
         expectInOrder(["upcomingTask?.cancel()", "guard upcomingOnly else { return }", "UpcomingUse.services(", "try? await client.reader()",
                        "reader.loadValues(Service.self", "reader.loadValues(Presentation.self", "reader.loadValues(Playlist.self",

@@ -365,7 +365,7 @@ enum ShaderSource {
                                             texture2d<float> history [[texture(1)]],
                                             constant float4 &params [[buffer(0)]],
                                             constant float4 &drift [[buffer(1)]]) {
-        constexpr sampler s(coord::normalized, address::clamp_to_zero,
+        constexpr sampler s(coord::normalized, address::clamp_to_edge,
                             mag_filter::linear, min_filter::linear);
         float4 fresh = tex.sample(s, in.uv);
         if (params.y < 0.5) { return fresh; }
@@ -377,8 +377,8 @@ enum ShaderSource {
         float ny = warp_noise(p + float3(41.7, 13.3, 7.9)) * 0.7
                  + warp_noise(p * 2.0 + float3(29.1, 5.2, 3.3)) * 0.3 - 0.5;
         float2 offset = float2(nx, ny) * 2.0 * drift.x;
-        float4 trail = history.sample(s, (px + offset) / size) * clamp(params.x, 0.0, 0.999);
-        return max(fresh, trail);
+        float4 trail = history.sample(s, (px + offset) / size);
+        return mix(fresh, trail, clamp(params.x, 0.0, 0.999));
     }
 
     fragment float4 compositor_masked(VertexOut in [[stage_in]],

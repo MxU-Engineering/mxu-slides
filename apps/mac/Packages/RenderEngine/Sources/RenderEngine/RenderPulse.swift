@@ -24,6 +24,40 @@ public final class RenderPulse: @unchecked Sendable {
 
         public var mirrorEdgeMSTotal = 0.0
         public var mirrorNearEdgeTicks = 0
+
+        public var cardTimings: [String: CardTiming] = [:]
+    }
+
+    public struct CardTiming: Equatable, Sendable {
+
+        public var repeats = 0
+        public var skips = 0
+
+        public var late = 0
+        public var dropped = 0
+
+        public var jumps = 0
+
+        public var held = 0
+
+        public init(
+            repeats: Int = 0, skips: Int = 0, late: Int = 0, dropped: Int = 0,
+            jumps: Int = 0, held: Int = 0
+        ) {
+            self.repeats = repeats
+            self.skips = skips
+            self.late = late
+            self.dropped = dropped
+            self.jumps = jumps
+            self.held = held
+        }
+
+        static func + (lhs: CardTiming, rhs: CardTiming) -> CardTiming {
+            CardTiming(
+                repeats: lhs.repeats + rhs.repeats, skips: lhs.skips + rhs.skips,
+                late: lhs.late + rhs.late, dropped: lhs.dropped + rhs.dropped,
+                jumps: lhs.jumps + rhs.jumps, held: lhs.held + rhs.held)
+        }
     }
 
     private let state = Locked(Snapshot())
@@ -75,6 +109,12 @@ public final class RenderPulse: @unchecked Sendable {
             $0.mirrorClosestEdgeMS = min($0.mirrorClosestEdgeMS, edgeDistanceMS)
             $0.mirrorEdgeMSTotal += edgeDistanceMS
             if edgeDistanceMS < periodMS / 10 { $0.mirrorNearEdgeTicks += 1 }
+        }
+    }
+
+    public func cardTiming(device: String, _ delta: CardTiming) {
+        state.withLock { snapshot in
+            snapshot.cardTimings[device] = snapshot.cardTimings[device, default: CardTiming()] + delta
         }
     }
 

@@ -1,67 +1,6 @@
 import PresenterCore
 import SwiftUI
 
-struct PendingDeckTheme: Equatable {
-    let presentationID: String
-    let themeID: String
-}
-
-struct DeckThemeMenuItems: View {
-    let model: AppModel
-    let presentationID: String
-    let themes: [LibraryIndex.Entry]
-    @Binding var pending: PendingDeckTheme?
-
-    var body: some View {
-        let currentThemeID = model.themeID(of: presentationID)
-        let edited = model.presentationHasLocalEdits(presentationID)
-        Toggle(
-            "None",
-            isOn: Binding(
-                get: { currentThemeID.isEmpty },
-                set: { _ in model.applyTheme(to: presentationID, themeID: "") }
-            )
-        )
-        if !themes.isEmpty { Divider() }
-        ForEach(themes, id: \.id) { theme in
-            let isCurrent = theme.id == currentThemeID
-            Toggle(
-                theme.name + (isCurrent && edited ? " (edited)" : ""),
-                isOn: Binding(
-                    get: { isCurrent },
-                    set: { _ in
-
-                        if model.presentationHasSlideThemes(presentationID) {
-                            pending = PendingDeckTheme(presentationID: presentationID, themeID: theme.id)
-                        } else {
-                            model.applyTheme(to: presentationID, themeID: theme.id)
-                        }
-                    }
-                )
-            )
-        }
-    }
-}
-
-extension View {
-
-    func deckThemeConfirmation(model: AppModel, pending: Binding<PendingDeckTheme?>) -> some View {
-        confirmationDialog(
-            "Apply \(pending.wrappedValue.flatMap { model.entry($0.themeID)?.name } ?? "this theme") to every slide?",
-            isPresented: Binding(get: { pending.wrappedValue != nil }, set: { if !$0 { pending.wrappedValue = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Apply to Every Slide") {
-                if let chosen = pending.wrappedValue { model.applyTheme(to: chosen.presentationID, themeID: chosen.themeID) }
-                pending.wrappedValue = nil
-            }
-            Button("Cancel", role: .cancel) { pending.wrappedValue = nil }
-        } message: {
-            Text("Slides that follow a theme of their own will follow this one instead.")
-        }
-    }
-}
-
 struct ApplyThemeTarget: Identifiable {
     let id = UUID()
     let presentationID: String
@@ -75,6 +14,8 @@ struct ApplyThemeSheet: View {
     let deckThemeId: String
 
     let scope: String
+
+    var onNone: (() -> Void)? = nil
     let onApply: (_ themeId: String, _ design: String?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -93,6 +34,13 @@ struct ApplyThemeSheet: View {
             HStack {
                 Text(scope).font(.callout).foregroundStyle(.secondary)
                 Spacer()
+                if let onNone {
+                    Button("No Theme") {
+                        onNone()
+                        dismiss()
+                    }
+                    .help("Keep the current look as each slide's own and stop following a theme")
+                }
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
@@ -104,6 +52,54 @@ struct ApplyThemeSheet: View {
 
     private func apply(_ themeId: String, design: String?) {
         onApply(themeId, design)
+        dismiss()
+    }
+}
+
+struct SlideThemeSheet: View {
+    let appModel: AppModel
+    let render: RenderContext?
+    let model: SlideEditorModel
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var looks: [ThemeLook]?
+
+    var body: some View {
+        let slide = model.slideThemeTargetID.flatMap { id in model.presentation.slides.first { $0.id == id } }
+            ?? model.currentSlide
+        VStack(spacing: 0) {
+            ThemeExplorerView(
+                appModel: appModel, render: render, deckThemeId: model.presentation.themeId, looks: looks,
+                currentDesign: slide?.themeId?.isEmpty != false ? slide?.themeSlideName : nil
+            ) { themeId, design in
+                pick(design.name, themeId: themeId, slide: slide)
+            }
+            Divider()
+            HStack {
+                Text("Applies to this slide.").font(.callout).foregroundStyle(.secondary)
+                Spacer()
+
+                Button("Blank") {
+                    if let slide { model.setSlideBlank(slide.id) }
+                    dismiss()
+                }
+                .help("No theme styles this slide")
+                Button("Automatic") { pick(nil, themeId: model.presentation.themeId, slide: slide) }
+                    .help("Follow the deck's theme with this slide's own kind of design")
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(12)
+        }
+        .frame(width: 820, height: 600)
+        .task { looks = await ThemeLook.load(appModel, firstThemeId: model.presentation.themeId) }
+    }
+
+    private func pick(_ name: String?, themeId: String, slide: Slide?) {
+        if let slide {
+            model.pickThemeSlide(name, themeId: themeId, for: slide.id)
+        }
         dismiss()
     }
 }

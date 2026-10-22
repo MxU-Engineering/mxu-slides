@@ -12,6 +12,9 @@ final class MIDIInService: @unchecked Sendable {
     private var wanted = Set<Int32>()
     private var connected: [Int32: MIDIEndpointRef] = [:]
     private var handler: (@Sendable (Int32, UInt8, UInt8, UInt8) -> Void)?
+
+    private var timecodeSource: Int32?
+    private var timecodeHandler: (@Sendable ([UInt8], UInt64) -> Void)?
     private let lock = NSLock()
 
     private init() {}
@@ -29,11 +32,21 @@ final class MIDIInService: @unchecked Sendable {
         syncConnections()
     }
 
+    func setTimecodeSource(_ uid: Int32?, handler: (@Sendable ([UInt8], UInt64) -> Void)?) {
+        lock.lock()
+        timecodeSource = uid
+        timecodeHandler = handler
+        lock.unlock()
+        syncConnections()
+    }
+
     private func syncConnections() {
         lock.lock()
         defer { lock.unlock() }
 
-        guard !wanted.isEmpty || ready else { return }
+        var listening = wanted
+        if let timecodeSource { listening.insert(timecodeSource) }
+        guard !listening.isEmpty || ready else { return }
         guard ensureReady() else { return }
         var present: [Int32: MIDIEndpointRef] = [:]
         for index in 0..<MIDIGetNumberOfSources() {
@@ -42,7 +55,7 @@ final class MIDIInService: @unchecked Sendable {
             var uid: Int32 = 0
             guard MIDIObjectGetIntegerProperty(source, kMIDIPropertyUniqueID, &uid) == noErr
             else { continue }
-            if wanted.contains(uid) { present[uid] = source }
+            if listening.contains(uid) { present[uid] = source }
         }
         for (uid, endpoint) in connected where present[uid] != endpoint {
             MIDIPortDisconnectSource(port, endpoint)
@@ -77,14 +90,17 @@ final class MIDIInService: @unchecked Sendable {
     }
 
     private func receive(_ packetList: UnsafePointer<MIDIPacketList>, _ refCon: UnsafeMutableRawPointer?) {
-        lock.lock()
-        let handler = handler
-        lock.unlock()
-        guard let handler else { return }
         let sourceUid = Int32(truncatingIfNeeded: refCon.map { Int(bitPattern: $0) } ?? 0)
+        lock.lock()
+        let handler = wanted.contains(sourceUid) ? handler : nil
+        let timecodeHandler = timecodeSource == sourceUid ? timecodeHandler : nil
+        lock.unlock()
+        guard handler != nil || timecodeHandler != nil else { return }
         for packet in packetList.unsafeSequence() {
             let length = Int(packet.pointee.length)
             let bytes = withUnsafeBytes(of: packet.pointee.data) { Array($0.prefix(length)) }
+            timecodeHandler?(bytes, packet.pointee.timeStamp)
+            guard let handler else { continue }
             for message in MIDIParse.channelMessages(in: bytes) {
                 handler(sourceUid, message.status, message.data1, message.data2)
             }
@@ -108,7 +124,6 @@ final class MIDIInController {
     }
 
     private var selectedServiceItemID: String?
-    private var selectedMediaPlaylistID: String?
     private var selectedAudioPlaylistID: String?
     private var selectedOverlayFolder: String?
     private var selectedComboFolderID: String?
@@ -152,8 +167,8 @@ final class MIDIInController {
             controls.clear(function: .audio)
         case .clearAlerts:
             controls.clear(function: .alerts)
-        case .clearSignage:
-            controls.clear(function: .signage)
+        case .clearInputs:
+            controls.clear(function: .inputs)
         case .videoGoToBeginning:
             for row in controls.media.rows { controls.media.resetToStart(row.id) }
         case .videoPlayPause:
@@ -215,21 +230,6 @@ final class MIDIInController {
                 slide: slides[index], in: presentation, arrangementId: live.arrangementId,
                 contextID: controls.liveContextID, occurrence: index
             )
-        case .selectMediaPlaylist:
-            let playlists = model.playlists(in: .media)
-            guard playlists.indices.contains(index) else { return miss(command, "index \(index)") }
-            selectedMediaPlaylistID = playlists[index].id
-        case .triggerMedia:
-            guard let playlistID = selectedMediaPlaylistID,
-                  let playlist = try? model.playlist(playlistID)
-            else { return miss(command, "no playlist selected") }
-            guard playlist.entries.indices.contains(index) else {
-                return miss(command, "index \(index)")
-            }
-            guard let item = model.media(playlist.entries[index].refId) else {
-                return miss(command, "mediaId")
-            }
-            controls.fire(mediaItem: item)
         case .selectAudioPlaylist:
             let playlists = model.playlists(in: .audio)
             guard playlists.indices.contains(index) else { return miss(command, "index \(index)") }
@@ -291,7 +291,33 @@ final class MIDIInController {
             }
             guard comboIDs.indices.contains(index) else { return miss(command, "index \(index)") }
             router.fire(comboID: comboIDs[index])
+        case .startTimeline, .rewindTimeline:
+
+            guard let target = timelineTarget() else { return miss(command, "no timeline") }
+            if command == .startTimeline {
+                controls.timeline.play(
+                    itemID: target.item.id, presentation: target.presentation,
+                    arrangementId: target.item.arrangementId)
+            } else {
+                controls.timeline.seek(
+                    to: 0, itemID: target.item.id, presentation: target.presentation,
+                    arrangementId: target.item.arrangementId)
+            }
+        case .stopTimeline:
+            controls.timeline.stop()
         }
+    }
+
+    private func timelineTarget() -> (item: ServiceItem, presentation: Presentation)? {
+        var target = selectedServiceItem()
+        if target == nil, let liveID = controls.liveContextID,
+           let item = currentServiceItems()?.first(where: { $0.id == liveID }),
+           item.itemKind == .presentation, let presentation = model.presentation(item.refId) {
+            target = (item, presentation)
+        }
+        guard let target, PresentationTimelines.timeline(for: target.item.arrangementId, in: target.presentation) != nil
+        else { return nil }
+        return target
     }
 
     private func currentServiceItems() -> [ServiceItem]? {

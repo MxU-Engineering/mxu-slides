@@ -1,3 +1,5 @@
+import Metal
+import RenderEngine
 import XCTest
 @testable import MediaEngine
 
@@ -26,5 +28,17 @@ final class ArrivalWindowTests: XCTestCase {
         for frame in 0..<60 { window.record(Double(frame) / 30) }
         window.record(10)
         XCTAssertNil(window.cadence)
+    }
+
+    func testARegisteredLiveSourceReportsItsCadence() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("no Metal device on this machine")
+        }
+        let engine = try MediaEngine(device: device)
+        let cadence = LiveCadence(lastArrival: 7, period: 1001.0 / 30000)
+        engine.registerLiveSource(id: "direct", latestFrame: { nil }, onStop: {}, cadence: { cadence })
+        engine.registerLiveSource(id: "ndi", latestFrame: { nil }, onStop: {})
+        XCTAssertEqual(engine.liveCadence(for: "direct"), cadence)
+        XCTAssertNil(engine.liveCadence(for: "ndi"))
     }
 }

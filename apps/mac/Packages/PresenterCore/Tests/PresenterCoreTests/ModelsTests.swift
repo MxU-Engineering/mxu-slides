@@ -29,26 +29,16 @@ import Testing
     #expect(decoded == combo)
 }
 
-@Test func signageBoardAndActionsRoundTrip() throws {
+@Test func storedSignageStepsStillDecode() throws {
 
-    let board = SignageBoard(id: SignageBoard.wellKnownID, signages: [
-        SignageChannel(id: "ch-lobby", name: "Lobby", playlistId: "loop-1"),
-        SignageChannel(id: "ch-cafe", name: "Café"),
-    ])
-    let decodedBoard = try JSONDecoder().decode(
-        SignageBoard.self, from: JSONEncoder().encode(board))
-    #expect(decodedBoard == board)
-    #expect(decodedBoard.signages[1].playlistId == nil)
-
-    let content = SlideAction(
-        id: "a1", kind: .setSignage, playlistId: "loop-1", signageId: "ch-lobby")
-    let source = SlideAction(
-        id: "a2", kind: .setScreenSource, signageId: "ch-lobby", screenId: "screen-1")
-    for action in [content, source] {
-        let decoded = try JSONDecoder().decode(
-            SlideAction.self, from: JSONEncoder().encode(action))
-        #expect(decoded == action)
-    }
+    let json = """
+    {"id":"c1","name":"Lobby","actions":[\
+    {"id":"a1","kind":"setSignage","playlistId":"loop-1","signageId":"ch-lobby"},\
+    {"id":"a2","kind":"setScreenSource","signageId":"ch-lobby","screenId":"screen-1"},\
+    {"id":"a3","kind":"clearSignage"},{"id":"a4","kind":"clearAudio"}]}
+    """
+    let decoded = try JSONDecoder().decode(ActionCombo.self, from: Data(json.utf8))
+    #expect(decoded.actions.map(\.kind) == [.setSignage, .setScreenSource, .clearSignage, .clearAudio])
 }
 
 @Test func musicActionsRoundTripAndStayAdditive() throws {

@@ -27,6 +27,12 @@ final class AudioDeck: @unchecked Sendable {
 
     private var endFrame: AVAudioFramePosition = 0
 
+    private var shape: AudioClipShape?
+
+    func setShape(_ shape: AudioClipShape?) {
+        fillQueue.sync { self.shape = shape }
+    }
+
     private static let chunkFrames: AVAudioFrameCount = 32_768
     private static let chunksAhead = 4
 
@@ -110,6 +116,7 @@ final class AudioDeck: @unchecked Sendable {
             chunksInFlight = 0
             scheduledToEnd = false
             onPlayedToEnd = nil
+            shape = nil
         }
         heldElapsed = 0
         scheduleStart = 0
@@ -156,12 +163,19 @@ final class AudioDeck: @unchecked Sendable {
         let srcFrames = min(Self.chunkFrames, remaining)
         guard let src = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: srcFrames)
         else { return nil }
+        let first = file.framePosition
         do {
             try file.read(into: src, frameCount: srcFrames)
         } catch {
             return nil
         }
         guard src.frameLength > 0 else { return nil }
+        if let shape, let data = src.floatChannelData {
+            let rate = file.processingFormat.sampleRate
+            shape.envelope.apply(
+                (0 ..< Int(src.format.channelCount)).map { data[$0] }, count: Int(src.frameLength),
+                from: Double(first) / rate - shape.start, rate: rate, length: shape.end - shape.start)
+        }
         let isLast = file.framePosition >= endFrame
         guard let converter else { return (src, isLast) }
         let ratio = Self.graphFormat.sampleRate / file.processingFormat.sampleRate
@@ -181,6 +195,16 @@ final class AudioDeck: @unchecked Sendable {
         }
         guard status != .error, dst.frameLength > 0 else { return nil }
         return (dst, isLast)
+    }
+}
+
+public struct AudioClipShape: Equatable, Sendable {
+    public var envelope: ClipEnvelope
+    public var start: TimeInterval
+    public var end: TimeInterval
+
+    public init(envelope: ClipEnvelope, start: TimeInterval, end: TimeInterval) {
+        self.envelope = envelope; self.start = start; self.end = end
     }
 }
 

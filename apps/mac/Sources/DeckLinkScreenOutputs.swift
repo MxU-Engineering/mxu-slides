@@ -1,3 +1,4 @@
+import AudioEngine
 import Foundation
 import Observation
 import OutputEngine
@@ -227,6 +228,8 @@ final class DeckLinkDeviceCatalog {
     static let shared = DeckLinkDeviceCatalog()
 
     private(set) var devices: [DeckLinkHelperDevice] = []
+
+    private(set) var inputDevices: [DeckLinkHelperDevice] = []
     private(set) var hasFetched = false
 
     private(set) var runtimeVersionLabel = ""
@@ -261,6 +264,15 @@ final class DeckLinkDeviceCatalog {
                 [DeckLinkHelperDevice].self, from: data)) ?? []
             Task { @MainActor [weak self] in
                 self?.devices = devices.filter(\.supportsPlayback)
+                let inputs = devices.filter(\.supportsCapture)
+                self?.inputDevices = inputs
+
+                AudioDeviceList.setExternalInputDevices(inputs.map { device in
+                    AudioDeviceList.AudioInputDevice(
+                        id: 0, uid: DeckLinkDirect.audioUID(persistentID: device.persistentID),
+                        name: DeckLinkDirect.displayName(device.name),
+                        channelCount: device.captureAudioChannels)
+                })
                 self?.hasFetched = true
                 replyConnection.invalidate()
 

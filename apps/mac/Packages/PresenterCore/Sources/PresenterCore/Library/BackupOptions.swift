@@ -6,7 +6,7 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
     case confidenceLayouts, combos, playlists, services, schedules, notes
 
     case outputPresets, streaming, midiDevices, controlBoards, groups
-    case presetBoards, signage, fonts, settings
+    case presetBoards, fonts, settings
 
     public enum Column: Sendable { case content, setup }
 
@@ -16,7 +16,7 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
              .confidenceLayouts, .combos, .playlists, .services, .schedules, .notes:
             .content
         case .outputPresets, .streaming, .midiDevices, .controlBoards, .groups,
-             .presetBoards, .signage, .fonts, .settings:
+             .presetBoards, .fonts, .settings:
             .setup
         }
     }
@@ -41,7 +41,6 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
         case .controlBoards: "Control boards"
         case .groups: "Groups & hot keys"
         case .presetBoards: "Effect & animation presets"
-        case .signage: "Signage channels"
         case .fonts: "Imported fonts"
         case .settings: "App settings"
         }
@@ -50,7 +49,7 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
     public static func section(for kind: DocumentKind) -> BackupSection {
         switch kind {
         case .presentation, .importLedger: .presentations
-        case .media, .audio: .media
+        case .media, .audio, .trackSet: .media
         case .theme: .themes
         case .overlay: .overlays
         case .alertPreset: .alerts
@@ -66,8 +65,7 @@ public enum BackupSection: String, Codable, CaseIterable, Sendable {
         case .controlBoard: .controlBoards
         case .groupPalette: .groups
         case .effectPresetBoard, .animationPresetBoard: .presetBoards
-        case .signageBoard: .signage
-        case .stationSettings, .slideBuildingSettings, .workspaceSettings: .settings
+        case .stationSettings, .slideBuildingSettings, .workspaceSettings, .trackChannelList: .settings
         case .font: .fonts
         }
     }

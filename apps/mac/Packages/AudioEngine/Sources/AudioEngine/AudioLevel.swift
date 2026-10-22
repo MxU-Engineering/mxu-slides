@@ -1,6 +1,27 @@
 import AVFoundation
 
 public enum AudioLevel {
+    public typealias Reading = (rms: Float, peak: Float)
+
+    public static func measureSides(_ buffer: AVAudioPCMBuffer) -> (left: Reading, right: Reading) {
+        guard let data = buffer.floatChannelData, buffer.frameLength > 0 else {
+            return ((0, 0), (0, 0))
+        }
+        let frames = Int(buffer.frameLength)
+        func side(_ samples: UnsafeMutablePointer<Float>) -> Reading {
+            var sumSquares: Float = 0
+            var peak: Float = 0
+            for frame in 0 ..< frames {
+                let sample = samples[frame]
+                sumSquares += sample * sample
+                peak = max(peak, abs(sample))
+            }
+            return (min((sumSquares / Float(frames)).squareRoot(), 1), min(peak, 1))
+        }
+        let left = side(data[0])
+        return (left, buffer.format.channelCount > 1 ? side(data[1]) : left)
+    }
+
     public static func measure(_ buffer: AVAudioPCMBuffer) -> (rms: Float, peak: Float) {
         guard let data = buffer.floatChannelData, buffer.frameLength > 0 else {
             return (0, 0)
@@ -113,14 +134,50 @@ public enum AudioLevel {
         )
     }
 
+    public static func combine(_ held: [Reading], adding sides: [Reading], gain: Float = 1) -> [Reading] {
+        (0 ..< max(held.count, sides.count)).map { side in
+            combine(
+                side < held.count ? held[side] : (0, 0),
+                adding: side < sides.count ? sides[side] : (0, 0), gain: gain)
+        }
+    }
+
     public static func outputLevels(
-        _ mixes: [(level: (rms: Float, peak: Float), sends: [(outputId: String, gain: Float)])]
-    ) -> [String: (rms: Float, peak: Float)] {
-        var levels: [String: (rms: Float, peak: Float)] = [:]
+        _ mixes: [(level: [Reading], sends: [(outputId: String, gain: Float)])]
+    ) -> [String: [Reading]] {
+        var levels: [String: [Reading]] = [:]
         for mix in mixes {
             for send in mix.sends {
-                levels[send.outputId] = combine(
-                    levels[send.outputId] ?? (0, 0), adding: mix.level, gain: send.gain)
+                levels[send.outputId] = combine(levels[send.outputId] ?? [], adding: mix.level, gain: send.gain)
+            }
+        }
+        return levels
+    }
+
+    public static func mono(_ sides: [Reading]) -> Reading {
+        guard sides.count > 1 else { return sides.first ?? (0, 0) }
+        return ((sides[0].rms + sides[1].rms) / 2, (sides[0].peak + sides[1].peak) / 2)
+    }
+
+    public static func louder(_ sides: [Reading]) -> Reading {
+        (sides.map(\.rms).max() ?? 0, sides.map(\.peak).max() ?? 0)
+    }
+
+    public static func placed(_ sides: [Reading], gain: Float, pan: Float = 0) -> [Reading] {
+        let left = sides.first ?? (0, 0)
+        let right = sides.count > 1 ? sides[1] : left
+        let pan = min(max(pan, -1), 1)
+        let leftGain = gain * min(1, 1 - pan)
+        let rightGain = gain * min(1, 1 + pan)
+        return [(left.rms * leftGain, left.peak * leftGain), (right.rms * rightGain, right.peak * rightGain)]
+    }
+
+    public static func deviceChannels(_ outputs: [(sides: [Reading], channels: [Int])]) -> [Int: Reading] {
+        var levels: [Int: Reading] = [:]
+        for output in outputs {
+            let readings = output.channels.count == 1 ? [mono(output.sides)] : output.sides
+            for (channel, reading) in zip(output.channels, readings) {
+                levels[channel] = combine(levels[channel] ?? (0, 0), adding: reading)
             }
         }
         return levels
@@ -130,18 +187,21 @@ public enum AudioLevel {
 extension AudioLevel {
 
     public static func channelLanding(
-        level: (rms: Float, peak: Float),
+        sides: [Reading],
         channelGain: Float,
-        routedMix: String,
+        pan: Float = 0,
+        routedMix: String?,
         sends: [String: Float],
         mixGain: (String) -> Float
-    ) -> [String: (rms: Float, peak: Float)] {
-        var landing: [String: (rms: Float, peak: Float)] = [:]
-        let targets = sends.filter { $0.key != routedMix }.merging([routedMix: 1]) { $1 }
+    ) -> [String: [Reading]] {
+        var landing: [String: [Reading]] = [:]
+        guard sides.contains(where: { $0.peak > 0 }) else { return landing }
+        var targets = sends
+        if let routedMix { targets[routedMix] = 1 }
         for (mixId, sendGain) in targets {
             let gain = channelGain * sendGain * mixGain(mixId)
-            if gain > 0, level.peak > 0 {
-                landing[mixId] = (level.rms * gain, level.peak * gain)
+            if gain > 0 {
+                landing[mixId] = placed(sides, gain: gain, pan: pan)
             }
         }
         return landing
@@ -149,18 +209,27 @@ extension AudioLevel {
 }
 
 public struct LevelWindow: Sendable {
-    public private(set) var rms: Float = 0
-    public private(set) var peak: Float = 0
+
+    public private(set) var left: (rms: Float, peak: Float) = (0, 0)
+    public private(set) var right: (rms: Float, peak: Float) = (0, 0)
 
     public init() {}
 
+    public var rms: Float { max(left.rms, right.rms) }
+    public var peak: Float { max(left.peak, right.peak) }
+    public var sides: [(rms: Float, peak: Float)] { [left, right] }
+
     public mutating func fold(_ level: (rms: Float, peak: Float)) {
-        rms = max(rms, level.rms)
-        peak = max(peak, level.peak)
+        fold(left: level, right: level)
+    }
+
+    public mutating func fold(left newLeft: (rms: Float, peak: Float), right newRight: (rms: Float, peak: Float)) {
+        left = (max(left.rms, newLeft.rms), max(left.peak, newLeft.peak))
+        right = (max(right.rms, newRight.rms), max(right.peak, newRight.peak))
     }
 
     public mutating func take() -> (rms: Float, peak: Float) {
-        defer { rms = 0; peak = 0 }
+        defer { self = LevelWindow() }
         return (rms, peak)
     }
 }

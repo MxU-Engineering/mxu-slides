@@ -843,17 +843,6 @@ struct AnimationSequenceList: View {
     private func kindColor(_ kind: AnimationKind) -> Color { kind.tint }
 }
 
-extension AnimationKind {
-    var tint: Color {
-        switch self {
-        case .in: Color(red: 0.16, green: 0.62, blue: 0.36)
-        case .out: Color(red: 0.85, green: 0.47, blue: 0.16)
-        case .emphasis: Color(red: 0.55, green: 0.38, blue: 0.85)
-        case .morph: Color(red: 0.20, green: 0.55, blue: 0.85)
-        }
-    }
-}
-
 private struct AddGapRow: View {
     let armed: Bool
     let newClick: Bool

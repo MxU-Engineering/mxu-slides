@@ -113,6 +113,7 @@ public struct BlobStore: Sendable {
         if !FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.copyItem(at: fileURL, to: destination)
         }
+        Self.lock(destination)
         cache.note(hash: hash, url: destination)
         return hash
     }
@@ -125,8 +126,20 @@ public struct BlobStore: Sendable {
         } else {
             try? FileManager.default.removeItem(at: fileURL)
         }
+        Self.lock(destination)
         cache.note(hash: hash, url: destination)
         return hash
+    }
+
+    static func lock(_ url: URL) {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+    }
+
+    public func lockAll() {
+        for url in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        where FileManager.default.isWritableFile(atPath: url.path) {
+            Self.lock(url)
+        }
     }
 
     public func url(forHash hash: String) -> URL? {

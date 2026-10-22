@@ -119,20 +119,6 @@ import Testing
         #expect(try #require(sweep.file("PresentLayoutController.swift")).text.contains("fresh.runOnlyModules = layouts[index].runOnlyModules"))
     }
 
-    @Test func entrySnapshotsBeforeApplyingAndClosesSettings() throws {
-        let sweep = try SourceSweep.app()
-        let controller = try #require(sweep.file("PresentLayoutController.swift")).text
-        let entry = try #require(controller.range(of: "func enterRunOnly(applying apply: (() -> Void)? = nil) {"))
-        let body = controller[entry.upperBound...].prefix(600)
-        let snapshot = try #require(body.range(of: "forKey: Self.preRunOnlyKey)"))
-        let apply = try #require(body.range(of: "apply?()"))
-        #expect(snapshot.upperBound <= apply.lowerBound, "exit restores the operator's arrangement, not the run-only layout")
-        let settings = try #require(sweep.file("SettingsView.swift")).text
-        #expect(settings.contains("RunOnlyEntrySheet("))
-        #expect(settings.contains("settingsWindow?.close()"))
-        #expect(settings.contains("Button(\"Change Passcode…\") { pinFlow = .change }"))
-    }
-
     @Test func everyWindowSceneIsPlaced() throws {
         let sweep = try SourceSweep.app()
         let app = try #require(sweep.file("MxUSlidesApp.swift"))

@@ -18,11 +18,11 @@ struct SlidesAcrossTests {
 
     @Test func everyTileGridUsesTheChosenColumnCount() throws {
         let sources = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
-            .deletingLastPathComponent()  
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appendingPathComponent("Sources", isDirectory: true)
         var grids = 0
         var violations: [String] = []
@@ -99,7 +99,7 @@ struct SlidesAcrossTests {
                 "an unmeasured short row keeps its empty columns, so a placeholder is one column wide")
         #expect(grid.contains("PresentCardFrames.shared.noteGrid(PresentLanding.Grid("), "the grid reports where its rows sit")
         let measured = try #require(grid.range(of: ".coordinateSpace(name: \"slideGrid\")"))
-        #expect(grid[measured.upperBound...].prefix(500).contains(".frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)"),
+        #expect(grid[measured.upperBound...].prefix(1500).contains(".frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)"),
                 "the width is the space offered, never the tiles' own width — or they could not shrink back")
         #expect(grid.contains(".aspectRatio(aspect, contentMode: .fit)"), "the tile draws the shape the cell is sized for")
         let surface = try String(contentsOf: sources.appendingPathComponent("ServiceContinuousView.swift"), encoding: .utf8)

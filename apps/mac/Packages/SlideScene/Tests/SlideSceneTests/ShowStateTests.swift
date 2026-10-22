@@ -162,18 +162,6 @@ private func cue(
     #expect(show.liveOverlays.isEmpty)
 }
 
-@Test func signageFunctionNeverTouchesTheRoomShow() {
-
-    let a = slide("a", background: cue("ocean"))
-    var show = ShowState()
-    show.fire(slide: a, presentation: presentation([a]))
-    show.fire(overlay: Overlay(id: "o", name: "O", objects: []))
-    show.clear(function: .signage)
-    #expect(show.liveSlide != nil)
-    #expect(!show.liveMedia.isEmpty)
-    #expect(!show.liveOverlays.isEmpty)
-}
-
 @Test func wantedMediaCarriesLoopOverridesAndSlideObjects() {
     var mediaObject = SlideObject(id: "m", objectKind: .media, name: "Clip", text: "")
     mediaObject.mediaId = "clip"
@@ -317,7 +305,7 @@ private func cue(
 @Test func scopedClearAllHonorsTheAudioSetting() {
     var show = ShowState()
     show.fire(audio: CueAudio(audioItemId: "walkin"))
-    show.clearAll(includingAudio: false, protecting: [.slide])
+    show.clearAll(sweeping: ClearAllScope.swept(skips: [.audio]), protecting: [.slide])
     #expect(!show.liveAudio.isEmpty, "walk-in music survives when the panic clear excludes audio")
 }
 
@@ -378,7 +366,7 @@ private func cue(
     var show = ShowState()
     show.fire(audio: CueAudio(playlistId: "walkin"))
     show.fire(audio: CueAudio(playlistId: "broadcast"))
-    show.clearAll(includingAudio: false)
+    show.clearAll(sweeping: ClearAllScope.swept(skips: [.audio]))
     #expect(show.liveAudio.count == 2, "panic clear can spare the walk-in music")
     show.clearAll()
     #expect(show.liveAudio.isEmpty, "default Clear All sweeps every audio bus")
@@ -534,4 +522,87 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     show.fire(slide: linkedSlide("b", source: .nextSlide), presentation: nil)
     #expect(show.hasLinkedText)
     #expect(!show.hasTimeVaryingLinkedText, "next-slide text changes on fire, not per second")
+}
+
+@Test func mediaAndInputsClearOnlyTheirOwnCues() {
+    var show = ShowState()
+    show.fire(media: cue("ocean"), on: .loopingVideos)
+    show.fire(media: cue("input::item::cam1"), on: .videoInput)
+    show.fire(media: cue("input::item::cam2"), on: .videos)
+    show.clear(function: .media)
+    #expect(show.liveMedia[.loopingVideos] == nil)
+    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "Clear Media leaves the camera up")
+    #expect(show.liveMedia[.videos]?.mediaId == "input::item::cam2", "an input fired on any layer is still Inputs")
+    show.fire(media: cue("ocean"), on: .loopingVideos)
+    show.clear(function: .inputs)
+    #expect(show.liveMedia.keys.sorted { $0.rawValue < $1.rawValue } == [.loopingVideos])
+    #expect(show.directMediaFires == [.loopingVideos])
+}
+
+@Test func clearLayerVideoInputStillSweepsTheCamera() {
+    var show = ShowState()
+    show.fire(media: cue("input::item::cam1"), on: .videoInput)
+    show.clear(layer: .videoInput)
+    #expect(show.liveMedia.isEmpty)
+}
+
+@Test func clearAllLeavesSkippedInputsUpInBothForms() {
+    let verse = slide("verse1")
+    var show = ShowState()
+    show.fire(media: cue("input::item::cam1"), on: .videoInput)
+    show.fire(media: cue("bumper"), on: .videos)
+    show.fire(slide: verse, presentation: presentation([verse]))
+    show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips), protecting: [.slide])
+    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "fire-scoped Clear All keeps the camera")
+    #expect(show.liveMedia[.videos] == nil)
+    #expect(show.liveSlide != nil)
+    show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips))
+    #expect(show.liveSlide == nil)
+    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "panic Clear All keeps the camera")
+    show.clearAll()
+    #expect(show.liveMedia.isEmpty, "ticked, Inputs clears with everything else")
+}
+
+@Test func clearAllScopeDefaultsMigratesAndRoundTrips() {
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio],
+            "the old Music switch carries over")
+    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [], "a saved checklist wins")
+    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts])
+    #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio],
+            "a skip saved before Digital Signage left drops")
+    #expect(ClearAllScope.skips(stored: "tracks,inputs", legacyIncludesAudio: nil) == [.inputs],
+            "the old Tracks row is gone: Music covers it")
+    #expect(ClearAllScope.swept(skips: [.inputs]) == Set(ShowFunction.allCases).subtracting([.inputs]))
+
+    let defaults = UserDefaults(suiteName: "ClearAllScopeTests-\(UUID().uuidString)")!
+    ClearAllScope.set(.audio, swept: false, defaults: defaults)
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.inputs, .audio]))
+    #expect(defaults.object(forKey: ClearAllScope.legacyIncludesAudioKey) as? Bool == false,
+            "older builds still read Music from the old switch")
+    ClearAllScope.set(.inputs, swept: true, defaults: defaults)
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.audio]))
+}
+
+@Test func clearMusicStopsTracksAndOnlyATracksClockedTimeline() {
+    #expect(TracksClear.stopsTracks(sweeping: [.audio]), "Clear Music: popup, menu, action, MIDI, API")
+    for function in ShowFunction.allCases where function != .audio {
+        #expect(!TracksClear.stopsTracks(sweeping: [function]), "Clear \(function.displayName) leaves tracks")
+    }
+
+    #expect(TracksClear.stopsTracks(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips)))
+    #expect(!TracksClear.stopsTracks(sweeping: ClearAllScope.swept(
+        skips: ClearAllScope.skips(stored: nil, legacyIncludesAudio: false))))
+
+    #expect(TracksClear.stopsTimeline(ownClockPlaying: true, playingTracks: true), "its clock is its tracks (T13)")
+    #expect(!TracksClear.stopsTimeline(ownClockPlaying: false, playingTracks: true), "timecode drives it: keeps following")
+    #expect(!TracksClear.stopsTimeline(ownClockPlaying: true, playingTracks: false), "own clock, no stems: runs on")
+}
+
+@Test func apiFunctionNamesKeepTracksAsAnAlias() {
+    #expect(ShowFunction(apiName: "tracks") == .audio)
+    #expect(ShowFunction(apiName: "audio") == .audio)
+    #expect(ShowFunction(apiName: "slides") == .slides)
+    #expect(ShowFunction(apiName: "signage") == nil)
 }

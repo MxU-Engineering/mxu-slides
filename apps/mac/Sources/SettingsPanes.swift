@@ -17,6 +17,11 @@ struct SettingsCategoryPane: View {
         case audioInput(String)
         case audioOutput(String)
         case midiDevice(String)
+
+        case groups
+
+        case tracks
+        case trackChannel(String)
     }
 
     @State private var page: Page = .list
@@ -24,7 +29,11 @@ struct SettingsCategoryPane: View {
     var body: some View {
         VStack(spacing: 0) {
             if page != .list {
-                SettingsPageHeader(backTitle: category.title, title: pageTitle) { page = .list }
+                if case .trackChannel = page {
+                    SettingsPageHeader(backTitle: "Tracks", title: pageTitle) { page = .tracks }
+                } else {
+                    SettingsPageHeader(backTitle: category.title, title: pageTitle) { page = .list }
+                }
                 Divider()
             }
             switch page {
@@ -38,10 +47,24 @@ struct SettingsCategoryPane: View {
                 AudioOutputDetail(id: id) { page = .list }
             case .midiDevice(let id):
                 MIDIDeviceDetail(id: id) { page = .list }
+            case .groups:
+                if let model { GroupsForm(model: model) }
+            case .tracks:
+                if let model { TrackChannelsForm(model: model, tracks: controls?.tracks) { page = .trackChannel($0) } }
+            case .trackChannel(let id):
+                if let model { TrackChannelDetail(id: id, model: model, tracks: controls?.tracks) { page = .tracks } }
             }
         }
         .background(Color.basePlane)
         .onChange(of: category) { _, _ in page = .list }
+        .onAppear(perform: openPendingTrack)
+        .onChange(of: SettingsRouter.shared.pendingTrackChannel) { _, _ in openPendingTrack() }
+    }
+
+    private func openPendingTrack() {
+        guard category == .avInputs, let id = SettingsRouter.shared.pendingTrackChannel else { return }
+        SettingsRouter.shared.pendingTrackChannel = nil
+        page = .trackChannel(id)
     }
 
     private var pageTitle: String {
@@ -51,6 +74,9 @@ struct SettingsCategoryPane: View {
         case .audioInput(let id): AudioInputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Input"
         case .audioOutput(let id): AudioOutputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Output"
         case .midiDevice(let id): MIDIDeviceInventory.shared.items.first { $0.id == id }?.device.name ?? "MIDI Device"
+        case .groups: "Groups"
+        case .tracks: "Tracks"
+        case .trackChannel(let id): model?.trackChannels.first { $0.id == id }?.name ?? "Track"
         }
     }
 
@@ -62,6 +88,7 @@ struct SettingsCategoryPane: View {
                 VideoInputsSection { page = .videoInput($0) }
                 AudioInputsSection { page = .audioInput($0) }
                 AudioOutputsSection { page = .audioOutput($0) }
+                TracksSection(count: model?.trackChannels.count ?? 0) { page = .tracks }
             }
             .settingsForm()
         case .midi:
@@ -69,15 +96,12 @@ struct SettingsCategoryPane: View {
                 MIDIDevicesSection { page = .midiDevice($0) }
                 Section {
                     ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0) }
-                } header: {
-                    Text("MIDI Input Map")
+                }
+                Section("Timecode") {
+                    ForEach(rows.filter { $0.id.hasPrefix("timecode.") }) { SettingsFormRow(spec: $0) }
                 }
             }
             .settingsForm()
-        case .groups:
-            if let model {
-                GroupsForm(model: model)
-            }
         case .keyboard:
             if let model {
                 KeyboardMapPane(model: model, controls: controls)
@@ -85,18 +109,27 @@ struct SettingsCategoryPane: View {
         default:
 
             Form {
-                ForEach(Self.sectioned(rows), id: \.first!.id) { run in
-                    if let spec = run.first, spec.stacked {
+                ForEach(Self.sections(rows, page: category.rawValue), id: \.id) { section in
+                    if section.stacked, let spec = section.rows.first {
                         Section {
                             spec.control
                         } header: {
                             Text(spec.title)
+                                .settingsHelp(spec.help)
                         } footer: {
                             if let caption = spec.caption { Text(caption) }
                         }
                     } else {
                         Section {
-                            ForEach(run) { SettingsFormRow(spec: $0) }
+                            ForEach(section.rows) { spec in
+                                if spec.id == "groups.palette" {
+                                    drillIn(spec) { page = .groups }
+                                } else {
+                                    SettingsFormRow(spec: spec)
+                                }
+                            }
+                        } header: {
+                            if let title = section.title { Text(title) }
                         }
                     }
                 }
@@ -108,16 +141,39 @@ struct SettingsCategoryPane: View {
 
 extension SettingsCategoryPane {
 
-    static func sectioned(_ rows: [SettingsRowSpec]) -> [[SettingsRowSpec]] {
-        var runs: [[SettingsRowSpec]] = []
-        for spec in rows {
-            if !spec.stacked, let last = runs.last, let head = last.first, !head.stacked {
-                runs[runs.count - 1].append(spec)
-            } else {
-                runs.append([spec])
+    func drillIn(_ spec: SettingsRowSpec, open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(spec.title)
+                    if let caption = spec.caption {
+                        Text(caption).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                spec.control
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
             }
+            .contentShape(Rectangle())
         }
-        return runs
+        .buttonStyle(.plain)
+    }
+
+    struct PageSection: Identifiable {
+        let id: String
+        let title: String?
+        let rows: [SettingsRowSpec]
+        var stacked: Bool { rows.first?.stacked ?? false }
+    }
+
+    static func sections(_ rows: [SettingsRowSpec], page: String) -> [PageSection] {
+        let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return (SettingsLayout.page(id: page)?.sections ?? []).flatMap { section in
+            let specs = section.rows.compactMap { byID[$0] }
+            let inline = specs.filter { !$0.stacked }
+            let runs = specs.filter(\.stacked).map { PageSection(id: $0.id, title: nil, rows: [$0]) }
+            return (inline.isEmpty ? [] : [PageSection(id: inline[0].id, title: section.title, rows: inline)]) + runs
+        }
     }
 }
 
@@ -166,7 +222,21 @@ struct SettingsFormRow: View {
                 Text(caption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+        }
+        .settingsHelp(spec.help)
+    }
+}
+
+extension View {
+
+    @ViewBuilder
+    func settingsHelp(_ text: String?) -> some View {
+        if let text {
+            help(text)
+        } else {
+            self
         }
     }
 }
@@ -184,10 +254,10 @@ private struct GroupsForm: View {
                     GroupFormRow(model: model, group: group)
                 }
                 Button("Add Group\u{2026}") { newGroupName = ""; addingGroup = true }
-            } header: {
-                Text("Groups")
             } footer: {
-                Text("Song section labels and their colors — pills in the slide grid and arrangements wear these. A section wears its named group's color wherever it appears; \u{201C}Pre-Chorus\u{201D} and \u{201C}PreChorus\u{201D} count as the same name.")
+
+                Text("A song section wears its group's color everywhere.")
+                    .help("Pills in the slide grid and arrangements wear these colors. \u{201C}Pre-Chorus\u{201D} and \u{201C}PreChorus\u{201D} count as the same name.")
             }
             Section {
                 Button("Restore Default Groups\u{2026}") { confirmingRestore = true }
@@ -230,6 +300,7 @@ private struct GroupFormRow: View {
             ColorPicker("", selection: colorBinding, supportsOpacity: false)
                 .labelsHidden()
             TextField("Name", text: $draft)
+                .labelsHidden()
                 .textFieldStyle(.plain)
                 .focused($focused)
                 .onSubmit(commit)
@@ -279,7 +350,8 @@ private struct GroupFormRow: View {
 private struct VideoInputsSection: View {
     let open: (String) -> Void
     @State private var inventory = VideoInputInventory.shared
-    @State private var discoveredNDI: [String] = []
+
+    @State private var discoveredNDI: [String]?
     @State private var ndiRuntimeAvailable = true
     @State private var addingNDI = false
     @State private var ndiName = ""
@@ -292,7 +364,7 @@ private struct VideoInputsSection: View {
             ForEach(inventory.entries) { entry in
                 Button { open(entry.id) } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: entry.kind == .ndi ? "network" : "video")
+                        Image(systemName: VideoInputWords.symbol(entry))
                             .foregroundStyle(.secondary)
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
@@ -301,6 +373,11 @@ private struct VideoInputsSection: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
+                        if SettingsDeviceStatus.showsNotConnected(
+                            assigned: entry.kind == nil ? nil : entry.sourceId,
+                            found: VideoInputWords.found(entry, discoveredNDI: discoveredNDI)) {
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
+                        }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
@@ -313,6 +390,13 @@ private struct VideoInputsSection: View {
                     ForEach(VideoInputWords.discoverableCameras(inventory), id: \.uniqueID) { device in
                         Button(device.localizedName) {
                             inventory.create(name: device.localizedName, kind: .camera, sourceId: device.uniqueID)
+                        }
+                    }
+                }
+                Section("Blackmagic (Direct)") {
+                    ForEach(VideoInputWords.addableDirect(inventory)) { device in
+                        Button(device.name) {
+                            inventory.create(name: device.name, kind: .decklink, sourceId: String(device.persistentID))
                         }
                     }
                 }
@@ -333,6 +417,7 @@ private struct VideoInputsSection: View {
         } header: {
             Text("Video Inputs")
         }
+        .task { DeckLinkDeviceCatalog.shared.refresh() }
         .task {
             while !Task.isCancelled {
                 let names = await Task.detached(priority: .utility) { () -> [String]? in
@@ -359,7 +444,7 @@ private struct VideoInputsSection: View {
 
     private var addableNDI: [String] {
         let fragments = inventory.entries.filter { $0.kind == .ndi }.compactMap(\.sourceId)
-        return discoveredNDI.filter { name in !fragments.contains { name.localizedCaseInsensitiveContains($0) } }
+        return (discoveredNDI ?? []).filter { name in !fragments.contains { name.localizedCaseInsensitiveContains($0) } }
     }
 }
 
@@ -367,8 +452,37 @@ private struct VideoInputsSection: View {
 private enum VideoInputWords {
     static func device(_ entry: VideoInputInventory.Entry) -> String {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "No device" }
-        if kind == .ndi { return "NDI \u{B7} \(sourceId)" }
-        return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Missing camera"
+        switch kind {
+        case .ndi: return "NDI \u{B7} \(sourceId)"
+        case .decklink: return directName(sourceId).map { "Blackmagic direct \u{B7} \($0)" } ?? "Blackmagic direct"
+        case .camera: return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Camera"
+        }
+    }
+
+    static func found(_ entry: VideoInputInventory.Entry, discoveredNDI: [String]?) -> Bool {
+        switch (entry.kind, entry.sourceId) {
+        case (.ndi, let sourceId?): SettingsDeviceStatus.ndiFound(sourceId, discovered: discoveredNDI)
+        case (.decklink, let sourceId?): !DeckLinkDeviceCatalog.shared.hasFetched || directName(sourceId) != nil
+        case (.camera, let sourceId?): AVCaptureDevice(uniqueID: sourceId) != nil
+        default: true
+        }
+    }
+
+    static func symbol(_ entry: VideoInputInventory.Entry) -> String {
+        switch entry.kind {
+        case .ndi: "network"
+        case .decklink: "cable.connector"
+        case .camera, nil: "video"
+        }
+    }
+
+    static func directName(_ sourceId: String) -> String? {
+        DeckLinkDeviceCatalog.shared.inputDevices.first { String($0.persistentID) == sourceId }?.name
+    }
+
+    static func addableDirect(_ inventory: VideoInputInventory) -> [DeckLinkHelperDevice] {
+        let assigned = Set(inventory.entries.filter { $0.kind == .decklink }.compactMap(\.sourceId))
+        return DeckLinkDeviceCatalog.shared.inputDevices.filter { !assigned.contains(String($0.persistentID)) }
     }
 
     static func newName(_ inventory: VideoInputInventory) -> String {
@@ -405,14 +519,18 @@ private struct VideoInputDetail: View {
 
     var body: some View {
         if let entry = inventory.entries.first(where: { $0.id == id }) {
+
             Form {
-                Section("Input") {
+                Section {
                     TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
+                }
+                Section("Connected to") {
                     Picker("Device", selection: Binding(
                         get: { deviceTag(entry) },
                         set: { tag in
                             if tag == "" { inventory.assignDevice(id: id, kind: nil, sourceId: nil) }
                             else if tag.hasPrefix("ndi:") { inventory.assignDevice(id: id, kind: .ndi, sourceId: String(tag.dropFirst(4))) }
+                            else if tag.hasPrefix("decklink:") { inventory.assignDevice(id: id, kind: .decklink, sourceId: String(tag.dropFirst(9))) }
                             else if tag == "ndi-by-name" { addingNDI = true }
                             else { inventory.assignDevice(id: id, kind: .camera, sourceId: tag) }
                         })
@@ -420,15 +538,26 @@ private struct VideoInputDetail: View {
                         Text("No device").tag("")
                         Section("Cameras") {
                             ForEach(VideoInputWords.allCameras, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
+
+                            if let sourceId = entry.sourceId, entry.kind == .camera, AVCaptureDevice(uniqueID: sourceId) == nil {
+                                Text("Camera (not connected)").tag(sourceId)
+                            }
+                        }
+                        Section("Blackmagic (Direct)") {
+                            ForEach(DeckLinkDeviceCatalog.shared.inputDevices) { Text($0.name).tag("decklink:\($0.persistentID)") }
+                            if let sourceId = entry.sourceId, entry.kind == .decklink, VideoInputWords.directName(sourceId) == nil {
+                                Text("Blackmagic card (not connected)").tag("decklink:\(sourceId)")
+                            }
                         }
                         Section("NDI Sources") {
                             ForEach(discoveredNDI, id: \.self) { Text($0).tag("ndi:\($0)") }
                             if let sourceId = entry.sourceId, entry.kind == .ndi, !discoveredNDI.contains(sourceId) {
-                                Text("NDI \u{B7} \(sourceId) (not on the network)").tag("ndi:\(sourceId)")
+                                Text("NDI \u{B7} \(sourceId) (not connected)").tag("ndi:\(sourceId)")
                             }
                             Text("NDI Source by Name\u{2026}").tag("ndi-by-name")
                         }
                     }
+                    .help("Blackmagic (Direct) reads the card itself: the picture follows the switcher's format (1080i is deinterlaced) and its audio arrives with the picture.")
                     Picker("Audio input", selection: Binding(
                         get: { entry.audioInputId ?? "" },
                         set: { inventory.assignAudioInput(id: id, audioInputId: $0.isEmpty ? nil : $0) })
@@ -436,6 +565,9 @@ private struct VideoInputDetail: View {
                         Text("None").tag("")
                         ForEach(audioInventory.entries) { Text($0.name).tag($0.id) }
                     }
+                    .help("Rides with this input in the Mixer while live. For a Blackmagic (Direct) card, pick its \u{201C}(Direct)\u{201D} audio and video delay can stay at 0.")
+                }
+                Section("Adjustments") {
                     if entry.kind == .camera, !frameRates.isEmpty {
                         Picker("Frame rate", selection: Binding(
                             get: { entry.frameRate ?? 0 },
@@ -449,6 +581,7 @@ private struct VideoInputDetail: View {
                                 Text(String(format: "%g fps (not offered)", rate)).tag(rate)
                             }
                         }
+                        .help("The capture device's mode, from the rates it offers. Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
                     }
                     LabeledContent("Video delay") {
                         HStack(spacing: 4) {
@@ -464,14 +597,14 @@ private struct VideoInputDetail: View {
                                 in: 0...LiveInputDelay.maxFrames).labelsHidden()
                         }
                     }
+                    .help("Holds the picture back to match late audio.")
                 }
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
                 }
             }
             .settingsForm()
+            .task { DeckLinkDeviceCatalog.shared.refresh() }
             .task(id: entry.kind == .camera ? entry.sourceId : nil) {
                 let sourceId = entry.kind == .camera ? entry.sourceId : nil
                 frameRates = await Task.detached(priority: .utility) {
@@ -501,6 +634,8 @@ private struct VideoInputDetail: View {
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Its capture stops, and slides that use it show nothing.")
             }
         } else {
             ContentUnavailableView("Input not found", systemImage: "video")
@@ -509,7 +644,11 @@ private struct VideoInputDetail: View {
 
     private func deviceTag(_ entry: VideoInputInventory.Entry) -> String {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "" }
-        return kind == .ndi ? "ndi:\(sourceId)" : sourceId
+        switch kind {
+        case .ndi: return "ndi:\(sourceId)"
+        case .decklink: return "decklink:\(sourceId)"
+        case .camera: return sourceId
+        }
     }
 }
 
@@ -534,8 +673,9 @@ private struct AudioInputsSection: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        if entry.isAssigned, AudioDeviceList.inputDevice(uid: entry.uid ?? "") == nil {
-                            Text("Not connected").font(.system(size: 11)).foregroundStyle(.orange)
+                        if SettingsDeviceStatus.showsNotConnected(
+                            assigned: entry.uid, found: AudioDeviceList.inputDevice(uid: entry.uid ?? "") != nil) {
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
                         }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
@@ -559,6 +699,8 @@ private struct AudioInputsSection: View {
             Text("Audio Inputs")
         }
         .sheet(item: $channelPickerDevice) { AudioChannelPickerSheet(device: $0) }
+
+        .task { DeckLinkDeviceCatalog.shared.refresh() }
         .task {
             while !Task.isCancelled {
                 devices = AudioDeviceList.inputDevices()
@@ -572,7 +714,7 @@ private struct AudioInputsSection: View {
 private enum AudioInputWords {
     static func subtitle(_ entry: AudioInputInventory.Entry, devices: [AudioDeviceList.AudioInputDevice]) -> String {
         guard let uid = entry.uid, !uid.isEmpty else { return "No device" }
-        guard let device = AudioDeviceList.inputDevice(uid: uid) else { return "Missing device" }
+        guard let device = AudioDeviceList.inputDevice(uid: uid) else { return channels(entry) }
         var parts = [device.name]
         if device.channelCount > 1 { parts.append(channels(entry)) }
         if let ms = entry.delayMs, ms > 0 { parts.append("\(ms) ms delay") }
@@ -610,8 +752,10 @@ private struct AudioInputDetail: View {
         if let entry = inventory.entries.first(where: { $0.id == id }) {
             let device = AudioDeviceList.inputDevice(uid: entry.uid ?? "")
             Form {
-                Section("Input") {
+                Section {
                     TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
+                }
+                Section("Connected to") {
                     Picker("Device", selection: Binding(
                         get: { entry.uid ?? "" },
                         set: { inventory.assignDevice(id: id, uid: $0.isEmpty ? nil : $0) })
@@ -619,7 +763,7 @@ private struct AudioInputDetail: View {
                         Text("No device").tag("")
                         ForEach(devices, id: \.uid) { Text(AudioInputWords.deviceLabel($0)).tag($0.uid) }
                         if let uid = entry.uid, !uid.isEmpty, !devices.contains(where: { $0.uid == uid }) {
-                            Text("Missing device (not connected)").tag(uid)
+                            Text("Device (not connected)").tag(uid)
                         }
                     }
                     if let device, device.channelCount > 1 {
@@ -640,6 +784,8 @@ private struct AudioInputDetail: View {
                             }
                         }
                     }
+                }
+                Section("Adjustments") {
                     LabeledContent("Audio delay") {
                         HStack(spacing: 4) {
                             TextField("", value: Binding(
@@ -654,11 +800,10 @@ private struct AudioInputDetail: View {
                                 in: 0...2000, step: 5).labelsHidden()
                         }
                     }
+                    .help("Holds this input's audio back everywhere it feeds: playout, mixes, streams.")
                 }
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Removing it makes presets that used it fall back to Program Audio. Delay holds this input's audio back everywhere it feeds — playout, mixes, streams.")
                 }
             }
             .settingsForm()
@@ -671,6 +816,8 @@ private struct AudioInputDetail: View {
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Presets that used it fall back to Program Audio.")
             }
         } else {
             ContentUnavailableView("Input not found", systemImage: "mic")
@@ -685,10 +832,358 @@ private struct AudioInputDetail: View {
     }
 }
 
+private struct TracksSection: View {
+    let count: Int
+    let open: () -> Void
+
+    var body: some View {
+        Section {
+
+            Button(action: open) {
+                HStack(spacing: 8) {
+                    Text("Track list")
+                    Spacer()
+                    Text("\(count)").foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Every song's stems land on these tracks. Add, rename, reorder and delete them, and set what each one is.")
+        } header: {
+            Text("Tracks")
+        }
+    }
+}
+
+private struct TrackChannelsForm: View {
+    let model: AppModel
+    let tracks: TracksController?
+    let open: (String) -> Void
+    @State private var adding = false
+    @State private var newName = ""
+
+    @State private var drop = TrackRowDrop.State()
+
+    @State private var rowFrames = RowFrames()
+
+    final class RowFrames {
+        var byID: [String: CGRect] = [:]
+    }
+
+    static func halfGap(_ channels: [TrackChannel], _ upper: Int, _ lower: Int, _ frames: [String: CGRect]) -> CGFloat {
+        func frame(_ index: Int) -> CGRect? { channels.indices.contains(index) ? frames[channels[index].id] : nil }
+        let gap = if let top = frame(upper), let bottom = frame(lower) { bottom.minY - top.maxY }
+            else if let first = frame(0), let second = frame(1) { second.minY - first.maxY }
+            else { CGFloat(12) }
+        return max(gap, 2) / 2
+    }
+
+    static let dragPrefix = "mxutrackchannel::"
+    static func channelID(_ payload: String) -> String? {
+        payload.hasPrefix(dragPrefix) ? String(payload.dropFirst(dragPrefix.count)) : nil
+    }
+
+    var body: some View {
+        let channels = model.trackChannels
+        Form {
+            Section {
+                if channels.isEmpty {
+                    Text("No tracks yet.").foregroundStyle(.secondary)
+                }
+                ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
+                    TrackChannelRow(channel: channel) { open(channel.id) }
+
+                        .draggable(Self.dragPrefix + channel.id)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rowFrames.byID[channel.id] = $0 }
+                        .onDrop(of: [.plainText], delegate: TrackRowDrop(
+                            target: channel.id, channels: channels, height: rowFrames.byID[channel.id]?.height ?? 44, state: drop
+                        ) { id, before in tracks?.moveChannel(id, before: before) })
+
+                        .overlay(alignment: .top) {
+                            if let gap = drop.gap, gap.before == channel.id {
+                                Rectangle().fill(Color.accentColor).frame(height: 2)
+                                    .offset(y: -Self.halfGap(channels, index - 1, index, rowFrames.byID) - 1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if let gap = drop.gap, gap.before == nil, index == channels.count - 1 {
+                                Rectangle().fill(Color.accentColor).frame(height: 2)
+                                    .offset(y: Self.halfGap(channels, index, index + 1, rowFrames.byID) + 1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .contextMenu {
+                            Button("Move Up") { tracks?.moveChannel(channel.id, before: channels[index - 1].id) }
+                                .disabled(index == 0)
+                            Button("Move Down") {
+                                tracks?.moveChannel(channel.id, before: index + 2 < channels.count ? channels[index + 2].id : nil)
+                            }
+                            .disabled(index == channels.count - 1)
+                        }
+                }
+                Button("Add Track\u{2026}") { newName = ""; adding = true }
+            } footer: {
+                Text("Every song's stems land on these tracks, in this order. Drag a track to move it.")
+                    .help("Import Audio puts each file on the track its name matches. Right-click a track for Move Up and Move Down.")
+            }
+        }
+        .settingsForm()
+        .alert("Add Track", isPresented: $adding) {
+            TextField("Name", text: $newName)
+            Button("Add") { tracks?.addChannel(named: newName) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+private struct TrackRowDrop: DropDelegate {
+
+    struct Gap: Equatable {
+        var before: String?
+    }
+
+    @MainActor @Observable final class State {
+        var gap: Gap?
+        var updates = 0
+    }
+
+    let target: String
+    let channels: [TrackChannel]
+    let height: CGFloat
+    let state: State
+    let move: (String, String?) -> Void
+
+    private var dragged: String? {
+        NSPasteboard(name: .drag).string(forType: .string).flatMap(TrackChannelsForm.channelID)
+    }
+
+    private func drop(_ info: DropInfo) -> Gap? {
+        guard let id = dragged else { return nil }
+        let above = info.location.y < height / 2
+        return TimelineTracks.dropping(id, at: target, above: above, in: channels).map { Gap(before: $0.before) }
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { dragged != nil }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        let next = drop(info)
+        state.updates += 1
+        if state.gap != next { state.gap = next }
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        let state = state, seen = state.updates
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            if state.updates == seen { state.gap = nil }
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let landing = drop(info)
+        state.gap = nil
+        guard let landing, let id = dragged else { return false }
+        move(id, landing.before)
+        return true
+    }
+}
+
+private struct TrackChannelRow: View {
+    let channel: TrackChannel
+    let open: () -> Void
+
+    var body: some View {
+        let family = TimelineTracks.family(of: channel)
+        Button(action: open) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(StripColorStore.shared.color(for: "track:\(channel.id)", defaultName: family.colorName))
+                    .frame(width: 10, height: 10)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(channel.name).font(.system(size: 13))
+                    Text(TimelineTracks.listSubtitle(channel))
+                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct TrackMixPicker: View {
+    let channel: TrackChannel
+    let tracks: TracksController?
+
+    @AppStorage private var stored: String?
+    @State private var mixes = AudioMixInventory.shared
+
+    init(channel: TrackChannel, tracks: TracksController?) {
+        self.channel = channel
+        self.tracks = tracks
+        _stored = AppStorage("audio.track.\(channel.id).mixId")
+    }
+
+    var body: some View {
+        let current = stored.map { $0.isEmpty ? nil : $0 } ?? TracksController.mixId(channel)
+        Picker("Mix", selection: Binding(get: { current ?? "" }, set: { id in
+            TracksController.setMix(id.isEmpty ? nil : id, for: channel.id)
+            tracks?.refresh()
+        })) {
+            Text(channel.trackRole == .music ? "Off Main" : "No Mix").tag("")
+            ForEach(mixes.entries) { mix in Text(mix.name).tag(mix.id) }
+        }
+        .help("Where this track plays on this computer, as in the mixer. Its sends to other mixes are in the mixer.")
+    }
+}
+
+private struct TrackChannelDetail: View {
+    let id: String
+    let model: AppModel
+    let tracks: TracksController?
+    let back: () -> Void
+    @State private var name = ""
+    @State private var addingName = false
+    @State private var newName = ""
+    @FocusState private var focus: Field?
+    @State private var checkingUses = false
+    @State private var uses: Int?
+
+    private enum Field { case name }
+
+    var body: some View {
+        if let channel = model.trackChannels.first(where: { $0.id == id }) {
+            Form {
+                Section {
+                    TextField("Name", text: $name)
+                        .focused($focus, equals: .name)
+                        .onSubmit(commitName)
+                }
+                Section("Playback") {
+                    TrackMixPicker(channel: channel, tracks: tracks)
+                    Picker("Role", selection: Binding(get: { channel.trackRole }, set: { role in
+                        tracks?.editChannel(id) { $0.role = role == .music ? nil : role.rawValue }
+                    })) {
+                        ForEach(TimelineTracks.Role.allCases, id: \.self) { role in
+                            Text(role.rawValue.capitalized).tag(role)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Click and guide start on no mix, with a send to Main at zero, so the room never hears them by default.")
+                    Picker("Channels", selection: Binding(get: { channel.mono == true }, set: { mono in
+                        tracks?.editChannel(id) { $0.mono = mono ? true : nil }
+                    })) {
+                        Text("Stereo").tag(false)
+                        Text("Mono").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    let names = channel.matchNames ?? []
+
+                    HStack {
+                        Text(channel.name)
+                        Spacer()
+                        Text("Track name").foregroundStyle(.secondary)
+                    }
+                    ForEach(names, id: \.self) { name in
+                        HStack {
+                            Text(name)
+                            Spacer()
+                            Button {
+                                tracks?.editChannel(id) { channel in
+                                    channel.matchNames?.removeAll { $0 == name }
+                                    if channel.matchNames?.isEmpty == true { channel.matchNames = nil }
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove \u{201C}\(name)\u{201D}")
+                        }
+                    }
+                    Button("Add File Name\u{2026}") { newName = ""; addingName = true }
+                } header: {
+                    Text("Matching File Names")
+                } footer: {
+                    Text("When you import audio, files with these names go on this track.")
+                }
+                Section {
+                    Button(checkingUses ? "Checking Songs\u{2026}" : "Delete Track\u{2026}", role: .destructive) {
+                        checkingUses = true
+                        Task {
+                            uses = await model.songsUsing(trackChannel: id)
+                            checkingUses = false
+                        }
+                    }
+                    .disabled(checkingUses)
+                }
+            }
+            .settingsForm()
+            .onAppear { name = channel.name }
+            .onChange(of: focus) { old, _ in
+                if old == .name { commitName() }
+            }
+
+            .onDisappear(perform: commitName)
+            .alert("Add File Name", isPresented: $addingName) {
+                TextField("File name", text: $newName)
+                Button("Add") { addName() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("When you import audio, a file with this name goes on \u{201C}\(channel.name)\u{201D}.")
+            }
+            .alert("Delete \u{201C}\(channel.name)\u{201D}?", isPresented: Binding(
+                get: { uses != nil }, set: { if !$0 { uses = nil } })
+            ) {
+                Button("Delete", role: .destructive) { tracks?.deleteChannel(id); back() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(Self.deleteMessage(uses ?? 0))
+            }
+        } else {
+            ContentUnavailableView("Track not found", systemImage: "waveform")
+        }
+    }
+
+    static func deleteMessage(_ uses: Int) -> String {
+        switch uses {
+        case 0: "No songs use it."
+        case 1: "1 song uses it. Its stems stay on the song but don't play until moved to another track."
+        default: "\(uses) songs use it. Their stems stay on the songs but don't play until moved to another track."
+        }
+    }
+
+    private func commitName() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        tracks?.editChannel(id) { $0.name = trimmed }
+    }
+
+    private func addName() {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        tracks?.editChannel(id) { channel in
+            guard channel.name.caseInsensitiveCompare(trimmed) != .orderedSame else { return }
+            var names = channel.matchNames ?? []
+            if !names.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { names.append(trimmed) }
+            channel.matchNames = names
+        }
+    }
+}
+
 private struct AudioOutputsSection: View {
     let open: (String) -> Void
     @State private var inventory = AudioOutputInventory.shared
     @State private var devices: [AudioOutputDevice] = []
+
+    @State private var listed = false
 
     var body: some View {
         Section {
@@ -705,6 +1200,11 @@ private struct AudioOutputsSection: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
+                        if SettingsDeviceStatus.showsNotConnected(
+                            assigned: entry.isDeviceless ? nil : entry.deviceUID,
+                            found: !listed || devices.contains { $0.uid == entry.deviceUID }) {
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
+                        }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
@@ -719,6 +1219,15 @@ private struct AudioOutputsSection: View {
                         inventory.assignDevice(id: entry.id, deviceUID: device.uid, channelOffset: 0)
                     }
                 }
+                let wide = devices.filter { $0.channelCount > 2 }
+                if !wide.isEmpty {
+                    Divider()
+                    ForEach(wide, id: \.uid) { device in
+                        Button("An Output for Every Channel of \(device.name) (\(device.channelCount))") {
+                            inventory.addOutputPerChannel(of: device)
+                        }
+                    }
+                }
             }
             .fixedSize()
         } header: {
@@ -727,6 +1236,7 @@ private struct AudioOutputsSection: View {
         .task {
             while !Task.isCancelled {
                 devices = AudioDeviceList.outputDevices()
+                listed = true
                 try? await Task.sleep(for: .seconds(4))
             }
         }
@@ -740,8 +1250,9 @@ private enum AudioOutputWords {
         if entry.isDeviceless { parts.append("No device") }
         else if let uid = entry.deviceUID {
             if let device = devices.first(where: { $0.uid == uid }) {
-                parts.append(device.channelCount > 2 ? "\(device.name) \(entry.channelOffset + 1)-\(entry.channelOffset + 2)" : device.name)
-            } else { parts.append("Missing device") }
+                parts.append(device.channelCount > 2 || entry.monoChannel != nil
+                    ? "\(device.name) \(AudioOutputInventory.shared.channelWords(entry))" : device.name)
+            } else { parts.append("Channels \(AudioOutputInventory.shared.channelWords(entry))") }
         } else { parts.append("System default") }
         if let ms = entry.delayMs, ms > 0 { parts.append("\(ms) ms delay") }
         return parts.joined(separator: " \u{B7} ")
@@ -759,8 +1270,10 @@ private struct AudioOutputDetail: View {
         if let entry = inventory.entries.first(where: { $0.id == id }) {
             let device = entry.deviceUID.flatMap { uid in devices.first { $0.uid == uid } }
             Form {
-                Section("Output") {
+                Section {
                     TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
+                }
+                Section("Connected to") {
                     Picker("Device", selection: Binding(
                         get: { entry.isDeviceless ? "none" : (entry.deviceUID ?? "") },
                         set: { tag in
@@ -773,19 +1286,30 @@ private struct AudioOutputDetail: View {
                         Text("No device").tag("none")
                         ForEach(devices, id: \.uid) { Text($0.name).tag($0.uid) }
                         if let uid = entry.deviceUID, !entry.isDeviceless, !devices.contains(where: { $0.uid == uid }) {
-                            Text("Missing device (not connected)").tag(uid)
+                            Text("Device (not connected)").tag(uid)
                         }
                     }
                     if let device, device.channelCount > 2 {
+
                         Picker("Channels", selection: Binding(
-                            get: { entry.channelOffset },
-                            set: { inventory.assignDevice(id: id, deviceUID: device.uid, channelOffset: $0) })
+                            get: { entry.monoChannel.map { -($0 + 1) } ?? entry.channelOffset },
+                            set: { tag in
+                                inventory.assignDevice(
+                                    id: id, deviceUID: device.uid, channelOffset: max(tag, 0),
+                                    monoChannel: tag < 0 ? -tag - 1 : nil)
+                            })
                         ) {
                             ForEach(Array(stride(from: 0, to: device.channelCount - 1, by: 2)), id: \.self) { offset in
                                 Text("\(offset + 1)-\(offset + 2)").tag(offset)
                             }
+                            Divider()
+                            ForEach(0 ..< device.channelCount, id: \.self) { channel in
+                                Text("\(channel + 1) (mono)").tag(-(channel + 1))
+                            }
                         }
                     }
+                }
+                Section("Adjustments") {
                     LabeledContent("Playout delay") {
                         HStack(spacing: 4) {
                             TextField("", value: Binding(
@@ -800,11 +1324,10 @@ private struct AudioOutputDetail: View {
                                 in: 0...2000, step: 5).labelsHidden()
                         }
                     }
+                    .help("Holds this output's playout back to match slower rooms or devices.")
                 }
                 Section {
                     Button("Remove Output\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Mixes sending here drop the send. Delay holds this output's playout back to match slower rooms or devices.")
                 }
             }
             .settingsForm()
@@ -817,6 +1340,8 @@ private struct AudioOutputDetail: View {
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Mixes sending here drop the send.")
             }
         } else {
             ContentUnavailableView("Output not found", systemImage: "speaker.wave.2")
@@ -847,7 +1372,7 @@ private struct MIDIDevicesSection: View {
                         if !item.isConnected(
                             destinations: Set(inventory.discoveredDestinations.map(\.uid)),
                             sources: Set(inventory.discoveredSources.map(\.uid))) {
-                            Text("Not connected").font(.system(size: 11)).foregroundStyle(.orange)
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
                         }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
@@ -863,7 +1388,8 @@ private struct MIDIDevicesSection: View {
             }
             .fixedSize()
         } header: {
-            Text("MIDI Devices")
+
+            Text("MIDI")
         }
         .task { inventory.reload() }
     }
@@ -886,7 +1412,7 @@ private struct MIDIDeviceDetail: View {
     var body: some View {
         if let item = inventory.items.first(where: { $0.id == id }) {
             Form {
-                Section("Device") {
+                Section {
                     Toggle("Enabled", isOn: Binding(get: { item.isEnabled }, set: { inventory.setEnabled(item, enabled: $0) }))
                     Picker("Direction", selection: Binding(
                         get: { item.effectiveDirection },
@@ -900,11 +1426,13 @@ private struct MIDIDeviceDetail: View {
                         portPicker("Out port", bound: item.destinationUID, endpoints: inventory.discoveredDestinations) {
                             inventory.setDestinationBinding(item, uid: $0)
                         }
+                        .help("Automatic matches ports by name, so an imported rig lights up wherever its ports live.")
                     }
                     if item.wantsInput {
                         portPicker("In port", bound: item.sourceUID, endpoints: inventory.discoveredSources) {
                             inventory.setSourceBinding(item, uid: $0)
                         }
+                        .help("Automatic matches ports by name, so an imported rig lights up wherever its ports live.")
                         Picker("Channel", selection: Binding(
                             get: { item.device.channel ?? 0 },
                             set: { inventory.setChannel(item, channel: $0 == 0 ? nil : $0) })
@@ -912,11 +1440,10 @@ private struct MIDIDeviceDetail: View {
                             Text("Any channel").tag(0)
                             ForEach(1...16, id: \.self) { Text("Channel \($0)").tag($0) }
                         }
+                        .help("Only notes on this channel trigger commands.")
                     }
                 } header: {
-                    Text("Ports on this Mac")
-                } footer: {
-                    Text("Automatic matches ports by name, so an imported rig lights up wherever its ports live. Channel filters which incoming notes trigger commands.")
+                    Text("Connected to")
                 }
                 Section {
                     Button("Remove Device\u{2026}", role: .destructive) { confirmRemove = true }
@@ -939,7 +1466,7 @@ private struct MIDIDeviceDetail: View {
             Text("Automatic (match by name)").tag(Int32(0))
             ForEach(endpoints, id: \.uid) { Text($0.name).tag($0.uid) }
             if let bound, !endpoints.contains(where: { $0.uid == bound }) {
-                Text("Port not present").tag(bound)
+                Text("Port (not connected)").tag(bound)
             }
         }
     }

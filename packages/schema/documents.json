@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 132,
+  "schemaVersion": 149,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1624,6 +1624,214 @@
         "deck"
       ]
     },
+    "TimelineCue": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "lane",
+          "type": "string"
+        },
+        {
+          "name": "at",
+          "type": "double"
+        },
+        {
+          "name": "duration",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "sectionId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "sectionOccurrence",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "overlayId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alertId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "liveInputId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction",
+          "optional": true
+        },
+        {
+          "name": "inPoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "fadeIn",
+          "type": "ClipFade",
+          "optional": true
+        },
+        {
+          "name": "fadeOut",
+          "type": "ClipFade",
+          "optional": true
+        },
+        {
+          "name": "edgeFades",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "ClipFade": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seconds",
+          "type": "double"
+        },
+        {
+          "name": "shape",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "midpoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "placement",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "PresentationTimeline": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "arrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "timecodeEnabled",
+          "type": "bool"
+        },
+        {
+          "name": "timecodeStart",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "cues",
+          "type": "list:TimelineCue"
+        },
+        {
+          "name": "mapLayout",
+          "type": "list:SongMapBlock",
+          "optional": true
+        }
+      ]
+    },
+    "SongMap": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "recording",
+          "type": "list:TimelineCue"
+        },
+        {
+          "name": "sections",
+          "type": "list:AudioSection"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "AudioSection": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "start",
+          "type": "double"
+        },
+        {
+          "name": "sectionId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "SongMapBlock": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sectionId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "occurrence",
+          "type": "int"
+        },
+        {
+          "name": "start",
+          "type": "double"
+        },
+        {
+          "name": "length",
+          "type": "double"
+        },
+        {
+          "name": "audioSectionIds",
+          "type": "list:string"
+        }
+      ]
+    },
     "Presentation": {
       "kind": "record",
       "fields": [
@@ -1718,6 +1926,11 @@
           "optional": true
         },
         {
+          "name": "transition",
+          "type": "Transition",
+          "optional": true
+        },
+        {
           "name": "displayKey",
           "type": "string",
           "optional": true
@@ -1725,6 +1938,16 @@
         {
           "name": "origin",
           "type": "PresentationOrigin",
+          "optional": true
+        },
+        {
+          "name": "timelines",
+          "type": "list:PresentationTimeline",
+          "optional": true
+        },
+        {
+          "name": "songMap",
+          "type": "SongMap",
           "optional": true
         }
       ]
@@ -1859,6 +2082,11 @@
           "optional": true
         },
         {
+          "name": "importedAt",
+          "type": "double",
+          "optional": true
+        },
+        {
           "name": "recordedByPresetId",
           "type": "string",
           "optional": true
@@ -1950,11 +2178,6 @@
         {
           "name": "refId",
           "type": "string"
-        },
-        {
-          "name": "autoAdvanceDelaySeconds",
-          "type": "double",
-          "optional": true
         }
       ]
     },
@@ -2007,16 +2230,6 @@
         },
         {
           "name": "crossfadeSeconds",
-          "type": "double",
-          "optional": true
-        },
-        {
-          "name": "autoAdvance",
-          "type": "bool",
-          "optional": true
-        },
-        {
-          "name": "autoAdvanceDelaySeconds",
           "type": "double",
           "optional": true
         }
@@ -2190,6 +2403,25 @@
         {
           "name": "mxuSongKeyApplied",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "SongTransition",
+          "optional": true
+        }
+      ]
+    },
+    "SongTransition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": "string"
+        },
+        {
+          "name": "seconds",
+          "type": "double",
           "optional": true
         }
       ]
@@ -2445,6 +2677,11 @@
         {
           "name": "versions",
           "type": "list:ServiceVersion",
+          "optional": true
+        },
+        {
+          "name": "timecodeByOrder",
+          "type": "bool",
           "optional": true
         }
       ]
@@ -3015,7 +3252,8 @@
       "kind": "enum",
       "cases": [
         "camera",
-        "ndi"
+        "ndi",
+        "decklink"
       ]
     },
     "SlideActionKind": {
@@ -3224,16 +3462,6 @@
         {
           "name": "audioRepeat",
           "type": "bool",
-          "optional": true
-        },
-        {
-          "name": "signageId",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "screenId",
-          "type": "string",
           "optional": true
         },
         {
@@ -3698,7 +3926,8 @@
         "stageMessage",
         "currentGroup",
         "currentPresentation",
-        "nextServiceTitle"
+        "nextServiceTitle",
+        "timecode"
       ]
     },
     "TimerTextFormat": {
@@ -3929,37 +4158,6 @@
           "name": "multiView",
           "type": "MultiViewTree",
           "optional": true
-        }
-      ]
-    },
-    "SignageChannel": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "playlistId",
-          "type": "string",
-          "optional": true
-        }
-      ]
-    },
-    "SignageBoard": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "signages",
-          "type": "list:SignageChannel"
         }
       ]
     },
@@ -4624,17 +4822,108 @@
           "optional": true
         },
         {
-          "name": "signage",
-          "type": "string",
-          "optional": true
-        },
-        {
           "name": "inputs",
           "type": "string",
           "optional": true
         },
         {
           "name": "behavior",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "TrackChannel": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "matchNames",
+          "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "mono",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "TrackChannelList": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "channels",
+          "type": "list:TrackChannel"
+        }
+      ]
+    },
+    "TrackSetStem": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "audioId",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "channelId",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "TrackSet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "stems",
+          "type": "list:TrackSetStem"
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "tempo",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "source",
           "type": "string",
           "optional": true
         }

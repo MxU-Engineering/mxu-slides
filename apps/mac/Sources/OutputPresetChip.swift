@@ -32,6 +32,7 @@ struct OutputPresetChip: View {
                     openWindow(id: "outputs")
                 }
             } label: {
+
                 HStack(spacing: 5) {
                     Glyph(kind: .screens, size: 12)
                     if showName {
@@ -40,22 +41,19 @@ struct OutputPresetChip: View {
                             .lineLimit(1)
                             .fixedSize()
                     }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .semibold))
+                        .foregroundStyle(.tertiary)
                 }
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.06), in: Capsule())
-                .overlay {
-                    Capsule().strokeBorder(
-                        Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                }
-                .contentShape(Capsule())
+                .headerItemLabel()
             }
 
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
+            .headerItemBackground()
 
             .help("Output Preset: \(OutputPresetMenu.activeName(presets)) — which layers reach the glass")
         }

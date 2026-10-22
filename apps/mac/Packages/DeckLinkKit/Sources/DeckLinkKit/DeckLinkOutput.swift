@@ -42,7 +42,79 @@ public final class DeckLinkOutput: @unchecked Sendable {
             CVPixelBufferGetBytesPerRow(pixelBuffer))
     }
 
+    public var timing: DeckLinkOutputTiming {
+        DeckLinkOutputTiming(dlk_output_timing(handle))
+    }
+
     deinit {
         dlk_output_close(handle)
+    }
+}
+
+public struct DeckLinkOutputTiming: Equatable, Sendable {
+    public enum Completion: Sendable {
+        case onTime, late, dropped, flushed
+    }
+
+    public var completions: UInt64 = 0
+    public var lastCompletionHostTime: Double = 0
+    public var latched: UInt64 = 0
+
+    public var waiting: [Int32] = []
+    public var shownSlot: Int32 = 0
+    public var repeats: UInt64 = 0
+    public var skips: UInt64 = 0
+    public var late: UInt64 = 0
+    public var dropped: UInt64 = 0
+    public var jumps: UInt64 = 0
+
+    public init() {}
+
+    init(_ raw: DLKOutputTiming) {
+        completions = raw.completions
+        lastCompletionHostTime = raw.lastCompletionHostTime
+        latched = raw.latched
+        waiting = Array([raw.waiting.0, raw.waiting.1].prefix(Int(raw.waitingCount)))
+        shownSlot = raw.shownSlot
+        repeats = raw.repeats
+        skips = raw.skips
+        late = raw.late
+        dropped = raw.dropped
+        jumps = raw.jumps
+    }
+
+    private var raw: DLKOutputTiming {
+        DLKOutputTiming(
+            completions: completions, lastCompletionHostTime: lastCompletionHostTime,
+            latched: latched,
+            waiting: (waiting.first ?? 0, waiting.dropFirst().first ?? 0),
+            waitingCount: Int32(waiting.count), shownSlot: shownSlot,
+            repeats: repeats, skips: skips,
+            late: late, dropped: dropped, jumps: jumps)
+    }
+
+    @discardableResult
+    public mutating func latch() -> Int32 {
+        var updated = raw
+        let slot = dlk_latch_slot(&updated)
+        self = DeckLinkOutputTiming(updated)
+        return slot
+    }
+
+    @discardableResult
+    public mutating func tallyCompletion(
+        at hostTime: Double, result: Completion = .onTime, jumped: Bool = false
+    ) -> Int32 {
+        var updated = raw
+        let tallied: DLKCompletionResult =
+            switch result {
+            case .onTime: DLKCompletionOnTime
+            case .late: DLKCompletionLate
+            case .dropped: DLKCompletionDropped
+            case .flushed: DLKCompletionFlushed
+            }
+        let slot = dlk_tally_completion(&updated, hostTime, tallied, jumped)
+        self = DeckLinkOutputTiming(updated)
+        return slot
     }
 }

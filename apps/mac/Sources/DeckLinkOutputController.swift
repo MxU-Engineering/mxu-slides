@@ -194,6 +194,8 @@ final class DeckLinkOutputController {
         let alphaProbed = Locked(false)
 
         let rampSampleFrame = Locked(0)
+
+        let cardClock = Locked(CardClock())
         let refusalThreshold = frameRate
         let notifyDeviceStopped: @Sendable () -> Void = { [weak self] in
             Task { @MainActor in self?.deviceStoppedTakingFrames() }
@@ -222,6 +224,7 @@ final class DeckLinkOutputController {
             placement: placement,
             mask: render.outputs.maskProvider(for: targetID),
             composite: composite,
+            pacing: { cardClock.withLock { $0.cadence } },
             sink: { pixelBuffer, _ in
 
                 let probeNow = alphaProbed.withLock { done -> Bool in
@@ -263,10 +266,26 @@ final class DeckLinkOutputController {
                     count += 1
                     return true
                 }
-                guard claimed else { return }
+                guard claimed else {
+                    RenderPulse.shared.cardTiming(device: deviceName, .init(held: 1))
+                    return
+                }
                 let surface = unsafeBitCast(surfaceRef, to: IOSurface.self)
-                remote.sendFrame(surface) { @Sendable delivered in
+                remote.sendFrame(surface) { @Sendable delivered, timingData in
                     inFlight.withLock { $0 -= 1 }
+                    if let timing = try? JSONDecoder().decode(
+                        DeckLinkCardTiming.self, from: timingData) {
+                        let delta = cardClock.withLock {
+                            $0.record(
+                                completions: Int(timing.completions),
+                                lastCompletion: timing.lastCompletionHostTime,
+                                counters: .init(
+                                    repeats: Int(timing.repeats), skips: Int(timing.skips),
+                                    late: Int(timing.late), dropped: Int(timing.dropped),
+                                    jumps: Int(timing.jumps)))
+                        }
+                        RenderPulse.shared.cardTiming(device: deviceName, delta)
+                    }
 
                     let firstOutcome = firstOutcomeLogged.withLock { logged -> Bool in
                         defer { logged = true }

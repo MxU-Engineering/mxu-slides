@@ -121,3 +121,18 @@ private func makeBoard(items: [String]) -> ControlBoard {
     #expect(scheduler.duplicateFolder(id: "s-1", memberIDs: [], copyID: "s-2") == "s-2")
     #expect(scheduler.folder(id: "s-2")?.name == "Morning Copy")
 }
+
+@Test func controlBoardShiftRangeSkipsCollapsedFolders() throws {
+    var board = makeBoard(items: ["a", "b", "c", "d"])
+    let folderID = board.addFolder(named: "Walk-in")
+    board.moveItem(id: "b", intoFolder: folderID)
+    board.moveItem(id: "c", intoFolder: folderID)
+    #expect(board.visibleItemIDs == ["a", "d", "b", "c"])
+    #expect(ControlBoard.range(in: board.visibleItemIDs, from: "c", through: "d") == ["d", "b", "c"])
+
+    board.setFolderCollapsed(id: folderID, true)
+    #expect(board.visibleItemIDs == ["a", "d"])
+    #expect(ControlBoard.range(in: board.visibleItemIDs, from: "a", through: "d") == ["a", "d"])
+    #expect(ControlBoard.range(in: board.visibleItemIDs, from: nil, through: "d") == ["d"])
+    #expect(ControlBoard.range(in: board.visibleItemIDs, from: "b", through: "d") == ["d"])
+}

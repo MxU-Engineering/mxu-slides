@@ -16,7 +16,7 @@ struct ModuleWindowView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let allowed = layout?.volunteerModules, !allowed.contains(module) {
-                        Text("\(module.title) is locked in run-only mode.")
+                        Text("\(module.title) is hidden in Volunteer Mode.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
@@ -25,7 +25,6 @@ struct ModuleWindowView: View {
                         switch module {
                         case .audio: AudioModule(model: model, controls: controls)
                         case .mixer: AudioMixerModule(model: model, controls: controls)
-                        case .media: MediaPlaylistsModule(model: model, controls: controls)
                         case .timers: TimersModule(model: model, controls: controls)
                         case .tracking: ServiceTrackingModule(model: model, controls: controls)
                         case .alerts: AlertsModule(model: model, controls: controls)
@@ -33,6 +32,7 @@ struct ModuleWindowView: View {
                         case .combos: ActionCombosModule(model: model, controls: controls)
                         case .confidence: ConfidenceModule(model: model, controls: controls)
                         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
+                        case .timecode: TimecodeModule(model: model, controls: controls)
                         }
                     }
                 }

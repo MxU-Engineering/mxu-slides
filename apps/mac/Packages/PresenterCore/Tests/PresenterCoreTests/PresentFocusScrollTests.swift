@@ -44,3 +44,36 @@ import Testing
     #expect(!RunOrderSelection.isReselect(pressed: "sermon", current: "sermon", command: false, shift: true, control: false), "⇧ extends")
     #expect(!RunOrderSelection.isReselect(pressed: "sermon", current: "sermon", command: false, shift: false, control: true), "⌃ opens the menu")
 }
+
+@Test func comingBackFromAnotherModePutsThePlaceBackOnce() {
+    var focus = PresentFocusScroll()
+    _ = focus.request("sermon")
+    let place = PresentLanding.Anchor(id: "song2", fraction: 0.3, slide: 8, intoRow: 0.5)
+    let left = PresentPlace(serviceID: "sunday", focusItemID: "sermon", anchor: place)
+    focus.leave()
+    #expect(focus.comeBack(to: left, serviceID: "sunday", focusItemID: "sermon") == place)
+    #expect(focus.request("sermon") == nil, "the place counts as the selection landed")
+    #expect(focus.comeBack(to: left, serviceID: "sunday", focusItemID: "sermon") == nil, "once")
+}
+
+@Test func aNewSelectionOrServiceWhileAwayJumpsInstead() {
+    let left = PresentPlace(serviceID: "sunday", focusItemID: "sermon", anchor: PresentLanding.Anchor(id: "song2", fraction: 0))
+    var picked = PresentFocusScroll()
+    picked.leave()
+    #expect(picked.comeBack(to: left, serviceID: "sunday", focusItemID: "song5") == nil)
+    #expect(picked.request("song5") == "song5", "the item picked while editing lands as a jump")
+    var other = PresentFocusScroll()
+    other.leave()
+    #expect(other.comeBack(to: left, serviceID: "monday", focusItemID: "sermon") == nil)
+}
+
+@Test func onlyAReturnPutsThePlaceBack() {
+    let left = PresentPlace(serviceID: "sunday", focusItemID: "sermon", anchor: PresentLanding.Anchor(id: "song2", fraction: 0))
+    var preview = PresentFocusScroll()
+    preview.reset()
+    #expect(preview.comeBack(to: left, serviceID: "sunday", focusItemID: "sermon") == nil, "a library preview closing lands on the selection")
+    var clicked = PresentFocusScroll()
+    clicked.leave()
+    clicked.reselect()
+    #expect(clicked.comeBack(to: left, serviceID: "sunday", focusItemID: "sermon") == nil, "a click on the selected row jumps to it")
+}

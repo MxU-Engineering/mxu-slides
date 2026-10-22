@@ -9,13 +9,17 @@ enum PerfHooks {
 
     private static weak var editor: SlideEditorModel?
 
+    static weak var controls: ServiceControls?
+
+    private static var playing: (item: ServiceItem, deck: Presentation)?
+
     static func start(model: AppModel) {
         guard let spec = ProcessInfo.processInfo.environment[PerfScenario.environmentKey] else { return }
         guard let scenario = PerfScenario(spec) else {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
             return
         }
-        observe(["mark", "targets", "play", "stop"])
+        observe(["mark", "targets", "play", "stop", "themes", "timeline", "lanes", "jump"])
         Task { await run(scenario, spec: spec, model: model) }
     }
 
@@ -146,6 +150,39 @@ enum PerfHooks {
             }
         case "stop":
             editor?.stopAnimationPreview()
+            controls?.timeline.stop()
+        case "timeline":
+            guard let controls else { return }
+            let model = controls.appModel
+            guard let service = model.currentServiceID.flatMap({ try? model.service($0) }),
+                  let (item, deck) = model.fireableItems(service).lazy.compactMap({ item -> (ServiceItem, Presentation)? in
+                      guard item.itemKind == .presentation, let deck = model.presentation(item.refId),
+                            PresentationTimelines.timeline(for: item.arrangementId, in: deck) != nil else { return nil }
+                      return (item, deck)
+                  }).first
+            else { return fail("no song with a timeline in the current service") }
+
+            PresentationTimelineCards.shared.open.insert(item.id)
+            controls.timeline.play(itemID: item.id, presentation: deck, arrangementId: item.arrangementId)
+            playing = (item, deck)
+            DiagnosticsStore.shared.note("perf.timeline", detail: deck.name)
+        case "lanes":
+            if let item = playing?.item {
+                PresentationTimelineCards.shared.expanded.formSymmetricDifference([item.id])
+            }
+        case "jump":
+
+            if let (item, deck) = playing, let controls {
+                controls.timeline.seek(
+                    to: controls.timeline.timelinePlayheadTime + 37, itemID: item.id, presentation: deck,
+                    arrangementId: item.arrangementId)
+            }
+        case "themes":
+
+            if let editor {
+                editor.choosingDeckTheme.toggle()
+                DiagnosticsStore.shared.note("perf.themes", detail: editor.choosingDeckTheme ? "open" : "closed")
+            }
         default:
             break
         }

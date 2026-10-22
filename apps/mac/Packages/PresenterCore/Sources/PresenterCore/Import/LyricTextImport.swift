@@ -62,8 +62,13 @@ public enum LyricTextImporter {
         lyricLines: Set<String> = []
     ) -> Presentation {
         let normalized = normalize(text, lyricLines: lyricLines)
+
+        let phrased = normalized.format != .plainText
         let built = Reflow.build(
-            Reflow.parse(normalized.body, linesPerSlide: linesPerSlide, extraLabels: normalized.extraLabels)
+            Reflow.parse(
+                normalized.body, linesPerSlide: linesPerSlide, extraLabels: normalized.extraLabels,
+                phrased: phrased
+            )
                 .openingOnBlank(),
             themeSlideName: themeSlideName
         )
@@ -71,7 +76,7 @@ public enum LyricTextImporter {
         if slides.isEmpty {
             slides = [Slide(id: UUID().uuidString, name: "", objects: [])]
         }
-        return Presentation(
+        var presentation = Presentation(
             id: id,
             name: normalized.title ?? fallbackTitle ?? "Imported Lyrics",
             presentationKind: .deck,
@@ -86,6 +91,11 @@ public enum LyricTextImporter {
             chordProSource: normalized.chordProSource,
             musicKey: normalized.musicKey
         )
+        if phrased {
+
+            presentation.reflowSource = ChordProExport.reflowSeed(for: presentation)
+        }
+        return presentation
     }
 
     public static func normalize(_ text: String, lyricLines: Set<String> = []) -> Normalized {

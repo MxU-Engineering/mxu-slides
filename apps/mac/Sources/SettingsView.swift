@@ -1,4 +1,5 @@
 import PresenterCore
+import SlideScene
 import SwiftUI
 
 struct AppSettingsView: View {
@@ -10,25 +11,23 @@ struct AppSettingsView: View {
 
     var api: LocalAPIController?
 
-    @State private var pinFlow: PinFlow?
+    var outputPresets: OutputPresetsController? = nil
 
-    @State private var entering: RunOnlyEntry?
-
-    @State private var afterEntrySheet: (() -> Void)?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
 
     @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @AppStorage("present.continuous") private var continuousPresent = true
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
-    @AppStorage(ServiceControls.clearAllIncludesAudioKey) private var clearAllIncludesAudio = true
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
+    @AppStorage(SlideSceneBuilder.emptyRepeatsOnceKey) private var emptyRepeatsOnce = false
+    @AppStorage(EditSidebarLogic.settingKey) private var hideSidebarOnEdit = false
+    @AppStorage(VolunteerModeLogic.enabledKey) private var volunteerModeEnabled = false
 
-    @State private var category: SettingsCategory = .appearance
+    @State private var category: SettingsCategory = .general
     @State private var query = ""
 
     var body: some View {
@@ -52,7 +51,9 @@ struct AppSettingsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: 720, height: 520)
+
+        .frame(minWidth: 860, idealWidth: 860, maxWidth: .infinity, minHeight: 640, idealHeight: 640, maxHeight: .infinity)
+        .background(SettingsWindowFrame())
         .background(Color.basePlane)
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
         .onAppear {
@@ -67,45 +68,13 @@ struct AppSettingsView: View {
                 SettingsRouter.shared.pending = nil
             }
         }
-        .sheet(item: $pinFlow) { flow in
-            PasscodeSheet(
-                flow: flow,
-                verify: { layout?.verifyPIN($0) ?? false },
-                waitSeconds: { layout?.pinWaitSeconds() ?? 0 }
-            ) { pin in
-                layout?.setPIN(pin)
-            }
-        }
-        .sheet(item: $entering, onDismiss: {
-            afterEntrySheet?()
-            afterEntrySheet = nil
-        }) { entry in
-            RunOnlyEntrySheet(
-                needsPIN: layout?.hasPIN != true,
-                initial: entry.saved?.volunteerModules
-                    ?? layout?.suggestedRunOnlyModules ?? ServiceControlsModule.defaultOrder
-            ) { pin, modules in
-                if let pin { layout?.setPIN(pin) }
-                if let saved = entry.saved {
-                    layout?.setLayoutRunOnlyModules(id: saved.id, modules)
-                }
-                layout?.setRunOnlyModules(modules)
-                afterEntrySheet = { enterRunOnly(applying: entry.saved, closing: entry.settingsWindow) }
-            }
-        }
     }
 
-    private func requestRunOnly(applying saved: PresentLayout?) {
+    private func enterVolunteer(applying saved: PresentLayout?) {
         let settingsWindow = NSApp.keyWindow
-        if let savedModules = saved?.volunteerModules, layout?.hasPIN == true {
+        if let savedModules = saved?.volunteerModules {
             layout?.setRunOnlyModules(savedModules)
-            enterRunOnly(applying: saved, closing: settingsWindow)
-        } else {
-            entering = RunOnlyEntry(saved: saved, settingsWindow: settingsWindow)
         }
-    }
-
-    private func enterRunOnly(applying saved: PresentLayout?, closing settingsWindow: NSWindow?) {
         layout?.enterRunOnly(applying: saved.map { saved in
             { layout?.apply(saved, openWindow: openWindow, dismissWindow: dismissWindow) }
         })
@@ -209,9 +178,9 @@ struct AppSettingsView: View {
     private var allRows: [SettingsRowSpec] {
         var rows: [SettingsRowSpec] = [
             SettingsRowSpec(
-                id: "appearance.scheme", category: .appearance,
+                id: "appearance.scheme",
                 title: "Appearance",
-                caption: "One scheme across Present and Edit; dark is the booth default.",
+                caption: "Dark is the booth default.",
                 keywords: "theme dark light system color scheme",
                 control: AnyView(
                     Picker("", selection: $appearanceRaw) {
@@ -223,9 +192,9 @@ struct AppSettingsView: View {
                 )
             ),
             SettingsRowSpec(
-                id: "present.mediaTransition", category: .present,
+                id: "present.mediaTransition",
                 title: "Media transition",
-                caption: "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The footer chips adjust the same setting on the fly.",
+                caption: "How backgrounds and media come in.",
                 keywords: "transition dissolve fade blur media default cut clear background foreground",
                 control: AnyView(DefaultTransitionControl(
                     kindKey: "transition.media.kind", durationKey: "transition.media.duration",
@@ -233,75 +202,91 @@ struct AppSettingsView: View {
                 ))
             ),
             SettingsRowSpec(
-                id: "present.slideTransition", category: .present,
+                id: "present.slideTransition",
                 title: "Slide transition",
-                caption: "How the slide layer changes between slides. Cut is the lyrics-safe default.",
+                caption: "How the words change. Cut is safest for lyrics.",
                 keywords: "transition dissolve fade slide default cut lyrics",
                 control: AnyView(DefaultTransitionControl(
                     kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
                     fallbackKind: "", fallbackDuration: 0.5
                 ))
             ),
+
             SettingsRowSpec(
-                id: "present.defaultAnimations", category: .present,
+                id: "edit.hideSidebar",
+                title: "Hide the sidebar when entering Edit",
+                caption: "Present gets it back when you return.",
+                keywords: "sidebar hide edit mode library service panel collapse",
+                control: AnyView(Toggle("", isOn: $hideSidebarOnEdit).settingsToggle())
+            ),
+            SettingsRowSpec(
+                id: "present.defaultAnimations",
                 title: "Default animations",
-                caption: "What Apply Default In / Apply Default Out write on the timeline's presence-bar ends. A preset's Set as Default In/Out changes it too.",
+                caption: "What Apply Default In and Out use.",
                 keywords: "animation default in out fade timeline animate steps",
                 control: AnyView(DefaultAnimationsControl(model: model))
             ),
             SettingsRowSpec(
-                id: "present.continuous", category: .present,
+                id: "present.continuous",
                 title: "Continuous service view",
-                caption: "The whole run order scrolls as one surface; arrows advance across items.",
+                caption: "The whole service scrolls as one list.",
                 keywords: "scroll run order single item",
                 control: AnyView(Toggle("", isOn: $continuousPresent).settingsToggle())
             ),
             SettingsRowSpec(
-                id: "present.slidesAcross", category: .present,
+                id: "present.slidesAcross",
                 title: "Slides across",
-                caption: "How many slide thumbnails share a row in Present — a fixed count, never a fit to the window or the sidebars.",
+                caption: "How many slides per row.",
                 keywords: "slide grid columns across per row thumbnails size zoom",
                 control: AnyView(SlidesAcrossControl(count: $slidesAcross).frame(width: 190))
             ),
             SettingsRowSpec(
-                id: "present.roundedCorners", category: .present,
-                title: "Rounded thumbnail corners",
-                caption: nil,
+                id: "present.roundedCorners",
+                title: "Rounded corners",
+                caption: "Slide thumbnails in Present.",
                 keywords: "slide grid thumbnails corners",
                 control: AnyView(Toggle("", isOn: $roundedCorners).settingsToggle())
             ),
             SettingsRowSpec(
-                id: "present.legibleText", category: .present,
-                title: "Readable thumbnail text",
-                caption: "Boosts lyric legibility in thumbnails — never on the glass.",
-                keywords: "slide grid lyrics legible text thumbnails",
-                control: AnyView(Toggle("", isOn: $legibleText).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.transparencyGrid", category: .present,
-                title: "Transparency grid in thumbnails",
-                caption: "Checkerboard shows wherever nothing opaque covers the slide — where lower layers would show through on glass.",
+                id: "present.transparencyGrid",
+                title: "Transparency grid",
+                caption: "A checkerboard where the slide is see-through.",
                 keywords: "transparency grid checkerboard alpha thumbnails photoshop",
                 control: AnyView(Toggle("", isOn: $transparencyGrid).settingsToggle())
             ),
             SettingsRowSpec(
-                id: "present.scopedBackgrounds", category: .present,
+                id: "present.scopedBackgrounds",
                 title: "Backgrounds only on declaring slide",
-                caption: "Thumbnails after the declaring slide drop the shared background.",
+                caption: "Later thumbnails drop a shared background.",
                 keywords: "slide grid backgrounds cue thumbnails",
                 control: AnyView(Toggle("", isOn: $hideScopedBackgrounds).settingsToggle())
             ),
             SettingsRowSpec(
-                id: "present.clearAllAudio", category: .present,
-                title: "Clear All includes Music",
-                caption: "Off protects walk-in music from the panic clear.",
-                keywords: "clear all audio panic walk-in music",
-                control: AnyView(Toggle("", isOn: $clearAllIncludesAudio).settingsToggle())
+                id: "present.clearAllAudio",
+                title: "Clear All clears",
+                caption: "Unticked stays up through Clear All.",
+                keywords: "clear all audio panic walk-in music inputs camera video input skip keep",
+                control: AnyView(ClearAllChecklist()),
+                stacked: true
             ),
             SettingsRowSpec(
-                id: "present.nextSkipsBlanks", category: .present,
+                id: "present.emptyRepeatsOnce",
+                title: "Show a repeated chord-only section once",
+                caption: "An Interlude played twice shows once.",
+                keywords: "repeat repeated duplicate interlude instrumental turnaround chords blank empty section skip once arrangement",
+                control: AnyView(Toggle("", isOn: Binding(
+                    get: { emptyRepeatsOnce },
+                    set: {
+                        emptyRepeatsOnce = $0
+
+                        controls?.refreshNextSlide()
+                    }
+                )).settingsToggle())
+            ),
+            SettingsRowSpec(
+                id: "present.nextSkipsBlanks",
                 title: "Confidence NEXT skips blank slides",
-                caption: "Blank slides parked as clears are ignored — NEXT shows the first upcoming slide that has text.",
+                caption: "NEXT shows the next slide with words.",
                 keywords: "confidence monitor next blank empty slide stage skip",
                 control: AnyView(Toggle("", isOn: Binding(
                     get: { nextSkipsBlanks },
@@ -315,99 +300,153 @@ struct AppSettingsView: View {
         ]
         if let layout {
             rows.append(SettingsRowSpec(
-                id: "present.layouts", category: .present,
+                id: "present.layouts",
                 title: "Present layouts",
-                caption: "Save and switch whole workspace arrangements — panels, sizes, and windows (moved here from the footer).",
+                caption: "Save and switch panel arrangements.",
                 keywords: "layout workspace arrangement save panels windows dock",
                 control: AnyView(PresentLayoutMenuControl(layout: layout) { saved in
-                    requestRunOnly(applying: saved)
+                    enterVolunteer(applying: saved)
                 })
             ))
+
             rows.append(SettingsRowSpec(
-                id: "present.runOnly", category: .present,
-                title: "Run-Only Mode",
-                caption: "Strips every editing affordance — volunteers run slides, clears, and the Service Controls tabs you pick on entry. Exiting asks for the passcode.",
-                keywords: "run only volunteer lock passcode pin kiosk",
-                control: AnyView(HStack(spacing: 6) {
-                    if layout.hasPIN {
-                        Button("Change Passcode…") { pinFlow = .change }
-                    }
-                    Button("Enter Run-Only Mode…") { requestRunOnly(applying: nil) }
-                })
+                id: "present.runOnly",
+                title: "Volunteer Mode",
+                caption: "Adds Volunteer to the mode switcher.",
+                keywords: "volunteer mode run only simple kiosk switcher",
+                control: AnyView(Toggle("", isOn: $volunteerModeEnabled).settingsToggle())
+            ))
+            rows.append(SettingsRowSpec(
+                id: "present.volunteerTabs",
+                title: "Tabs volunteers keep",
+                caption: "The Service Controls tabs Volunteer Mode shows.",
+                keywords: "volunteer tabs service controls modules timers combos alerts",
+                control: AnyView(VolunteerTabsControl(layout: layout))
             ))
         }
         rows.append(contentsOf: groupsRows)
         rows.append(contentsOf: audioRows)
         rows.append(
             SettingsRowSpec(
-                id: "screens.configuration", category: .screens,
+                id: "screens.configuration",
                 title: "Screen Configuration",
-                caption: "Screens, output backing, presets, and layer routing.",
-                keywords: "outputs displays routing presets placeholder ndi",
-                control: AnyView(OpenScreenConfigurationButton())
+                caption: "Screens, outputs and layer routing.",
+                keywords: "outputs displays routing placeholder ndi screens",
+                control: AnyView(OpenScreenConfigurationButton(count: controls?.render.outputs.placeholderScreens.count))
             )
         )
+        if let outputPresets {
+            rows.append(SettingsRowSpec(
+                id: "screens.outputPresets",
+                title: "Output presets",
+                caption: "Which screens show what. Switch them from the header.",
+                keywords: "output presets screens looks switch",
+                control: AnyView(EditOutputPresetsButton(presets: outputPresets))
+            ))
+        }
         rows.append(contentsOf: streamRecordRows)
         rows.append(SettingsRowSpec(
-            id: "avInputs.cameras", category: .avInputs,
+            id: "avInputs.cameras",
             title: "Video inputs",
-            caption: "Added inputs run warm from launch and appear in Live Input pickers — slides never wait on a camera spinning up.",
+            caption: "Cameras, capture cards and NDI sources.",
             keywords: "camera capture device uvc continuity blackmagic live input video refresh",
             control: AnyView(EmptyView()),
             stacked: true
         ))
         rows.append(SettingsRowSpec(
-            id: "avInputs.audio", category: .avInputs,
+            id: "avInputs.audio",
             title: "Audio inputs",
-            caption: "Interfaces and board feeds — each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
+            caption: "Interfaces and board feeds.",
             keywords: "audio input microphone interface usb board mix feed sound stream record source channels",
             control: AnyView(EmptyView()),
             stacked: true
         ))
         rows.append(SettingsRowSpec(
-            id: "avInputs.outputs", category: .avInputs,
+            id: "avInputs.outputs",
             title: "Audio outputs",
-            caption: "The output patch bay — named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
+            caption: "Named outputs for the Mixer.",
             keywords: "audio output speaker device dante interface patch stereo pair mix send",
             control: AnyView(EmptyView()),
             stacked: true
         ))
         rows.append(SettingsRowSpec(
-            id: "midi.devices", category: .midi,
+            id: "midi.devices",
             title: "MIDI devices",
-            caption: "Devices MIDI talks to — each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
+            caption: "Devices MIDI sends to and listens to.",
             keywords: "midi device destination source input output port note control change iac lighting console enable disable direction",
             control: AnyView(EmptyView()),
             stacked: true
         ))
         rows.append(SettingsRowSpec(
-            id: "midi.map", category: .midi,
-            title: "MIDI input map",
-            caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
+            id: "midi.map",
+            title: "Input map",
+            caption: "What incoming notes trigger.",
             keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter overlay prop playlist media audio music alert message select index",
             control: AnyView(MIDIMapManager())
         ))
 
+        if let timecode = controls?.timecode {
+            rows.append(SettingsRowSpec(
+                id: "timecode.follow",
+                title: "Follow timecode",
+                caption: "Songs with a timecode start play from it here.",
+                keywords: "timecode ltc smpte playback ableton follow lyrics automate timeline song start",
+                control: AnyView(Toggle("", isOn: Binding(
+                    get: { timecode.follows }, set: { timecode.setFollows($0) })).settingsToggle())
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.audio",
+                title: "Timecode plays audio",
+                caption: "For when this Mac is the audio source.",
+                keywords: "timecode ltc audio lane layer backing track sound effects spoken word generator chase play music",
+                control: AnyView(Toggle("", isOn: Binding(
+                    get: { timecode.playsAudio }, set: { timecode.setPlaysAudio($0) })).settingsToggle())
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.input",
+                title: "Input",
+                caption: "LTC on an audio channel or MTC over MIDI. Never played out.",
+                keywords: "timecode ltc mtc smpte midi input device channel blackhole loopback audio interface iac ableton quarter frame",
+                control: AnyView(TimecodeInputControl(follower: timecode))
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.signal",
+                title: "Signal",
+                caption: nil,
+                keywords: "timecode ltc level meter frame rate fps locked lost drop frame",
+                control: AnyView(TimecodeSignalReadout(follower: timecode))
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.offset",
+                title: "Offset",
+                caption: "Moves incoming timecode later or earlier.",
+                keywords: "timecode ltc offset latency delay frames early late",
+                control: AnyView(TimecodeOffsetControl(follower: timecode))
+            ))
+        }
+
         rows.append(SettingsRowSpec(
-            id: "network.ndi", category: .api,
+            id: "network.ndi",
             title: "NDI network",
-            caption: "The network NDI discovers and carries video on — inputs and screen outputs alike. Pin it to the wired production network when this Mac also joins Wi-Fi on another VLAN — even when both carry the same VLAN, the pin keeps NDI on the wire. Applies immediately; live feeds re-tune.",
+            caption: "The network NDI uses. Pin it to the wired one.",
             keywords: "ndi network interface adapter nic vlan ethernet wifi wired discovery pin bind",
             control: AnyView(NDINetworkScopeControl())
         ))
         rows.append(contentsOf: apiRows)
         return rows
+            .sorted { SettingsLayout.order(ofRow: $0.id) < SettingsLayout.order(ofRow: $1.id) }
     }
 
     private var groupsRows: [SettingsRowSpec] {
         guard let model else { return [] }
         return [
             SettingsRowSpec(
-                id: "groups.palette", category: .groups,
+                id: "groups.palette",
                 title: "Groups",
-                caption: "Song section labels and their colors — pills in the slide grid and arrangements wear these. A section wears its named group's color wherever it appears; \"Pre-Chorus\" and \"PreChorus\" count as the same name.",
-                keywords: "group section verse chorus bridge color label pill arrangement palette propresenter",
-                control: AnyView(EmptyView())
+                caption: "Song section names and their colors.",
+                keywords: "group section verse chorus bridge color label pill arrangement palette propresenter hot key",
+
+                control: AnyView(Text("\(model.groupPalette.groups.count)").foregroundStyle(.secondary))
             ),
         ]
     }
@@ -415,9 +454,9 @@ struct AppSettingsView: View {
     private var streamRecordRows: [SettingsRowSpec] {
         [
             SettingsRowSpec(
-                id: "streamRecord.pane", category: .streamRecord,
+                id: "streamRecord.pane",
                 title: "Stream & Record",
-                caption: "Destinations are the places you can stream to; presets say which ones, what streams, and what records.",
+                caption: "Where you stream to, and what streams and records.",
                 keywords: "stream record preset destination rtmp rtmps srt hls youtube facebook key bitrate go live sunday record only visibility",
                 control: AnyView(Button("Show") { query = ""; category = .streamRecord })
             ),
@@ -428,14 +467,14 @@ struct AppSettingsView: View {
         guard let api else { return [] }
         return [
             SettingsRowSpec(
-                id: "api.enabled", category: .api,
-                title: "Local API",
-                caption: "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
+                id: "api.enabled",
+                title: "Serve the API",
+                caption: "The REST and WebSocket API on this Mac.",
                 keywords: "api rest websocket http server remote companion stream deck automation bonjour",
                 control: AnyView(LocalAPIEnableToggle(api: api))
             ),
             SettingsRowSpec(
-                id: "api.port", category: .api,
+                id: "api.port",
                 title: "Port",
                 caption: "Changing the port restarts the server.",
                 keywords: "api port number network",
@@ -443,23 +482,23 @@ struct AppSettingsView: View {
             ),
 
             SettingsRowSpec(
-                id: "api.address", category: .api,
+                id: "api.address",
                 title: "Connect at",
-                caption: "Enter this address and port in Companion, a Stream Deck, or any remote — then sign in with an access key from the row below.",
+                caption: "Point any app or device that uses the API here.",
                 keywords: "api address ip port connect companion stream deck remote host default key",
                 control: AnyView(LocalAPIAddressRow(api: api))
             ),
             SettingsRowSpec(
-                id: "api.tokens", category: .api,
+                id: "api.tokens",
                 title: "Access keys",
-                caption: "Required — nothing connects without one. Create a key here and paste it into the client. Each key grants Watch, Operate, or Manage access.",
+                caption: "Every client needs one.",
                 keywords: "api tokens keys auth bearer secret scope watch operate manage revoke password required",
                 control: AnyView(LocalAPITokensButton(api: api))
             ),
             SettingsRowSpec(
-                id: "api.docs", category: .api,
+                id: "api.docs",
                 title: "API reference",
-                caption: "A browsable page of every endpoint with descriptions and copyable examples — served by this Mac, works offline.",
+                caption: "Every endpoint, with examples. Works offline.",
                 keywords: "api reference docs documentation openapi explorer examples endpoints developer",
                 control: AnyView(LocalAPIContractRow(api: api))
             ),
@@ -470,9 +509,9 @@ struct AppSettingsView: View {
         guard let audio = controls?.audio else { return [] }
         return [
             SettingsRowSpec(
-                id: "audio.fadeEnabled", category: .audio,
+                id: "audio.fadeEnabled",
                 title: "Fade in and out",
-                caption: "Play, pause, and Clear Music ease over the fade time — every bus.",
+                caption: "Play, pause and Clear Music ease in and out.",
                 keywords: "audio fade transport ease",
                 control: AnyView(
                     Toggle("", isOn: Binding(
@@ -483,7 +522,7 @@ struct AppSettingsView: View {
                 )
             ),
             SettingsRowSpec(
-                id: "audio.fadeSeconds", category: .audio,
+                id: "audio.fadeSeconds",
                 title: "Fade time",
                 caption: nil,
                 keywords: "audio fade seconds duration",
@@ -512,32 +551,33 @@ struct AppSettingsView: View {
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
 
-    case appearance
+    case general
+
     case present
 
-    case groups
-    case audio
+    case edit
+
+    case screens
 
     case avInputs
+    case streamRecord
+
     case midi
 
     case keyboard
-    case screens
-    case streamRecord
     case api
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .appearance: "Appearance"
+        case .general: "General"
         case .present: "Present"
-        case .groups: "Groups"
-        case .audio: "Music"
-        case .avInputs: "Audio/Video Inputs"
-        case .midi: "MIDI"
-        case .keyboard: "Keyboard"
-        case .screens: "Screen Outputs"
+        case .edit: "Edit"
+        case .avInputs: "Audio & Video"
+        case .midi: "Connections"
+        case .keyboard: "Shortcuts"
+        case .screens: "Screens"
         case .streamRecord: "Stream & Record"
 
         case .api: "Network & API"
@@ -546,12 +586,11 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .appearance: "circle.lefthalf.filled"
+        case .general: "gearshape"
         case .present: "play.rectangle"
-        case .groups: "tag"
-        case .audio: "speaker.wave.2"
+        case .edit: "pencil"
         case .avInputs: "camera"
-        case .midi: "pianokeys"
+        case .midi: "point.3.connected.trianglepath.dotted"
         case .keyboard: "keyboard"
         case .screens: "display"
         case .streamRecord: "record.circle"
@@ -575,11 +614,17 @@ final class SettingsRouter {
         pendingStreamPresetID = presetID
         pending = .streamRecord
     }
+
+    var pendingTrackChannel: String?
+
+    func openTrackChannel(_ id: String) {
+        pendingTrackChannel = id
+        pending = .avInputs
+    }
 }
 
 struct SettingsRowSpec: Identifiable {
     let id: String
-    let category: SettingsCategory
     let title: String
     let caption: String?
     let keywords: String
@@ -587,8 +632,45 @@ struct SettingsRowSpec: Identifiable {
 
     var stacked: Bool = false
 
+    var help: String? { Self.help[id] }
+
+    static let help: [String: String] = [
+        "api.address": "Enter this address and port in whatever connects to the API, then sign in with an access key from the row below.",
+        "api.docs": "A browsable page of every endpoint with descriptions and copyable examples, served by this Mac.",
+        "api.enabled": "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
+        "api.tokens": "Required: nothing connects without one. Create a key here and paste it into the client. Each key grants Watch, Operate, or Manage access.",
+        "appearance.scheme": "One scheme across Present and Edit.",
+        "audio.fadeEnabled": "All music.",
+        "avInputs.audio": "Each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
+        "avInputs.cameras": "Added inputs run warm from launch and appear in Live Input pickers, so slides never wait on a camera spinning up.",
+        "avInputs.outputs": "The output patch bay: named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
+        "timecode.follow": "Each song's timeline has a timecode start (the clock on its timeline row) and \"This song plays from timecode\". Incoming timecode plays the song whose window holds it; outside every song the screen holds. With two Macs in a room, follow on one.",
+        "timecode.audio": "Songs' Music layers (backing tracks, sound effects, spoken word) and their tracks (stems) play from incoming timecode and stay with it: they start where timecode says, re-cue when it jumps, and stop when it stops. Leave off when Playback or Ableton is playing the music and sending the timecode.",
+        "timecode.input": "Route Playback's SMPTE bus (or Ableton's LTC clip) to a spare input, or a channel of BlackHole or Loopback on this Mac. The frame rate is detected.",
+        "midi.devices": "Each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
+        "midi.map": "Clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
+        "network.ndi": "NDI discovers and carries video on this network, inputs and screen outputs alike. Pin it to the wired production network when this Mac also joins Wi-Fi on another VLAN. Applies immediately; live feeds re-tune.",
+        "present.clearAllAudio": "Walk-in music or a live camera can stay up through Clear All; its own Clear button still takes it down. Also on a right-click of the header's Clear.",
+        "present.continuous": "The whole run order scrolls as one surface; arrows advance across items.",
+        "present.defaultAnimations": "What Apply Default In / Apply Default Out write on the timeline's presence-bar ends. A preset's Set as Default In/Out changes it too.",
+        "present.emptyRepeatsOnce": "When a song plays the same section twice in a row and it has only chords or nothing on it, Present shows it once. Off, every repeat the order calls for is a slide to click. Sections with words, media or a different set of chords always play.",
+        "present.layouts": "Save and switch whole arrangements: panels, sizes and windows.",
+        "present.mediaTransition": "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The header's transition chips change the same setting.",
+        "present.nextSkipsBlanks": "Blank slides parked as clears are ignored: NEXT shows the first upcoming slide that has text.",
+        "present.runOnly": "Volunteers run slides, clears and the tabs below, with editing hidden. No passcode: Present or Edit in the mode switcher leaves it.",
+        "present.scopedBackgrounds": "Thumbnails after the declaring slide drop the shared background.",
+        "present.slideTransition": "How the slide layer changes between slides. The header's transition chips change the same setting.",
+        "present.slidesAcross": "How many slide thumbnails share a row in Present: a fixed count, never a fit to the window or the sidebars.",
+        "present.transparencyGrid": "Checkerboard shows wherever nothing opaque covers the slide, where lower layers would show through on glass.",
+        "streamRecord.pane": "Destinations are the places you can stream to; presets say which ones, what streams, and what records.",
+    ]
+
+    var category: SettingsCategory {
+        SettingsLayout.page(ofRow: id).flatMap(SettingsCategory.init(rawValue:)) ?? .general
+    }
+
     var searchText: String {
-        "\(title) \(caption ?? "") \(keywords) \(category.title)".lowercased()
+        "\(title) \(caption ?? "") \(help ?? "") \(keywords) \(category.title)".lowercased()
     }
 }
 
@@ -631,11 +713,33 @@ private struct SettingsRowView: View {
 }
 
 private struct OpenScreenConfigurationButton: View {
+
+    let count: Int?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("Open\u{2026}") {
-            openWindow(id: "outputs")
+        HStack(spacing: 8) {
+            if let count {
+                Text("\(count) screen\(count == 1 ? "" : "s")").foregroundStyle(.secondary)
+            }
+            Button("Open\u{2026}") {
+                openWindow(id: "outputs")
+            }
+        }
+    }
+}
+
+private struct EditOutputPresetsButton: View {
+    let presets: OutputPresetsController
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("\(presets.presets.count)").foregroundStyle(.secondary)
+            Button("Edit\u{2026}") {
+                ScreenConfigRouter.shared.pendingPresetID = presets.activePresetID ?? presets.presets.first?.id ?? ""
+                openWindow(id: "outputs")
+            }
         }
     }
 }
@@ -674,7 +778,7 @@ private struct PresentLayoutMenuControl: View {
                     showingRename = true
                 }
 
-                Picker("Run-Only Layout", selection: Binding(
+                Picker("Volunteer Layout", selection: Binding(
                     get: { active.runOnly },
                     set: { layout.setLayoutRunOnly(id: active.id, $0) }
                 )) {
@@ -687,30 +791,11 @@ private struct PresentLayoutMenuControl: View {
                 }
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(active?.name ?? "Layouts")
-                    .font(.system(size: 10))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
+
+            Text(active?.name ?? "None")
+                .lineLimit(1)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
-        .background(
-            Color.primary.opacity(0.05),
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
         .alert("Save Layout", isPresented: $showingSave) {
             TextField("Name", text: $nameDraft)
             Button("Save") { layout.saveLayout(named: nameDraft) }
@@ -735,6 +820,51 @@ private struct PresentLayoutMenuControl: View {
         } else {
             layout.apply(saved, openWindow: openWindow, dismissWindow: dismissWindow)
         }
+    }
+}
+
+private struct SettingsWindowFrame: NSViewRepresentable {
+    static let autosaveName = "settings.window"
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { configure(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private func configure(_ window: NSWindow?) {
+        if let window, window.frameAutosaveName != Self.autosaveName {
+            window.styleMask.insert(.resizable)
+            window.setFrameUsingName(Self.autosaveName)
+            window.setFrameAutosaveName(Self.autosaveName)
+        }
+    }
+}
+
+private struct VolunteerTabsControl: View {
+    let layout: PresentLayoutController
+
+    var body: some View {
+        let chosen = Set(layout.suggestedRunOnlyModules)
+        Menu {
+            ForEach(ServiceControlsModule.defaultOrder, id: \.self) { module in
+                Toggle(module.title, isOn: Binding(
+                    get: { chosen.contains(module) },
+                    set: { on in
+                        let next = on ? chosen.union([module]) : chosen.subtracting([module])
+
+                        if !next.isEmpty {
+                            layout.setRunOnlyModules(ServiceControlsModule.defaultOrder.filter(next.contains))
+                        }
+                    }
+                ))
+            }
+        } label: {
+            Text(chosen.count == ServiceControlsModule.defaultOrder.count ? "All tabs" : "\(chosen.count) tab\(chosen.count == 1 ? "" : "s")")
+        }
+        .fixedSize()
     }
 }
 
@@ -822,8 +952,8 @@ struct DefaultTransitionControl: View {
         controls
             .onAppear {
                 kindRaw = UserDefaults.standard.string(forKey: kindKey) ?? fallbackKind
-                let stored = UserDefaults.standard.double(forKey: durationKey)
-                duration = stored > 0 ? stored : fallbackDuration
+
+                duration = UserDefaults.standard.object(forKey: durationKey) as? Double ?? fallbackDuration
             }
 
     }
@@ -862,8 +992,8 @@ struct DefaultTransitionControl: View {
             .fixedSize()
             if !kindRaw.isEmpty {
                 Stepper(
-                    String(format: "%.2gs", duration),
-                    value: storedDuration, in: 0 ... 5, step: 0.1
+                    TransitionEdit.label(seconds: duration),
+                    value: storedDuration, in: TransitionEdit.typedRange, step: TransitionEdit.durationStep
                 )
                 .font(.caption.monospacedDigit())
                 .controlSize(.small)

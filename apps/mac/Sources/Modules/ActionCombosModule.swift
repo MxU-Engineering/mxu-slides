@@ -10,9 +10,11 @@ struct ActionCombosModule: View {
     @Environment(\.runOnly) private var runOnly
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @Environment(\.signage) private var signage
 
     @State private var expanded: Set<String> = []
+
+    @State private var selected: Set<String> = []
+    @State private var selectionAnchor: String?
     @State private var mediaPick: MediaPickTarget?
 
     @State private var actionPlacement: ComboActionPlacement?
@@ -120,7 +122,7 @@ struct ActionCombosModule: View {
         }
         return VStack(spacing: 4) {
             ForEach(ids, id: \.self) { comboID in
-                comboBlock(comboID)
+                comboBlock(comboID, order: ids)
             }
             if ids.isEmpty {
                 Text("No combos match.")
@@ -134,6 +136,7 @@ struct ActionCombosModule: View {
 
     private func boardList(comboIDs: Set<String>) -> some View {
         let board = model.comboBoard
+        let order = board.visibleItemIDs
         return VStack(spacing: 4) {
             ForEach(board.nodes, id: \.self) { nodeID in
                 if let folder = board.folder(id: nodeID) {
@@ -141,17 +144,18 @@ struct ActionCombosModule: View {
                         folder: folder,
                         folderPrefix: Self.folderPrefix,
                         isItemID: { comboIDs.contains($0) },
+                        movedItems: movedItems,
                         updateBoard: model.updateComboBoard,
                         memberNoun: "combos",
                         dropTarget: $dropTarget,
                         editingFolders: $editingFolders
                     ) {
                         ForEach(folder.itemIds, id: \.self) { comboID in
-                            comboBlock(comboID)
+                            comboBlock(comboID, order: order)
                         }
                     }
                 } else {
-                    comboBlock(nodeID)
+                    comboBlock(nodeID, order: order)
                 }
             }
 
@@ -159,6 +163,7 @@ struct ActionCombosModule: View {
                 ControlBoardEndDropStrip(
                     folderPrefix: Self.folderPrefix,
                     isItemID: { comboIDs.contains($0) },
+                    movedItems: movedItems,
                     updateBoard: model.updateComboBoard
                 )
             }
@@ -166,9 +171,10 @@ struct ActionCombosModule: View {
     }
 
     @ViewBuilder
-    private func comboBlock(_ comboID: String) -> some View {
+    private func comboBlock(_ comboID: String, order: [String]) -> some View {
         if let combo = try? model.actionCombo(comboID) {
             let isOpen = expanded.contains(comboID)
+            let isSelected = selected.contains(comboID)
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
 
@@ -191,11 +197,7 @@ struct ActionCombosModule: View {
                         Spacer(minLength: 4)
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            if isOpen { expanded.remove(comboID) } else { expanded.insert(comboID) }
-                        }
-                    }
+                    .onTapGesture { click(comboID, order: order) }
 
                     Button("Run") {
                         router?.fire(comboID: comboID)
@@ -209,42 +211,11 @@ struct ActionCombosModule: View {
                 .draggablePayload(runOnly ? nil : comboID)
                 .contextMenu {
                     if !runOnly {
-                        addActionMenu(comboID)
-                        Divider()
-                        colorMenu(combo)
-                        iconMenu(combo)
-
-                        Picker("Trigger on Startup", selection: Binding(
-                            get: { combo.runOnStartup == true },
-                            set: { value in
-                                model.updateActionCombo(comboID) {
-                                    $0.runOnStartup = value ? true : nil
-                                }
-                            }
-                        )) {
-                            Text("Yes").tag(true)
-                            Text("No").tag(false)
-                        }
-                        Divider()
-                        Button("Cut") {
-                            ComboPasteboard.copy(combo)
-                            model.deleteActionCombo(comboID)
-                            expanded.remove(comboID)
-                        }
-                        Button("Copy") { ComboPasteboard.copy(combo) }
-                        Button("Paste") {
-                            if let pasted = ComboPasteboard.paste() {
-                                paste(pasted)
-                            }
-                        }
-                        .disabled(!ComboPasteboard.hasCombo)
-                        Button("Duplicate") {
-                            duplicate(combo)
-                        }
-                        Divider()
-                        Button("Delete", role: .destructive) {
-                            model.deleteActionCombo(comboID)
-                            expanded.remove(comboID)
+                        let targets = menuTargets(comboID)
+                        if targets.count > 1 {
+                            bulkMenu(targets)
+                        } else {
+                            singleMenu(combo)
                         }
                     }
                 }
@@ -255,7 +226,7 @@ struct ActionCombosModule: View {
                 }
             }
             .background(
-                Color.primary.opacity(0.03),
+                isSelected ? Color(nsColor: .controlAccentColor).opacity(0.15) : Color.primary.opacity(0.03),
                 in: RoundedRectangle.standard(CornerStandard.element)
             )
 
@@ -273,6 +244,112 @@ struct ActionCombosModule: View {
                 dropTarget = targeted ? comboID : (dropTarget == comboID ? nil : dropTarget)
             }
         }
+    }
+
+    @ViewBuilder
+    private func singleMenu(_ combo: ActionCombo) -> some View {
+        addActionMenu(combo.id)
+        Divider()
+        colorMenu([combo])
+        iconMenu([combo])
+
+        Picker("Trigger on Startup", selection: Binding(
+            get: { combo.runOnStartup == true },
+            set: { value in
+                model.updateActionCombo(combo.id) {
+                    $0.runOnStartup = value ? true : nil
+                }
+            }
+        )) {
+            Text("Yes").tag(true)
+            Text("No").tag(false)
+        }
+        Divider()
+        Button("Cut") {
+            ComboPasteboard.copy(combo)
+            model.deleteActionCombo(combo.id)
+            expanded.remove(combo.id)
+        }
+        Button("Copy") { ComboPasteboard.copy(combo) }
+        Button("Paste") {
+            if let pasted = ComboPasteboard.paste() {
+                paste(pasted)
+            }
+        }
+        .disabled(!ComboPasteboard.hasCombo)
+        Button("Duplicate") {
+            duplicate(combo)
+        }
+        Divider()
+        Button("Delete", role: .destructive) {
+            model.deleteActionCombo(combo.id)
+            expanded.remove(combo.id)
+        }
+    }
+
+    @ViewBuilder
+    private func bulkMenu(_ ids: [String]) -> some View {
+        let combos = ids.compactMap { try? model.actionCombo($0) }
+        Text("\(combos.count) Combos")
+        colorMenu(combos)
+        iconMenu(combos)
+        Menu("Move to Folder") {
+            let folders = model.comboBoard.orderedFolders
+            ForEach(folders, id: \.id) { folder in
+                Button(folder.name) {
+                    model.updateComboBoard { [folderID = folder.id] board in
+                        for id in ids { board.moveItem(id: id, intoFolder: folderID) }
+                    }
+                }
+            }
+            if !folders.isEmpty { Divider() }
+            Button("New Folder") {
+
+                let folderID = UUID().uuidString
+                model.updateComboBoard { board in
+                    board.addFolder(named: "New Folder", id: folderID)
+                    for id in ids { board.moveItem(id: id, intoFolder: folderID) }
+                }
+            }
+            Button("Out of the Folder") {
+                model.updateComboBoard { board in
+                    for id in ids where board.folder(containing: id) != nil {
+                        board.moveItem(id: id, beforeNode: nil)
+                    }
+                }
+            }
+        }
+        Divider()
+        Button("Delete \(combos.count) Combos", role: .destructive) {
+            ids.forEach(model.deleteActionCombo)
+            selected.subtract(ids)
+            expanded.subtract(ids)
+        }
+    }
+
+    private func click(_ comboID: String, order: [String]) {
+        let modifiers = NSEvent.modifierFlags
+        if !runOnly, modifiers.contains(.command) {
+            if selected.remove(comboID) == nil { selected.insert(comboID) }
+            selectionAnchor = comboID
+        } else if !runOnly, modifiers.contains(.shift) {
+            selected.formUnion(ControlBoard.range(in: order, from: selectionAnchor, through: comboID))
+        } else {
+            selected = []
+            selectionAnchor = comboID
+            withAnimation(.easeOut(duration: 0.12)) {
+                if expanded.remove(comboID) == nil { expanded.insert(comboID) }
+            }
+        }
+    }
+
+    private func menuTargets(_ comboID: String) -> [String] {
+        guard selected.contains(comboID) else { return [comboID] }
+        return model.comboBoard.allItemIDs.filter(selected.contains)
+    }
+
+    private func movedItems(_ comboID: String) -> [String] {
+        menuTargets(comboID)
     }
 
     private func dropEntries(_ payloads: [String], into comboID: String) -> Bool {
@@ -308,7 +385,8 @@ struct ActionCombosModule: View {
     private func comboEditor(_ combo: ActionCombo) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if !runOnly {
-                TextField("Name", text: nameBinding(combo.id))
+
+                CommittedTextField("Name", text: nameBinding(combo.id))
                     .textFieldStyle(.plain)
                     .font(.system(size: 11))
                     .padding(5)
@@ -621,45 +699,6 @@ struct ActionCombosModule: View {
                     }
                 }
             }
-        case .setSignage:
-            QuietMenuChip(title: signageChannelTitle(action.signageId) ?? "Signage\u{2026}") {
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Button(channel.name) {
-                        updateAction(comboID, action.id) { $0.signageId = channel.id }
-                    }
-                }
-            }
-
-            QuietMenuChip(title: (action.playlistId?.isEmpty ?? true)
-                ? "Playlist\u{2026}" : (entryName(action.playlistId) ?? "Playlist\u{2026}")
-            ) {
-                ForEach(model.playlists(in: .media), id: \.id) { playlist in
-                    Button(playlist.name) {
-                        updateAction(comboID, action.id) { $0.playlistId = playlist.id }
-                    }
-                }
-            }
-        case .setScreenSource:
-            QuietMenuChip(title: signageScreenTitle(action.screenId)) {
-                ForEach(signage?.screens ?? [], id: \.id) { screen in
-                    Button(screen.name) {
-                        updateAction(comboID, action.id) { $0.screenId = screen.id.uuidString }
-                    }
-                }
-            }
-            QuietMenuChip(title: (action.signageId?.isEmpty ?? true)
-                ? "Program" : (signageChannelTitle(action.signageId) ?? "Signage\u{2026}")
-            ) {
-                Button("Program") {
-                    updateAction(comboID, action.id) { $0.signageId = nil }
-                }
-                Divider()
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Button("Signage — \(channel.name)") {
-                        updateAction(comboID, action.id) { $0.signageId = channel.id }
-                    }
-                }
-            }
         case .enableAudioInput, .disableAudioInput:
             QuietMenuChip(title: audioInputTitle(action)) {
                 ForEach(AudioInputInventory.shared.entries) { entry in
@@ -713,7 +752,7 @@ struct ActionCombosModule: View {
                     updateAction(comboID, action.id) { $0.audioRepeat = false }
                 }
             }
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .clearAudio, .dismissAlert, .setSignage, .setScreenSource, .clearSignage:
             EmptyView()
         }
     }
@@ -749,16 +788,6 @@ struct ActionCombosModule: View {
         return AudioInputInventory.shared.name(forId: id) ?? "Missing input"
     }
 
-    private func signageChannelTitle(_ id: String?) -> String? {
-        guard let id, !id.isEmpty else { return nil }
-        return signage?.channel(id)?.name ?? "Missing"
-    }
-
-    private func signageScreenTitle(_ id: String?) -> String {
-        guard let id, !id.isEmpty else { return "Screen\u{2026}" }
-        return signage?.screens.first { $0.id.uuidString == id }?.name ?? "Screen\u{2026}"
-    }
-
     private func liveInputTitle(_ action: SlideAction) -> String {
         if let itemId = action.liveInputId, !itemId.isEmpty {
             return VideoInputInventory.shared.entry(id: itemId)?.name ?? "Missing input"
@@ -781,7 +810,9 @@ struct ActionCombosModule: View {
 
     private func hasParameters(_ kind: SlideActionKind) -> Bool {
         switch kind {
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert: false
+        case .clearAll, .clearAudio, .dismissAlert: false
+
+        case .setSignage, .setScreenSource, .clearSignage: false
 
         case .midiOut: true
         default: true
@@ -906,7 +937,7 @@ struct ActionCombosModule: View {
         (.combos, "Bolt"), (.timers, "Timer"), (.alerts, "Bell"),
         (.media, "Media"), (.audio, "Music"), (.screens, "Screen"),
         (.clear, "Clear"), (.midi, "MIDI"), (.broadcast, "Record"),
-        (.overlays, "Overlay"),
+        (.overlays, "Overlay"), (.light, "Light"),
     ]
 
     private func icon(of combo: ActionCombo) -> GlyphKind {
@@ -919,37 +950,45 @@ struct ActionCombosModule: View {
         }
     }
 
-    private func colorMenu(_ combo: ActionCombo) -> some View {
+    private func colorMenu(_ combos: [ActionCombo]) -> some View {
         Menu("Color") {
             Toggle("None", isOn: Binding(
-                get: { combo.colorHex == nil },
-                set: { _ in model.updateActionCombo(combo.id) { $0.colorHex = nil } }
+                get: { combos.allSatisfy { $0.colorHex == nil } },
+                set: { _ in setLook(combos) { $0.colorHex = nil } }
             ))
             Divider()
             ForEach(Self.palette, id: \.hex) { color in
                 Toggle(color.name, isOn: Binding(
-                    get: { combo.colorHex == color.hex },
-                    set: { _ in
-                        model.updateActionCombo(combo.id) { $0.colorHex = color.hex }
-                    }
+                    get: { combos.allSatisfy { $0.colorHex == color.hex } },
+                    set: { _ in setLook(combos) { $0.colorHex = color.hex } }
                 ))
             }
         }
     }
 
-    private func iconMenu(_ combo: ActionCombo) -> some View {
+    private func iconMenu(_ combos: [ActionCombo]) -> some View {
         Menu("Icon") {
             ForEach(Self.icons, id: \.kind) { choice in
-                Toggle(choice.name, isOn: Binding(
-                    get: { icon(of: combo) == choice.kind },
+                Toggle(isOn: Binding(
+                    get: { combos.allSatisfy { icon(of: $0) == choice.kind } },
                     set: { _ in
-                        model.updateActionCombo(combo.id) {
+                        setLook(combos) {
                             $0.iconName = choice.kind == .combos ? nil : choice.kind.rawValue
                         }
                     }
-                ))
+                )) {
+                    Label {
+                        Text(choice.name)
+                    } icon: {
+                        Image(nsImage: choice.kind.menuImage)
+                    }
+                }
             }
         }
+    }
+
+    private func setLook(_ combos: [ActionCombo], _ mutate: @escaping @Sendable (inout ActionCombo) -> Void) {
+        for combo in combos { model.updateActionCombo(combo.id, mutate) }
     }
 
     private func entries(of kind: DocumentKind) -> [LibraryIndex.Entry] {

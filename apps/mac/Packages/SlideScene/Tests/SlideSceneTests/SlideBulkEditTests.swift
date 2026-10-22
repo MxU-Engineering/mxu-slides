@@ -34,6 +34,24 @@ final class SlideBulkEditTests: XCTestCase {
         )
     }
 
+    func testReplaceMediaRepointsThisSlidesBackgroundAndFireMediaOnly() {
+        var doc = presentation([
+            slide("s1", actions: [
+                SlideAction(id: "a1", kind: .fireMedia, mediaId: "m1"),
+                SlideAction(id: "a2", kind: .fireMedia, mediaId: "m9"),
+            ]),
+            slide("s2", actions: [SlideAction(id: "a3", kind: .fireMedia, mediaId: "m1")]),
+        ])
+        doc.slides[0].background = CueMedia(mediaId: "m1")
+        doc.slides[1].background = CueMedia(mediaId: "m1")
+        SlideBulkEdit.replaceMedia("m1", with: "m2", onSlide: "s1", in: &doc)
+
+        XCTAssertEqual(doc.slides[0].background?.mediaId, "m2")
+        XCTAssertEqual(doc.slides[0].actions?.map(\.mediaId), ["m2", "m9"], "only the old media's action moves")
+        XCTAssertEqual(doc.slides[1].background?.mediaId, "m1", "another slide keeps it")
+        XCTAssertEqual(doc.slides[1].actions?.first?.mediaId, "m1")
+    }
+
     func testAddActionLandsFreshIDCopiesAndReturnsPairs() {
         var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
         let template = SlideAction(id: "menu-id", kind: .fireMedia)
@@ -91,6 +109,21 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertNil(doc.slides[0].actions, "nil kind sweeps everything")
     }
 
+    func testReplacingAndRemovingOneAction() {
+        let actions = [
+            SlideAction(id: "a1", kind: .clearAll),
+            SlideAction(id: "a2", kind: .fireMedia),
+        ]
+        let edited = SlideAction(id: "a1", kind: .fireCombo)
+        XCTAssertEqual(
+            SlideBulkEdit.replacing(edited, in: actions)?.map(\.kind), [.fireCombo, .fireMedia],
+            "swapped in place by id")
+        XCTAssertEqual(SlideBulkEdit.removing(actionID: "a1", from: actions)?.map(\.id), ["a2"])
+        XCTAssertNil(
+            SlideBulkEdit.removing(actionID: "a1", from: [actions[0]]),
+            "empty collapses to absent (the schema rule)")
+    }
+
     func testSetAutoAdvanceWritesEveryTarget() {
         var doc = presentation([
             slide("s1", advance: AutoAdvance(delaySeconds: 3)),
@@ -107,6 +140,18 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertNil(doc.slides[0].autoAdvance, "nil clears")
     }
 
+    func testSetTransitionChangesOnlyTargetsAndNilClears() {
+        var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
+        doc.slides[1].transition = Transition(transitionKind: .dissolve, durationSeconds: 0.6)
+        SlideBulkEdit.setTransition({ TransitionEdit.withKind(.cut, from: $0) }, on: ["s1", "s2"], in: &doc)
+        XCTAssertEqual(doc.slides[0].transition, Transition(transitionKind: .cut))
+        XCTAssertEqual(doc.slides[1].transition, Transition(transitionKind: .cut, durationSeconds: 0.6), "duration carries over")
+        XCTAssertNil(doc.slides[2].transition, "untargeted slide untouched")
+
+        SlideBulkEdit.setTransition({ _ in nil }, on: ["s1"], in: &doc)
+        XCTAssertNil(doc.slides[0].transition, "nil = room default")
+    }
+
     func testDuplicateSlidesInsertsFreshCopiesAfterEachSource() {
         var doc = presentation([slide("s1", section: "v1"), slide("s2"), slide("s3")])
         SlideBulkEdit.duplicateSlides(["s1", "s3"], in: &doc)
@@ -121,16 +166,62 @@ final class SlideBulkEditTests: XCTestCase {
         )
     }
 
-    func testDeleteSlidesNeverEmptiesTheDeck() {
+    func testSplitSlideMovesTextAfterTheCaretAndKeepsTheOtherBoxes() {
+        let verse = SlideObject(
+            id: "verse", objectKind: .text, name: "Verse",
+            text: "For God so loved\nthe world that he gave",
+            chords: [ChordPlacement(line: 0, column: 0, symbol: "G"), ChordPlacement(line: 1, column: 4, symbol: "D")],
+            styleRuns: [TextStyleRun(line: 1, column: 4, length: 5, underline: true)]
+        )
+        let reference = SlideObject(id: "ref", objectKind: .text, name: "Reference", text: "John 3:16")
+        var doc = presentation([
+            Slide(
+                id: "s1", name: "Verse", objects: [reference, verse], sectionId: "v1",
+                actions: [SlideAction(id: "a1", kind: .fireMedia, mediaId: "m1")], notes: "read slowly"
+            ),
+            slide("s2"),
+        ])
+
+        let made = SlideBulkEdit.splitSlide("s1", objectID: "verse", at: 16, in: &doc)
+
+        XCTAssertEqual(doc.slides.map(\.id), ["s1", made?.slideID, "s2"], "the new slide lands right after")
+        XCTAssertEqual(doc.slides[0].objects[1].text, "For God so loved")
+        XCTAssertEqual(doc.slides[0].objects[1].chords, [ChordPlacement(line: 0, column: 0, symbol: "G")])
+        XCTAssertNil(doc.slides[0].objects[1].styleRuns, "the moved line's styling leaves with it")
+
+        let new = doc.slides[1]
+        XCTAssertEqual(new.objects.map(\.text), ["John 3:16", "the world that he gave"], "the reference box stays as is")
+        XCTAssertEqual(new.objects[1].id, made?.objectID)
+        XCTAssertEqual(new.objects[1].chords, [ChordPlacement(line: 0, column: 4, symbol: "D")])
+        XCTAssertEqual(new.objects[1].styleRuns, [TextStyleRun(line: 0, column: 4, length: 5, underline: true)])
+        XCTAssertEqual(new.sectionId, "v1", "the new slide stays in the section")
+        XCTAssertEqual(new.actions?.map(\.kind), [.fireMedia], "the slide's actions come along")
+        XCTAssertNotEqual(new.actions?.first?.id, "a1", "with their own ids")
+        XCTAssertNil(new.notes)
+        XCTAssertFalse(new.objects.contains { ["verse", "ref"].contains($0.id) }, "fresh object ids")
+
+        XCTAssertNil(SlideBulkEdit.splitSlide("s1", objectID: "gone", at: 0, in: &doc))
+        XCTAssertEqual(doc.slides.count, 3)
+    }
+
+    func testFreshIDCopyPointsMasksAtTheCopiedMask() {
+        let slide = Slide(id: "s1", name: "s1", objects: [
+            SlideObject(id: "mask", objectKind: .shape, name: "Mask", text: ""),
+            SlideObject(id: "photo", objectKind: .text, name: "Text", text: "Hi", maskObjectId: "mask"),
+        ])
+        let copy = slide.freshIDCopy()
+        XCTAssertEqual(copy.objects[1].maskObjectId, copy.objects[0].id)
+        XCTAssertNotEqual(copy.objects[0].id, "mask")
+    }
+
+    func testDeleteSlidesCanEmptyTheDeck() {
         var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
         XCTAssertTrue(SlideBulkEdit.deleteSlides(["s1", "s3"], in: &doc))
         XCTAssertEqual(doc.slides.map(\.id), ["s2"])
 
-        XCTAssertFalse(
-            SlideBulkEdit.deleteSlides(["s2"], in: &doc),
-            "the last slide stays — an empty presentation has no canvas"
-        )
-        XCTAssertEqual(doc.slides.map(\.id), ["s2"])
+        XCTAssertFalse(SlideBulkEdit.deleteSlides(["gone"], in: &doc), "nothing of the deck: no write")
+        XCTAssertTrue(SlideBulkEdit.deleteSlides(["s2"], in: &doc), "the last slide goes too")
+        XCTAssertEqual(doc.slides, [])
     }
 
     func testBatchIsTheSelectionInSlideOrderOnlyWhenTheRowIsInIt() {
@@ -261,5 +352,13 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertEqual(doc.slides.map(\.id), ["s2", "s3", "s1"], "already there: unchanged")
         SlideBulkEdit.moveSlide("s1", after: "s1", in: &doc)
         XCTAssertEqual(doc.slides.map(\.id), ["s2", "s3", "s1"], "onto itself: unchanged")
+    }
+
+    func testAutoAdvanceRowSaysWhatIsSet() {
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([nil]), "Off")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 5)]), "5 s")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 0, afterPlayback: true)]), "After Video")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 2, afterPlayback: true)]), "After Video + 2 s")
+        XCTAssertEqual(SlideBulkEdit.autoAdvanceValue([AutoAdvance(delaySeconds: 5), nil]), "Mixed")
     }
 }

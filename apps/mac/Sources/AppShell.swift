@@ -130,36 +130,46 @@ struct SidebarSectionHeader<Accessory: View>: View {
 
 struct ModeSwitcher: View {
     @Binding var modeRaw: String
+
+    var layout: PresentLayoutController?
+    @AppStorage(VolunteerModeLogic.enabledKey) private var volunteerEnabled = false
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @State private var hovering = false
 
-    private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .edit }
+    private var volunteerOn: Bool { layout?.runOnly ?? false }
 
     var body: some View {
+        let choices = VolunteerModeLogic.choices(enabled: volunteerEnabled)
+        let selected = VolunteerModeLogic.selected(mode: modeRaw, volunteerOn: volunteerOn)
         Menu {
-            ForEach(AppMode.allCases, id: \.rawValue) { mode in
-                Toggle(mode.title, isOn: Binding(
-                    get: { modeRaw == mode.rawValue },
-                    set: { _ in modeRaw = mode.rawValue }
+            ForEach(choices, id: \.self) { choice in
+
+                if choice == .volunteer, choices.count > 1 { Divider() }
+                Toggle(choice.title, isOn: Binding(
+                    get: { selected == choice },
+                    set: { _ in pick(choice) }
                 ))
             }
         } label: {
             HStack(spacing: 5) {
-                Text(mode.title)
+                Text(selected.title)
                     .font(.subheadline.weight(.medium))
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 11)
-            .padding(.vertical, 4)
+            .frame(height: HeaderMetrics.controlHeight)
             .contentShape(RoundedRectangle.standard(CornerStandard.element))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+
         .background(
-            hovering ? Color.primary.opacity(0.06) : .clear,
+            Color.primary.opacity(hovering ? 0.12 : 0.08),
             in: RoundedRectangle.standard(CornerStandard.element)
         )
         .overlay(
@@ -169,51 +179,19 @@ struct ModeSwitcher: View {
         .onHover { hovering = $0 }
         .help("Switch between Present and Edit")
     }
-}
 
-struct EditContextSwitcher: View {
-    @Bindable var model: AppModel
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(EditContext.allCases, id: \.rawValue) { context in
-                segment(context)
-            }
+    private func pick(_ choice: VolunteerModeLogic.Choice) {
+        switch VolunteerModeLogic.picking(choice, volunteerOn: volunteerOn) {
+        case .nothing:
+            break
+        case .switchMode(let mode):
+            modeRaw = mode
+        case .enterVolunteer:
+            layout?.enterRunOnly()
+        case .leaveVolunteer(let mode):
+            layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
+            modeRaw = mode
         }
-        .padding(2)
-        .background(
-            Color.primary.opacity(0.03),
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
-        .help("Edit context — one editor, re-targeted (⌘3 ⌘4 ⌘5)")
-    }
-
-    private func segment(_ context: EditContext) -> some View {
-        let selected = EditContext(section: model.selectedSection) == context
-        return Button {
-            context.apply(to: model)
-        } label: {
-            Text(context.title)
-                .font(.caption.weight(selected ? .medium : .regular))
-                .foregroundStyle(selected ? .primary : .secondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-
-                .background(
-                    selected ? Color.primary.opacity(0.08) : .clear,
-                    in: RoundedRectangle.standard(
-                        CornerStandard.nested(inset: 2, within: CornerStandard.element)
-                    )
-                )
-                .contentShape(RoundedRectangle.standard(
-                    CornerStandard.nested(inset: 2, within: CornerStandard.element)
-                ))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -234,10 +212,8 @@ struct ViewCommands: Commands {
 
             Button("Edit") { modeRaw = AppMode.edit.rawValue }
                 .keyboardShortcut(command: .modeEdit)
-                .disabled(runOnly)
             Button("Scheduler") { modeRaw = AppMode.scheduler.rawValue }
                 .keyboardShortcut(command: .modeScheduler)
-                .disabled(runOnly)
             Divider()
 
             ForEach(Array(EditContext.allCases.enumerated()), id: \.element.rawValue) { index, context in
@@ -246,7 +222,7 @@ struct ViewCommands: Commands {
                     if let model { context.apply(to: model) }
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 4)")), modifiers: .command)
-                .disabled(model == nil || runOnly)
+                .disabled(model == nil)
             }
             Divider()
             Button(sidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
@@ -279,7 +255,6 @@ struct ShellView: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.confidenceMonitor) private var confidenceMonitor
 
-    @State private var pinFlow: PinFlow?
 
     private var workspaceImportAction: MenuAction? {
         if let render, let controls {
@@ -311,36 +286,11 @@ struct ShellView: View {
         NewSlideRouter.shared.request()
     }
 
-    private var runOnlyLockChip: some View {
-        Button {
-            pinFlow = .verify
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 9))
-                Text("Run-Only")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 4)
-            .contentShape(RoundedRectangle.standard(CornerStandard.element))
-        }
-        .buttonStyle(.plain)
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
-        .help("Run-only mode — enter the passcode to exit")
-    }
-
-
     @AppStorage("appMode") private var modeRaw = AppMode.edit.rawValue
     @AppStorage("present.continuous") private var continuousPresent = true
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
@@ -371,6 +321,8 @@ struct ShellView: View {
     @AppStorage("shell.rightRailWidth") private var rightRailWidth = 280.0
 
     @AppStorage(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
+
+    @AppStorage("editor.inspectorWidth") private var editorPanelWidth = PanelWidthGrip.minPanelWidth
 
     @State private var shellWidth: CGFloat = 1480
 
@@ -405,7 +357,30 @@ struct ShellView: View {
         (mode == .present || mode == .scheduler) && !rightRailHidden
     }
 
+    private var rightPanelWidth: CGFloat? {
+        if railVisible {
+            draftRightRailWidth ?? rightRailWidth
+        } else if editorTakesOver {
+            max(editorPanelWidth, PanelWidthGrip.minPanelWidth)
+        } else {
+            nil
+        }
+    }
+
     static let headerHeight: CGFloat = 52
+
+    private func editorBackButton(_ back: AppMode) -> some View {
+        Button {
+            modeRaw = back.rawValue
+        } label: {
+            Label(back.title, systemImage: "chevron.left")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Back to \(back.title)")
+    }
 
     static func trafficLightSlot(fullScreen: Bool) -> CGFloat {
         fullScreen ? 10 : 94
@@ -422,7 +397,8 @@ struct ShellView: View {
                 sidebar
                     .frame(width: draftSidebarWidth ?? sidebarWidth)
                     .overlay(alignment: .trailing) { widthGrip }
-                    .transition(.move(edge: .leading))
+
+                    .transition(.move(edge: .leading).animation(.easeOut(duration: 0.15)))
             }
             mainRegion
 
@@ -444,31 +420,21 @@ struct ShellView: View {
                         ? (draftSidebarWidth ?? sidebarWidth) + CornerStandard.panelInset
                         : 0
                 )
-                .padding(
-                    .trailing,
-                    railVisible
-                        ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset
-                        : 0
-                )
+                .padding(.trailing, rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)
         }
         .overlay(alignment: .top) {
 
-            HStack(spacing: 8) {
-                if isRunOnly {
-                    runOnlyLockChip
-                } else {
-                    ModeSwitcher(modeRaw: $modeRaw)
-                    if mode == .edit {
-                        EditContextSwitcher(model: model)
-                    }
-                }
-            }
-            .frame(height: Self.headerHeight)
+            ModeSwitcher(modeRaw: $modeRaw, layout: layout)
+                .frame(height: Self.headerHeight)
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
                 Color.clear.frame(width: Self.trafficLightSlot(fullScreen: isFullScreen))
                 sidebarToggle
+
+                if mode == .edit, !sidebarVisible, let back = model.editorReturnMode {
+                    editorBackButton(back)
+                }
 
                 if mode == .present, !sidebarVisible {
                     if let name = currentServiceName {
@@ -496,6 +462,14 @@ struct ShellView: View {
             }
         }
 
+        .overlay(alignment: .topLeading) {
+            if mode == .edit, sidebarVisible, let back = model.editorReturnMode {
+                editorBackButton(back)
+                    .frame(height: Self.headerHeight)
+                    .padding(.leading, (draftSidebarWidth ?? sidebarWidth) + 16)
+            }
+        }
+
         .overlay(alignment: .topTrailing) {
             if let controls {
 
@@ -511,24 +485,14 @@ struct ShellView: View {
                     ClearChip(controls: controls)
                         .padding(.leading, 8)
                     Spacer()
-                        .frame(
-                            width: railVisible
-                                ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset + 16
-                                : 16
-                        )
+                        .frame(width: rightPanelWidth.map { $0 + CornerStandard.panelInset + 16 } ?? 16)
                 }
                 .frame(height: Self.headerHeight)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: sidebarVisible)
         .coordinateSpace(name: Self.shellSpace)
 
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: ShellWidthKey.self, value: geo.size.width)
-            }
-        )
-        .onPreferenceChange(ShellWidthKey.self) { shellWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { shellWidth = $0 }
         .background(BasePlane())
         .background(WindowChromeConfigurator(isFullScreen: $isFullScreen))
         .ignoresSafeArea(.container, edges: .top)
@@ -542,23 +506,8 @@ struct ShellView: View {
         .focusedSceneValue(\.presentNewSlide, mode == .present ? Self.presentNewSlideAction : nil)
 
         .environment(\.runOnly, isRunOnly)
-        .sheet(item: $pinFlow) { flow in
-            PasscodeSheet(
-                flow: flow,
-                verify: { layout?.verifyPIN($0) ?? false },
-                waitSeconds: { layout?.pinWaitSeconds() ?? 0 }
-            ) { pin in
-                switch flow {
-                case .set:
-                    layout?.setPIN(pin)
-                    layout?.enterRunOnly()
-                case .change:
-                    layout?.setPIN(pin)
-                case .verify:
-                    layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
-                }
-            }
-        }
+
+        .modifier(VolunteerMenuRequests(layout: layout))
 
         .task {
             await model.resident.ready([.service, .serviceLinkRules, .media, .audio, .playlist])
@@ -613,14 +562,39 @@ struct ShellView: View {
         .onChange(of: model.currentServiceID) { _, _ in presentFocusScroll.reset() }
         .onChange(of: continuousPresent) { _, _ in presentFocusScroll.reset() }
         .onChange(of: modeRaw) { oldRaw, _ in
-            presentFocusScroll.reset()
 
-            if isRunOnly && mode != .present {
-                modeRaw = AppMode.present.rawValue
+            let defaults = UserDefaults.standard
+            let beforeEdit = defaults.object(forKey: EditSidebarLogic.rememberedKey) as? Bool
+            let sidebar = EditSidebarLogic.switching(
+                from: oldRaw, to: modeRaw, visible: sidebarVisible,
+                hideOnEdit: defaults.bool(forKey: EditSidebarLogic.settingKey), remembered: beforeEdit)
+            if sidebar.visible != sidebarVisible { sidebarVisible = sidebar.visible }
+            if sidebar.remembered != beforeEdit {
+                if let remembered = sidebar.remembered {
+                    defaults.set(remembered, forKey: EditSidebarLogic.rememberedKey)
+                } else {
+                    defaults.removeObject(forKey: EditSidebarLogic.rememberedKey)
+                }
+            }
+
+            if oldRaw == AppMode.present.rawValue {
+                presentFocusScroll.leave()
             } else {
+                presentFocusScroll.reset()
+            }
+
+            do {
+                if layout?.runOnly == true && mode != .present {
+                    layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
+                }
+
                 if oldRaw == AppMode.present.rawValue {
                     model.stashPresentSelection()
                 }
+
+                model.editorReturnMode = mode == .edit && model.editorJumpPending
+                    ? AppMode(rawValue: oldRaw) : nil
+                model.editorJumpPending = false
 
                 model.protectEditorSelection = mode == .edit
 
@@ -1211,10 +1185,19 @@ struct ShellView: View {
                     closeServicePickerThen { editingServiceDateID = entry.id }
                 }
                 Button("Duplicate") { model.duplicate(entry) }
+
+                Menu("Set All Transitions") {
+                    SongTransitionMenuItems(current: nil) {
+                        model.setServiceItemTransition(entry.id, itemIDs: nil, transition: $0)
+                        controls?.timeline.refreshTransition()
+                    }
+                }
                 Button("New Version…") {
                     versionNameText = ""
                     closeServicePickerThen { versionNaming = ServiceVersionTarget(serviceID: entry.id, versionID: nil) }
                 }
+                Button("Select All") { selectAllServices() }
+
                 Divider()
                 Button("Delete…", role: .destructive) {
                     closeServicePickerThen { pendingServiceDelete = ids }
@@ -1227,12 +1210,12 @@ struct ShellView: View {
                         }
                     }
                 }
+                Button("Select All") { selectAllServices() }
+                Divider()
                 Button("Delete \(ids.count) Services…", role: .destructive) {
                     closeServicePickerThen { pendingServiceDelete = ids }
                 }
             }
-            Divider()
-            Button("Select All") { selectAllServices() }
         }
     }
 
@@ -1439,7 +1422,7 @@ struct ShellView: View {
     private var centerWidth: CGFloat {
         shellWidth
             - (sidebarVisible ? (draftSidebarWidth ?? sidebarWidth) : 0)
-            - (railVisible ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset : 0)
+            - (rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)
     }
 
     private var showTransitionSliders: Bool { centerWidth > 950 }
@@ -1470,11 +1453,12 @@ struct ShellView: View {
 
             Glyph(kind: .viewOptions, size: 17)
                 .foregroundStyle(.secondary)
-                .padding(6)
+                .frame(width: HeaderMetrics.controlHeight + 2, height: HeaderMetrics.controlHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .headerItemBackground()
         .help("Present view preferences — thumbnails only, never output")
         .popover(isPresented: $presentViewOpen, arrowEdge: .bottom) {
             presentViewPopover
@@ -1493,7 +1477,6 @@ struct ShellView: View {
             Toggle("Continuous Service View", isOn: $continuousPresent)
             presentViewHeading("Thumbnails")
             Toggle("Rounded Corners", isOn: $roundedCorners)
-            Toggle("Readable Text", isOn: $legibleText)
             Toggle("Backgrounds Only on Declaring Slide", isOn: $hideScopedBackgrounds)
             Toggle("Transparency Grid", isOn: $transparencyGrid)
             Divider()
@@ -1547,6 +1530,7 @@ struct ShellView: View {
                         serviceID: serviceID, focusItemID: serviceItemID,
                         focusScroll: $presentFocusScroll
                     )
+                    .equatable()
                 } else {
                     ServiceItemDetailView(
                         model: model, render: render, controls: controls,
@@ -1726,13 +1710,6 @@ struct BasePlane: View {
     var body: some View {
         Color.basePlane
             .ignoresSafeArea()
-    }
-}
-
-private struct ShellWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
     }
 }
 

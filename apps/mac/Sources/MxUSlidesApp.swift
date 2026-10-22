@@ -89,10 +89,6 @@ struct MxUSlidesApp: App {
 
     @State private var keyIn: KeyInController?
 
-    @State private var signage: SignageController?
-
-    @State private var mediaPlaylists: MediaPlaylistController?
-
     @State private var serviceTracking: ServiceTimingController?
 
     init() {
@@ -131,23 +127,18 @@ struct MxUSlidesApp: App {
         _appModel = State(initialValue: model)
         if let render {
             let controls = ServiceControls(appModel: model, render: render)
+            #if DEBUG || MXU_PERF_HOOKS
+            PerfHooks.controls = controls
+            #endif
             let presets = OutputPresetsController(
                 appModel: model, outputs: render.outputs, controls: controls
             )
             let confidence = ConfidenceMonitorController(
                 appModel: model, render: render, controls: controls
             )
-
-            let signageController = SignageController(appModel: model, render: render)
-
-            controls.signage = signageController
-            let mediaPlaylistController = MediaPlaylistController(
-                appModel: model, controls: controls
-            )
-            _mediaPlaylists = State(initialValue: mediaPlaylistController)
             let router = ActionRouter(
                 model: model, controls: controls, presets: presets,
-                confidenceMonitor: confidence, signage: signageController
+                confidenceMonitor: confidence
             )
             controls.actionRouter = router
             _actionRouter = State(initialValue: router)
@@ -156,7 +147,6 @@ struct MxUSlidesApp: App {
                 model: model, controls: controls, router: router
             )
             _scheduler = State(initialValue: schedulerController)
-            _signage = State(initialValue: signageController)
             _controls = State(initialValue: controls)
             _outputPresets = State(initialValue: presets)
             let api = LocalAPIController(
@@ -208,8 +198,6 @@ struct MxUSlidesApp: App {
                 .environment(\.actionRouter, actionRouter)
                 .environment(\.scheduler, scheduler)
                 .environment(\.confidenceMonitor, confidenceMonitor)
-                .environment(\.signage, signage)
-                .environment(\.mediaPlaylists, mediaPlaylists)
 
                 .overlay(alignment: .bottom) {
                     GoToSlideHUD(keyIn: keyIn).padding(.bottom, 48)
@@ -262,9 +250,11 @@ struct MxUSlidesApp: App {
             } else {
                 AppSettingsView(
                     model: appModel, controls: controls, layout: presentLayout,
-                    api: localAPI)
+                    api: localAPI, outputPresets: outputPresets)
             }
         }
+
+        .windowResizability(.contentMinSize)
 
         WindowGroup(id: "module", for: ServiceControlsModule.self) { $module in
             if let appModel, let module {
@@ -273,8 +263,6 @@ struct MxUSlidesApp: App {
                     controls: controls, presets: outputPresets, layout: presentLayout
                 )
                 .environment(\.confidenceMonitor, confidenceMonitor)
-                .environment(\.signage, signage)
-                .environment(\.mediaPlaylists, mediaPlaylists)
             }
         }
         .defaultSize(width: 360, height: 460)
@@ -286,8 +274,6 @@ struct MxUSlidesApp: App {
                     presets: outputPresets, layout: presentLayout
                 )
                 .environment(\.confidenceMonitor, confidenceMonitor)
-                .environment(\.signage, signage)
-                .environment(\.mediaPlaylists, mediaPlaylists)
                 .environment(\.actionRouter, actionRouter)
                 .environment(\.scheduler, scheduler)
             }
@@ -311,7 +297,6 @@ struct MxUSlidesApp: App {
             } else {
                 OutputsWindow(render: renderContext, presets: outputPresets)
                     .background(NonRestorableWindow())
-                    .environment(\.signage, signage)
             }
         }
         .defaultSize(width: 780, height: 540)

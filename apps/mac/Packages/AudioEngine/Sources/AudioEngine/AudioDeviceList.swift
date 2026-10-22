@@ -62,6 +62,20 @@ public enum AudioDeviceList {
         public let uid: String
         public let name: String
         public let channelCount: Int
+
+        public init(id: AudioDeviceID, uid: String, name: String, channelCount: Int) {
+            self.id = id
+            self.uid = uid
+            self.name = name
+            self.channelCount = channelCount
+        }
+    }
+
+    private static let externalLock = NSLock()
+    nonisolated(unsafe) private static var externalInputs: [AudioInputDevice] = []
+
+    public static func setExternalInputDevices(_ devices: [AudioInputDevice]) {
+        externalLock.withLock { externalInputs = devices }
     }
 
     public static func inputDevices() -> [AudioInputDevice] {
@@ -73,14 +87,14 @@ public enum AudioDeviceList {
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(
             AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size
-        ) == noErr, size > 0 else { return [] }
+        ) == noErr, size > 0 else { return externalLock.withLock { externalInputs } }
         var ids = [AudioDeviceID](
             repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size
         )
         guard AudioObjectGetPropertyData(
             AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids
-        ) == noErr else { return [] }
-        return ids.compactMap { id in
+        ) == noErr else { return externalLock.withLock { externalInputs } }
+        let coreAudio = ids.compactMap { id -> AudioInputDevice? in
             guard hasStreams(id, scope: kAudioObjectPropertyScopeInput),
                   let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
                   let name = stringProperty(id, kAudioObjectPropertyName)
@@ -90,6 +104,7 @@ public enum AudioDeviceList {
                 channelCount: channelCount(id, scope: kAudioObjectPropertyScopeInput)
             )
         }
+        return coreAudio + externalLock.withLock { externalInputs }
     }
 
     public static func inputDevice(uid: String) -> AudioInputDevice? {

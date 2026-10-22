@@ -133,7 +133,7 @@ import Testing
     @Test func searchesAreTasks() throws {
         for (file, call) in [
             ("LibraryView.swift", "searchHits = await model.search(searchText)"),
-            ("ServicePlannerView.swift", "searchHits = await model.search(searchText)"),
+            ("ServiceItemChooser.swift", "queryHits = await model.search(query)"),
             ("SlideEditorView.swift", "queryHits = await appModel.search(query)"),
         ] {
             let text = try source(file)

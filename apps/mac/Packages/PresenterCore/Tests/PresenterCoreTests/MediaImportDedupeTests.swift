@@ -36,3 +36,12 @@ private func audio(_ id: String, name: String, hash: String) -> AudioItem {
     dedupe.note(id: "new1", hash: "h9", name: "Flyer", kind: .media)
     #expect(dedupe.match(hash: "h9", name: "Flyer copy", kind: .media) == .sameFile(id: "new1"))
 }
+
+@Test func keepBothNumbersTheNewItemLikeFinder() {
+    var dedupe = MediaImportDedupe(media: [media("m1", name: "Background", hash: "h1")], audio: [])
+    #expect(dedupe.availableName("Background", kind: .media) == "Background 2")
+    dedupe.note(id: "m2", hash: "h2", name: "Background 2", kind: .media)
+    #expect(dedupe.availableName("Background", kind: .media) == "Background 3")
+    #expect(dedupe.availableName("Background 2", kind: .media) == "Background 3", "a numbered name counts on")
+    #expect(dedupe.availableName("Background", kind: .audio) == "Background 2", "each kind numbers on its own")
+}

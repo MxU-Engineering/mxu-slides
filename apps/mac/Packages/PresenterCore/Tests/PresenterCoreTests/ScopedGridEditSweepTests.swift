@@ -59,7 +59,7 @@ import Testing
         var matched = Set<String>()
         var violations: [String] = []
         var scoped = 0
-        for fileName in ["PresentGridView.swift", "ChordEditorSheet.swift"] {
+        for fileName in ["PresentGridView.swift", "PresentationSettingsButton.swift"] {
             let lines = try lines(of: fileName)
             for (index, line) in lines.enumerated() {
                 if line.contains("updatePresentation(") {
@@ -125,5 +125,24 @@ import Testing
             }
         }
         #expect(sliders >= 2)
+    }
+
+    @Test func comboAndTriggerFieldsCommitOnAPause() throws {
+        for (file, writes) in [
+            ("Modules/ActionCombosModule.swift", ["nameBinding(", "updateActionCombo"]),
+            ("SchedulerView.swift", ["updateScheduleTrigger("]),
+        ] {
+            let lines = try lines(of: file)
+            var committed = 0
+            for (index, line) in lines.enumerated() {
+                for token in [" TextField(", "CommittedTextField("] where line.contains(token) {
+                    let call = arguments(of: token.trimmingCharacters(in: .whitespaces), at: index, in: lines)
+                    guard writes.contains(where: call.contains) else { continue }
+                    #expect(token == "CommittedTextField(", "\(file):\(index + 1) writes the document per keystroke")
+                    committed += 1
+                }
+            }
+            #expect(committed >= 1, "\(file) lost its name field")
+        }
     }
 }

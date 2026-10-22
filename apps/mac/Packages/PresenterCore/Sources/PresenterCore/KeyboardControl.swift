@@ -114,7 +114,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     case clearOverlays
     case clearAudio
     case clearAlerts
-    case clearSignage
+    case clearInputs
     case videoPlayPause
     case videoGoToBeginning
     case newPresentation
@@ -129,6 +129,8 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     case modePresent
     case modeEdit
     case modeScheduler
+
+    case modeVolunteer
     case toggleSidebar
     case toggleRightPanels
     case openKeyboardSettings
@@ -146,7 +148,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .clearOverlays: [KeyChord("f4")]
         case .clearAudio: [KeyChord("f5")]
         case .clearAlerts: [KeyChord("f6")]
-        case .clearSignage: [KeyChord("f7")]
+        case .clearInputs: []
         case .videoPlayPause: []
         case .videoGoToBeginning: []
         case .newPresentation: [KeyChord("n", command: true)]
@@ -161,6 +163,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .modePresent: [KeyChord("1", command: true)]
         case .modeEdit: [KeyChord("2", command: true)]
         case .modeScheduler: [KeyChord("3", command: true)]
+        case .modeVolunteer: []
         case .toggleSidebar: [KeyChord("s", command: true, control: true)]
         case .toggleRightPanels: [KeyChord("r", command: true, control: true)]
         case .openKeyboardSettings: [KeyChord("k", option: true)]
@@ -173,7 +176,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .nextServiceItem, .previousServiceItem:
             .showControl
         case .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
-             .clearAlerts, .clearSignage:
+             .clearAlerts, .clearInputs:
             .clears
         case .videoPlayPause, .videoGoToBeginning:
             .video
@@ -182,7 +185,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
             .createLibrary
         case .boldSelection, .italicSelection, .underlineSelection:
             .editor
-        case .modePresent, .modeEdit, .modeScheduler, .toggleSidebar,
+        case .modePresent, .modeEdit, .modeScheduler, .modeVolunteer, .toggleSidebar,
              .toggleRightPanels, .openKeyboardSettings:
             .application
         }
@@ -194,12 +197,12 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .nextServiceItem, .previousServiceItem, .videoPlayPause,
              .videoGoToBeginning,
              .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
-             .clearAlerts, .clearSignage:
+             .clearAlerts, .clearInputs:
             .present
         case .boldSelection, .italicSelection, .underlineSelection:
             .editor
         case .newPresentation, .newSlide, .newService, .newOverlay, .newTheme,
-             .findInLibrary, .modePresent, .modeEdit, .modeScheduler,
+             .findInLibrary, .modePresent, .modeEdit, .modeScheduler, .modeVolunteer,
              .toggleSidebar, .toggleRightPanels, .openKeyboardSettings:
             .anywhere
         }
@@ -210,9 +213,9 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .nextSlide, .previousSlide, .goToSlide,
              .nextServiceItem, .previousServiceItem,
              .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
-             .clearAlerts, .clearSignage,
+             .clearAlerts, .clearInputs,
              .videoPlayPause, .videoGoToBeginning,
-             .modePresent, .toggleSidebar, .toggleRightPanels,
+             .modePresent, .modeVolunteer, .toggleSidebar, .toggleRightPanels,
              .openKeyboardSettings:
             true
         case .newPresentation, .newSlide, .newService, .newOverlay, .newTheme,
@@ -243,7 +246,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .clearOverlays: "Clear Overlays"
         case .clearAudio: "Clear Music"
         case .clearAlerts: "Clear Alerts"
-        case .clearSignage: "Clear Signage"
+        case .clearInputs: "Clear Inputs"
         case .videoPlayPause: "Play/Pause Video"
         case .videoGoToBeginning: "Video to Beginning"
         case .newPresentation: "New Presentation"
@@ -258,6 +261,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .modePresent: "Go to Present"
         case .modeEdit: "Go to Edit"
         case .modeScheduler: "Go to Scheduler"
+        case .modeVolunteer: "Go to Volunteer Mode"
         case .toggleSidebar: "Toggle Sidebar"
         case .toggleRightPanels: "Toggle Right Panels"
         case .openKeyboardSettings: "Open Keyboard Settings"

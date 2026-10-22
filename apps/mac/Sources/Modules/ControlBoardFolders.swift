@@ -8,6 +8,8 @@ struct ControlBoardFolderBlock<MemberRows: View>: View {
 
     let isItemID: (String) -> Bool
 
+    var movedItems: (String) -> [String] = { [$0] }
+
     let updateBoard: (@escaping @Sendable (inout ControlBoard) -> Void) -> Void
 
     let memberNoun: String
@@ -62,7 +64,10 @@ struct ControlBoardFolderBlock<MemberRows: View>: View {
                 return true
             }
             if isItemID(payload) {
-                updateBoard { [into = folder.id] in $0.moveItem(id: payload, intoFolder: into) }
+                let ids = movedItems(payload)
+                updateBoard { [into = folder.id] board in
+                    for id in ids { board.moveItem(id: id, intoFolder: into) }
+                }
                 return true
             }
             return false
@@ -204,6 +209,7 @@ private struct ControlFolderInlineEditor: View {
 struct ControlBoardEndDropStrip: View {
     let folderPrefix: String
     let isItemID: (String) -> Bool
+    var movedItems: (String) -> [String] = { [$0] }
     let updateBoard: (@escaping @Sendable (inout ControlBoard) -> Void) -> Void
 
     @Environment(\.runOnly) private var runOnly
@@ -221,7 +227,10 @@ struct ControlBoardEndDropStrip: View {
                     return true
                 }
                 if isItemID(payload) {
-                    updateBoard { $0.moveItem(id: payload, beforeNode: nil) }
+                    let ids = movedItems(payload)
+                    updateBoard { board in
+                        for id in ids { board.moveItem(id: id, beforeNode: nil) }
+                    }
                     return true
                 }
                 return false

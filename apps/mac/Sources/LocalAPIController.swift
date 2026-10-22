@@ -265,6 +265,7 @@ final class LocalAPIController {
         observe(.outputs) { bridge in try? Self.encode(bridge.outputsStatus()) }
         observe(.library) { bridge in try? Self.encode(bridge.librarySummary()) }
         observe(.scheduler) { bridge in try? Self.encode(bridge.schedulerStatus()) }
+        observe(.timecode) { bridge in try? Self.encode(bridge.timecodeStatus()) }
     }
 
     private static func encode(_ value: some Encodable) throws -> Data {

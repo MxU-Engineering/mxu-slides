@@ -160,7 +160,16 @@ final class EditorInteractionNSView: NSView {
 
             overlay.insertText(attributed.string, replacementRange: selection)
             model.applyPastedFormatting(attributed, atUTF16: selection.location)
+            if let clip = overlay.pastedChordClip(), clip.text == attributed.string {
+                model.applyPastedChords(clip, atUTF16: selection.location)
+            }
             return true
+        }
+        overlay.chordClip = { [weak self] range in
+            self?.model.canvasTextChordClip(utf16Range: range)
+        }
+        overlay.onPasteChords = { [weak self] clip, location in
+            self?.model.applyPastedChords(clip, atUTF16: location)
         }
         overlay.isRichText = false
         overlay.drawsBackground = false
@@ -189,7 +198,8 @@ final class EditorInteractionNSView: NSView {
         addSubview(overlay)
         window?.makeFirstResponder(overlay)
 
-        overlay.setSelectedRange(NSRange(location: (object.text as NSString).length, length: 0))
+        let length = (object.text as NSString).length
+        overlay.setSelectedRange(NSRange(location: min(model.canvasTextEditStartCaret ?? length, length), length: 0))
 
         textOverlay = overlay
         overlayObjectID = object.id
@@ -1278,8 +1288,29 @@ extension EditorInteractionNSView: NSTextViewDelegate {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
             endCanvasEditing()
             return true
+        } else if commandSelector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)) {
+
+            return model.splitSlideAtCanvasCaret(textView.selectedRange().location)
+        } else {
+            return false
         }
-        return false
+    }
+
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        if model.canSplitSlideAtCanvasCaret {
+            let item = NSMenuItem(title: "Split Slide Here", action: #selector(splitSlideFromMenu(_:)), keyEquivalent: "\r")
+            item.keyEquivalentModifierMask = .option
+            item.target = self
+            menu.insertItem(.separator(), at: 0)
+            menu.insertItem(item, at: 0)
+        }
+        return menu
+    }
+
+    @objc private func splitSlideFromMenu(_ sender: Any?) {
+        if let overlay = textOverlay {
+            model.splitSlideAtCanvasCaret(overlay.selectedRange().location)
+        }
     }
 }
 
@@ -1609,6 +1640,52 @@ final class OverlayTextView: NSTextView {
 
     var onPasteWithFormatting: ((NSAttributedString) -> Bool)?
 
+    var chordClip: ((NSRange) -> ChordClipboard.Payload?)?
+    var onPasteChords: ((ChordClipboard.Payload, Int) -> Void)?
+    static let chordsType = NSPasteboard.PasteboardType(ChordClipboard.type)
+
+    override func copy(_ sender: Any?) {
+        let clip = chordClip?(selectedRange())
+        super.copy(sender)
+        writeChordClip(clip)
+    }
+
+    override func cut(_ sender: Any?) {
+
+        let clip = chordClip?(selectedRange())
+        super.cut(sender)
+        writeChordClip(clip)
+    }
+
+    override func paste(_ sender: Any?) {
+        if let clip = pastedChordClip() {
+            let selection = selectedRange()
+
+            insertText(clip.text, replacementRange: selection)
+            onPasteChords?(clip, selection.location)
+        } else {
+            super.paste(sender)
+        }
+    }
+
+    private func writeChordClip(_ clip: ChordClipboard.Payload?) {
+        if let clip, let data = try? JSONEncoder().encode(clip) {
+            NSPasteboard.general.addTypes([Self.chordsType], owner: nil)
+            NSPasteboard.general.setData(data, forType: Self.chordsType)
+        }
+    }
+
+    func pastedChordClip() -> ChordClipboard.Payload? {
+        let board = NSPasteboard.general
+        if let data = board.data(forType: Self.chordsType),
+           let clip = try? JSONDecoder().decode(ChordClipboard.Payload.self, from: data),
+           clip.text == board.string(forType: .string) {
+            return clip
+        } else {
+            return nil
+        }
+    }
+
     var perspective: EditorGeometry.Homography? {
         didSet {
             if perspective != oldValue {
@@ -1665,7 +1742,23 @@ final class OverlayTextView: NSTextView {
     }
     override func mouseDragged(with event: NSEvent) { super.mouseDragged(with: remapped(event)) }
     override func mouseUp(with event: NSEvent) { super.mouseUp(with: remapped(event)) }
-    override func rightMouseDown(with event: NSEvent) { super.rightMouseDown(with: remapped(event)) }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let event = remapped(event)
+        if let editLayout {
+            let hit = caretIndex(at: event, in: editLayout)
+            var target = selectedRange()
+            if target.length == 0 || hit < target.location || hit > NSMaxRange(target) {
+                target = NSRange(location: hit, length: 0)
+            }
+            if let menu = menu(for: event) {
+                setSelectedRange(target)
+                NSMenu.popUpContextMenu(menu, with: event, for: self)
+            }
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
     override func mouseMoved(with event: NSEvent) { super.mouseMoved(with: remapped(event)) }
 
     var editLayout: TextEditLayout? {

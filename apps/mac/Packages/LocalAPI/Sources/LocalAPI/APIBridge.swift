@@ -13,6 +13,7 @@ public protocol LocalAPIBridge: AnyObject, Sendable {
     func transportRows() -> [APITransportRow]
     func outputsStatus() -> APIOutputsStatus
     func schedulerStatus() -> APISchedulerStatus
+    func timecodeStatus() -> APITimecodeStatus
 
     func fireSlide(_ command: APIFireSlideCommand) async throws
 

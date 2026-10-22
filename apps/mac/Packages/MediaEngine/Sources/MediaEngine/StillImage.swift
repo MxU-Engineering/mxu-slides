@@ -10,6 +10,8 @@ struct StillImage {
     let size: CGSize
     let surface: MediaSurface
 
+    let generation: UInt64
+
     static func load(url: URL, device: MTLDevice) throws -> StillImage {
         guard
             let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -63,7 +65,8 @@ struct StillImage {
         return StillImage(
             url: url,
             size: CGSize(width: width, height: height),
-            surface: .bgra(texture: texture, transform: transform, retained: [])
+            surface: .bgra(texture: texture, transform: transform, retained: []),
+            generation: LiveFrameSlot.nextGeneration()
         )
     }
 }

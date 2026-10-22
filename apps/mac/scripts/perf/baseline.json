@@ -1,11 +1,12 @@
 {
- "note": "Reference run and limits for scripts/perf/run.sh. metrics: perf guardrails package 4 on this M3 Pro (2026-09-25, Release, 302-deck sandbox library); a run over any threshold fails. drag/resize passes: package 4 removed the ~110 ms library-list pass after each save, so any perf.pass line (100 ms or more) after a later drag or a resize fails.",
+ "note": "Reference run and limits for scripts/perf/run.sh. metrics: perf guardrails package 4 on this M3 Pro (2026-09-25, Release, 302-deck sandbox library); playback.mainBusy and timeline.mainBusy from a later run where the playhead draws with Core Animation layers (PlayheadLayerView: no display-list walk per 30 Hz tick, so playback fell from 18.2); a run over any threshold fails. drag/resize passes: package 4 removed the ~110 ms library-list pass after each save, so any perf.pass line (100 ms or more) after a later drag or a resize fails.",
  "machine": "Apple M3 Pro",
- "commit": "perf guardrails 4",
+ "commit": "perf guardrails 4; playhead layers for playback and timeline",
  "metrics": {
   "animateIdle.mainBusy": 0.9,
-  "playback.mainBusy": 18.2,
+  "playback.mainBusy": 3.4,
   "playback.timelineBodiesPerSecond": 0.0,
+  "timeline.mainBusy": 6.2,
   "render.renderBusy": 4.7,
   "drag.firstLongestPass": 0,
   "drag.laterLongestPass": 0,
@@ -17,8 +18,9 @@
  },
  "thresholds": {
   "animateIdle.mainBusy": 5,
-  "playback.mainBusy": 25,
+  "playback.mainBusy": 10,
   "playback.timelineBodiesPerSecond": 5,
+  "timeline.mainBusy": 10,
   "render.renderBusy": 12,
   "drag.firstLongestPass": 600,
   "drag.laterLongestPass": 99,

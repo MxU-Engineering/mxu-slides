@@ -15,6 +15,25 @@ public enum SlideSceneBuilder {
         return CGSize(width: width, height: height)
     }
 
+    public static let canvasPresets: [(label: String, width: Int, height: Int)] = [
+        ("1080p (1920×1080)", 1920, 1080),
+        ("4K UHD (3840×2160)", 3840, 2160),
+        ("720p (1280×720)", 1280, 720),
+        ("4:3 (1024×768)", 1024, 768),
+        ("4:3 (1440×1080)", 1440, 1080),
+        ("16:10 (1920×1200)", 1920, 1200),
+        ("Vertical (1080×1920)", 1080, 1920),
+        ("Square (1080×1080)", 1080, 1080),
+    ]
+
+    public static func storedCanvas(width: Int, height: Int) -> (width: Int?, height: Int?) {
+        if width == Int(canvasSize.width), height == Int(canvasSize.height) {
+            (nil, nil)
+        } else {
+            (width, height)
+        }
+    }
+
     public static func defaultFrame(
         for kind: SlideObjectKind, in canvas: CGSize = canvasSize
     ) -> CGRect {
@@ -33,30 +52,55 @@ public enum SlideSceneBuilder {
 
     public static func arrangedSlides(
         for presentation: Presentation,
-        arrangementId: String? = nil
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
     ) -> [Slide] {
         let id = arrangementId
         guard let id, !id.isEmpty,
               let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
               !arrangement.sectionIds.isEmpty
         else { return presentation.slides }
-        return arrangement.sectionIds.flatMap { sectionId in
-            presentation.slides.filter { $0.sectionId == sectionId }
+        return playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce)
+            .flatMap { $0 }
+    }
+
+    public static let emptyRepeatsOnceKey = "present.emptyRepeatsOnce"
+
+    public static var emptyRepeatsOnce: Bool {
+        UserDefaults.standard.bool(forKey: emptyRepeatsOnceKey)
+    }
+
+    public static func playedBlocks(
+        sectionIds: [String], in presentation: Presentation, emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
+    ) -> [[Slide]] {
+        var previous: String?
+        return sectionIds.map { sectionId in
+            let slides = presentation.slides.filter { $0.sectionId == sectionId }
+            let repeatsEmpty = emptyRepeatsOnce && sectionId == previous && slides.allSatisfy(showsNothing)
+            previous = sectionId
+            return repeatsEmpty ? [] : slides
         }
+    }
+
+    static func showsNothing(_ slide: Slide) -> Bool {
+        slide.background == nil && slide.backgroundFill == nil
+            && (slide.actions ?? []).isEmpty && slide.autoAdvance == nil
+            && slide.objects.allSatisfy { $0.objectKind == .text && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     public static func arrangementBlockStarts(
         for presentation: Presentation,
-        arrangementId: String? = nil
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
     ) -> [Int] {
         if let id = arrangementId, !id.isEmpty,
            let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
            !arrangement.sectionIds.isEmpty {
             var starts: [Int] = []
             var index = 0
-            for sectionId in arrangement.sectionIds {
+            for block in playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce) {
                 starts.append(index)
-                index += presentation.slides.count { $0.sectionId == sectionId }
+                index += block.count
             }
             return starts
         }
@@ -71,6 +115,35 @@ public enum SlideSceneBuilder {
             lastID = slide.sectionId
         }
         return starts
+    }
+
+    public static func timelineBlocks(
+        for presentation: Presentation,
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
+    ) -> [TimelinePlayedBlock] {
+        if let id = arrangementId, !id.isEmpty,
+           let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
+           !arrangement.sectionIds.isEmpty {
+            let blocks = playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce)
+            return zip(arrangement.sectionIds, blocks).map {
+                TimelinePlayedBlock(sectionId: $0, slideIds: $1.map(\.id))
+            }
+        }
+        var blocks: [TimelinePlayedBlock] = []
+        for slide in presentation.slides {
+            if let last = blocks.indices.last, blocks[last].sectionId == slide.sectionId {
+                blocks[last].slideIds.append(slide.id)
+            } else {
+                blocks.append(TimelinePlayedBlock(sectionId: slide.sectionId, slideIds: [slide.id]))
+            }
+        }
+        return blocks
+    }
+
+    public static func showsArrangements(for presentation: Presentation) -> Bool {
+        !arrangementBlockStarts(for: presentation).isEmpty
+            || presentation.arrangements?.isEmpty == false
     }
 
     public static func autoAdvanceTarget(
@@ -189,6 +262,33 @@ public enum SlideSceneBuilder {
                 }
             }
         }
+        return scene
+    }
+
+    public static func withoutLayerMedia(_ scene: RenderScene, keep: (String) -> Bool) -> RenderScene {
+        var scene = scene
+        for layer in scene.layers.indices where scene.layers[layer].kind != .slide {
+            scene.layers[layer].items.removeAll { item in
+                if case .media(let id, _, _) = item.content {
+                    !keep(id)
+                } else {
+                    false
+                }
+            }
+        }
+        return scene
+    }
+
+    public static func posterLookScene(
+        mediaID: String, stillID: String, canvas: CGSize, effects: [SceneEffect]
+    ) -> RenderScene {
+        var scene = RenderScene(canvasSize: canvas, background: .clear)
+        scene.addItem(RenderItem(
+            id: "look::\(mediaID)",
+            frame: CGRect(origin: .zero, size: canvas),
+            content: .media(id: stillID, scaleMode: .fill, sourceRect: nil),
+            effects: effects
+        ), to: .loopingVideos)
         return scene
     }
 

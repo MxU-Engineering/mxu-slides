@@ -164,7 +164,7 @@ private struct DestinationsList: View {
             Section {
                 let rows = customRows
                 if rows.isEmpty {
-                    Text("RTMP, RTMPS, SRT, or HLS endpoints — Resi, a campus decoder, a CDN.")
+                    Text("Any RTMP, RTMPS, SRT or HLS endpoint: BoxCast, Restream, Castr, a CDN.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(rows) { row in destinationRow(row) }
@@ -225,6 +225,8 @@ private struct DestinationDetail: View {
     @State private var confirmDelete = false
     @State private var confirmHDR = false
 
+    @State private var advancedOpen = false
+
     var body: some View {
         if let destination = model.resolvedStreamDestination(id) {
             Form {
@@ -233,7 +235,7 @@ private struct DestinationDetail: View {
                     Picker("Transport", selection: binding(\.transport)) {
                         ForEach(StreamTransport.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
                     }
-                    TextField("Server URL", text: binding(\.url), prompt: Text("rtmps://host/app"))
+                    TextField("Server URL", text: binding(\.url), prompt: Text("Paste from your provider"))
                     if destination.transport != .srt {
                         SecureField("Stream key", text: binding(\.streamKey, default: "", nilFor: ""))
                     }
@@ -241,49 +243,65 @@ private struct DestinationDetail: View {
                     Text("Destination")
                 }
 
-                Section("Advanced") {
-                    if destination.transport == .hls {
-                        Picker("Codec", selection: Binding(
-                            get: { destination.videoCodec == .hevc ? "hevc" : "h264" },
-                            set: { v in update { $0.videoCodec = v == "hevc" ? .hevc : .h264; if v != "hevc" { $0.hdr = nil } } })
-                        ) {
-                            Text("HEVC").tag("hevc")
-                            Text("H.264").tag("h264")
-                        }
-                        Toggle("HDR (HLG)", isOn: Binding(
-                            get: { destination.hdr == true },
-                            set: { on in if on { confirmHDR = true } else { update { $0.hdr = nil } } }))
-                            .disabled(destination.videoCodec != .hevc)
-                    }
+                Section {
 
-                    Picker("Max resolution", selection: Binding(
-                        get: { destination.maxHeight ?? 0 },
-                        set: { v in update { $0.maxHeight = v == 0 ? nil : v } })
-                    ) {
-                        Text("Full canvas").tag(0)
-                        Text("2160p").tag(2160)
-                        Text("1440p").tag(1440)
-                        Text("1080p").tag(1080)
-                        Text("720p").tag(720)
-                    }
-                    Picker("Canvas", selection: Binding(
-                        get: { destination.canvasScreenId ?? "" },
-                        set: { v in update { $0.canvasScreenId = v.isEmpty ? nil : v } })
-                    ) {
-                        Text("Inherit preset").tag("")
-                        ForEach(PreviewTargets.screens(controls.render), id: \.id) { screen in
-                            Text(screen.name).tag(screen.id)
+                    Button {
+                        advancedOpen.toggle()
+                    } label: {
+                        HStack {
+                            Text("Advanced")
+                            Spacer()
+                            Image(systemName: advancedOpen ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.tertiary)
                         }
+                        .contentShape(Rectangle())
                     }
-                    Picker("Quality", selection: Binding(
-                        get: { qualityTag(destination) },
-                        set: { v in update { apply(qualityTag: v, to: &$0) } })
-                    ) {
-                        Text("Inherit preset").tag("")
-                        ForEach(StreamQualityRung.rungs) { rung in
-                            Text(rung.label).tag(rung.id)
+                    .buttonStyle(.plain)
+                    if advancedOpen {
+                        if destination.transport == .hls {
+                            Picker("Codec", selection: Binding(
+                                get: { destination.videoCodec == .hevc ? "hevc" : "h264" },
+                                set: { v in update { $0.videoCodec = v == "hevc" ? .hevc : .h264; if v != "hevc" { $0.hdr = nil } } })
+                            ) {
+                                Text("HEVC").tag("hevc")
+                                Text("H.264").tag("h264")
+                            }
+                            Toggle("HDR (HLG)", isOn: Binding(
+                                get: { destination.hdr == true },
+                                set: { on in if on { confirmHDR = true } else { update { $0.hdr = nil } } }))
+                                .disabled(destination.videoCodec != .hevc)
                         }
-                        Text("Vertical 1080\u{D7}1920 \u{B7} 30 fps").tag("1080x1920@30")
+
+                        Picker("Max resolution", selection: Binding(
+                            get: { destination.maxHeight ?? 0 },
+                            set: { v in update { $0.maxHeight = v == 0 ? nil : v } })
+                        ) {
+                            Text("Full canvas").tag(0)
+                            Text("2160p").tag(2160)
+                            Text("1440p").tag(1440)
+                            Text("1080p").tag(1080)
+                            Text("720p").tag(720)
+                        }
+                        Picker("Canvas", selection: Binding(
+                            get: { destination.canvasScreenId ?? "" },
+                            set: { v in update { $0.canvasScreenId = v.isEmpty ? nil : v } })
+                        ) {
+                            Text("Inherit preset").tag("")
+                            ForEach(PreviewTargets.screens(controls.render), id: \.id) { screen in
+                                Text(screen.name).tag(screen.id)
+                            }
+                        }
+                        Picker("Quality", selection: Binding(
+                            get: { qualityTag(destination) },
+                            set: { v in update { apply(qualityTag: v, to: &$0) } })
+                        ) {
+                            Text("Inherit preset").tag("")
+                            ForEach(StreamQualityRung.rungs) { rung in
+                                Text(rung.label).tag(rung.id)
+                            }
+                            Text("Vertical 1080\u{D7}1920 \u{B7} 30 fps").tag("1080x1920@30")
+                        }
                     }
                 }
 
@@ -373,16 +391,21 @@ private struct AddCustomDestinationSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+
+            Text("Add Custom Destination")
+                .font(.headline)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
             Form {
                 Picker("Transport", selection: $transport) {
                     ForEach(StreamTransport.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
                 }
-                TextField("Server URL", text: $url, prompt: Text("rtmps://host/app"))
+                TextField("Server URL", text: $url, prompt: Text("Paste from your provider"))
                 if transport != .srt {
                     SecureField("Stream key", text: $key)
                 }
-                TextField("Name", text: $name, prompt: Text("Resi, North Campus Decoder\u{2026}"))
+                TextField("Name", text: $name, prompt: Text("e.g. BoxCast"))
             }
             .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -401,7 +424,7 @@ private struct AddCustomDestinationSheet: View {
             }
             .padding(16)
         }
-        .frame(width: 440, height: 260)
+        .frame(width: 440, height: 290)
     }
 }
 
@@ -410,6 +433,8 @@ private struct PresetsList: View {
     let open: (String) -> Void
 
     @State private var renamingFolderID: String?
+
+    @State private var deletingPresetID: String?
     @State private var folderName = ""
 
     var body: some View {
@@ -434,7 +459,8 @@ private struct PresetsList: View {
             } header: {
                 Text("Presets")
             } footer: {
-                Text("A preset says which destinations, what streams, and what records. Capture from Preset in the header chip goes live on one; the Scheduler fires them.")
+                Text("A preset says where it streams and what it records.")
+                    .help("Capture from Preset in the header chip goes live on one; the Scheduler fires them.")
             }
             ForEach(board.orderedFolders, id: \.id) { folder in
                 Section {
@@ -476,6 +502,15 @@ private struct PresetsList: View {
             }
             Button("Cancel", role: .cancel) { renamingFolderID = nil }
         }
+        .alert("Delete \u{201C}\(deletingPresetID.flatMap { try? model.streamPreset($0) }?.name ?? "")\u{201D}?", isPresented: Binding(
+            get: { deletingPresetID != nil }, set: { if !$0 { deletingPresetID = nil } })
+        ) {
+            Button("Delete", role: .destructive) {
+                if let id = deletingPresetID { model.deleteStreamPreset(id) }
+                deletingPresetID = nil
+            }
+            Button("Cancel", role: .cancel) { deletingPresetID = nil }
+        }
     }
 
     @ViewBuilder
@@ -495,30 +530,27 @@ private struct PresetsList: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: 8)
-                    Menu {
-                        Menu("Move to") {
-                            Button("Top level") { model.updateStreamBoard { $0.moveItem(id: id, beforeNode: nil) } }
-                                .disabled(folderID == nil)
-                            ForEach(board.orderedFolders, id: \.id) { folder in
-                                Button(folder.name) { model.updateStreamBoard { $0.moveItem(id: id, intoFolder: folder.id) } }
-                                    .disabled(folder.id == folderID)
-                            }
-                        }
-                        Button("Duplicate") {
-                            if let entry = model.entry(id) { model.duplicate(entry) }
-                        }
-                        Divider()
-                        Button("Delete Preset", role: .destructive) { model.deleteStreamPreset(id) }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").foregroundStyle(.secondary)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
                     Chevron()
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            .contextMenu {
+                Menu("Move to") {
+                    Button("Top level") { model.updateStreamBoard { $0.moveItem(id: id, beforeNode: nil) } }
+                        .disabled(folderID == nil)
+                    ForEach(board.orderedFolders, id: \.id) { folder in
+                        Button(folder.name) { model.updateStreamBoard { $0.moveItem(id: id, intoFolder: folder.id) } }
+                            .disabled(folder.id == folderID)
+                    }
+                }
+                Button("Duplicate") {
+                    if let entry = model.entry(id) { model.duplicate(entry) }
+                }
+                Divider()
+                Button("Delete Preset\u{2026}", role: .destructive) { deletingPresetID = id }
+            }
         }
     }
 
@@ -720,7 +752,8 @@ private struct PresetDetail: View {
                     } header: {
                         Text("Recording")
                     } footer: {
-                        Text("Recordings land in the media library; a copy can also go to a watched folder like Dropbox.")
+                        Text("Recordings land in the media library.")
+                            .help("A copy can also go to a watched folder like Dropbox.")
                     }
                 }
 

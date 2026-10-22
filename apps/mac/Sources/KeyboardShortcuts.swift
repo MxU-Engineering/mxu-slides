@@ -278,7 +278,7 @@ final class KeyInController {
         if id.hasPrefix("streamRecord/") {
             SettingsRouter.shared.openStreamRecord(
                 tab: id.hasSuffix("presets") ? .presets : .destinations)
-        } else if let category = SettingsCategory(rawValue: id) {
+        } else if let category = SettingsCategory(rawValue: SettingsLayout.pageID(forStored: id)) {
             SettingsRouter.shared.pending = category
         } else {
             return DiagnosticsStore.shared.note("key.in.skipped", detail: "settings \(id)")

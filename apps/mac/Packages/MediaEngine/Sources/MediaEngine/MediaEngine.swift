@@ -72,6 +72,8 @@ public final class MediaEngine: @unchecked Sendable {
     private struct LiveSource {
         let latestFrame: @Sendable () -> CVPixelBuffer?
         let onStop: @Sendable () -> Void
+        let cadence: (@Sendable () -> LiveCadence?)?
+        let stillGeneration: (@Sendable () -> UInt64?)?
     }
     private let liveSources = Locked<[String: LiveSource]>([:])
 
@@ -339,11 +341,15 @@ extension MediaEngine {
     public func registerLiveSource(
         id: String,
         latestFrame: @escaping @Sendable () -> CVPixelBuffer?,
-        onStop: @escaping @Sendable () -> Void
+        onStop: @escaping @Sendable () -> Void,
+        cadence: (@Sendable () -> LiveCadence?)? = nil,
+        stillGeneration: (@Sendable () -> UInt64?)? = nil
     ) {
         let previous = liveSources.withLock { table -> LiveSource? in
             let existing = table[id]
-            table[id] = LiveSource(latestFrame: latestFrame, onStop: onStop)
+            table[id] = LiveSource(
+                latestFrame: latestFrame, onStop: onStop, cadence: cadence,
+                stillGeneration: stillGeneration)
             return existing
         }
         previous?.onStop()
@@ -381,6 +387,16 @@ extension MediaEngine: MediaTextureSource {
     }
 
     public func liveCadence(for mediaID: String) -> LiveCadence? {
-        captures.value[mediaID]?.cadence
+        captures.value[mediaID]?.cadence ?? liveSources.value[mediaID]?.cadence?()
+    }
+
+    public func stillGeneration(for mediaID: String) -> UInt64? {
+        guard captures.value[mediaID] == nil else { return nil }
+        if let live = liveSources.value[mediaID] {
+            guard inputDelay.delay(id: mediaID) == 0 else { return nil }
+            return live.stillGeneration?()
+        }
+        guard players.value[mediaID] == nil else { return nil }
+        return stills.value[mediaID]?.generation ?? 0
     }
 }

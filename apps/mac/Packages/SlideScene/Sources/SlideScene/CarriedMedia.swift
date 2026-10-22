@@ -55,6 +55,12 @@ extension SlideSceneBuilder {
         return result
     }
 
+    public static func declaredOnly(_ carried: [LayerKind: String], slide: Slide) -> [LayerKind: String] {
+        var declared = Set((slide.actions ?? []).filter { $0.kind == .fireMedia }.compactMap(\.mediaId))
+        if let own = slide.background?.mediaId, !own.isEmpty { declared.insert(own) }
+        return carried.filter { declared.contains($0.value) }
+    }
+
     private static func simulateFire(
         of slide: Slide,
         background: CueMedia?,

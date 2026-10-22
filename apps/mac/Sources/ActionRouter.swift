@@ -16,19 +16,15 @@ final class ActionRouter {
 
     init(
         model: AppModel, controls: ServiceControls, presets: OutputPresetsController,
-        confidenceMonitor: ConfidenceMonitorController? = nil,
-        signage: SignageController? = nil
+        confidenceMonitor: ConfidenceMonitorController? = nil
     ) {
         self.model = model
         self.controls = controls
         self.presets = presets
         self.confidenceMonitor = confidenceMonitor
-        self.signage = signage
     }
 
     private let confidenceMonitor: ConfidenceMonitorController?
-
-    private let signage: SignageController?
 
     var timerChoices: [(id: String, name: String)] {
         controls.timers.timers.map { ($0.id, $0.name) }
@@ -49,6 +45,7 @@ final class ActionRouter {
         guard let actions = slide.actions, !actions.isEmpty else { return }
         let protected = SlideSceneBuilder.protectedLayers(for: slide, mediaLayer: mediaLayer)
         let effective = SlideSceneBuilder.fireActions(for: slide, protected: protected)
+        DiagnosticsStore.shared.note("actions.fire", detail: "\(slide.name) \(effective.count) step(s)")
         if effective.count < actions.count {
             DiagnosticsStore.shared.note(
                 "actions.clear.skippedOwnLayer", detail: slide.name)
@@ -73,6 +70,7 @@ final class ActionRouter {
     func mediaDidFire(_ item: MediaItem, on layer: LayerKind) {
         guard let actions = item.actions, !actions.isEmpty else { return }
         let effective = SlideSceneBuilder.fireActions(forMedia: item, on: layer)
+        DiagnosticsStore.shared.note("actions.fire", detail: "\(item.name) \(effective.count) step(s)")
         if effective.count < actions.count {
             DiagnosticsStore.shared.note(
                 "actions.clear.skippedOwnLayer", detail: item.name)
@@ -306,10 +304,25 @@ final class ActionRouter {
         performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
     }
 
+    private func label(_ action: SlideAction) -> String {
+        var parts = [action.kind.rawValue]
+        if let layer = action.layer { parts.append(layer) }
+        if let id = action.comboId ?? action.presetId ?? action.confidenceLayoutId ?? action.overlayId
+            ?? action.alertId ?? action.mediaId ?? action.presentationId ?? action.audioItemId
+            ?? action.playlistId ?? action.timerId, !id.isEmpty {
+            parts.append(model.indexEntry(id)?.name ?? id)
+        }
+        if action.kind == .midiOut {
+            parts.append("ch\(action.midiChannel ?? 1) #\(action.midiNumber ?? 0)")
+        }
+        return parts.joined(separator: " ")
+    }
+
     private func performNow(
         _ action: SlideAction, depth: Int, visited: Set<String>,
         skippingPresetSwitches: Bool, protected: Set<LayerKind>
     ) {
+        DiagnosticsStore.shared.note("actions.step", detail: label(action))
         switch action.kind {
         case .clearLayer:
             guard let layer = action.layer.flatMap(LayerKind.init(rawValue:)) else {
@@ -331,8 +344,6 @@ final class ActionRouter {
             controls.clearAll(protecting: protected, cancelsPendingActions: false)
         case .clearAudio:
             controls.clear(function: .audio)
-        case .clearSignage:
-            controls.clear(function: .signage)
         case .switchOutputPreset:
 
             guard !skippingPresetSwitches else { return }
@@ -499,20 +510,9 @@ final class ActionRouter {
             } else {
                 controls.mixer.disableInput(id: inputID)
             }
-        case .setSignage:
-            guard let signage else { return miss(action, "signage") }
-            guard let channelID = action.signageId, !channelID.isEmpty else {
-                return miss(action, "signageId")
-            }
+        case .setSignage, .setScreenSource, .clearSignage:
 
-            signage.assign(playlistID: action.playlistId, toSignage: channelID)
-        case .setScreenSource:
-            guard let signage else { return miss(action, "signage") }
-            guard let raw = action.screenId, let screenID = UUID(uuidString: raw) else {
-                return miss(action, "screenId")
-            }
-
-            signage.setSource(action.signageId, forScreen: screenID)
+            DiagnosticsStore.shared.note("actions.retired", detail: action.kind.rawValue)
         case .fireAudio:
 
             guard let itemID = action.audioItemId, !itemID.isEmpty,

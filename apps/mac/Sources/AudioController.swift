@@ -7,6 +7,18 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 
+struct TimelineMusicClip {
+    var id: String
+    var item: AudioItem
+    var start: TimeInterval
+    var end: TimeInterval?
+    var from: TimeInterval
+    var envelope: ClipEnvelope
+    var overlap: Bool
+
+    var due: UInt64? = nil
+}
+
 @MainActor
 @Observable
 final class AudioPlayer {
@@ -70,10 +82,10 @@ final class AudioPlayer {
     }
 
     func configureRouting(
-        device: AudioOutputDevice?, channelOffset: Int, key: String, delayMs: Int = 0
+        device: AudioOutputDevice?, channelOffset: Int, key: String, delayMs: Int = 0, mono: Bool = false
     ) {
         targetKey = key
-        try? engine.setOutputDevice(device, channelOffset: channelOffset)
+        try? engine.setOutputDevice(device, channelOffset: channelOffset, mono: mono)
         engine.outputDelayMilliseconds = Double(delayMs)
     }
 
@@ -105,6 +117,7 @@ final class AudioPlayer {
     }
 
     func play(audioItem: AudioItem, repeatOverride: Bool? = nil) {
+        clipID = nil
         queue = nil
         playlistID = nil
         singleItemID = audioItem.id
@@ -116,11 +129,40 @@ final class AudioPlayer {
         startPolling()
     }
 
-    func stop() {
-        engine.stop(fade: transportFade())
+    private(set) var clipID: String?
+
+    func play(clip: TimelineMusicClip) {
+        guard let url = blobs?.url(forHash: clip.item.fileHash) else { return }
+        queue = nil
+        playlistID = nil
+        singleItemID = clip.item.id
+        clipID = clip.id
+        repeatOverride = false
+        crossfadeSeconds = 0
+        crossfadeArmedEntryID = nil
+        currentEntryID = nil
+        let fadeIn = clip.overlap || clip.envelope.fadeIn != nil || clip.from > 0.05 ? 0 : transportFade()
+        do {
+            try engine.play(
+                url: url, fadeIn: fadeIn, trimStart: clip.start, trimEnd: clip.end, from: clip.start + clip.from,
+                shape: AudioClipShape(envelope: clip.envelope, start: clip.start, end: clip.end ?? .infinity),
+                overlap: clip.overlap, due: clip.due)
+            currentTrimStart = clip.start
+            currentTrackName = clip.item.name
+            isPlaying = true
+            refreshPosition()
+        } catch {
+            isPlaying = false
+        }
+        startPolling()
+    }
+
+    func stop(fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
+        engine.stop(fade: fade ?? transportFade(), curve: curve)
         defer { onTransportChanged?() }
         queue = nil
         repeatOverride = nil
+        clipID = nil
         currentEntryID = nil
         currentTrackName = nil
         isPlaying = false
@@ -541,7 +583,28 @@ final class AudioController {
         return replaced
     }
 
+    func play(clip: TimelineMusicClip) -> [CueAudio] {
+        let routing = defaultRouting()
+        if let existing = players.first(where: { $0.targetKey == routing.key }), existing.singleItemID != nil {
+            existing.play(clip: clip)
+            onTransportChanged?()
+            return []
+        }
+        let replaced = claimTarget(routing.key)
+        let player = makePlayer(routing: routing)
+        applyLevels(to: player)
+        player.play(clip: clip)
+        players.append(player)
+        onPlayersChanged?()
+        onTransportChanged?()
+        return replaced
+    }
+
+    @ObservationIgnored private var fading: [AudioPlayer] = []
+
     func stop() {
+        for player in fading { player.stop() }
+        fading = []
         for player in players { player.stop() }
         players = []
         onPlayersChanged?()
@@ -552,13 +615,22 @@ final class AudioController {
         stopPlayer { $0.playlistID == playlistID }
     }
 
-    func stop(audioItemID: String) -> CueAudio? {
-        stopPlayer { $0.singleItemID == audioItemID }
+    func stop(audioItemID: String, fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) -> CueAudio? {
+        stopPlayer(fade: fade, curve: curve) { $0.singleItemID == audioItemID }
     }
 
-    private func stopPlayer(where match: (AudioPlayer) -> Bool) -> CueAudio? {
+    private func stopPlayer(
+        fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear, where match: (AudioPlayer) -> Bool
+    ) -> CueAudio? {
         guard let player = players.first(where: match) else { return nil }
-        player.stop()
+        player.stop(fade: fade, curve: curve)
+
+        if let fade, fade > 0 {
+            fading.append(player)
+            DispatchQueue.main.asyncAfter(deadline: .now() + fade + 0.2) { [weak self] in
+                self?.fading.removeAll { $0 === player }
+            }
+        }
         players.removeAll { $0 === player }
         onPlayersChanged?()
         onTransportChanged?()
@@ -712,6 +784,8 @@ final class AudioController {
         let key: String
 
         let delayMs: Int
+
+        var mono = false
     }
 
     private func routing(forMix mixID: String) -> Routing {
@@ -722,6 +796,9 @@ final class AudioController {
         }
         let device = output?.deviceUID.flatMap { uid in
             outputDevices.first { $0.uid == uid }
+        }
+        if let mono = output?.monoChannel, mono >= 0, mono < max(2, device?.channelCount ?? 2) {
+            return Routing(device: device, channelOffset: mono, key: mix.id, delayMs: output?.delayMs ?? 0, mono: true)
         }
         let offset = output?.channelOffset ?? 0
         let clamped = (offset >= 0 && offset + 1 < max(2, device?.channelCount ?? 2))
@@ -754,7 +831,7 @@ final class AudioController {
         )
         player.configureRouting(
             device: routing.device, channelOffset: routing.channelOffset, key: routing.key,
-            delayMs: routing.delayMs
+            delayMs: routing.delayMs, mono: routing.mono
         )
         applyLevels(to: player)
         player.onTransportChanged = { [weak self] in self?.onTransportChanged?() }
@@ -767,7 +844,7 @@ final class AudioController {
                 ?? defaultRouting()
             player.configureRouting(
                 device: routing.device, channelOffset: routing.channelOffset, key: routing.key,
-                delayMs: routing.delayMs
+                delayMs: routing.delayMs, mono: routing.mono
             )
         }
         applyDefaultRoutingToMedia()

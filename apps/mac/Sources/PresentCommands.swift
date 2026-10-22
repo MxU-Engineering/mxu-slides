@@ -6,8 +6,17 @@ import SwiftUI
 struct PresentCommands: Commands {
     @FocusedValue(\.serviceControls) private var controls
 
+    @AppStorage(VolunteerModeLogic.enabledKey) private var volunteerEnabled = false
+    @AppStorage(PresentLayoutController.lockedKey) private var locked = false
+
     var body: some Commands {
         CommandMenu("Present") {
+            if volunteerEnabled {
+                Button("Volunteer Mode") { VolunteerModeRouter.shared.request() }
+                    .keyboardShortcut(command: .modeVolunteer)
+                    .disabled(locked)
+                Divider()
+            }
             Button("Clear Slides") { controls?.clear(function: .slides) }
                 .keyboardShortcut(command: .clearSlides)
             Button("Clear Media") { controls?.clear(function: .media) }
@@ -18,8 +27,8 @@ struct PresentCommands: Commands {
                 .keyboardShortcut(command: .clearAudio)
             Button("Clear Alerts") { controls?.clear(function: .alerts) }
                 .keyboardShortcut(command: .clearAlerts)
-            Button("Clear Signage") { controls?.clear(function: .signage) }
-                .keyboardShortcut(command: .clearSignage)
+            Button("Clear Inputs") { controls?.clear(function: .inputs) }
+                .keyboardShortcut(command: .clearInputs)
             Divider()
             Menu("Clear Layer") {
 

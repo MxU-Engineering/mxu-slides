@@ -81,6 +81,7 @@ final class RecordingController {
         width: Int,
         height: Int,
         frameRate: Int,
+        bitrateKbps: Int? = nil,
         folder: URL? = nil,
         audioMixId: String? = nil,
         audioInputId: String? = nil,
@@ -102,6 +103,7 @@ final class RecordingController {
             .appendingPathComponent("\(targetName) \(stamp).mov")
         let configuration = RecordingConfiguration(
             codec: codec, width: width, height: height, frameRate: frameRate,
+            averageBitrate: bitrateKbps.map { $0 * 1000 },
             includesAudio: true)
         let recorder = try Recorder(url: url, configuration: configuration)
 

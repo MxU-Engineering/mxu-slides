@@ -88,7 +88,7 @@ import Testing
         let app = try source("AppModel.swift")
         for signature in [
             "func createEntity(in section: LibrarySection) -> String? {",
-            "func createPresentation(named name: String) -> String? {",
+            "func createPresentation(named name: String, themeId: String = \"\") -> String? {",
             "func createConfidenceLayout(from template: ConfidenceLayoutTemplate) -> String? {",
             "func createMultiView(",
             "func importLyrics(",
@@ -106,4 +106,23 @@ import Testing
         #expect(try body(of: "func duplicate(_ entry: LibraryIndex.Entry) {", in: app, length: 700).contains("createBeside(value, original: id)"))
     }
 
+    @Test func switchingLibrariesOpensTheTopLevel() {
+        var location = LibraryHome.Location(section: "overlays")
+        location.set(["Lower Thirds"], on: "overlays")
+        #expect(location.path(on: "overlays") == ["Lower Thirds"])
+        #expect(location.path(on: "media") == [], "another tab's folder never shows")
+
+        location.switched(to: "media")
+        #expect(location.path(on: "media") == [])
+        location.switched(to: "overlays")
+        #expect(location.path(on: "overlays") == [], "back to a tab = its top level")
+
+        location.set(nil, on: "overlays")
+        location.switched(to: "overlays")
+        #expect(location.path(on: "overlays") == nil, "the same tab keeps the All list")
+
+        location.set(["Sermon Art"], on: "media")
+        location.switched(to: "media")
+        #expect(location.path(on: "media") == ["Sermon Art"], "a reveal that landed first keeps its folder")
+    }
 }

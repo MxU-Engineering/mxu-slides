@@ -22,10 +22,12 @@ final class AudioMixInventory {
         var legacyDeviceUID: String?
         var legacyChannelOffset: Int?
 
+        var folderId: String?
+
         var isMain: Bool { id == AudioMixInventory.mainID }
 
         enum CodingKeys: String, CodingKey {
-            case id, name, outputIds
+            case id, name, outputIds, folderId
             case legacyDeviceUID = "deviceUID"
             case legacyChannelOffset = "channelOffset"
         }
@@ -43,6 +45,7 @@ final class AudioMixInventory {
             outputIds = try container.decodeIfPresent([String].self, forKey: .outputIds) ?? []
             legacyDeviceUID = try container.decodeIfPresent(String.self, forKey: .legacyDeviceUID)
             legacyChannelOffset = try container.decodeIfPresent(Int.self, forKey: .legacyChannelOffset)
+            folderId = try container.decodeIfPresent(String.self, forKey: .folderId)
         }
 
         func encode(to encoder: Encoder) throws {
@@ -50,8 +53,17 @@ final class AudioMixInventory {
             try container.encode(id, forKey: .id)
             try container.encode(name, forKey: .name)
             try container.encode(outputIds, forKey: .outputIds)
+            try container.encodeIfPresent(folderId, forKey: .folderId)
         }
     }
+
+    struct Folder: Codable, Identifiable, Equatable {
+        var id: String
+        var name: String
+    }
+
+    private(set) var folders: [Folder] = []
+    private static let foldersKey = "audio.mixFolders"
 
     private(set) var entries: [Entry] = []
     private static let defaultsKey = "audio.mixes"
@@ -59,6 +71,10 @@ final class AudioMixInventory {
     var onEntriesChanged: (() -> Void)?
 
     private init() {
+        if let data = UserDefaults.standard.data(forKey: Self.foldersKey),
+           let stored = try? JSONDecoder().decode([Folder].self, from: data) {
+            folders = stored
+        }
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let stored = try? JSONDecoder().decode([Entry].self, from: data),
            stored.contains(where: \.isMain) {
@@ -169,6 +185,42 @@ final class AudioMixInventory {
 
     nonisolated static func isVirtual(_ outputIds: [String]) -> Bool {
         outputIds.first == noOutputID
+    }
+
+    @discardableResult
+    func folder(named name: String) -> Folder {
+        if let found = folders.first(where: { $0.name == name }) { return found }
+        let made = Folder(id: UUID().uuidString, name: name)
+        folders.append(made)
+        persistFolders()
+        return made
+    }
+
+    func renameFolder(id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = folders.firstIndex(where: { $0.id == id }) else { return }
+        folders[index].name = trimmed
+        persistFolders()
+    }
+
+    func removeFolder(id: String) {
+        folders.removeAll { $0.id == id }
+        for index in entries.indices where entries[index].folderId == id { entries[index].folderId = nil }
+        persistFolders()
+        persist()
+    }
+
+    func move(_ mixId: String, toFolder folderId: String?) {
+        guard let index = entries.firstIndex(where: { $0.id == mixId }),
+              entries[index].folderId != folderId else { return }
+        entries[index].folderId = folderId.flatMap { id in folders.contains { $0.id == id } ? id : nil }
+        persist()
+    }
+
+    private func persistFolders() {
+        if let data = try? JSONEncoder().encode(folders) {
+            UserDefaults.standard.set(data, forKey: Self.foldersKey)
+        }
     }
 
     func remove(_ entry: Entry) {

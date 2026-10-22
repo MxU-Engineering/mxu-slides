@@ -550,7 +550,7 @@ private final class ActorPark: Sendable {
         let rig = Rig(StubDecks([]))
         #expect(ResidentLibrary.kinds == rig.library.all.map(\.kind))
         #expect(ResidentLibrary.setupKinds == [
-            .streamRecordPreset, .streamDestination, .schedulerBoard, .controlBoard, .signageBoard, .outputPreset,
+            .streamRecordPreset, .streamDestination, .schedulerBoard, .controlBoard, .outputPreset,
             .midiDevice, .service,
         ])
         #expect(ResidencyStageTiming.detail([.init(name: "setup", milliseconds: 12), .init(name: "live", milliseconds: 40)])

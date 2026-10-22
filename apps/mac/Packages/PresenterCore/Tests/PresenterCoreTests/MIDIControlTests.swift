@@ -59,8 +59,6 @@ import Testing
 
     #expect(map.note(for: .selectService) == 17)
     #expect(map.note(for: .selectServiceItem) == 18)
-    #expect(map.note(for: .selectMediaPlaylist) == 20)
-    #expect(map.note(for: .triggerMedia) == 21)
     #expect(map.note(for: .selectAudioPlaylist) == 22)
     #expect(map.note(for: .triggerAudio) == 23)
     #expect(map.note(for: .toggleOverlay) == 24)
@@ -69,12 +67,41 @@ import Testing
     #expect(map.note(for: .selectActionComboFolder) == 31)
 
     #expect(map.note(for: .fireAlert) == 33)
-    #expect(map.note(for: .clearSignage) == 34)
+    #expect(map.note(for: .clearInputs) == 35)
 
     let notes = MIDICommand.allCases.map(\.defaultNote)
     #expect(Set(notes).count == notes.count)
 
-    #expect(MIDICommand.allCases.filter(\.usesVelocityIndex).count == 15)
+    #expect(MIDICommand.allCases.filter(\.usesVelocityIndex).count == 13)
+}
+
+@Test func timelineCommandsWearProPresenterNotes() {
+
+    let map = MIDICommandMap()
+    #expect(map.command(forNote: 14) == .startTimeline)
+    #expect(map.command(forNote: 15) == .stopTimeline)
+    #expect(map.command(forNote: 16) == .rewindTimeline)
+    for command in [MIDICommand.startTimeline, .stopTimeline, .rewindTimeline] {
+        #expect(command.group == .presentation)
+        #expect(!command.usesVelocityIndex)
+    }
+
+    var moved = MIDICommandMap()
+    moved.setNote(14, for: .clearAll)
+    #expect(moved.command(forNote: 14) == .clearAll)
+}
+
+@Test func playbackAndProPresenterCueRecipesResolve() {
+    let map = MIDICommandMap()
+
+    #expect(MIDINote.name(19) == "G-1")
+    #expect(map.resolve(status: 0x90, data1: 19, data2: 2)! == (.triggerSlide, 2))
+
+    #expect(map.resolve(status: 0x90, data1: 17, data2: 1)! == (.selectService, 1))
+    #expect(map.resolve(status: 0x90, data1: 18, data2: 4)! == (.selectServiceItem, 4))
+
+    #expect(map.resolve(status: 0x90, data1: 10, data2: 127)! == (.nextServiceItem, 127))
+    #expect(map.resolve(status: 0x80, data1: 19, data2: 64) == nil)
 }
 
 @Test func deviceChannelFilterDefaultsToOmni() throws {

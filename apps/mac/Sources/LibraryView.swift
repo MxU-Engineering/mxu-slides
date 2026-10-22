@@ -11,7 +11,11 @@ struct LibrarySidebar: View {
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
-    @State private var folderPath: [String]? = []
+    private var folderPath: [String]? {
+        get { folderLocation.path(on: model.selectedSection.rawValue) }
+        nonmutating set { folderLocation.set(newValue, on: model.selectedSection.rawValue) }
+    }
+    @State private var folderLocation = LibraryHome.Location(section: "")
 
     static let unfiledToken = "\u{1}uncategorized"
 
@@ -30,15 +34,16 @@ struct LibrarySidebar: View {
     }
     @State private var renameTarget: LibraryIndex.Entry?
     @State private var renameText = ""
-    @State private var mediaSettingsTarget: MediaSettingsTarget?
     @State private var newFolderTarget: LibraryIndex.Entry?
-    @State private var chordEditTarget: LibraryIndex.Entry?
+    @State private var resolutionTarget: PresentationResolutionSheet.Target?
 
-    @State private var pendingApplyTheme: PendingDeckTheme?
+    @State private var applyThemeTarget: ApplyThemeTarget?
     @State private var creatingFolder = false
     @State private var importingLyrics = false
     @State private var importingMessageNotes = false
     @State private var searchText = ""
+
+    @AppStorage("library.audioTab") private var audioTab = 0
     @FocusState private var searchFocused: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.runOnly) private var runOnly
@@ -65,8 +70,15 @@ struct LibrarySidebar: View {
         VStack(spacing: 0) {
             headerRow
             sectionPicker
+            if model.selectedSection == .audio, searchText.isEmpty {
+                ChipPicker(options: [(0, "Music"), (1, "Tracks")], selection: $audioTab)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+            }
             Divider()
-            if searchText.isEmpty {
+            if searchText.isEmpty, model.selectedSection == .audio, audioTab == 1 {
+                TrackSetList(model: model)
+            } else if searchText.isEmpty {
                 entryList
             } else {
                 searchResults
@@ -76,6 +88,9 @@ struct LibrarySidebar: View {
         }
         .onChange(of: viewedFolder, initial: true) { _, viewed in
             model.viewedLibraryFolder = viewed
+        }
+        .onChange(of: model.selectedSection, initial: true) { _, section in
+            folderLocation.switched(to: section.rawValue)
         }
         .onChange(of: model.libraryRevealID) { _, id in
             if let id {
@@ -113,15 +128,22 @@ struct LibrarySidebar: View {
         .sheet(isPresented: $importingMessageNotes) {
             ImportMessageNotesSheet(model: model, render: render, onImported: showImported)
         }
-        .deckThemeConfirmation(model: model, pending: $pendingApplyTheme)
         .sheet(item: $newFolderTarget) { entry in
             NewFolderSheet(model: model, entry: entry, parentPath: realPath(folderPath ?? []))
         }
-        .sheet(item: $mediaSettingsTarget) { target in
-            MediaSettingsSheet(model: model, mediaID: target.id)
+        .sheet(item: $applyThemeTarget) { target in
+            ApplyThemeSheet(
+                appModel: model, render: render, deckThemeId: model.themeID(of: target.presentationID),
+                scope: "Applies to every slide in \u{201C}\(model.entry(target.presentationID)?.name ?? "this presentation")\u{201D}"
+                    + (model.presentationHasSlideThemes(target.presentationID)
+                        ? ", slides with a theme of their own too." : "."),
+                onNone: { model.applyTheme(to: target.presentationID, themeID: "") }
+            ) { themeId, design in
+                model.applyTheme(to: target.presentationID, themeID: themeId, design: design)
+            }
         }
-        .sheet(item: $chordEditTarget) { entry in
-            ChordEditorSheet(model: model, render: render, presentationID: entry.id)
+        .sheet(item: $resolutionTarget) { target in
+            PresentationResolutionSheet(model: model, target: target)
         }
         .sheet(isPresented: $creatingFolder) {
             NewFolderSheet(model: model, entry: nil, parentPath: realPath(folderPath ?? []))
@@ -168,6 +190,11 @@ struct LibrarySidebar: View {
         .sheet(isPresented: $locatePanelShown) {
             LocateMissingMediaView(model: model)
         }
+        .sheet(item: $replaceFileRequest) { request in
+            ReplaceMediaFileSheet(request: request) {
+                ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
+            }
+        }
         .mediaCueSheets(model: model, state: mediaMenuState)
     }
 
@@ -175,6 +202,8 @@ struct LibrarySidebar: View {
     @State private var deleteUsedCount = 0
 
     @State private var locatePanelShown = false
+
+    @State private var replaceFileRequest: ReplaceMediaFileRequest?
 
     @State private var mediaMenuState = MediaCueMenuState()
 
@@ -290,7 +319,7 @@ struct LibrarySidebar: View {
         let upcoming = UpcomingUse.kinds.contains(section.kind)
         return Menu {
             Section("Sort By") {
-                ForEach(LibrarySort.allCases, id: \.self) { choice in
+                ForEach(LibrarySort.choices(for: section.kind), id: \.self) { choice in
                     Toggle(choice.title, isOn: Binding(get: { sort == choice }, set: { if $0 { model.setSort(choice, for: section) } }))
                 }
             }
@@ -351,8 +380,10 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private var searchResults: some View {
+
+        let stems = TrackSets.stemIDs(model.trackSets)
         let hits = searchHits.filter { hit in
-            guard let section = section(for: hit.entry) else { return false }
+            guard let section = section(for: hit.entry), !stems.contains(hit.entry.id) else { return false }
             return (searchScopes.isEmpty || searchScopes.contains(section))
                 && model.showFiltersAdmit(id: hit.entry.id, kind: hit.entry.kind)
         }
@@ -593,8 +624,6 @@ struct LibrarySidebar: View {
 
         var playlists: [LibraryIndex.Entry]
 
-        var themes: [LibraryIndex.Entry]
-
         var selection: [LibraryIndex.Entry]
     }
 
@@ -603,7 +632,6 @@ struct LibrarySidebar: View {
         return RowMenuLists(
             folders: AppModel.folderableSections.contains(section) ? model.folders(in: section) : [],
             playlists: model.playlists(in: section),
-            themes: section == .presentations ? model.entries(in: .themes) : [],
             selection: selection)
     }
 
@@ -621,7 +649,7 @@ struct LibrarySidebar: View {
         let cloud = tucksLoose ? [] : looseCloud
         return BrowserContents(
             path: path, folders: folders, items: items, cloud: cloud,
-            rows: (model.librarySorts[section] ?? .name).merged(items, cloud: cloud),
+            rows: (model.librarySorts[section] ?? .name).merged(items, cloud: cloud, addedAt: model.mediaAddedAt),
             tucked: tucksLoose ? looseItems.count + looseCloud.count : 0, menus: rowMenuLists(for: section))
     }
 
@@ -847,17 +875,17 @@ struct LibrarySidebar: View {
     private func gridCard<Content: View>(
         selected: Bool, action: @escaping () -> Void, @ViewBuilder content: () -> Content
     ) -> some View {
-        Button(action: action) {
-            content()
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .overlay {
-            if selected {
-                RoundedRectangle.standard(CornerStandard.element)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
+
+        content()
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .accessibilityAddTraits(.isButton)
+            .overlay {
+                if selected {
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                }
             }
-        }
     }
 
     private func entryRow(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
@@ -915,6 +943,10 @@ struct LibrarySidebar: View {
         } else {
             singleEntryMenu(entry, menus: menus)
         }
+        Divider()
+        Button(batch.count > 1 ? "Delete \(batch.count) Items" : "Delete", role: .destructive) {
+            requestDelete(batch.count > 1 ? batch : [entry])
+        }
     }
 
     @ViewBuilder
@@ -924,48 +956,53 @@ struct LibrarySidebar: View {
             Button("Add \(addable.count) to Service") {
                 for entry in addable { model.addToCurrentService(entry) }
             }
-            Divider()
         }
         let tracks = batch.filter { $0.kind == .media || $0.kind == .audio }
-        if !tracks.isEmpty, tracks.allSatisfy({ $0.kind == tracks[0].kind }) {
-            Menu("Add to Playlist") {
-                ForEach(menus.playlists, id: \.id) { playlist in
-                    Button(playlist.name) {
-                        for entry in tracks { model.addToPlaylist(playlist.id, itemID: entry.id) }
-                    }
-                }
-                if !menus.playlists.isEmpty { Divider() }
-                Button("New Playlist…") {
-                    if let id = model.createPlaylist(in: model.selectedSection) {
-                        for entry in tracks { model.addToPlaylist(id, itemID: entry.id) }
-                    }
-                }
-            }
-        }
         let folderable = batch.filter { entry in
             AppModel.folderableSections.contains { $0.kind == entry.kind }
         }
-        if !folderable.isEmpty {
-            Menu("Move to Folder") {
-                Button("None") {
-                    for entry in folderable { model.moveToFolder(entry, folder: nil) }
+        Section("Organize") {
+            if !tracks.isEmpty, tracks.allSatisfy({ $0.kind == .audio }) {
+                Menu("Add to Playlist") {
+                    ForEach(menus.playlists, id: \.id) { playlist in
+                        Button(playlist.name) {
+                            for entry in tracks { model.addToPlaylist(playlist.id, itemID: entry.id) }
+                        }
+                    }
+                    if !menus.playlists.isEmpty { Divider() }
+                    Button("New Playlist…") {
+                        if let id = model.createPlaylist(in: model.selectedSection) {
+                            for entry in tracks { model.addToPlaylist(id, itemID: entry.id) }
+                        }
+                    }
                 }
-                if !menus.folders.isEmpty {
-                    Divider()
-                    ForEach(menus.folders, id: \.self) { folder in
-                        Button(folder) {
-                            for entry in folderable { model.moveToFolder(entry, folder: folder) }
+            }
+            if !folderable.isEmpty {
+                Menu("Move to Folder") {
+                    Button("None") {
+                        for entry in folderable { model.moveToFolder(entry, folder: nil) }
+                    }
+                    if !menus.folders.isEmpty {
+                        Divider()
+                        ForEach(menus.folders, id: \.self) { folder in
+                            Button(folder) {
+                                for entry in folderable { model.moveToFolder(entry, folder: folder) }
+                            }
                         }
                     }
                 }
             }
         }
-        if !tracks.isEmpty {
-            Button("Show in Finder") { showInFinder(tracks) }
+        let decks = batch.filter { $0.kind == .presentation }
+        if !decks.isEmpty, !runOnly {
+            Section("Presentation") {
+                Button("Resolution…") { resolutionTarget = .init(ids: decks.map(\.id)) }
+            }
         }
-        Divider()
-        Button("Delete \(batch.count) Items", role: .destructive) {
-            requestDelete(batch)
+        if !tracks.isEmpty {
+            Section("File") {
+                Button("Show in Finder") { showInFinder(tracks) }
+            }
         }
     }
 
@@ -973,7 +1010,6 @@ struct LibrarySidebar: View {
     private func singleEntryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
         if [.presentation, .media, .audio].contains(entry.kind) {
             Button("Add to Service") { model.addToCurrentService(entry) }
-            Divider()
         }
         if entry.kind.opensInEditor {
 
@@ -983,94 +1019,109 @@ struct LibrarySidebar: View {
             }
         }
         if entry.kind == .media {
-            Button("Media Settings…") { mediaSettingsTarget = MediaSettingsTarget(id: entry.id) }
 
-            MediaCueGrammarItems(
-                model: model, actionRouter: nil,
-                mediaID: entry.id, state: mediaMenuState
-            )
-        }
-        if entry.kind == .audio {
-
-            Button("Replace Music File…") {
-                let panel = NSOpenPanel()
-                panel.allowsMultipleSelection = false
-                panel.allowedContentTypes = [.audio]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    Task { @MainActor in model.replaceAudioFile(entry.id, with: url) }
-                }
+            Section("Cue") {
+                MediaCueGrammarItems(
+                    model: model, actionRouter: nil,
+                    mediaID: entry.id, state: mediaMenuState
+                )
             }
         }
-        if entry.kind == .media {
+        Section("Organize") {
+            Button("Rename…") {
+                renameTarget = entry
+                renameText = entry.name
+            }
+            Button("Duplicate") { model.duplicate(entry) }
+            if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
+                Menu("Move to Folder") {
+                    Button("None") { model.moveToFolder(entry, folder: nil) }
+                        .disabled(entry.subkind.isEmpty)
+                    if !menus.folders.isEmpty {
+                        Divider()
+                        ForEach(menus.folders, id: \.self) { folder in
+                            Button(folder) { model.moveToFolder(entry, folder: folder) }
+                                .disabled(entry.subkind == folder)
+                        }
+                    }
+                    Divider()
+                    Button("New Folder…") { newFolderTarget = entry }
+                }
+            }
+            if entry.kind == .audio {
 
-            Button("Replace Media File…") {
-                let panel = NSOpenPanel()
-                panel.allowsMultipleSelection = false
-                panel.allowedContentTypes = [.image, .movie]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    Task { @MainActor in
-                        if let carried = await model.replaceMediaFile(entry.id, with: url) {
-                            MediaRelinkAlerts.carriedSettingsWarning(itemName: entry.name, carried: carried)
+                Menu("Add to Playlist") {
+                    ForEach(menus.playlists, id: \.id) { playlist in
+                        Button(playlist.name) { model.addToPlaylist(playlist.id, itemID: entry.id) }
+                    }
+                    if !menus.playlists.isEmpty { Divider() }
+                    Button("New Playlist…") {
+                        if let id = model.createPlaylist(in: model.selectedSection) {
+                            model.addToPlaylist(id, itemID: entry.id)
                         }
                     }
                 }
             }
-            Button("Locate Missing Media…") { locatePanelShown = true }
-        }
-        if entry.kind == .audio || entry.kind == .media {
+            if entry.kind == .media {
 
-            Menu("Add to Playlist") {
-                ForEach(menus.playlists, id: \.id) { playlist in
-                    Button(playlist.name) { model.addToPlaylist(playlist.id, itemID: entry.id) }
+                Picker("Favorite", selection: Binding(
+                    get: { model.media(entry.id)?.favorite ?? false },
+                    set: { value in model.updateMedia(entry.id) { $0.favorite = value } }
+                )) {
+                    Text("Yes").tag(true)
+                    Text("No").tag(false)
                 }
-                if !menus.playlists.isEmpty { Divider() }
-                Button("New Playlist…") {
-                    if let id = model.createPlaylist(in: model.selectedSection) {
-                        model.addToPlaylist(id, itemID: entry.id)
-                    }
-                }
-            }
-        }
-        Button("Rename…") {
-            renameTarget = entry
-            renameText = entry.name
-        }
-        Button("Duplicate") { model.duplicate(entry) }
-        if entry.kind == .theme {
-            Button("Apply to All Presentations") {
-                model.applyThemeToAllPresentations(entry.id)
             }
         }
         if entry.kind == .presentation {
 
-            Menu("Apply Theme") {
-                DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
-            }
-            Button("Edit Chords…") { chordEditTarget = entry }
-            Button("Export…") { model.exportPresentation(presentationID: entry.id, render: render) }
-        }
-        if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
-            Menu("Move to Folder") {
-                Button("None") { model.moveToFolder(entry, folder: nil) }
-                    .disabled(entry.subkind.isEmpty)
-                if !menus.folders.isEmpty {
-                    Divider()
-                    ForEach(menus.folders, id: \.self) { folder in
-                        Button(folder) { model.moveToFolder(entry, folder: folder) }
-                            .disabled(entry.subkind == folder)
-                    }
+            Section("Presentation") {
+                Button("Apply Theme…") {
+                    applyThemeTarget = ApplyThemeTarget(presentationID: entry.id, slideIDs: nil)
                 }
-                Divider()
-                Button("New Folder…") { newFolderTarget = entry }
+                if !runOnly {
+                    Button("Resolution…") { resolutionTarget = .init(ids: [entry.id]) }
+                }
+                Button("Export…") { model.exportPresentation(presentationID: entry.id, render: render) }
+            }
+        }
+        if entry.kind == .theme {
+            Section("Theme") {
+                Button("Apply to All Presentations") {
+                    model.applyThemeToAllPresentations(entry.id)
+                }
             }
         }
         if entry.kind == .media || entry.kind == .audio {
-            Button("Show in Finder") { showInFinder([entry]) }
+            Section("File") {
+                if entry.kind == .audio {
+
+                    Button("Replace Music File…") {
+                        let panel = NSOpenPanel()
+                        panel.allowsMultipleSelection = false
+                        panel.allowedContentTypes = [.audio]
+                        panel.begin { response in
+                            guard response == .OK, let url = panel.url else { return }
+                            Task { @MainActor in model.replaceAudioFile(entry.id, with: url) }
+                        }
+                    }
+                }
+                if entry.kind == .media {
+
+                    Button("Replace Media File…") {
+                        ReplaceMediaFileFlow.start(model: model, id: entry.id, name: entry.name) { replaceFileRequest = $0 }
+                    }
+                    if model.media(entry.id).map(model.isMediaFileMissing) == true {
+                        Button("Locate Missing Media…") { locatePanelShown = true }
+                    }
+                }
+                if entry.kind == .media, let item = model.media(entry.id),
+                   RecordingLibrary.isRecording(item), !model.isMediaFileMissing(item) {
+                    Button("Export To…") { model.exportRecording(entry.id) }
+                }
+                Button("Show in Finder") { showInFinder([entry]) }
+            }
         }
-        Divider()
-        Button("Delete", role: .destructive) { requestDelete([entry]) }
     }
 
     private func section(for entry: LibraryIndex.Entry) -> LibrarySection? {
@@ -1089,10 +1140,10 @@ struct LibrarySidebar: View {
         case .actionCombo: nil
         case .confidenceLayout: .confidence
         case .note: nil
-        case .midiDevice: nil  
-        case .streamDestination: nil  
-        case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette, .signageBoard,
-            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: nil
+        case .midiDevice: nil
+        case .streamDestination: nil
+        case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette,
+            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: nil
         }
     }
 
@@ -1381,7 +1432,7 @@ struct LibraryCommands: Commands {
             guard response == .OK, !panel.urls.isEmpty else { return }
             let urls = panel.urls
             Task { @MainActor in
-                await runImport(model: model, urls: urls)
+                await model.runProPresenterImport(urls)
             }
         }
     }
@@ -1398,17 +1449,32 @@ struct LibraryCommands: Commands {
             guard response == .OK, !panel.urls.isEmpty else { return }
             let urls = panel.urls
             Task { @MainActor in
-                await runPowerPointImport(model: model, urls: urls)
+                await model.runPowerPointImport(urls)
             }
         }
     }
 
-    @MainActor
-    private func runPowerPointImport(model: AppModel, urls: [URL]) async {
+    private func exportBackup() {
+        if let model {
+            BackupTransferRunner(model: model).presentExport()
+        }
+    }
+
+    private func importBackup() {
+        if let model {
+            BackupTransferRunner(model: model).presentImport()
+        }
+    }
+}
+
+extension AppModel {
+
+    @discardableResult
+    func runPowerPointImport(_ urls: [URL]) async -> [String] {
         let activity = ImportActivityModel(title: "Import PowerPoint")
         ImportActivityWindow.present(activity)
         activity.phase = "Decks"
-        let summaries = await model.importPowerPoint(urls: urls) { url in
+        let summaries = await importPowerPoint(urls: urls) { url in
             activity.detail = url.deletingPathExtension().lastPathComponent
         }
         let imported = summaries.filter { $0.presentationID != nil }
@@ -1433,13 +1499,14 @@ struct LibraryCommands: Commands {
         }
         if !missingFamilies.isEmpty {
             ResolveMissingFontsWindow.present(missingFamilies: missingFamilies) { replacements in
-                model.applyFontReplacements(replacements, to: importedIDs)
+                self.applyFontReplacements(replacements, to: importedIDs)
             }
         }
+        return importedIDs
     }
 
-    @MainActor
-    private func runImport(model: AppModel, urls: [URL]) async {
+    @discardableResult
+    func runProPresenterImport(_ urls: [URL]) async -> [String] {
         let playlistBundles = urls.filter { $0.pathExtension.lowercased() == "proplaylist" }
         let themes = urls.filter { $0.pathExtension.lowercased() == "protheme" }
         let documents = urls.filter { !["proplaylist", "protheme"].contains($0.pathExtension.lowercased()) }
@@ -1449,11 +1516,12 @@ struct LibraryCommands: Commands {
 
         var summaryLines: [String] = []
         var warnings: [String] = []
+        var landed: [String] = []
 
         if !themes.isEmpty {
             activity.phase = "Themes"
             activity.detail = ""
-            let summaries = await model.importProPresenterThemes(urls: themes)
+            let summaries = await importProPresenterThemes(urls: themes)
             let imported = summaries.filter { $0.themeID != nil && $0.skipped == nil }
             let mediaCount = summaries.reduce(0) { $0 + $1.mediaImported }
             summaryLines.append("\(imported.count) of \(summaries.count) themes imported\(mediaCount > 0 ? ", \(mediaCount) media files" : "")")
@@ -1470,10 +1538,11 @@ struct LibraryCommands: Commands {
 
         if !documents.isEmpty {
             activity.phase = "Presentations"
-            let summaries = await model.importProPresenter(urls: documents) { url in
+            let summaries = await importProPresenter(urls: documents) { url in
                 activity.detail = url.deletingPathExtension().lastPathComponent
             }
             let imported = summaries.filter { $0.presentationID != nil }
+            landed = imported.compactMap(\.presentationID)
             let mediaCount = summaries.reduce(0) { $0 + $1.mediaImported }
             summaryLines.append("\(imported.count) of \(summaries.count) documents imported\(mediaCount > 0 ? ", \(mediaCount) media files" : "")")
             for summary in summaries where summary.presentationID == nil {
@@ -1487,7 +1556,7 @@ struct LibraryCommands: Commands {
         if !playlistBundles.isEmpty {
             activity.phase = "Playlists"
             activity.detail = ""
-            let summaries = await model.importProPresenterPlaylists(urls: playlistBundles)
+            let summaries = await importProPresenterPlaylists(urls: playlistBundles)
             for (url, summary) in zip(playlistBundles, summaries) {
                 if let reason = summary.failureReason {
                     warnings.append("✕ \(url.lastPathComponent): \(reason)")
@@ -1504,18 +1573,7 @@ struct LibraryCommands: Commands {
         }
 
         activity.finish(summaryLines: summaryLines, warnings: warnings)
-    }
-
-    private func exportBackup() {
-        if let model {
-            BackupTransferRunner(model: model).presentExport()
-        }
-    }
-
-    private func importBackup() {
-        if let model {
-            BackupTransferRunner(model: model).presentImport()
-        }
+        return landed
     }
 }
 
@@ -1713,7 +1771,7 @@ struct LibraryItemFace: View {
                         model: model, render: render,
                         slide: slide, presentation: presentation, theme: theme,
                         arrangementId: nil,
-                        hideScopedBackgrounds: false, legibleText: false,
+                        hideScopedBackgrounds: false,
                         contentStamp: loadedStamp
                     )
                 } else {
@@ -1729,7 +1787,7 @@ struct LibraryItemFace: View {
                     model: model, render: render,
                     slide: slide, presentation: presentation, theme: nil,
                     arrangementId: nil,
-                    hideScopedBackgrounds: false, legibleText: false,
+                    hideScopedBackgrounds: false,
                     contentStamp: loadedStamp
                 )
             case .confidenceLayout(let layout):
@@ -1751,7 +1809,7 @@ struct LibraryItemFace: View {
                     model: model, render: render,
                     slide: slide, presentation: presentation, theme: nil,
                     arrangementId: nil,
-                    hideScopedBackgrounds: false, legibleText: false,
+                    hideScopedBackgrounds: false,
                     contentStamp: loadedStamp
                 )
             case nil:
@@ -1830,33 +1888,33 @@ struct FolderPreviewCard: View {
     @State private var page = 0
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                face
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .clipShape(RoundedRectangle.standard(CornerStandard.element))
-                    .overlay(
-                        RoundedRectangle.standard(CornerStandard.element)
-                            .strokeBorder(
-                                Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1
-                            )
-                    )
-                HStack(spacing: 4) {
-                    Glyph(kind: .folder, size: 10)
-                        .foregroundStyle(.tertiary)
-                    Text(name)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Text("\(count)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
+
+        VStack(spacing: 4) {
+            face
                 .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipShape(RoundedRectangle.standard(CornerStandard.element))
+                .overlay(
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(
+                            Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1
+                        )
+                )
+            HStack(spacing: 4) {
+                Glyph(kind: .folder, size: 10)
+                    .foregroundStyle(.tertiary)
+                Text(name)
+                    .font(.caption)
+                    .lineLimit(1)
+                Text("\(count)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .accessibilityAddTraits(.isButton)
         .onHover { hovering = $0 }
         .task(id: hovering) {
 

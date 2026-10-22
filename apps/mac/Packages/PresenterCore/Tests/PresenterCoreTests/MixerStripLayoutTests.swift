@@ -14,6 +14,14 @@ import Testing
     #expect(MixerStripLayout.faderHeight(viewportHeight: 0, scrollerHeight: 13) == 92)
 }
 
+@Test func aFoldCardStandsAsTallAsAStrip() {
+
+    #expect(MixerStripLayout.stripHeight(viewportHeight: 500, scrollerHeight: 13) == 262 + 133)
+    #expect(MixerStripLayout.stripHeight(viewportHeight: 0, scrollerHeight: 13) == 92 + 133)
+
+    #expect(MixerStripLayout.stripChrome < MixerStripLayout.fixedChrome)
+}
+
 @Test func mixerGrabBarSnapsNearMissesOntoTheBar() {
 
     #expect(MixerStripLayout.grabBarY(8, barMinY: 4, barMaxY: 17) == 8)

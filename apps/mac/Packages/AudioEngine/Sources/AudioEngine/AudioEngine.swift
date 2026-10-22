@@ -14,6 +14,18 @@ enum CrossfadeCurve {
     }
 }
 
+public enum AudioFadeCurve: Sendable {
+    case linear, equalPower, cosine
+
+    func falling(_ progress: Double) -> Float {
+        switch self {
+        case .linear: Float(1 - progress)
+        case .equalPower: Float(cos(progress * .pi / 2))
+        case .cosine: Float(0.5 * (1 + cos(progress * .pi)))
+        }
+    }
+}
+
 public final class AudioEngine: @unchecked Sendable {
 
     let engine = AVAudioEngine()
@@ -92,34 +104,52 @@ public final class AudioEngine: @unchecked Sendable {
 
     public func play(
         url: URL, crossfade: TimeInterval = 0, fadeIn: TimeInterval = 0,
-        trimStart: TimeInterval = 0, trimEnd: TimeInterval? = nil
+        trimStart: TimeInterval = 0, trimEnd: TimeInterval? = nil,
+        from: TimeInterval? = nil, shape: AudioClipShape? = nil, overlap: Bool = false,
+        due: UInt64? = nil
     ) throws {
         try lock.withLock {
             try ensureRunning()
 
             cancelRamp(resolving: true)
             let outgoing = decks[activeIndex]
-            let crossfading = crossfade > 0 && outgoing.player.isPlaying
-            let incoming = crossfading ? decks[1 - activeIndex] : outgoing
+            let overlapping = overlap && outgoing.player.isPlaying
+            let crossfading = !overlapping && crossfade > 0 && outgoing.player.isPlaying
+            let incoming = crossfading || overlapping ? decks[1 - activeIndex] : outgoing
+            let start = crossfading ? nil : due.map { Self.scheduledStart(due: $0, now: mach_absolute_time()) }
+            incoming.setShape(shape)
             try loadTracked(
-                deck: incoming, url: url, from: trimStart,
+                deck: incoming, url: url, from: (from ?? trimStart) + (start?.skip ?? 0),
                 windowStart: trimStart, until: trimEnd
             )
             transportPlaying = true
-            if crossfading {
+            let at = start.map { AVAudioTime(hostTime: $0.hostTime) }
+            if overlapping {
+                activeIndex = 1 - activeIndex
+                incoming.player.volume = 1
+                incoming.player.play(at: at)
+            } else if crossfading {
                 activeIndex = 1 - activeIndex
                 incoming.player.volume = 0
                 incoming.player.play()
                 beginRamp(incoming: incoming, outgoing: outgoing, duration: crossfade)
             } else if fadeIn > 0 {
                 incoming.player.volume = 0
-                incoming.player.play()
-                beginFade(deck: incoming, to: 1, duration: fadeIn)
+                incoming.player.play(at: at)
+                beginFade(deck: incoming, to: 1, duration: fadeIn, after: start?.wait ?? 0)
             } else {
                 incoming.player.volume = 1
-                incoming.player.play()
+                incoming.player.play(at: at)
             }
         }
+    }
+
+    static let startLead: TimeInterval = 0.06
+
+    static func scheduledStart(due: UInt64, now: UInt64) -> (hostTime: UInt64, skip: TimeInterval, wait: TimeInterval) {
+        let earliest = now + AVAudioTime.hostTime(forSeconds: startLead)
+        let start = max(due, earliest)
+        return (start, AVAudioTime.seconds(forHostTime: start - due), AVAudioTime.seconds(forHostTime: start - now))
     }
 
     public func pause(fade: TimeInterval = 0) {
@@ -151,7 +181,7 @@ public final class AudioEngine: @unchecked Sendable {
         }
     }
 
-    public func stop(fade: TimeInterval = 0) {
+    public func stop(fade: TimeInterval = 0, curve: AudioFadeCurve = .linear) {
         lock.withLock {
             transportPlaying = false
             let deck = decks[activeIndex]
@@ -162,7 +192,7 @@ public final class AudioEngine: @unchecked Sendable {
             }
             cancelRamp(resolving: true)
             decks[1 - activeIndex].clear()
-            beginFade(deck: deck, to: 0, duration: fade) { deck.clear() }
+            beginFade(deck: deck, to: 0, duration: fade, curve: curve) { deck.clear() }
         }
     }
 
@@ -230,7 +260,7 @@ public final class AudioEngine: @unchecked Sendable {
 
     private func applyConsoleLocked() {
         let effective = muted ? 0 : storedVolume
-        hardwareLeg.outputVolume = hardwareEnabled ? effective : 0
+        hardwareLeg.outputVolume = hardwareEnabled ? effective * (monoOut ? Self.monoFold : 1) : 0
         tapState.set(gain: effective)
     }
 
@@ -273,20 +303,22 @@ public final class AudioEngine: @unchecked Sendable {
             lock.withLock { (meterWanted, gain, feed) }
         }
 
-        func store(source raw: (rms: Float, peak: Float), gain: Float) {
+        func store(sides raw: (left: AudioLevel.Reading, right: AudioLevel.Reading), gain: Float) {
+            let scaled = { (level: AudioLevel.Reading) in (min(level.rms * gain, 1), min(level.peak * gain, 1)) }
             lock.withLock {
-                source = raw
-                post = (min(raw.rms * gain, 1), min(raw.peak * gain, 1))
-                sourceWindow.fold(source)
-                postWindow.fold(post)
+                source = AudioLevel.louder([raw.left, raw.right])
+                post = scaled(source)
+                sourceWindow.fold(left: raw.left, right: raw.right)
+                postWindow.fold(left: scaled(raw.left), right: scaled(raw.right))
             }
         }
 
-        func takeLevels() -> (
-            post: (rms: Float, peak: Float), source: (rms: Float, peak: Float)
-        ) {
+        func takeLevels() -> (post: LevelWindow, source: LevelWindow) {
 
-            lock.withLock { (post: postWindow.take(), source: sourceWindow.take()) }
+            lock.withLock {
+                defer { postWindow = LevelWindow(); sourceWindow = LevelWindow() }
+                return (post: postWindow, source: sourceWindow)
+            }
         }
 
         func resetLevels() {
@@ -329,7 +361,7 @@ public final class AudioEngine: @unchecked Sendable {
                     let tick = state.snapshot()
                     if tick.meterWanted {
 
-                        state.store(source: AudioLevel.measure(buffer), gain: tick.gain)
+                        state.store(sides: AudioLevel.measureSides(buffer), gain: tick.gain)
                     }
                     guard let feed = tick.feed else { return }
 
@@ -356,23 +388,36 @@ public final class AudioEngine: @unchecked Sendable {
 
     public var sourceMeterLevel: (rms: Float, peak: Float) { tapState.sourceLevel }
 
-    public func takeMeterLevels() -> (
-        post: (rms: Float, peak: Float), source: (rms: Float, peak: Float)
-    ) {
+    public func takeMeterLevels() -> (post: LevelWindow, source: LevelWindow) {
         tapState.takeLevels()
     }
 
     public func setOutputDevice(
-        _ device: AudioOutputDevice?, channelOffset: Int = 0
+        _ device: AudioOutputDevice?, channelOffset: Int = 0, mono: Bool = false
     ) throws {
         try lock.withLock {
+            let target = device ?? AudioDeviceList.defaultOutputDevice()
+
+            if engine.isRunning, let id = target?.id, engine.outputNode.auAudioUnit.deviceID == id,
+               mono == monoOut, channelOffset == desiredChannelOffset, target?.channelCount == deviceChannelCount {
+                return
+            }
+            outputRebuilds += 1
             cancelRamp(resolving: true)
 
             for each in decks { each.pause() }
             engine.stop()
-            let target = device ?? AudioDeviceList.defaultOutputDevice()
             if let id = target?.id {
                 try engine.outputNode.auAudioUnit.setDeviceID(id)
+            }
+            if mono != monoOut {
+                monoOut = mono
+                engine.disconnectNodeOutput(hardwareLeg)
+                engine.connect(
+                    hardwareLeg, to: engine.outputNode,
+                    format: mono ? AVAudioFormat(standardFormatWithSampleRate: AudioDeck.graphFormat.sampleRate, channels: 1)!
+                        : AudioDeck.graphFormat)
+                applyConsoleLocked()
             }
             desiredChannelOffset = channelOffset
             deviceChannelCount = target?.channelCount ?? 2
@@ -381,17 +426,21 @@ public final class AudioEngine: @unchecked Sendable {
         }
     }
 
+    private(set) var outputRebuilds = 0
     private var desiredChannelOffset = 0
     private var deviceChannelCount = 2
+    private var monoOut = false
+
+    static let monoFold: Float = 0.707_106_77
 
     private func applyChannelMap() {
         guard let unit = engine.outputNode.audioUnit else { return }
         let channels = max(2, deviceChannelCount)
-        let offset = (desiredChannelOffset + 1 < channels && desiredChannelOffset >= 0)
+        let offset = (desiredChannelOffset + (monoOut ? 0 : 1) < channels && desiredChannelOffset >= 0)
             ? desiredChannelOffset : 0
         var map = [Int32](repeating: -1, count: channels)
         map[offset] = 0
-        map[offset + 1] = 1
+        if !monoOut { map[offset + 1] = 1 }
         let size = UInt32(MemoryLayout<Int32>.size * channels)
         let status = AudioUnitSetProperty(
             unit, kAudioOutputUnitProperty_ChannelMap,
@@ -419,12 +468,17 @@ public final class AudioEngine: @unchecked Sendable {
         if resume { deck.player.play() }
     }
 
-    func enableManualRenderingForTests() throws {
+    func enableManualRenderingForTests(mono: Bool = false) throws {
         lock.withLock {
             engine.stop()
-            try? engine.enableManualRenderingMode(
-                .offline, format: AudioDeck.graphFormat, maximumFrameCount: 4096
-            )
+            let format = mono ? AVAudioFormat(standardFormatWithSampleRate: AudioDeck.graphFormat.sampleRate, channels: 1)! : AudioDeck.graphFormat
+            if mono {
+                monoOut = true
+                engine.disconnectNodeOutput(hardwareLeg)
+                engine.connect(hardwareLeg, to: engine.outputNode, format: format)
+                applyConsoleLocked()
+            }
+            try? engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
         }
     }
 
@@ -504,20 +558,25 @@ public final class AudioEngine: @unchecked Sendable {
     }
 
     private func beginFade(
-        deck: AudioDeck, to target: Float, duration: TimeInterval,
-        onDone: (@Sendable () -> Void)? = nil
+        deck: AudioDeck, to target: Float, duration: TimeInterval, curve: AudioFadeCurve = .linear,
+        after delay: TimeInterval = 0, onDone: (@Sendable () -> Void)? = nil
     ) {
-        let start = DispatchTime.now()
+
+        let start = DispatchTime.now() + delay
         let from = deck.player.volume
         let timer = DispatchSource.makeTimerSource(queue: rampQueue)
-        timer.schedule(deadline: .now(), repeating: 1.0 / 60.0)
+        timer.schedule(deadline: start, repeating: 1.0 / 60.0)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             self.lock.withLock {
                 guard self.rampTimer === timer else { return }
-                let seconds = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
+                let now = DispatchTime.now().uptimeNanoseconds
+                let seconds = Double(now - min(now, start.uptimeNanoseconds)) / 1e9
                 let progress = min(1, seconds / max(duration, 0.01))
-                deck.player.volume = from + (target - from) * Float(progress)
+
+                deck.player.volume = curve == .linear || target > from
+                    ? from + (target - from) * Float(progress)
+                    : target + (from - target) * curve.falling(progress)
                 if progress >= 1 {
                     self.rampTimer = nil
                     self.rampKind = nil
