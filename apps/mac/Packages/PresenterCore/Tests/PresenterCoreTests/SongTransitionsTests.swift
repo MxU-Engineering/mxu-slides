@@ -1,0 +1,80 @@
+import Foundation
+import Testing
+@testable import PresenterCore
+
+private typealias S = SongTransitions
+
+@Test func absentOrUnknownTransitionsAreStop() {
+    #expect(S.kind(nil) == .stop)
+    #expect(S.kind(SongTransition(kind: "segue")) == .stop)
+    #expect(S.kind(SongTransition(kind: "crossfade")) == .crossfade)
+    #expect(S.plan(.stop, end: 300, length: 5) == nil, "Stop arms nothing: today's behavior")
+}
+
+@Test func lengthsArePlaybacksUnlessTyped() {
+    #expect(S.length(SongTransition(kind: "fade")) == 5)
+    #expect(S.length(SongTransition(kind: "crossfade")) == 5)
+    #expect(S.length(SongTransition(kind: "crossfade", seconds: 12)) == 12)
+
+    #expect(S.length(SongTransition(kind: "overlap"), lastSection: 3.5, nextFirstSection: 8) == 3.5)
+    #expect(S.length(SongTransition(kind: "overlap"), lastSection: 20, nextFirstSection: 4) == 4)
+    #expect(S.length(SongTransition(kind: "overlap"), lastSection: 20, nextFirstSection: nil) == 5)
+    #expect(S.length(SongTransition(kind: "overlap", seconds: 9), lastSection: 3) == 9)
+    #expect(S.length(SongTransition(kind: "fade", seconds: 0)) == 5, "zero reads as unset")
+}
+
+@Test func eachTransitionHandsOverWhereTheTableSays() {
+    let fade = S.plan(.fade, end: 300, length: 5)
+    #expect(fade == S.Plan(kind: .fade, nextAt: 300, fadeFrom: 295, fadeSeconds: 5, fadeInSeconds: 0, end: 300))
+    let overlap = S.plan(.overlap, end: 300, length: 4)
+    #expect(overlap == S.Plan(kind: .overlap, nextAt: 296, fadeFrom: nil, fadeSeconds: 0, fadeInSeconds: 0, end: 300))
+    let crossfade = S.plan(.crossfade, end: 300, length: 5)
+    #expect(crossfade == S.Plan(kind: .crossfade, nextAt: 295, fadeFrom: 295, fadeSeconds: 5, fadeInSeconds: 5, end: 300))
+
+    #expect(S.plan(.crossfade, end: 3, length: 5)?.nextAt == 0)
+}
+
+@Test func normalPlayCrossesTheHandoverOnce() {
+    let plan = S.plan(.overlap, end: 300, length: 4)!
+    #expect(!S.due(plan, from: 295.9, to: 295.99))
+    #expect(S.due(plan, from: 295.99, to: 296.02))
+    #expect(!S.due(plan, from: 296.02, to: 296.05), "fires once")
+}
+
+@Test func aJumpPastTheHandoverStartsItAtOnceShortened() {
+    let crossfade = S.plan(.crossfade, end: 300, length: 5)!
+    #expect(S.landing(crossfade, at: 200) == nil, "before it: nothing yet")
+    #expect(S.landing(crossfade, at: 298) == S.Plan(
+        kind: .crossfade, nextAt: 298, fadeFrom: 298, fadeSeconds: 2, fadeInSeconds: 2, end: 300))
+    let fade = S.plan(.fade, end: 300, length: 5)!
+    #expect(S.landing(fade, at: 297) == S.Plan(
+        kind: .fade, nextAt: 300, fadeFrom: 297, fadeSeconds: 3, fadeInSeconds: 0, end: 300), "B still waits for A's end")
+    let overlap = S.plan(.overlap, end: 300, length: 4)!
+    #expect(S.landing(overlap, at: 299)?.nextAt == 299)
+    #expect(S.landing(overlap, at: 299)?.fadeFrom == nil, "overlap never fades")
+}
+
+@Test func aManualJumpAlwaysCrossfades() {
+
+    #expect(S.manualCrossfade(nil) == 5)
+    #expect(S.manualCrossfade(SongTransition(kind: "stop", seconds: 3)) == 3)
+    #expect(S.manualPlan(at: 61, seconds: 5) == S.Plan(
+        kind: .crossfade, nextAt: 61, fadeFrom: 61, fadeSeconds: 5, fadeInSeconds: 5, end: 66))
+}
+
+@Test func onlySlidesOwnClockArmsAGo() {
+    #expect(S.arms(.crossfade, ownClock: true, recording: false, held: false))
+    #expect(!S.arms(.crossfade, ownClock: false, recording: false, held: false), "timecode decides (S5)")
+    #expect(!S.arms(.fade, ownClock: true, recording: true, held: false), "a take is one song")
+    #expect(!S.arms(.overlap, ownClock: true, recording: false, held: true), "Hold cancels this go")
+    #expect(!S.arms(.stop, ownClock: true, recording: false, held: false))
+}
+
+@Test func aServiceItemCarriesItsTransition() throws {
+    var item = ServiceItem(id: "a", itemKind: .presentation, name: "A", refId: "deck")
+    item.transition = SongTransition(kind: "overlap", seconds: 3)
+    let decoded = try JSONDecoder().decode(ServiceItem.self, from: JSONEncoder().encode(item))
+    #expect(decoded.transition == SongTransition(kind: "overlap", seconds: 3))
+    let older = try JSONDecoder().decode(ServiceItem.self, from: Data(#"{"id":"b","itemKind":"presentation","name":"B","refId":"d"}"#.utf8))
+    #expect(older.transition == nil)
+}
