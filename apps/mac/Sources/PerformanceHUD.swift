@@ -184,7 +184,8 @@ struct TransitionChip: View {
                 if !kindRaw.isEmpty {
                     BoundedSliderRow(
                         label: "Duration", value: storedDuration,
-                        range: TransitionEdit.durationRange, step: TransitionEdit.durationStep
+                        range: TransitionEdit.durationRange, step: TransitionEdit.durationStep,
+                        typedRange: TransitionEdit.typedRange
                     )
                 }
             }

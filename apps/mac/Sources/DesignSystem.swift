@@ -320,6 +320,8 @@ struct BoundedSliderRow: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     var step: Double = 0
+
+    var typedRange: ClosedRange<Double>?
     var onScrubPhase: ((Bool) -> Void)?
 
     var stacked = false
@@ -377,7 +379,8 @@ struct BoundedSliderRow: View {
                     get: { live ?? value },
                     set: { raw in
                         let snapped = step > 0 ? (raw / step).rounded() * step : raw
-                        value = min(max(snapped, range.lowerBound), range.upperBound)
+                        let bounds = typedRange ?? range
+                        value = min(max(snapped, bounds.lowerBound), bounds.upperBound)
                     }
                 ),
                 format: .number.grouping(.never)

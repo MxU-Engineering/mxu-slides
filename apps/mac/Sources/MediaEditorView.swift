@@ -1281,6 +1281,7 @@ struct MediaEditorView: View {
                     }
                 ),
                 range: TransitionEdit.durationRange, step: TransitionEdit.durationStep,
+                typedRange: TransitionEdit.typedRange,
                 onScrubPhase: { began in transitionScrubbing = began }
             )
             if transition.transitionKind == .fadeColor {

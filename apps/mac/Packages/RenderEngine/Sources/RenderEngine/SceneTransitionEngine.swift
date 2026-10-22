@@ -18,7 +18,8 @@ public struct SceneTransition: Sendable, Equatable {
 
     public init(kind: Kind, duration: Double = 0.5) {
         self.kind = kind
-        self.duration = min(max(duration, 0.05), 10)
+
+        self.duration = min(max(duration, 0.05), 30)
     }
 
     public static let cut = SceneTransition(kind: .cut, duration: 0.05)

@@ -864,7 +864,7 @@ struct DefaultTransitionControl: View {
             if !kindRaw.isEmpty {
                 Stepper(
                     TransitionEdit.label(seconds: duration),
-                    value: storedDuration, in: TransitionEdit.durationRange, step: TransitionEdit.durationStep
+                    value: storedDuration, in: TransitionEdit.typedRange, step: TransitionEdit.durationStep
                 )
                 .font(.caption.monospacedDigit())
                 .controlSize(.small)

@@ -4,6 +4,7 @@ import PresenterCore
 public enum TransitionEdit {
 
     public static let durationRange: ClosedRange<Double> = 0 ... 3
+    public static let typedRange: ClosedRange<Double> = 0 ... 30
     public static let durationStep = 0.1
 
     public static let durationPresets: [Double] = [0.5, 1, 1.5, 2, 3]
@@ -35,7 +36,7 @@ public enum TransitionEdit {
     public static func withDuration(_ seconds: Double, from current: Transition?) -> Transition? {
         current.map {
             var out = $0
-            out.durationSeconds = min(max(seconds, durationRange.lowerBound), durationRange.upperBound)
+            out.durationSeconds = min(max(seconds, typedRange.lowerBound), typedRange.upperBound)
             return out
         }
     }

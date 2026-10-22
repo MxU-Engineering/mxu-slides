@@ -712,7 +712,8 @@ struct SlideObjectInspector: View {
                         model.setSlideTransition(updated)
                     }
                 ),
-                range: TransitionEdit.durationRange, step: TransitionEdit.durationStep
+                range: TransitionEdit.durationRange, step: TransitionEdit.durationStep,
+                typedRange: TransitionEdit.typedRange
             )
             if transition.transitionKind == .fadeColor {
                 HexColorRow(

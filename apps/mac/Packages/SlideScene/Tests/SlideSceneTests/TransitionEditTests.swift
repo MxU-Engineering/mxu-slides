@@ -22,7 +22,8 @@ final class TransitionEditTests: XCTestCase {
         XCTAssertEqual(
             TransitionEdit.withKind(.fadeColor, from: dissolve),
             Transition(transitionKind: .fadeColor, durationSeconds: 2, colorHex: "#FF0000FF"))
-        XCTAssertEqual(TransitionEdit.withDuration(5, from: dissolve)?.durationSeconds, 3, "clamped to the scale")
+        XCTAssertEqual(TransitionEdit.withDuration(12, from: dissolve)?.durationSeconds, 12, "typed past the slider")
+        XCTAssertEqual(TransitionEdit.withDuration(45, from: dissolve)?.durationSeconds, 30, "clamped to what can be typed")
         XCTAssertNil(TransitionEdit.withDuration(1, from: nil), "no transition stays none")
     }
 }

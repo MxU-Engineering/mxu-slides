@@ -17,6 +17,11 @@ final class SceneTransitionEngineTests: XCTestCase {
         return scene
     }
 
+    func testDurationsReachThirtySeconds() {
+        XCTAssertEqual(SceneTransition(kind: .dissolve, duration: 12).duration, 12, "a typed length past the slider plays")
+        XCTAssertEqual(SceneTransition(kind: .dissolve, duration: 45).duration, 30)
+    }
+
     func testContentEditsDoNotAnimateMembershipDoes() {
         XCTAssertTrue(SceneTransitionEngine.changedLayers(
             from: scene(["a"]), to: scene(["a"])
