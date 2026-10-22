@@ -98,17 +98,15 @@ struct ChordChartPDFTests {
             .init(name: "Chorus", lines: ["Hallelu[G]jah"]),
             .init(name: "Chorus", lines: ["[D]Hallelujah"]),
         ]
+
         #expect(ChordChartPDF.written(sections: sections, leading: []) == [
             "Interlude", "[D][Aadd4][G2]", "", "Interlude",
-            "", "Interlude 2", "[Bm][G]", "", "Interlude 2",
-
+            "", "Interlude", "[Bm][G]", "", "Interlude", "[Bm][G]",
             "", "Chorus", "[D]Hallelujah", "", "Chorus", "[G]Hallelujah", "", "Chorus", "[G]Hallelujah", "", "Chorus",
         ])
-
         let parsed = Reflow.parse(ChordChartPDF.written(sections: sections, leading: []).joined(separator: "\n"), linesPerSlide: 2)
-        #expect(parsed.sections.map(\.name).suffix(2) == ["Chorus", "Chorus"])
-        #expect(parsed.order.suffix(4).map { parsed.sections[$0].slides } == [["[D]Hallelujah"], ["[G]Hallelujah"], ["[G]Hallelujah"], ["[D]Hallelujah"]])
-        #expect(ChordChartPDF.numbered("Interlude 2", taken: ["Interlude 2"]) == "Interlude 3")
+        #expect(parsed.sections.map(\.name) == ["Interlude", "Interlude", "Chorus", "Chorus"])
+        #expect(parsed.order == [0, 0, 1, 1, 2, 3, 3, 2])
 
         #expect(ChordChartPDF.written(sections: [
             .init(name: "Vamp", lines: ["[D]Oh oh"]), .init(name: "Vamp", lines: ["[G]Hey hey"]),

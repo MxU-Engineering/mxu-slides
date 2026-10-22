@@ -357,17 +357,13 @@ public enum ChordChartPDF {
 
         var seen: [(chartName: String, name: String, content: String, lines: [String])] = []
         for section in sections {
-            let words = section.lines.map { ChordMath.extractLine($0).text.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }.joined(separator: "\n")
 
             let content = section.lines.map(ChordMath.extractLine)
                 .map { "\($0.text.trimmingCharacters(in: .whitespaces))|\($0.chords.map(\.symbol).joined(separator: " "))" }
                 .filter { $0 != "|" }.joined(separator: "\n")
             let sameName = seen.filter { $0.chartName.caseInsensitiveCompare(section.name) == .orderedSame }
             let earlier = sameName.first { $0.content == content }
-            let numbers = words.isEmpty
-            let name = earlier?.name
-                ?? (numbers && !sameName.isEmpty ? numbered(section.name, taken: seen.map(\.name)) : section.name)
+            let name = earlier?.name ?? section.name
             if !out.isEmpty { out.append("") }
             out.append(Reflow.labelName(of: name) != nil ? name : "{start_of_part: \(name)}")
 
@@ -380,18 +376,6 @@ public enum ChordChartPDF {
             }
         }
         return out
-    }
-
-    static func numbered(_ name: String, taken: [String]) -> String {
-        var words = name.split(separator: " ").map(String.init)
-        let last = words.count > 1 ? words.last.flatMap { Int($0) } : nil
-        if last != nil { words.removeLast() }
-        let base = words.joined(separator: " ")
-        var number = (last ?? 1) + 1
-        while taken.contains(where: { $0.caseInsensitiveCompare("\(base) \(number)") == .orderedSame }) {
-            number += 1
-        }
-        return "\(base) \(number)"
     }
 
     struct Metadata {
