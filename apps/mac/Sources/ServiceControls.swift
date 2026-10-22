@@ -1264,8 +1264,8 @@ final class ServiceControls {
 
     func clear(function: ShowFunction) {
         settlePending()
-        if function == .media {
-            stashExitTransition(for: Array(state.liveMedia.keys))
+        if function == .media || function == .inputs {
+            stashExitTransition(for: state.liveMedia.filter { $0.value.showFunction == function }.keys)
         }
 
         state.clear(function: function, atHostTime: CACurrentMediaTime())
@@ -1306,18 +1306,15 @@ final class ServiceControls {
         if layer == .alerts { syncFlashClock() }
     }
 
-    static let clearAllIncludesAudioKey = "serviceControls.clearAllIncludesAudio"
-
     func clearAll(protecting: Set<LayerKind> = [], cancelsPendingActions: Bool = true) {
         settlePending()
         if cancelsPendingActions { actionRouter?.cancelPendingDelayedActions() }
-        let includeAudio = UserDefaults.standard.object(
-            forKey: Self.clearAllIncludesAudioKey
-        ) as? Bool ?? true
-        state.clearAll(includingAudio: includeAudio, protecting: protecting)
-        if includeAudio { audio.stop() }
 
-        signage?.clearAllChannels()
+        let swept = ClearAllScope.swept()
+        state.clearAll(sweeping: swept, protecting: protecting)
+        if swept.contains(.audio) { audio.stop() }
+
+        if swept.contains(.signage) { signage?.clearAllChannels() }
 
         if state.liveSlide == nil {
             liveContextID = nil
@@ -1333,7 +1330,7 @@ final class ServiceControls {
     func hasContent(function: ShowFunction) -> Bool {
         switch function {
         case .slides: state.liveSlide != nil
-        case .media: !state.liveMedia.isEmpty
+        case .media, .inputs: state.liveMedia.values.contains { $0.showFunction == function }
         case .overlays: !state.liveOverlays.isEmpty
         case .audio: !state.liveAudio.isEmpty
         case .alerts: state.liveAlert != nil
@@ -1355,8 +1352,8 @@ final class ServiceControls {
         }
     }
 
-    var hasAnyClearableContent: Bool {
-        ShowFunction.allCases.contains { hasContent(function: $0) }
+    func hasClearAllContent(sweeping swept: Set<ShowFunction>) -> Bool {
+        ShowFunction.allCases.contains { swept.contains($0) && hasContent(function: $0) }
     }
 
     var liveSlideID: String? { state.liveSlide?.slide.id }

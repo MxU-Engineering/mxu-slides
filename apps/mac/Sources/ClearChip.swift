@@ -7,8 +7,15 @@ struct ClearChip: View {
 
     @State private var open = false
 
+    @AppStorage(ClearAllScope.skipsKey) private var storedSkips: String?
+    @AppStorage(ClearAllScope.legacyIncludesAudioKey) private var legacyIncludesAudio: Bool?
+
+    private var skips: Set<ShowFunction> {
+        ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio)
+    }
+
     var body: some View {
-        let anyContent = controls.hasAnyClearableContent
+        let anyContent = controls.hasClearAllContent(sweeping: ClearAllScope.swept(skips: skips))
         Button {
             open = true
         } label: {
@@ -25,7 +32,9 @@ struct ClearChip: View {
         .buttonStyle(.plain)
 
         .headerItemBackground(tint: anyContent ? .green : nil)
-        .help("Clear — everything at once, one function, or one layer")
+        .help("Clear — everything at once, one function, or one layer. Right-click to choose what Clear All clears.")
+
+        .contextMenu { ClearAllChecklistMenu() }
         .popover(isPresented: $open, arrowEdge: .bottom) {
             popup
         }
@@ -37,14 +46,15 @@ struct ClearChip: View {
             sectionLabel("Functions")
                 .padding(.top, 4)
             HStack(spacing: 6) {
-                functionButton(.slides, key: "1")
-                functionButton(.media, key: "2")
-                functionButton(.overlays, key: "3")
+                functionButton(.slides)
+                functionButton(.media)
+                functionButton(.overlays)
             }
+
             HStack(spacing: 6) {
-                functionButton(.audio, key: "4")
-                functionButton(.alerts, key: "5")
-                functionButton(.signage, key: "6")
+                functionButton(.audio)
+                functionButton(.alerts)
+                functionButton(.inputs)
             }
             sectionLabel("Layers")
                 .padding(.top, 4)
@@ -58,8 +68,22 @@ struct ClearChip: View {
     }
 
     private var clearAllButton: some View {
-        let anyContent = controls.hasAnyClearableContent
-        return Button {
+        let anyContent = controls.hasClearAllContent(sweeping: ClearAllScope.swept(skips: skips))
+        return VStack(alignment: .leading, spacing: 4) {
+            clearAllPlate(anyContent: anyContent)
+
+            if !skips.isEmpty {
+                Text("Leaves \(ShowFunction.allCases.filter(skips.contains).map(\.displayName).formatted(.list(type: .and))) up · right-click to change")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .contextMenu { ClearAllChecklistMenu() }
+    }
+
+    private func clearAllPlate(anyContent: Bool) -> some View {
+        Button {
             controls.clearAll()
             open = false
         } label: {
@@ -82,10 +106,10 @@ struct ClearChip: View {
                     lineWidth: 1
                 )
         )
-        .help("Clear every function (⌥⌘0)")
+        .help("Clear every function the checklist ticks (right-click to change)")
     }
 
-    private func functionButton(_ function: ShowFunction, key: Character) -> some View {
+    private func functionButton(_ function: ShowFunction) -> some View {
         let live = controls.hasContent(function: function)
         return Button {
             controls.clear(function: function)
@@ -111,7 +135,7 @@ struct ClearChip: View {
                 )
         )
 
-        .help("Clear Function: \(function.displayName) (⌥⌘\(key))")
+        .help("Clear Function: \(function.displayName)")
     }
 
     private func layerButton(_ layer: LayerKind) -> some View {
@@ -148,5 +172,40 @@ struct ClearChip: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
             .tracking(0.6)
+    }
+}
+
+struct ClearAllChecklistMenu: View {
+    @AppStorage(ClearAllScope.skipsKey) private var storedSkips: String?
+    @AppStorage(ClearAllScope.legacyIncludesAudioKey) private var legacyIncludesAudio: Bool?
+
+    var body: some View {
+        let skips = ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio)
+        Text("Clear All clears")
+        ForEach(ShowFunction.allCases, id: \.self) { function in
+            Toggle(function.displayName, isOn: Binding(
+                get: { !skips.contains(function) },
+                set: { ClearAllScope.set(function, swept: $0) }
+            ))
+        }
+    }
+}
+
+struct ClearAllChecklist: View {
+    @AppStorage(ClearAllScope.skipsKey) private var storedSkips: String?
+    @AppStorage(ClearAllScope.legacyIncludesAudioKey) private var legacyIncludesAudio: Bool?
+
+    var body: some View {
+        let skips = ClearAllScope.skips(stored: storedSkips, legacyIncludesAudio: legacyIncludesAudio)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 4), alignment: .leading, spacing: 6) {
+            ForEach(ShowFunction.allCases, id: \.self) { function in
+                Toggle(function.displayName, isOn: Binding(
+                    get: { !skips.contains(function) },
+                    set: { ClearAllScope.set(function, swept: $0) }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+            }
+        }
     }
 }

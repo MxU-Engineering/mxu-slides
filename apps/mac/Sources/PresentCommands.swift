@@ -18,6 +18,8 @@ struct PresentCommands: Commands {
                 .keyboardShortcut(command: .clearAudio)
             Button("Clear Alerts") { controls?.clear(function: .alerts) }
                 .keyboardShortcut(command: .clearAlerts)
+            Button("Clear Inputs") { controls?.clear(function: .inputs) }
+                .keyboardShortcut(command: .clearInputs)
             Button("Clear Signage") { controls?.clear(function: .signage) }
                 .keyboardShortcut(command: .clearSignage)
             Divider()

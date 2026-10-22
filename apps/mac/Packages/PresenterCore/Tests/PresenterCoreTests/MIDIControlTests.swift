@@ -70,6 +70,7 @@ import Testing
 
     #expect(map.note(for: .fireAlert) == 33)
     #expect(map.note(for: .clearSignage) == 34)
+    #expect(map.note(for: .clearInputs) == 35)
 
     let notes = MIDICommand.allCases.map(\.defaultNote)
     #expect(Set(notes).count == notes.count)

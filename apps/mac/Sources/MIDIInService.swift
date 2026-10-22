@@ -152,6 +152,8 @@ final class MIDIInController {
             controls.clear(function: .audio)
         case .clearAlerts:
             controls.clear(function: .alerts)
+        case .clearInputs:
+            controls.clear(function: .inputs)
         case .clearSignage:
             controls.clear(function: .signage)
         case .videoGoToBeginning:

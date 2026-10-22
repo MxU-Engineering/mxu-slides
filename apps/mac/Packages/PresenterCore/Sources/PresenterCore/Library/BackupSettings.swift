@@ -9,7 +9,7 @@ public enum BackupSettings {
         "audio.mixes", "audio.fadeEnabled", "audio.fadeSeconds", "audio.crossfadeSeconds",
         "serviceControls.timers", "serviceControls.timerBoard",
         "serviceControls.moduleOrder", "serviceControls.hiddenModules",
-        "serviceControls.clearAllIncludesAudio",
+        "serviceControls.clearAllIncludesAudio", "serviceControls.clearAllSkips",
         "present.layouts", "present.activeLayoutID", "present.continuous",
         "transition.slide.kind", "transition.slide.duration",
         "transition.media.kind", "transition.media.duration",

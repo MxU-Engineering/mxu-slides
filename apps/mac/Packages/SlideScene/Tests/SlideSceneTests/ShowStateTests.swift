@@ -317,7 +317,7 @@ private func cue(
 @Test func scopedClearAllHonorsTheAudioSetting() {
     var show = ShowState()
     show.fire(audio: CueAudio(audioItemId: "walkin"))
-    show.clearAll(includingAudio: false, protecting: [.slide])
+    show.clearAll(sweeping: ClearAllScope.swept(skips: [.audio]), protecting: [.slide])
     #expect(!show.liveAudio.isEmpty, "walk-in music survives when the panic clear excludes audio")
 }
 
@@ -378,7 +378,7 @@ private func cue(
     var show = ShowState()
     show.fire(audio: CueAudio(playlistId: "walkin"))
     show.fire(audio: CueAudio(playlistId: "broadcast"))
-    show.clearAll(includingAudio: false)
+    show.clearAll(sweeping: ClearAllScope.swept(skips: [.audio]))
     #expect(show.liveAudio.count == 2, "panic clear can spare the walk-in music")
     show.clearAll()
     #expect(show.liveAudio.isEmpty, "default Clear All sweeps every audio bus")
@@ -534,4 +534,61 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     show.fire(slide: linkedSlide("b", source: .nextSlide), presentation: nil)
     #expect(show.hasLinkedText)
     #expect(!show.hasTimeVaryingLinkedText, "next-slide text changes on fire, not per second")
+}
+
+@Test func mediaAndInputsClearOnlyTheirOwnCues() {
+    var show = ShowState()
+    show.fire(media: cue("ocean"), on: .loopingVideos)
+    show.fire(media: cue("input::item::cam1"), on: .videoInput)
+    show.fire(media: cue("input::item::cam2"), on: .videos)
+    show.clear(function: .media)
+    #expect(show.liveMedia[.loopingVideos] == nil)
+    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "Clear Media leaves the camera up")
+    #expect(show.liveMedia[.videos]?.mediaId == "input::item::cam2", "an input fired on any layer is still Inputs")
+    show.fire(media: cue("ocean"), on: .loopingVideos)
+    show.clear(function: .inputs)
+    #expect(show.liveMedia.keys.sorted { $0.rawValue < $1.rawValue } == [.loopingVideos])
+    #expect(show.directMediaFires == [.loopingVideos])
+}
+
+@Test func clearLayerVideoInputStillSweepsTheCamera() {
+    var show = ShowState()
+    show.fire(media: cue("input::item::cam1"), on: .videoInput)
+    show.clear(layer: .videoInput)
+    #expect(show.liveMedia.isEmpty)
+}
+
+@Test func clearAllLeavesSkippedInputsUpInBothForms() {
+    let verse = slide("verse1")
+    var show = ShowState()
+    show.fire(media: cue("input::item::cam1"), on: .videoInput)
+    show.fire(media: cue("bumper"), on: .videos)
+    show.fire(slide: verse, presentation: presentation([verse]))
+    show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips), protecting: [.slide])
+    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "fire-scoped Clear All keeps the camera")
+    #expect(show.liveMedia[.videos] == nil)
+    #expect(show.liveSlide != nil)
+    show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips))
+    #expect(show.liveSlide == nil)
+    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "panic Clear All keeps the camera")
+    show.clearAll()
+    #expect(show.liveMedia.isEmpty, "ticked, Inputs clears with everything else")
+}
+
+@Test func clearAllScopeDefaultsMigratesAndRoundTrips() {
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: nil) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: true) == [.inputs])
+    #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio],
+            "the old Music switch carries over")
+    #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [], "a saved checklist wins")
+    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .signage]), legacyIncludesAudio: nil) == [.audio, .signage])
+    #expect(ClearAllScope.swept(skips: [.inputs]) == Set(ShowFunction.allCases).subtracting([.inputs]))
+
+    let defaults = UserDefaults(suiteName: "ClearAllScopeTests-\(UUID().uuidString)")!
+    ClearAllScope.set(.audio, swept: false, defaults: defaults)
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.inputs, .audio]))
+    #expect(defaults.object(forKey: ClearAllScope.legacyIncludesAudioKey) as? Bool == false,
+            "older builds still read Music from the old switch")
+    ClearAllScope.set(.inputs, swept: true, defaults: defaults)
+    #expect(ClearAllScope.swept(defaults: defaults) == Set(ShowFunction.allCases).subtracting([.audio]))
 }

@@ -25,7 +25,6 @@ struct AppSettingsView: View {
     @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
-    @AppStorage(ServiceControls.clearAllIncludesAudioKey) private var clearAllIncludesAudio = true
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
     @AppStorage(SlideSceneBuilder.emptyRepeatsOnceKey) private var emptyRepeatsOnce = false
 
@@ -287,10 +286,11 @@ struct AppSettingsView: View {
             ),
             SettingsRowSpec(
                 id: "present.clearAllAudio", category: .present,
-                title: "Clear All includes Music",
-                caption: "Off protects walk-in music from the panic clear.",
-                keywords: "clear all audio panic walk-in music",
-                control: AnyView(Toggle("", isOn: $clearAllIncludesAudio).settingsToggle())
+                title: "Clear All clears",
+                caption: "Unticked stays up through Clear All (walk-in music, a live camera); its own Clear button still takes it down. Also on a right-click of the header's Clear.",
+                keywords: "clear all audio panic walk-in music inputs camera video input signage skip keep",
+                control: AnyView(ClearAllChecklist()),
+                stacked: true
             ),
             SettingsRowSpec(
                 id: "present.emptyRepeatsOnce", category: .present,

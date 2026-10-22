@@ -242,6 +242,7 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     case clearOverlays
     case clearAudio
     case clearAlerts
+    case clearInputs
     case clearSignage
     case videoGoToBeginning
     case videoPlayPause
@@ -275,7 +276,8 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .clearOverlays: 3
         case .clearAudio: 4
         case .clearAlerts: 28
-        case .clearSignage: 34 
+        case .clearSignage: 34
+        case .clearInputs: 35
         case .videoGoToBeginning: 6
         case .videoPlayPause: 7
         case .videoPlay: 8
@@ -309,7 +311,7 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     public var group: MIDICommandGroup {
         switch self {
         case .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio, .clearAlerts,
-             .clearSignage:
+             .clearInputs, .clearSignage:
             .clears
         case .videoGoToBeginning, .videoPlayPause, .videoPlay, .videoPause:
             .video
@@ -331,6 +333,7 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .clearOverlays: "Clear Overlays"
         case .clearAudio: "Clear Music"
         case .clearAlerts: "Clear Alerts"
+        case .clearInputs: "Clear Inputs"
         case .clearSignage: "Clear Signage"
         case .videoGoToBeginning: "Go to Beginning"
         case .videoPlayPause: "Play/Pause"
