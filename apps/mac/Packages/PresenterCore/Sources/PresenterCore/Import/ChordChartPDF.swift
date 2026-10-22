@@ -101,9 +101,17 @@ public enum ChordChartPDF {
 
     static func title(of page: PDFPageText?, body: CGFloat) -> String? {
         guard let page, let largest = page.glyphs.filter({ !$0.light }).map(\.size).max(), largest >= body * 1.25 else { return nil }
-        let glyphs = page.glyphs.filter { !$0.light && $0.size >= largest * 0.95 }
-        let baseline = glyphs.map(\.y).max() ?? 0
-        let text = Self.text(of: glyphs.filter { abs($0.y - baseline) < largest * 0.3 }.sorted { $0.x < $1.x }).text
+        var lines: [[PDFGlyph]] = []
+        for glyph in page.glyphs.filter({ !$0.light && $0.size >= largest * 0.95 }).sorted(by: { $0.y > $1.y }) {
+            if let baseline = lines.last?.first?.y, baseline - glyph.y < largest * 0.3 {
+                lines[lines.count - 1].append(glyph)
+            } else if let baseline = lines.last?.first?.y, baseline - glyph.y > largest * 1.3 {
+                break
+            } else {
+                lines.append([glyph])
+            }
+        }
+        let text = lines.map { Self.text(of: $0.sorted { $0.x < $1.x }).text }.joined(separator: " ")
         return text.isEmpty ? nil : text
     }
 

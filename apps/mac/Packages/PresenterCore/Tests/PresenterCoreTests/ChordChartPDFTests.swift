@@ -32,10 +32,11 @@ struct ChordChartPDFTests {
         }
         let header = bold("A Thousand Hallelujahs [Live From Passion", y: 726, size: 14.75) + bold("2022]", y: 712, size: 14.75)
         let pages = [
-            bold("A Thousand Hallelujahs [Live From Passion 2022]", y: 720, size: 23)
-                + bold("CHORUS", y: 650, size: 14.75) + Self.glyphs("A thousand hallelujahs", y: 620),
+            bold("A Thousand Hallelujahs [Live From", y: 724, size: 18.7) + bold("Passion 2022]", y: 708, size: 18.7)
+                + bold("CHORUS", y: 650, size: 14.75) + Self.glyphs("With a thousand hallelujahs", y: 620)
+                + Self.glyphs("We magnify Your name", y: 605) + Self.glyphs("A thousand hallelujahs", y: 590),
             header + bold("A", y: 692, size: 13) + Self.glyphs("And a thousand more", y: 680)
-                + bold("BRIDGE", y: 640, size: 14.75) + Self.glyphs("Now He reigns", y: 610),
+                + bold("BRIDGE", y: 640, size: 14.75) + Self.glyphs("Praise for He rose", y: 610) + Self.glyphs("Now He reigns", y: 595),
             header + Self.glyphs("We will sing forever", y: 680),
         ].map { PDFPageText(glyphs: $0, bounds: CGRect(x: 0, y: 0, width: 612, height: 792)) }
 
@@ -43,10 +44,13 @@ struct ChordChartPDFTests {
         {title: A Thousand Hallelujahs [Live From Passion 2022]}
 
         Chorus
+        With a thousand hallelujahs
+        We magnify Your name
         A thousand hallelujahs
         [A]And a thousand more
 
         Bridge
+        Praise for He rose
         Now He reigns
         We will sing forever
         """)
