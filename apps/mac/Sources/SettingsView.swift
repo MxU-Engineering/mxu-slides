@@ -616,6 +616,13 @@ final class SettingsRouter {
         pendingStreamPresetID = presetID
         pending = .streamRecord
     }
+
+    var pendingTrackChannel: String?
+
+    func openTrackChannel(_ id: String) {
+        pendingTrackChannel = id
+        pending = .avInputs
+    }
 }
 
 struct SettingsRowSpec: Identifiable {

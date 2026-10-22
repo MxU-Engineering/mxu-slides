@@ -21,6 +21,9 @@ struct SettingsCategoryPane: View {
         case midiDevice(String)
 
         case groups
+
+        case tracks
+        case trackChannel(String)
     }
 
     @State private var page: Page = .list
@@ -28,7 +31,11 @@ struct SettingsCategoryPane: View {
     var body: some View {
         VStack(spacing: 0) {
             if page != .list {
-                SettingsPageHeader(backTitle: category.title, title: pageTitle) { page = .list }
+                if case .trackChannel = page {
+                    SettingsPageHeader(backTitle: "Tracks", title: pageTitle) { page = .tracks }
+                } else {
+                    SettingsPageHeader(backTitle: category.title, title: pageTitle) { page = .list }
+                }
                 Divider()
             }
             switch page {
@@ -44,10 +51,22 @@ struct SettingsCategoryPane: View {
                 MIDIDeviceDetail(id: id) { page = .list }
             case .groups:
                 if let model { GroupsForm(model: model) }
+            case .tracks:
+                if let model { TrackChannelsForm(model: model, tracks: controls?.tracks) { page = .trackChannel($0) } }
+            case .trackChannel(let id):
+                if let model { TrackChannelDetail(id: id, model: model, tracks: controls?.tracks) { page = .tracks } }
             }
         }
         .background(Color.basePlane)
         .onChange(of: category) { _, _ in page = .list }
+        .onAppear(perform: openPendingTrack)
+        .onChange(of: SettingsRouter.shared.pendingTrackChannel) { _, _ in openPendingTrack() }
+    }
+
+    private func openPendingTrack() {
+        guard category == .avInputs, let id = SettingsRouter.shared.pendingTrackChannel else { return }
+        SettingsRouter.shared.pendingTrackChannel = nil
+        page = .trackChannel(id)
     }
 
     private var pageTitle: String {
@@ -58,6 +77,8 @@ struct SettingsCategoryPane: View {
         case .audioOutput(let id): AudioOutputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Output"
         case .midiDevice(let id): MIDIDeviceInventory.shared.items.first { $0.id == id }?.device.name ?? "MIDI Device"
         case .groups: "Groups"
+        case .tracks: "Tracks"
+        case .trackChannel(let id): model?.trackChannels.first { $0.id == id }?.name ?? "Track"
         }
     }
 
@@ -69,7 +90,7 @@ struct SettingsCategoryPane: View {
                 VideoInputsSection { page = .videoInput($0) }
                 AudioInputsSection { page = .audioInput($0) }
                 AudioOutputsSection { page = .audioOutput($0) }
-                TracksSection()
+                TracksSection(count: model?.trackChannels.count ?? 0) { page = .tracks }
             }
             .settingsForm()
         case .midi:
@@ -835,6 +856,8 @@ private struct AudioInputDetail: View {
 }
 
 private struct TracksSection: View {
+    let count: Int
+    let open: () -> Void
     @AppStorage(TracksController.enabledKey) private var enabled = false
 
     var body: some View {
@@ -844,9 +867,195 @@ private struct TracksSection: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: open) {
+                HStack(spacing: 8) {
+                    Text("Track list")
+                    Spacer()
+                    Text("\(count)").foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Every song's stems land on these tracks. Add, rename, reorder and delete them, and set what each one is.")
         } header: {
             Text("Tracks")
         }
+    }
+}
+
+private struct TrackChannelsForm: View {
+    let model: AppModel
+    let tracks: TracksController?
+    let open: (String) -> Void
+    @State private var adding = false
+    @State private var newName = ""
+
+    var body: some View {
+        let channels = model.trackChannels
+        Form {
+            Section {
+                if channels.isEmpty {
+                    Text("No tracks yet.").foregroundStyle(.secondary)
+                }
+                ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
+                    TrackChannelRow(channel: channel) { open(channel.id) }
+                        .contextMenu {
+                            Button("Move Up") { tracks?.moveChannel(channel.id, before: channels[index - 1].id) }
+                                .disabled(index == 0)
+                            Button("Move Down") {
+                                tracks?.moveChannel(channel.id, before: index + 2 < channels.count ? channels[index + 2].id : nil)
+                            }
+                            .disabled(index == channels.count - 1)
+                        }
+                }
+                .onMove { from, to in
+                    guard let index = from.first else { return }
+                    tracks?.moveChannel(channels[index].id, before: to < channels.count ? channels[to].id : nil)
+                }
+                Button("Add Track\u{2026}") { newName = ""; adding = true }
+            } footer: {
+                Text("Every song's stems land on these tracks, in this order.")
+                    .help("Import Audio puts each file on the track its name matches. Drag a track, or right-click it, to move it.")
+            }
+        }
+        .settingsForm()
+        .alert("Add Track", isPresented: $adding) {
+            TextField("Name", text: $newName)
+            Button("Add") { tracks?.addChannel(named: newName) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+private struct TrackChannelRow: View {
+    let channel: TrackChannel
+    let open: () -> Void
+
+    var body: some View {
+        let family = TimelineTracks.family(of: channel)
+        Button(action: open) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(StripColorStore.shared.color(for: "track:\(channel.id)", defaultName: family.colorName))
+                    .frame(width: 10, height: 10)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(channel.name).font(.system(size: 13))
+                    Text("\(family.name) · \(channel.mono == true ? "Mono" : "Stereo")")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct TrackChannelDetail: View {
+    let id: String
+    let model: AppModel
+    let tracks: TracksController?
+    let back: () -> Void
+    @State private var name = ""
+    @State private var matches = ""
+    @FocusState private var focus: Field?
+    @State private var checkingUses = false
+    @State private var uses: Int?
+
+    private enum Field { case name, matches }
+
+    var body: some View {
+        if let channel = model.trackChannels.first(where: { $0.id == id }) {
+            Form {
+                Section {
+                    TextField("Name", text: $name)
+                        .focused($focus, equals: .name)
+                        .onSubmit(commitName)
+                }
+                Section("Plays as") {
+                    Picker("Role", selection: Binding(get: { channel.trackRole }, set: { role in
+                        tracks?.editChannel(id) { $0.role = role == .music ? nil : role.rawValue }
+                    })) {
+                        ForEach(TimelineTracks.Role.allCases, id: \.self) { role in
+                            Text(role.rawValue.capitalized).tag(role)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Click and guide start on no mix, with a send to Main at zero, so the room never hears them by default.")
+                    Picker("Channels", selection: Binding(get: { channel.mono == true }, set: { mono in
+                        tracks?.editChannel(id) { $0.mono = mono ? true : nil }
+                    })) {
+                        Text("Stereo").tag(false)
+                        Text("Mono").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                Section {
+                    TextField("Also matches", text: $matches)
+                        .focused($focus, equals: .matches)
+                        .onSubmit(commitMatches)
+                } footer: {
+                    Text("Other stem names that land on this track, separated by commas.")
+                }
+                Section {
+                    Button(checkingUses ? "Checking Songs\u{2026}" : "Delete Track\u{2026}", role: .destructive) {
+                        checkingUses = true
+                        Task {
+                            uses = await model.songsUsing(trackChannel: id)
+                            checkingUses = false
+                        }
+                    }
+                    .disabled(checkingUses)
+                }
+            }
+            .settingsForm()
+            .onAppear {
+                name = channel.name
+                matches = (channel.matchNames ?? []).joined(separator: ", ")
+            }
+            .onChange(of: focus) { old, _ in
+                if old == .name { commitName() }
+                if old == .matches { commitMatches() }
+            }
+
+            .onDisappear {
+                commitName()
+                commitMatches()
+            }
+            .alert("Delete \u{201C}\(channel.name)\u{201D}?", isPresented: Binding(
+                get: { uses != nil }, set: { if !$0 { uses = nil } })
+            ) {
+                Button("Delete", role: .destructive) { tracks?.deleteChannel(id); back() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(Self.deleteMessage(uses ?? 0))
+            }
+        } else {
+            ContentUnavailableView("Track not found", systemImage: "waveform")
+        }
+    }
+
+    static func deleteMessage(_ uses: Int) -> String {
+        switch uses {
+        case 0: "No songs use it."
+        case 1: "1 song uses it. Its stems stay on the song but don't play until moved to another track."
+        default: "\(uses) songs use it. Their stems stay on the songs but don't play until moved to another track."
+        }
+    }
+
+    private func commitName() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        tracks?.editChannel(id) { $0.name = trimmed }
+    }
+
+    private func commitMatches() {
+        let list = matches.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        tracks?.editChannel(id) { $0.matchNames = list.isEmpty ? nil : list }
     }
 }
 

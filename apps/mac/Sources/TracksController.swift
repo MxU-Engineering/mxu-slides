@@ -322,3 +322,51 @@ final class TracksController {
         return (resolved.routing, resolved.deviceUID.isEmpty ? nil : resolved.deviceUID)
     }
 }
+
+extension TracksController {
+
+    @discardableResult
+    func addChannel(named name: String) -> TrackChannel? {
+        guard let model else { return nil }
+        var preview = model.trackChannels
+        guard let made = TimelineTracks.adding(named: name, to: &preview) else { return nil }
+        model.updateTrackChannels { $0.channels.insert(made, at: TimelineTracks.insertionIndex(for: made, in: $0.channels)) }
+        refresh()
+        return made
+    }
+
+    func editChannel(_ id: String, _ change: @escaping @Sendable (inout TrackChannel) -> Void) {
+        guard let model, let mixer, let old = model.trackChannels.first(where: { $0.id == id }) else { return }
+        var new = old
+        change(&new)
+        guard new != old else { return }
+        model.updateTrackChannels { list in
+            if let index = list.channels.firstIndex(where: { $0.id == id }) { change(&list.channels[index]) }
+        }
+        let routeKey = "audio.track.\(id).mixId"
+        let sends = mixer.channelSends("track:\(id)")
+        let edited = TimelineTracks.edited(
+            sends: sends, route: UserDefaults.standard.string(forKey: routeKey), from: old, to: new,
+            bus: { Self.existingBus($0)?.id }, main: AudioMixInventory.mainID)
+        for mix in Set(sends.keys).union(edited.sends.keys) where sends[mix] != edited.sends[mix] {
+            mixer.setChannelSend("track:\(id)", mixId: mix, gain: edited.sends[mix])
+        }
+        if let route = edited.route { UserDefaults.standard.set(route, forKey: routeKey) }
+        DiagnosticsStore.shared.note("tracks.channel.edit", detail: "\(old.name) → \(new.name), \(new.trackRole)")
+        refresh()
+    }
+
+    func moveChannel(_ id: String, before: String?) {
+        guard let model, let move = TimelineTracks.move(id, before: before, in: model.trackChannels) else { return }
+        model.moveTrackChannel(id, before: before, next: move.next)
+        refresh()
+    }
+
+    func deleteChannel(_ id: String) {
+        guard let model else { return }
+        let name = model.trackChannels.first { $0.id == id }?.name ?? id
+        model.updateTrackChannels { $0.channels.removeAll { $0.id == id } }
+        DiagnosticsStore.shared.note("tracks.channel.delete", detail: name)
+        refresh()
+    }
+}

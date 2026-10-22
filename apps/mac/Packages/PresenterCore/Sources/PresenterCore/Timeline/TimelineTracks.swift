@@ -101,6 +101,13 @@ public enum TimelineTracks {
         let key = canonical(words).key
         let same = channels.filter { (numbered($0.name).number ?? 1) == (number ?? 1) }
         if let named = same.first(where: { canonical(numbered($0.name).words).key == key }) { return named }
+
+        if let remembered = channels.first(where: { channel in
+            (channel.matchNames ?? []).contains { name in
+                let match = numbered(name)
+                return canonical(match.words).key == key && (match.number ?? 1) == (number ?? 1)
+            }
+        }) { return remembered }
         var best: (channel: TrackChannel, length: Int)?
         for channel in same {
             for phrase in (channel.matchNames ?? []).map(Self.words) where contains(words, phrase) {
@@ -196,30 +203,111 @@ public extension TimelineTracks {
         _ stems: [TimelineStemImport], at: Double, channel: String? = nil, channels: [TrackChannel],
         into cues: inout [TimelineCue], newID: () -> String = { UUID().uuidString }
     ) -> [TrackChannel] {
+        let resolution = resolve(plan(stems, channel: channel, channels: channels, newID: newID))
+        place(stems, at: at, assignments: resolution.assignments, into: &cues, newID: newID)
+        return resolution.made
+    }
+
+    struct StemPlan: Equatable, Sendable {
+        public struct Unmatched: Equatable, Sendable, Identifiable {
+            public var fileName: String
+            public var proposed: TrackChannel
+            public var id: String { fileName }
+        }
+
+        public var assignments: [String: String]
+        public var unmatched: [Unmatched]
+    }
+
+    static func plan(
+        _ stems: [TimelineStemImport], channel: String? = nil, channels: [TrackChannel],
+        newID: () -> String = { UUID().uuidString }
+    ) -> StemPlan {
+        if let channel, stems.count == 1 { return StemPlan(assignments: [stems[0].fileName: channel], unmatched: []) }
 
         let known = Set(channels.map(\.id))
         var kept: [String: String] = [:]
         for stem in stems { if let id = stem.channelId, known.contains(id) { kept[stem.fileName] = id } }
-        var result = assign(
+        let result = assign(
             fileNames: stems.map(\.fileName).filter { kept[$0] == nil }, to: channels,
             taken: Set(kept.values), newID: newID)
-        result.assignments.merge(kept) { _, keep in keep }
-        if let channel, stems.count == 1 {
-            result = (channels, [stems[0].fileName: channel])
+        var assignments = kept
+        var unmatched: [StemPlan.Unmatched] = []
+        for stem in stems where kept[stem.fileName] == nil {
+            guard let id = result.assignments[stem.fileName] else { continue }
+            if known.contains(id) {
+                assignments[stem.fileName] = id
+            } else if var made = result.channels.first(where: { $0.id == id }) {
+
+                if stem.channels == 1 { made.mono = true }
+                unmatched.append(.init(fileName: stem.fileName, proposed: made))
+            }
         }
+        return StemPlan(assignments: assignments, unmatched: unmatched)
+    }
+
+    enum StemChoice: Equatable, Sendable {
+        case new(name: String)
+        case existing(String)
+    }
+
+    struct StemResolution: Equatable, Sendable {
+
+        public var assignments: [String: String]
+
+        public var made: [TrackChannel]
+
+        public var remembered: [String: [String]]
+    }
+
+    static func resolve(_ plan: StemPlan, choices: [String: StemChoice] = [:], remember: Bool = true) -> StemResolution {
+        var resolution = StemResolution(assignments: plan.assignments, made: [], remembered: [:])
+        for file in plan.unmatched {
+            switch choices[file.fileName] ?? .new(name: file.proposed.name) {
+            case .existing(let id):
+                resolution.assignments[file.fileName] = id
+                if remember { resolution.remembered[id, default: []].append(file.proposed.name) }
+            case .new(let name):
+                var made = file.proposed
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, trimmed != made.name {
+                    made.name = trimmed
+                    let role = role(forName: trimmed)
+                    made.role = role == .music ? nil : role.rawValue
+                }
+                resolution.made.append(made)
+                resolution.assignments[file.fileName] = made.id
+            }
+        }
+        return resolution
+    }
+
+    static func adding(_ resolution: StemResolution, to channels: [TrackChannel]) -> [TrackChannel] {
+        var channels = channels
+        for made in resolution.made where !channels.contains(where: { $0.id == made.id }) {
+            channels.insert(made, at: insertionIndex(for: made, in: channels))
+        }
+        for (id, names) in resolution.remembered {
+            guard let index = channels.firstIndex(where: { $0.id == id }) else { continue }
+            var matchNames = channels[index].matchNames ?? []
+            for name in names where !matchNames.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+                matchNames.append(name)
+            }
+            channels[index].matchNames = matchNames
+        }
+        return channels
+    }
+
+    static func place(
+        _ stems: [TimelineStemImport], at: Double, assignments: [String: String], into cues: inout [TimelineCue],
+        newID: () -> String = { UUID().uuidString }
+    ) {
         let at = PresentationTimelines.snappedToFrame(max(0, at))
         for stem in stems {
-            guard let id = result.assignments[stem.fileName] else { continue }
+            guard let id = assignments[stem.fileName] else { continue }
             let lane = lane(for: id)
             cues.removeAll { $0.lane == lane && abs($0.at - at) < PresentationTimelines.frame / 2 }
             cues.append(TimelineCue(id: newID(), lane: lane, at: at, duration: stem.seconds, mediaId: stem.audioID))
-        }
-
-        return result.channels.filter { made in !channels.contains { $0.id == made.id } }.map { made in
-            var made = made
-            let files = stems.filter { result.assignments[$0.fileName] == made.id }
-            if !files.isEmpty, files.allSatisfy({ $0.channels == 1 }) { made.mono = true }
-            return made
         }
     }
 }

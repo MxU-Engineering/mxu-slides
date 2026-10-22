@@ -2837,6 +2837,32 @@ final class AppModel {
             orMake: { TrackChannelList(id: TrackChannelList.wellKnownID, channels: []) }, mutate)
     }
 
+    @discardableResult
+    func moveTrackChannel(_ id: String, before: String?, next: [TrackChannel]) -> Task<LibraryBatch, any Error> {
+        let written = client.edit(
+            TrackChannelList.self, id: TrackChannelList.wellKnownID, value: { $0.channels = next },
+            op: { try TrackChannelList.move(id, before: before, on: $0) })
+        Task {
+            if case .failure(let error) = await written.result {
+                DiagnosticsStore.shared.note("trackChannels.moveFailed", detail: "\(error)")
+            }
+        }
+        return written
+    }
+
+    func songsUsing(trackChannel id: String) async -> Int {
+        guard let reader = try? await client.reader() else { return 0 }
+        return await Self.trackChannelUses(reader: reader).filter { $0.contains(id) }.count
+    }
+
+    @concurrent
+    nonisolated private static func trackChannelUses(reader: LibraryReader) async -> [Set<String>] {
+        let ids = (try? await reader.ids(of: .presentation)) ?? []
+        return await reader.loadValues(Presentation.self, ids: ids, priority: .userInitiated, project: { presentation in
+            TimelineTracks.channelIDs(in: presentation)
+        }).values.values.filter { !$0.isEmpty }
+    }
+
     var trackSets: [TrackSet] {
         resident.trackSets.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

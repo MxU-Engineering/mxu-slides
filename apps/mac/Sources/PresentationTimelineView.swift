@@ -577,6 +577,20 @@ struct PresentationTimelineLanes: View {
 
     @State private var offeringTracks = false
 
+    @State private var unmatched: UnmatchedStems?
+
+    @State private var renamingTrack: String?
+    @State private var trackNameDraft = ""
+    @Environment(\.openSettings) private var openSettings
+
+    struct UnmatchedStems: Identifiable {
+        let id = UUID()
+        var stems: [TimelineStemImport]
+        var at: Double
+        var plan: TimelineTracks.StemPlan
+        var set: String?
+    }
+
     private struct PlacingAction: Identifiable {
         var action: SlideAction
         var at: Double
@@ -669,15 +683,27 @@ struct PresentationTimelineLanes: View {
                 }
             }
 
-            .dropDestination(for: String.self) { payloads, _ in
+            .onDrop(of: [.plainText, .fileURL], isTargeted: $dropTargeted) { _ in
+                guard !runOnly else { return false }
                 let pointer = anchor.mouseLocal()
-                return drop(
-                    payloads, at: pointer.flatMap { map.locate(x: max($0.x, 0))?.time } ?? 0,
-                    track: trackRow(atY: pointer?.y, visible: visible, cues: cues))
-            } isTargeted: { dropTargeted = $0 }
+                let time = pointer.flatMap { map.locate(x: max($0.x, 0))?.time } ?? 0
+                let track = trackRow(atY: pointer?.y, visible: visible, cues: cues)
+                let pasteboard = NSPasteboard(name: .drag)
+                let files = (pasteboard.readObjects(
+                    forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+                if !files.isEmpty { return dropFiles(files, at: time, track: track) }
+                guard let payload = pasteboard.string(forType: .string) else { return false }
+                return drop([payload], at: time, track: track)
+            }
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
+        .sheet(item: $unmatched) { pending in
+            UnmatchedStemsSheet(plan: pending.plan, channels: context.model.trackChannels) { resolution in
+                unmatched = nil
+                if let resolution { land(pending.stems, at: pending.at, resolution: resolution, set: pending.set) }
+            }
+        }
         .alert("Play tracks on this computer?", isPresented: $offeringTracks) {
             Button("Turn On") { tracksOn = true }
             Button("Not Now", role: .cancel) {}
@@ -1116,13 +1142,69 @@ struct PresentationTimelineLanes: View {
     }
 
     private func makeTrack(named name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let role = TimelineTracks.role(forName: trimmed)
-        let made = TrackChannel(id: UUID().uuidString, name: trimmed, role: role == .music ? nil : role.rawValue)
-        context.model.updateTrackChannels { $0.channels.insert(made, at: TimelineTracks.insertionIndex(for: made, in: $0.channels)) }
-        context.controls.tracks.refresh()
+        guard let made = context.controls.tracks.addChannel(named: name) else { return }
         addTrackRow(made.id)
+    }
+
+    @ViewBuilder
+    private func trackRowMenu(_ channel: TrackChannel, all: [TrackChannel], stems: [TimelineCue]) -> some View {
+        let known = all.contains { $0.id == channel.id }
+        let onRow = stems.contains { $0.trackChannelId == channel.id }
+        if known {
+            Button("Rename\u{2026}") { trackNameDraft = channel.name; renamingTrack = channel.id }
+            Menu("Role: \(channel.trackRole.rawValue.capitalized)") {
+                ForEach(TimelineTracks.Role.allCases, id: \.self) { role in
+                    Toggle(role.rawValue.capitalized, isOn: Binding(get: { channel.trackRole == role }, set: { _ in
+                        context.controls.tracks.editChannel(channel.id) { $0.role = role == .music ? nil : role.rawValue }
+                    }))
+                }
+            }
+            Toggle("Mono", isOn: Binding(get: { channel.mono == true }, set: { on in
+                context.controls.tracks.editChannel(channel.id) { $0.mono = on ? true : nil }
+            }))
+        }
+        if onRow {
+            Menu("Move Stems To") {
+                ForEach(all.filter { $0.id != channel.id }) { other in
+                    Button(other.name) { moveStems(from: channel.id, to: other.id) }
+                }
+            }
+        } else if PresentationTimelineCards.shared.addedTrackRows[context.item.id]?.contains(channel.id) == true {
+            Button("Remove from This Song") {
+                PresentationTimelineCards.shared.addedTrackRows[context.item.id]?.remove(channel.id)
+            }
+        }
+        if known {
+            Divider()
+            Button("Track Settings\u{2026}") {
+                SettingsRouter.shared.openTrackChannel(channel.id)
+                openSettings()
+            }
+        }
+    }
+
+    private func moveStems(from old: String, to new: String) {
+        let stems = TimelineTracks.stems(context.timeline?.cues ?? []).filter { $0.trackChannelId == old }
+        context.edit("Move Stems") { timeline in
+            for index in timeline.cues.indices where timeline.cues[index].trackChannelId == old {
+                timeline.cues[index].lane = TimelineTracks.lane(for: new)
+            }
+        }
+        let moved = Dictionary(stems.compactMap { $0.mediaId.map { ($0, new) } }, uniquingKeysWith: { first, _ in first })
+        remember(moved)
+        PresentationTimelineCards.shared.addedTrackRows[context.item.id, default: []].remove(old)
+        DiagnosticsStore.shared.note("timeline.stems.move", detail: "\(moved.count) to \(new)")
+    }
+
+    private func remember(_ channelsByStem: [String: String]) {
+        guard !channelsByStem.isEmpty else { return }
+        for set in context.model.trackSets where set.stems.contains(where: { channelsByStem[$0.audioId] != nil }) {
+            context.model.updateTrackSet(set.id) { trackSet in
+                for index in trackSet.stems.indices {
+                    if let id = channelsByStem[trackSet.stems[index].audioId] { trackSet.stems[index].channelId = id }
+                }
+            }
+        }
     }
 
     private func stemTint(_ channelID: String, folded: Bool) -> Color {
@@ -1218,6 +1300,7 @@ struct PresentationTimelineLanes: View {
             }
             .frame(height: rowHeight)
             if tracksExpanded {
+                let all = context.model.trackChannels
                 ForEach(rows) { channel in
                     HStack(spacing: 3) {
                         Text(channel.name)
@@ -1230,6 +1313,22 @@ struct PresentationTimelineLanes: View {
                     }
                     .padding(.leading, 11)
                     .frame(height: trackHeight(channel.id))
+                    .contentShape(Rectangle())
+                    .contextMenu { if !runOnly { trackRowMenu(channel, all: all, stems: stems) } }
+                    .popover(isPresented: Binding(
+                        get: { renamingTrack == channel.id }, set: { if !$0 { renamingTrack = nil } })
+                    ) {
+                        TextField("Track name", text: $trackNameDraft)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                            .padding(10)
+                            .onSubmit {
+                                let name = trackNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                renamingTrack = nil
+                                guard !name.isEmpty else { return }
+                                context.controls.tracks.editChannel(channel.id) { $0.name = name }
+                            }
+                    }
                     .overlay(alignment: .bottom) {
                         TrackRowResizeHandle(height: trackHeight(channel.id), base: rowHeight) { scale in
                             PresentationTimelineCards.shared.trackScale[channel.id] = scale
@@ -1295,35 +1394,49 @@ struct PresentationTimelineLanes: View {
         }
     }
 
+    private func dropFiles(_ urls: [URL], at time: Double, track: TrackRow?) -> Bool {
+        DiagnosticsStore.shared.note("timeline.drop.files", detail: "\(urls.count), tracks \(track != nil)")
+        guard !runOnly, let track, TimelineTracks.takesFinderDrop(urls) else { return false }
+        let channel = if case .channel(let id) = track { id } else { String?.none }
+        let at = PresentationTimelines.snappedToFrame(time)
+        Task { @MainActor in
+            guard let made = await context.model.importTrackSet(urls, song: context.presentation.name) else { return }
+            placeStems(made.stems, at: at, channel: made.stems.count == 1 ? channel : nil, set: made.set.id)
+            if !tracksOn { offeringTracks = true }
+        }
+        return true
+    }
+
     private func placeStems(_ stems: [TimelineStemImport], at: Double, channel: String? = nil, set: String? = nil) {
         guard !stems.isEmpty else { return }
         let channels = context.model.trackChannels
-        var made: [TrackChannel] = []
-        var landed: [String: String] = [:]
-        let ids = Set(stems.map(\.audioID))
-        context.edit("Import Audio") { timeline in
-            made = TimelineTracks.place(stems, at: at, channel: channel, channels: channels, into: &timeline.cues)
-            for cue in TimelineTracks.stems(timeline.cues) where ids.contains(cue.mediaId ?? "") {
-                landed[cue.mediaId ?? ""] = cue.trackChannelId
-            }
+        let plan = TimelineTracks.plan(stems, channel: channel, channels: channels)
+        if plan.unmatched.isEmpty || channels.isEmpty {
+            land(stems, at: at, resolution: TimelineTracks.resolve(plan), set: set)
+        } else {
+            unmatched = UnmatchedStems(stems: stems, at: at, plan: plan, set: set)
         }
-        if let set, !landed.isEmpty {
-            let channelsByStem = landed
-            context.model.updateTrackSet(set) { trackSet in
-                for index in trackSet.stems.indices {
-                    if let id = channelsByStem[trackSet.stems[index].audioId] { trackSet.stems[index].channelId = id }
-                }
-            }
-        }
-        if !made.isEmpty {
-            let adding = made
-            context.model.updateTrackChannels { list in
-                list.channels += adding.filter { new in !list.channels.contains { $0.id == new.id } }
-            }
+    }
+
+    private func land(_ stems: [TimelineStemImport], at: Double, resolution: TimelineTracks.StemResolution, set: String?) {
+        if !resolution.made.isEmpty || !resolution.remembered.isEmpty {
+            context.model.updateTrackChannels { $0.channels = TimelineTracks.adding(resolution, to: $0.channels) }
 
             context.controls.tracks.refresh()
         }
-        DiagnosticsStore.shared.note("timeline.stems", detail: "\(stems.count) at \(at), \(made.count) new channels")
+        context.edit("Import Audio") { TimelineTracks.place(stems, at: at, assignments: resolution.assignments, into: &$0.cues) }
+        if let set {
+            let landed = Dictionary(
+                stems.compactMap { stem in resolution.assignments[stem.fileName].map { (stem.audioID, $0) } },
+                uniquingKeysWith: { first, _ in first })
+            context.model.updateTrackSet(set) { trackSet in
+                for index in trackSet.stems.indices {
+                    if let id = landed[trackSet.stems[index].audioId] { trackSet.stems[index].channelId = id }
+                }
+            }
+        }
+        DiagnosticsStore.shared.note(
+            "timeline.stems", detail: "\(stems.count) at \(at), \(resolution.made.count) new channels, \(resolution.remembered.count) remembered")
     }
 
     static func interval(_ pointsPerSecond: Double) -> Double {
