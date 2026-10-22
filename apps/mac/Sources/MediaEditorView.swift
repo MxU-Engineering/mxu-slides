@@ -665,14 +665,14 @@ struct MediaEditorView: View {
             VStack(spacing: 0) {
 
                 Color.clear
-                    .frame(height: ShellView.editorHeaderReserve)
+                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
                 previewArea
             }
             .frame(maxWidth: .infinity)
             VStack(spacing: 0) {
 
                 Color.clear
-                    .frame(height: ShellView.editorHeaderReserve)
+                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
                 settingsPanel
             }
 

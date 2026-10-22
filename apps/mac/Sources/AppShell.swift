@@ -171,52 +171,6 @@ struct ModeSwitcher: View {
     }
 }
 
-struct EditContextSwitcher: View {
-    @Bindable var model: AppModel
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(EditContext.allCases, id: \.rawValue) { context in
-                segment(context)
-            }
-        }
-        .padding(2)
-        .background(
-            Color.primary.opacity(0.03),
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
-        .help("Edit context — one editor, re-targeted (⌘3 ⌘4 ⌘5)")
-    }
-
-    private func segment(_ context: EditContext) -> some View {
-        let selected = EditContext(section: model.selectedSection) == context
-        return Button {
-            context.apply(to: model)
-        } label: {
-            Text(context.title)
-                .font(.caption.weight(selected ? .medium : .regular))
-                .foregroundStyle(selected ? .primary : .secondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-
-                .background(
-                    selected ? Color.primary.opacity(0.08) : .clear,
-                    in: RoundedRectangle.standard(
-                        CornerStandard.nested(inset: 2, within: CornerStandard.element)
-                    )
-                )
-                .contentShape(RoundedRectangle.standard(
-                    CornerStandard.nested(inset: 2, within: CornerStandard.element)
-                ))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 struct ViewCommands: Commands {
     @FocusedValue(\.libraryModel) private var model
     @AppStorage("appMode") private var modeRaw = AppMode.edit.rawValue
@@ -407,12 +361,6 @@ struct ShellView: View {
 
     static let headerHeight: CGFloat = 52
 
-    static let editContextRowHeight: CGFloat = 32
-
-    static let editHeaderHeight: CGFloat = headerHeight + editContextRowHeight
-
-    static let editorHeaderReserve: CGFloat = editHeaderHeight - CornerStandard.panelInset
-
     static func trafficLightSlot(fullScreen: Bool) -> CGFloat {
         fullScreen ? 10 : 94
     }
@@ -444,7 +392,7 @@ struct ShellView: View {
 
             TitlebarBehavior()
                 .frame(maxWidth: .infinity)
-                .frame(height: mode == .edit ? Self.editHeaderHeight : Self.headerHeight)
+                .frame(height: Self.headerHeight)
                 .padding(
                     .leading,
                     sidebarVisible
@@ -460,20 +408,14 @@ struct ShellView: View {
         }
         .overlay(alignment: .top) {
 
-            VStack(spacing: 0) {
-                Group {
-                    if isRunOnly {
-                        runOnlyLockChip
-                    } else {
-                        ModeSwitcher(modeRaw: $modeRaw)
-                    }
-                }
-                .frame(height: Self.headerHeight)
-                if mode == .edit, !isRunOnly {
-                    EditContextSwitcher(model: model)
-                        .frame(height: Self.editContextRowHeight)
+            Group {
+                if isRunOnly {
+                    runOnlyLockChip
+                } else {
+                    ModeSwitcher(modeRaw: $modeRaw)
                 }
             }
+            .frame(height: Self.headerHeight)
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
@@ -1396,7 +1338,7 @@ struct ShellView: View {
         VStack(spacing: 0) {
             if !editorTakesOver {
                 Color.clear
-                    .frame(height: mode == .edit ? Self.editHeaderHeight : Self.headerHeight)
+                    .frame(height: Self.headerHeight)
             }
 
             HStack(spacing: 0) {
