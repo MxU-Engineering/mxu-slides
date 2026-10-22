@@ -185,7 +185,13 @@ final class TimecodeFollower {
         let songs = songs(controls.appModel)
         if let command = follow.step(reading, songs: songs.map(\.song)),
            let item = songs.first(where: { $0.song.itemID == command.itemID }) {
-            if controls.timeline.itemID != command.itemID { revealPending = command.itemID }
+            let newSong = controls.timeline.itemID != command.itemID
+            if newSong { revealPending = command.itemID }
+            if case .land = command {
+                DiagnosticsStore.shared.note("timecode.land", detail: "\(command.itemID) at \(String(format: "%.3f", command.position))")
+            } else if newSong {
+                DiagnosticsStore.shared.note("timecode.song", detail: "\(command.itemID) at \(String(format: "%.3f", command.position))")
+            }
             controls.timeline.follow(
                 command, itemID: item.song.itemID, presentation: item.presentation, arrangementId: item.arrangementId)
         }

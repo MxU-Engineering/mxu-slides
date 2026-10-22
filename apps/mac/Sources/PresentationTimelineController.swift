@@ -211,7 +211,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                     controls.actionRouter?.execute(actions)
                 }
             }
-            DiagnosticsStore.shared.note("timeline.fire", detail: "\(effect)")
+            DiagnosticsStore.shared.note("timeline.fire", detail: "\(effect) at \(String(format: "%.3f", lastPosition))")
         }
     }
 
