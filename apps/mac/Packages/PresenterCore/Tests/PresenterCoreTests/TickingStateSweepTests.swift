@@ -40,10 +40,7 @@ import Testing
             "animationPreviewShownTime", /\banimationPreviewShownTime\b/, ["AnimationPreviewStrip"]
         ),
 
-        "timelinePlayheadTime": (
-            "timelinePlayheadTime", /\btimelinePlayheadTime\b/,
-            ["PlayheadReadoutFace", "PlayheadLineFace", "PlayheadHandleFace", "PlayheadFollowFace"]
-        ),
+        "timelinePlayheadTime": ("timelinePlayheadTime", /\btimelinePlayheadTime\b/, []),
 
         "timecodeReading": (
             "timecodeReading", /\.timecodeReading\b/, ["TimecodeSignalReadout", "TimecodeModuleReadout"]
@@ -213,8 +210,8 @@ import Testing
         )
         #expect(!outsideLeaves.contains("timelinePlayheadTime"), "only the playhead leaves read the ticking time")
         #expect(
-            leafSection.contains(".frame(width: 84, alignment: .trailing)")
-                && leafSection.contains("var width: CGFloat = 34") && leafSection.contains(".frame(width: width)"),
+            leafSection.contains(".frame(width: 84, height: 13)")
+                && leafSection.contains("var width: CGFloat = 34") && leafSection.contains("width: width, height: 12"),
             "the ticking labels keep fixed widths: new digits must not re-lay out their rows"
         )
         for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine"] {
@@ -223,23 +220,14 @@ import Testing
         }
     }
 
-    @Test func playheadFacesDrawInTheirOwnHostingView() throws {
+    @Test func playheadLeavesDrawWithLayers() throws {
         let sweep = try SourceSweep.app()
-        let faces = try #require(readers["timelinePlayheadTime"]).views
-        for file in sweep.files {
-            for index in file.lines.indices {
-                let code = file.code(index)
-                for face in faces where code.contains("\(face)(") {
-                    let opener = code.contains("TickingIsland") || (index > 0 && file.code(index - 1).contains("TickingIsland {"))
-                    #expect(
-                        opener,
-                        "\(file.name):\(index + 1) draws \(face) outside a TickingIsland: each tick redraws the window")
-                }
-            }
-        }
-        let shared = try #require(sweep.file("TimelineControls.swift"))
-        for face in faces {
-            #expect(shared.text.contains("\(face)("), "\(face) is drawn")
+        let shared = try #require(sweep.file("TimelineControls.swift")).text
+        #expect(shared.contains("final class PlayheadLayerView: NSView"))
+        for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine", "TimelinePlayheadFollow"] {
+            let start = try #require(shared.range(of: "struct \(leaf)<Source: TimelinePlayheadSource>: View {"))
+            let body = shared[start.upperBound...].prefix(600)
+            #expect(body.contains("PlayheadLayers(source: source)"), "\(leaf) draws with layers")
         }
     }
 }
