@@ -29,6 +29,7 @@ struct AppSettingsView: View {
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
     @AppStorage(SlideSceneBuilder.emptyRepeatsOnceKey) private var emptyRepeatsOnce = false
+    @AppStorage(EditSidebarLogic.settingKey) private var hideSidebarOnEdit = false
 
     @State private var category: SettingsCategory = .general
     @State private var query = ""
@@ -248,6 +249,14 @@ struct AppSettingsView: View {
                     kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
                     fallbackKind: "", fallbackDuration: 0.5
                 ))
+            ),
+
+            SettingsRowSpec(
+                id: "edit.hideSidebar",
+                title: "Hide the sidebar when entering Edit",
+                caption: "Present gets it back when you return.",
+                keywords: "sidebar hide edit mode library service panel collapse",
+                control: AnyView(Toggle("", isOn: $hideSidebarOnEdit).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.defaultAnimations",

@@ -21,6 +21,7 @@ import Testing
             "present.defaultAnimations": "edit",
             "account.messageNotesTheme": "edit",
             "groups.palette": "edit",
+            "edit.hideSidebar": "edit",
             "appearance.scheme": "general",
             "updates.automatic": "general",
             "station.workspaceLinks": "sync",

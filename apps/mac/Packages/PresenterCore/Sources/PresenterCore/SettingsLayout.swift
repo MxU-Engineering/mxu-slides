@@ -46,6 +46,7 @@ public enum SettingsLayout {
             Section("Layouts", ["present.layouts", "present.runOnly"]),
         ]),
         Page(id: "edit", sections: [
+            Section("Editing", ["edit.hideSidebar"]),
             Section("Animations", ["present.defaultAnimations"]),
             Section("Message notes", ["account.messageNotesTheme", "account.messageNotesReview"]),
             Section(nil, ["groups.palette"]),

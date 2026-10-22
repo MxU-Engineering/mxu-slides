@@ -584,6 +584,20 @@ struct ShellView: View {
         .onChange(of: continuousPresent) { _, _ in presentFocusScroll.reset() }
         .onChange(of: modeRaw) { oldRaw, _ in
 
+            let defaults = UserDefaults.standard
+            let beforeEdit = defaults.object(forKey: EditSidebarLogic.rememberedKey) as? Bool
+            let sidebar = EditSidebarLogic.switching(
+                from: oldRaw, to: modeRaw, visible: sidebarVisible,
+                hideOnEdit: defaults.bool(forKey: EditSidebarLogic.settingKey), remembered: beforeEdit)
+            if sidebar.visible != sidebarVisible { sidebarVisible = sidebar.visible }
+            if sidebar.remembered != beforeEdit {
+                if let remembered = sidebar.remembered {
+                    defaults.set(remembered, forKey: EditSidebarLogic.rememberedKey)
+                } else {
+                    defaults.removeObject(forKey: EditSidebarLogic.rememberedKey)
+                }
+            }
+
             if oldRaw == AppMode.present.rawValue {
                 presentFocusScroll.leave()
             } else {
