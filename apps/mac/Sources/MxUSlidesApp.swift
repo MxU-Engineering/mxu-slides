@@ -262,9 +262,11 @@ struct MxUSlidesApp: App {
             } else {
                 AppSettingsView(
                     model: appModel, controls: controls, layout: presentLayout,
-                    api: localAPI)
+                    api: localAPI, outputPresets: outputPresets)
             }
         }
+
+        .windowResizability(.contentMinSize)
 
         WindowGroup(id: "module", for: ServiceControlsModule.self) { $module in
             if let appModel, let module {

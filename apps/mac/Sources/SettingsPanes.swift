@@ -17,6 +17,8 @@ struct SettingsCategoryPane: View {
         case audioInput(String)
         case audioOutput(String)
         case midiDevice(String)
+
+        case groups
     }
 
     @State private var page: Page = .list
@@ -38,6 +40,8 @@ struct SettingsCategoryPane: View {
                 AudioOutputDetail(id: id) { page = .list }
             case .midiDevice(let id):
                 MIDIDeviceDetail(id: id) { page = .list }
+            case .groups:
+                if let model { GroupsForm(model: model) }
             }
         }
         .background(Color.basePlane)
@@ -51,6 +55,7 @@ struct SettingsCategoryPane: View {
         case .audioInput(let id): AudioInputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Input"
         case .audioOutput(let id): AudioOutputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Output"
         case .midiDevice(let id): MIDIDeviceInventory.shared.items.first { $0.id == id }?.device.name ?? "MIDI Device"
+        case .groups: "Groups"
         }
     }
 
@@ -72,10 +77,6 @@ struct SettingsCategoryPane: View {
                 }
             }
             .settingsForm()
-        case .groups:
-            if let model {
-                GroupsForm(model: model)
-            }
         case .keyboard:
             if let model {
                 KeyboardMapPane(model: model, controls: controls)
@@ -94,7 +95,13 @@ struct SettingsCategoryPane: View {
                         }
                     } else {
                         Section {
-                            ForEach(run) { SettingsFormRow(spec: $0) }
+                            ForEach(run) { spec in
+                                if spec.id == "groups.palette" {
+                                    drillIn(spec) { page = .groups }
+                                } else {
+                                    SettingsFormRow(spec: spec)
+                                }
+                            }
                         }
                     }
                 }
@@ -105,6 +112,24 @@ struct SettingsCategoryPane: View {
 }
 
 extension SettingsCategoryPane {
+
+    func drillIn(_ spec: SettingsRowSpec, open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(spec.title)
+                    if let caption = spec.caption {
+                        Text(caption).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                spec.control
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
     static func sectioned(_ rows: [SettingsRowSpec]) -> [[SettingsRowSpec]] {
         var runs: [[SettingsRowSpec]] = []
