@@ -1814,7 +1814,7 @@ private struct ThemeSlidePreview: View {
             model: model, render: render,
             slide: slide, presentation: presentation, theme: nil,
             arrangementId: nil,
-            hideScopedBackgrounds: false, legibleText: false,
+            hideScopedBackgrounds: false,
             contentStamp: "\(model.entry(themeID)?.updatedAt.timeIntervalSince1970 ?? 0)"
         )
     }

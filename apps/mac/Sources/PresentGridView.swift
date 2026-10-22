@@ -16,8 +16,7 @@ struct PresentGridView: View {
     var serviceItem: ServiceItem? = nil
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @FocusState private var focused: Bool
 
@@ -90,7 +89,6 @@ struct PresentGridView: View {
                         contextID: fireContext,
                         roundedCorners: roundedCorners,
                         hideScopedBackgrounds: hideScopedBackgrounds,
-                        legibleText: legibleText,
                         slidesAcross: slidesAcross,
                         deleteRequests: deleteRequests,
                         clipboardRequests: clipboardRequests,
@@ -409,7 +407,6 @@ struct SlideGridBody: View {
     let contextID: String
     let roundedCorners: Bool
     let hideScopedBackgrounds: Bool
-    let legibleText: Bool
 
     let slidesAcross: Int
 
@@ -1182,7 +1179,6 @@ struct SlideGridBody: View {
             isSelected: selectedOccurrences.contains(index),
             roundedCorners: roundedCorners,
             hideScopedBackgrounds: hideScopedBackgrounds,
-            legibleText: legibleText,
             contextID: contextID,
             mediaMissing: !missingMedia(of: slide).isEmpty,
             pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale)
@@ -1564,7 +1560,6 @@ struct SlideTile: View {
     var isSelected = false
     let roundedCorners: Bool
     let hideScopedBackgrounds: Bool
-    let legibleText: Bool
 
     var contextID: String? = nil
 
@@ -1609,7 +1604,6 @@ struct SlideTile: View {
                 slide: slide, presentation: presentation, theme: theme,
                 arrangementId: arrangementId,
                 hideScopedBackgrounds: hideScopedBackgrounds,
-                legibleText: legibleText,
                 pixelWidth: pixelWidth
             )
             .aspectRatio(aspect, contentMode: .fit)
@@ -1791,7 +1785,7 @@ struct SlideTile: View {
                             SlideThumbnailView(
                                 model: model, render: render,
                                 slide: page, presentation: presentation, theme: look.theme,
-                                arrangementId: nil, hideScopedBackgrounds: false, legibleText: false,
+                                arrangementId: nil, hideScopedBackgrounds: false,
                                 contentStamp: "pages|\(slide.id)|\(look.id)|\(index)")
                             .frame(width: 90 * SlideGridMetrics.tileAspect(for: presentation), height: 90)
                             .clipShape(RoundedRectangle.standard(CornerStandard.element))
@@ -2000,7 +1994,6 @@ struct SlideThumbnailView: View {
     let theme: Theme?
     let arrangementId: String?
     let hideScopedBackgrounds: Bool
-    let legibleText: Bool
 
     var contentStamp: String? = nil
 
@@ -2083,11 +2076,10 @@ struct SlideThumbnailView: View {
 
     private func contentImage() -> CGImage? {
 
-        let identity = "\(presentation.id)|\(slide.id)|\(SlideSceneBuilder.lookKey(for: slide, theme: theme))|\(legibleText)"
+        let identity = "\(presentation.id)|\(slide.id)|\(SlideSceneBuilder.lookKey(for: slide, theme: theme))"
         let image = ThumbnailStore.shared.slideContent(
             slide: slide, theme: theme,
             render: render, model: model,
-            legibleText: legibleText,
             canvas: SlideSceneBuilder.canvasSize(for: presentation),
             cacheKey: "\(identity)|\(updatedStamp)",
             identity: identity,

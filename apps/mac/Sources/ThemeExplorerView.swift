@@ -273,7 +273,7 @@ struct ThemeExplorerView: View {
             SlideThumbnailView(
                 model: appModel, render: render,
                 slide: slide, presentation: look.deck, theme: look.theme,
-                arrangementId: nil, hideScopedBackgrounds: false, legibleText: false,
+                arrangementId: nil, hideScopedBackgrounds: false,
                 contentStamp: look.stamp
             )
         } else {

@@ -68,7 +68,6 @@ final class ThumbnailStore {
         theme: Theme?,
         render: RenderContext?,
         model: AppModel?,
-        legibleText: Bool,
         canvas: CGSize = SlideSceneBuilder.canvasSize,
         cacheKey baseKey: String,
         identity: String? = nil,
@@ -91,23 +90,12 @@ final class ThumbnailStore {
         guard provisionalStale, !contentsInFlight.contains(cacheKey) else {
             return provisional?.image ?? lastFrame(identity)
         }
-        var rendered = slide
-        if legibleText {
-
-            for index in rendered.objects.indices where rendered.objects[index].objectKind == .text {
-                var style = rendered.objects[index].textStyle ?? TextStyle()
-                style.shadow = ObjectShadow(
-                    colorHex: "#000000DD", blurRadius: 10, offsetX: 0, offsetY: 2
-                )
-                rendered.objects[index].textStyle = style
-            }
-        }
 
         var usedPlaceholder = false
         var pendingStill = false
 
         let built = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
-            for: rendered, theme: theme, canvasSize: canvas, animationContext: .settled
+            for: slide, theme: theme, canvasSize: canvas, animationContext: .settled
         ))
 
             .applyingMediaEffects(mediaEffects)

@@ -22,8 +22,7 @@ struct AppSettingsView: View {
     @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @AppStorage("present.continuous") private var continuousPresent = true
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @AppStorage(ServiceControls.clearAllIncludesAudioKey) private var clearAllIncludesAudio = true
@@ -270,13 +269,6 @@ struct AppSettingsView: View {
                 caption: nil,
                 keywords: "slide grid thumbnails corners",
                 control: AnyView(Toggle("", isOn: $roundedCorners).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.legibleText", category: .present,
-                title: "Readable thumbnail text",
-                caption: "Boosts lyric legibility in thumbnails — never on the glass.",
-                keywords: "slide grid lyrics legible text thumbnails",
-                control: AnyView(Toggle("", isOn: $legibleText).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.transparencyGrid", category: .present,

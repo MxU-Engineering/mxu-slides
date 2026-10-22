@@ -22,8 +22,7 @@ struct ServiceContinuousView: View {
     @Binding var focusScroll: PresentFocusScroll
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
     @Environment(\.runOnly) private var runOnly
@@ -698,7 +697,6 @@ struct ServiceContinuousView: View {
                     contextID: item.id,
                     roundedCorners: roundedCorners,
                     hideScopedBackgrounds: hideScopedBackgrounds,
-                    legibleText: legibleText,
                     slidesAcross: slidesAcross,
                     deleteRequests: deleteRequests,
                     clipboardRequests: clipboardRequests,

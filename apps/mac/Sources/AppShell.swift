@@ -293,8 +293,7 @@ struct ShellView: View {
     @AppStorage("present.continuous") private var continuousPresent = true
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
@@ -1444,7 +1443,6 @@ struct ShellView: View {
             Toggle("Continuous Service View", isOn: $continuousPresent)
             presentViewHeading("Thumbnails")
             Toggle("Rounded Corners", isOn: $roundedCorners)
-            Toggle("Readable Text", isOn: $legibleText)
             Toggle("Backgrounds Only on Declaring Slide", isOn: $hideScopedBackgrounds)
             Toggle("Transparency Grid", isOn: $transparencyGrid)
             Divider()

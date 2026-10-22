@@ -119,7 +119,7 @@ private struct DeckPeek: View {
                             slide: slide, presentation: presentation,
                             theme: appModel.theme(presentation.themeId),
                             arrangementId: nil,
-                            hideScopedBackgrounds: false, legibleText: false,
+                            hideScopedBackgrounds: false,
                             contentStamp: "peek-\(entry.updatedAt.timeIntervalSince1970)"
                         )
                         .aspectRatio(SlideGridMetrics.tileAspect(for: presentation), contentMode: .fit)

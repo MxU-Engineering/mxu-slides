@@ -1721,7 +1721,7 @@ struct LibraryItemFace: View {
                         model: model, render: render,
                         slide: slide, presentation: presentation, theme: theme,
                         arrangementId: nil,
-                        hideScopedBackgrounds: false, legibleText: false,
+                        hideScopedBackgrounds: false,
                         contentStamp: loadedStamp
                     )
                 } else {
@@ -1737,7 +1737,7 @@ struct LibraryItemFace: View {
                     model: model, render: render,
                     slide: slide, presentation: presentation, theme: nil,
                     arrangementId: nil,
-                    hideScopedBackgrounds: false, legibleText: false,
+                    hideScopedBackgrounds: false,
                     contentStamp: loadedStamp
                 )
             case .confidenceLayout(let layout):
@@ -1759,7 +1759,7 @@ struct LibraryItemFace: View {
                     model: model, render: render,
                     slide: slide, presentation: presentation, theme: nil,
                     arrangementId: nil,
-                    hideScopedBackgrounds: false, legibleText: false,
+                    hideScopedBackgrounds: false,
                     contentStamp: loadedStamp
                 )
             case nil:
