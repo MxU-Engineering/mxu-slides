@@ -63,11 +63,11 @@ private typealias S = SongTransitions
 }
 
 @Test func onlySlidesOwnClockArmsAGo() {
-    #expect(S.arms(.crossfade, ownClock: true, recording: false, held: false))
-    #expect(!S.arms(.crossfade, ownClock: false, recording: false, held: false), "timecode decides (S5)")
-    #expect(!S.arms(.fade, ownClock: true, recording: true, held: false), "a take is one song")
-    #expect(!S.arms(.overlap, ownClock: true, recording: false, held: true), "Hold cancels this go")
-    #expect(!S.arms(.stop, ownClock: true, recording: false, held: false))
+    #expect(S.arms(.crossfade, ownClock: true, recording: false, cancelled: false))
+    #expect(!S.arms(.crossfade, ownClock: false, recording: false, cancelled: false), "timecode decides (S5)")
+    #expect(!S.arms(.fade, ownClock: true, recording: true, cancelled: false), "a take is one song")
+    #expect(!S.arms(.overlap, ownClock: true, recording: false, cancelled: true), "Cancel Transition: this song stops at its end")
+    #expect(!S.arms(.stop, ownClock: true, recording: false, cancelled: false))
 }
 
 @Test func aServiceItemCarriesItsTransition() throws {

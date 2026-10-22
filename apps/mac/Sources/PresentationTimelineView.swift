@@ -197,7 +197,7 @@ struct PresentationTimelineStrip: View {
             }
 
             if context.isCurrent, let go = clock.pendingGo, go.itemID == context.item.id {
-                SongTransitionChip(go: go) { clock.holdGo() }
+                SongTransitionChip(go: go) { clock.cancelGo() }
             }
 
             if expanded {
@@ -1640,7 +1640,7 @@ struct SongTransitionTail: View {
 
 struct SongTransitionChip: View {
     let go: PresentationTimelineController.PendingGo
-    let hold: () -> Void
+    let cancel: () -> Void
     @Environment(\.runOnly) private var runOnly
 
     var body: some View {
@@ -1653,9 +1653,10 @@ struct SongTransitionChip: View {
                 .monospacedDigit()
                 .frame(minWidth: 30, alignment: .leading)
             if !runOnly {
-                Button("Hold", action: hold)
+
+                Button("Cancel Transition", action: cancel)
                     .buttonStyle(.link)
-                    .help("Don't go on by itself: the song plays to its end and stops")
+                    .help("This song plays to its end and stops; nothing starts by itself")
             }
         }
         .font(.caption)

@@ -44,7 +44,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var armedGo: ArmedGo?
 
-    @ObservationIgnored private var heldItemID: String?
+    @ObservationIgnored private var cancelledItemID: String?
 
     @ObservationIgnored private var stemsTail = false
 
@@ -395,7 +395,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     private func select(itemID: String, presentation: Presentation, arrangementId: String?) {
         stop()
-        if heldItemID != itemID { heldItemID = nil }
+        if cancelledItemID != itemID { cancelledItemID = nil }
         self.itemID = itemID
         presentationID = presentation.id
         self.arrangementId = arrangementId
@@ -478,7 +478,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
               let item = service.items.first(where: { $0.id == itemID })
         else { return disarmGo() }
         let kind = SongTransitions.kind(item.transition)
-        guard SongTransitions.arms(kind, ownClock: true, recording: recording, held: heldItemID == itemID)
+        guard SongTransitions.arms(kind, ownClock: true, recording: recording, cancelled: cancelledItemID == itemID)
         else { return disarmGo() }
         let model = controls.appModel
         let next = ServiceRunOrder.nextFireable(in: model.fireableItems(service), after: itemID)
@@ -511,11 +511,11 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         }
     }
 
-    func holdGo() {
+    func cancelGo() {
         guard let itemID else { return }
-        heldItemID = itemID
+        cancelledItemID = itemID
         disarmGo()
-        DiagnosticsStore.shared.note("timeline.transition", detail: "held")
+        DiagnosticsStore.shared.note("timeline.transition", detail: "cancelled")
     }
 
     private func disarmGo() {

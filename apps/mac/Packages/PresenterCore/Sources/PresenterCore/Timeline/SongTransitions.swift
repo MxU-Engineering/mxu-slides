@@ -119,7 +119,7 @@ public enum SongTransitions {
         anotherSong && playing && stemsSounding && !handingOver
     }
 
-    public static func arms(_ kind: Kind, ownClock: Bool, recording: Bool, held: Bool) -> Bool {
-        kind != .stop && ownClock && !recording && !held
+    public static func arms(_ kind: Kind, ownClock: Bool, recording: Bool, cancelled: Bool) -> Bool {
+        kind != .stop && ownClock && !recording && !cancelled
     }
 }
