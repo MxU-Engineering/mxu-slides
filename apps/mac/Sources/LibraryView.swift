@@ -1085,7 +1085,9 @@ struct LibrarySidebar: View {
                     Button("Replace Media File…") {
                         ReplaceMediaFileFlow.start(model: model, id: entry.id, name: entry.name) { replaceFileRequest = $0 }
                     }
-                    Button("Locate Missing Media…") { locatePanelShown = true }
+                    if model.media(entry.id).map(model.isMediaFileMissing) == true {
+                        Button("Locate Missing Media…") { locatePanelShown = true }
+                    }
                 }
                 Button("Show in Finder") { showInFinder([entry]) }
             }
