@@ -32,6 +32,8 @@ final class ServiceControls {
 
     let timeline = PresentationTimelineController()
 
+    let timecode = TimecodeFollower()
+
     private var liveMediaIDs: Set<String> = []
 
     private var transitionResweepScheduled = false
@@ -48,6 +50,9 @@ final class ServiceControls {
         self.streaming = StreamingController(render: render)
         self.mixer = AudioMixerController(audio: audio)
         self.timeline.controls = self
+        self.timecode.controls = self
+
+        timecode.start()
 
         appModel.decks.onFillLanded = { [weak self] id in
             self?.presentationFillDidLand(id)

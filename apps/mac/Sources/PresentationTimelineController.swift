@@ -93,6 +93,24 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         }
     }
 
+    func follow(
+        _ command: TimecodeFollow.Command, itemID: String, presentation: Presentation, arrangementId: String?
+    ) {
+        if self.itemID != itemID || presentationID != presentation.id || self.arrangementId != arrangementId {
+            select(itemID: itemID, presentation: presentation, arrangementId: arrangementId)
+        } else {
+            stop()
+        }
+        switch command {
+        case .play(_, let from, let to):
+            lastPosition = from
+            advance(to: to)
+        case .land(_, let at):
+            land(at: at)
+        }
+        setPlayhead(command.position)
+    }
+
     private func select(itemID: String, presentation: Presentation, arrangementId: String?) {
         stop()
         self.itemID = itemID

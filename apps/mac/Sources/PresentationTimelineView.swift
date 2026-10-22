@@ -336,6 +336,11 @@ struct PresentationTimelineStartPopover: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("This song plays from timecode", isOn: Binding(
+                get: { context.timeline?.timecodeEnabled ?? false },
+                set: { on in context.edit(on ? "Play from Timecode" : "Stop Playing from Timecode") { $0.timecodeEnabled = on } }))
+                .disabled(runOnly)
             if !clashes.isEmpty {
                 Label(
                     "Overlaps " + clashes.map {

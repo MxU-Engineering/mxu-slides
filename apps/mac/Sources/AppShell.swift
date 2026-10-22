@@ -471,6 +471,11 @@ struct ShellView: View {
 
                 HStack(spacing: 0) {
 
+                    if controls.timecode.deviceUID != nil {
+                        TimecodeStatusChip(follower: controls.timecode)
+                        Spacer().frame(width: 12)
+                    }
+
                     BroadcastStatusChip(controls: controls)
 
                     if let presets {

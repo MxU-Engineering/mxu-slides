@@ -61,7 +61,11 @@ public enum SettingsLayout {
             Section(nil, ["avInputs.cameras", "avInputs.audio", "avInputs.outputs"]),
         ]),
         Page(id: "streamRecord", sections: [Section(nil, ["streamRecord.pane"])]),
-        Page(id: "midi", sections: [Section("MIDI", ["midi.devices", "midi.map"])]),
+        Page(id: "midi", sections: [
+            Section("MIDI", ["midi.devices", "midi.map"]),
+
+            Section("Timecode", ["timecode.follow", "timecode.input", "timecode.signal", "timecode.offset"]),
+        ]),
         Page(id: "keyboard", sections: []),
         Page(id: "api", sections: [
             Section("MxU dashboards", ["station.enabled", "station.remote"]),

@@ -104,6 +104,18 @@ public struct TimecodeClock: Sendable {
     }
 }
 
+public enum TimecodeStation {
+    public static let deviceKey = "timecode.deviceUID"
+
+    public static let channelKey = "timecode.channel"
+
+    public static let offsetKey = "timecode.offsetFrames"
+
+    public static let followKey = "timecode.follow"
+    public static let keys = [deviceKey, channelKey, offsetKey, followKey]
+    public static let offsetRange = -30...30
+}
+
 public struct TimecodeFollow: Sendable {
 
     public struct Song: Equatable, Sendable {
@@ -113,10 +125,19 @@ public struct TimecodeFollow: Sendable {
 
         public var length: Double
 
-        public init(itemID: String, startFrames: Int, length: Double) {
+        public var tail: Double
+
+        public init(itemID: String, startFrames: Int, length: Double, tail: Double = 0) {
             self.itemID = itemID
             self.startFrames = startFrames
             self.length = length
+            self.tail = tail
+        }
+
+        public init(itemID: String, timeline: PresentationTimeline) {
+            self.init(
+                itemID: itemID, startFrames: timeline.timecodeStart, length: PresentationTimelines.length(timeline),
+                tail: timeline.length == nil ? 1 : 0)
         }
     }
 
@@ -152,11 +173,9 @@ public struct TimecodeFollow: Sendable {
     public static func song(
         containing seconds: Double, rate: TimecodeRate, in songs: [Song]
     ) -> (song: Song, position: Double)? {
-        for song in songs {
-            let position = seconds - rate.seconds(rate.label(startFrames: song.startFrames))
-            if position >= 0, position < song.length { return (song, position) }
-        }
-        return nil
+        let placed = songs.map { ($0, seconds - rate.seconds(rate.label(startFrames: $0.startFrames))) }
+        return placed.first { $0.1 >= 0 && $0.1 < $0.0.length }
+            ?? placed.first { $0.1 >= 0 && $0.1 < $0.0.length + $0.0.tail }
     }
 
     public mutating func step(_ reading: TimecodeClock.Reading, songs: [Song]) -> Command? {

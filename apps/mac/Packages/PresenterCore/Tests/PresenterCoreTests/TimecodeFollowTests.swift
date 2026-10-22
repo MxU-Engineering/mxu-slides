@@ -134,6 +134,31 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
         #expect(abs((position ?? 0) - 60) < 1e-9)
     }
 
+    @Test func anOpenEndedTimelineKeepsATailOtherSongsBeat() {
+        let timeline = PresentationTimeline(
+            id: "t", timecodeEnabled: true, timecodeStart: 108_000,
+            cues: [TimelineCue(id: "s", lane: .slides, at: 30, slideId: "x")])
+        let song = TimecodeFollow.Song(itemID: "a", timeline: timeline)
+        #expect(song.length == 30)
+        #expect(song.tail == 1)
+
+        #expect(TimecodeFollow.song(containing: 3600 + 30.02, rate: .fps30, in: [song])?.song.itemID == "a")
+
+        let next = TimecodeFollow.Song(itemID: "b", startFrames: 108_000 + 900, length: 60)
+        #expect(TimecodeFollow.song(containing: 3600 + 30.02, rate: .fps30, in: [song, next])?.song.itemID == "b")
+
+        var fixed = timeline
+        fixed.length = 30
+        #expect(TimecodeFollow.Song(itemID: "a", timeline: fixed).tail == 0)
+    }
+
+    @Test func stationSettingsNeverSyncOrBackUp() {
+        for key in TimecodeStation.keys {
+            #expect(!WorkspaceSetting.allCases.contains { $0.carries(key) }, "\(key)")
+            #expect(!BackupSettings.isPortable(key), "\(key)")
+        }
+    }
+
     @Test func songStartPlaysFromTheTopWithActions() {
         var follow = TimecodeFollow()
 

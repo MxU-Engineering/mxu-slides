@@ -388,6 +388,38 @@ struct AppSettingsView: View {
             control: AnyView(MIDIMapManager())
         ))
 
+        if let timecode = controls?.timecode {
+            rows.append(SettingsRowSpec(
+                id: "timecode.follow",
+                title: "Follow timecode",
+                caption: "Songs with a timecode start play from it here.",
+                keywords: "timecode ltc smpte playback ableton follow lyrics automate timeline song start",
+                control: AnyView(Toggle("", isOn: Binding(
+                    get: { timecode.follows }, set: { timecode.setFollows($0) })).settingsToggle())
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.input",
+                title: "Input",
+                caption: "The LTC feed. It's read, never played out.",
+                keywords: "timecode ltc smpte input device channel blackhole loopback audio interface",
+                control: AnyView(TimecodeInputControl(follower: timecode))
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.signal",
+                title: "Signal",
+                caption: nil,
+                keywords: "timecode ltc level meter frame rate fps locked lost drop frame",
+                control: AnyView(TimecodeSignalReadout(follower: timecode))
+            ))
+            rows.append(SettingsRowSpec(
+                id: "timecode.offset",
+                title: "Offset",
+                caption: "Moves incoming timecode later or earlier.",
+                keywords: "timecode ltc offset latency delay frames early late",
+                control: AnyView(TimecodeOffsetControl(follower: timecode))
+            ))
+        }
+
         rows.append(SettingsRowSpec(
             id: "network.ndi",
             title: "NDI network",
@@ -604,6 +636,8 @@ struct SettingsRowSpec: Identifiable {
         "avInputs.audio": "Each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
         "avInputs.cameras": "Added inputs run warm from launch and appear in Live Input pickers, so slides never wait on a camera spinning up.",
         "avInputs.outputs": "The output patch bay: named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
+        "timecode.follow": "Each song's timeline has a timecode start (the clock on its timeline row) and \"This song plays from timecode\". Incoming timecode plays the song whose window holds it; outside every song the screen holds. With two Macs in a room, follow on one.",
+        "timecode.input": "Route Playback's SMPTE bus (or Ableton's LTC clip) to a spare input, or a channel of BlackHole or Loopback on this Mac. The frame rate is detected.",
         "midi.devices": "Each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
         "midi.map": "Clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
         "network.ndi": "NDI discovers and carries video on this network, inputs and screen outputs alike. Pin it to the wired production network when this Mac also joins Wi-Fi on another VLAN. Applies immediately; live feeds re-tune.",

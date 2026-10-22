@@ -95,6 +95,17 @@ private func value(_ buffer: AVAudioPCMBuffer, channel: Int) -> Float {
     #expect(pair !== mono)
 }
 
+@Test func untrimmedTapIgnoresDeviceTrimAndMute() {
+    let fanout = InputFanout()
+    let heard = Locked<AVAudioPCMBuffer?>(nil)
+    let read = Locked<AVAudioPCMBuffer?>(nil)
+    _ = fanout.add(channels: .mono(channel: 1)) { buffer, _, _ in heard.withLock { $0 = buffer } }
+    _ = fanout.add(channels: .mono(channel: 1), trimmed: false) { buffer, _, _ in read.withLock { $0 = buffer } }
+    fanout.push(deviceBuffer(channels: 2), when: AVAudioTime(hostTime: 0), hostSeconds: 0, gain: 0.5, muted: true)
+    #expect(value(heard.withLock { $0 }!, channel: 0) == 0)
+    #expect(abs(value(read.withLock { $0 }!, channel: 0) - 0.02) < 0.0001)
+}
+
 @Test func fanoutTapLifecycle() {
     let fanout = InputFanout()
     let received = Locked(0)

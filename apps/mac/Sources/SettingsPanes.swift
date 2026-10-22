@@ -77,6 +77,9 @@ struct SettingsCategoryPane: View {
                 Section {
                     ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0, tag: tag($0.id)) }
                 }
+                Section("Timecode") {
+                    ForEach(rows.filter { $0.id.hasPrefix("timecode.") }) { SettingsFormRow(spec: $0, tag: tag($0.id)) }
+                }
             }
             .settingsForm()
         case .keyboard:

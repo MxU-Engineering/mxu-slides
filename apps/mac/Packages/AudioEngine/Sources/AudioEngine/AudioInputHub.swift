@@ -61,15 +61,17 @@ final class InputFanout: @unchecked Sendable {
 
     private struct Tap {
         var channels: InputChannelSelection
+
+        let trimmed: Bool
         let sink: Sink
     }
 
     private let lock = NSLock()
     private var taps: [UUID: Tap] = [:]
 
-    func add(channels: InputChannelSelection, sink: @escaping Sink) -> UUID {
+    func add(channels: InputChannelSelection, trimmed: Bool = true, sink: @escaping Sink) -> UUID {
         let token = UUID()
-        lock.withLock { taps[token] = Tap(channels: channels, sink: sink) }
+        lock.withLock { taps[token] = Tap(channels: channels, trimmed: trimmed, sink: sink) }
         return token
     }
 
@@ -90,7 +92,7 @@ final class InputFanout: @unchecked Sendable {
         let snapshot = lock.withLock { Array(taps.values) }
         for tap in snapshot {
             guard let extracted = ChannelExtraction.extract(
-                buffer, selection: tap.channels, gain: gain, muted: muted)
+                buffer, selection: tap.channels, gain: tap.trimmed ? gain : 1, muted: tap.trimmed && muted)
             else { continue }
             tap.sink(extracted, when, hostSeconds)
         }
@@ -181,9 +183,9 @@ public final class AudioInputHub: @unchecked Sendable {
     }
 
     public func addTap(
-        channels: InputChannelSelection, sink: @escaping Sink
+        channels: InputChannelSelection, trimmed: Bool = true, sink: @escaping Sink
     ) -> UUID {
-        fanout.add(channels: channels, sink: sink)
+        fanout.add(channels: channels, trimmed: trimmed, sink: sink)
     }
 
     public func updateTap(_ token: UUID, channels: InputChannelSelection) {

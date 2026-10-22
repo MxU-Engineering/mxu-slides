@@ -15,6 +15,7 @@ import Testing
         "MediaEditorView.swift": [.moves(["elapsed"])],
         "SlideEditorModel+Animations.swift": [.moves(["animationPreviewShownTime"])],
         "PresentationTimelineController.swift": [.moves(["timelinePlayheadTime"])],
+        "TimecodeInput.swift": [.moves(["timecodeReading", "timecodeLevel"])],
         "TimelineControls.swift": [
             .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the timeline that owns the drag"),
         ],
@@ -43,6 +44,11 @@ import Testing
             "timelinePlayheadTime", /\btimelinePlayheadTime\b/,
             ["TimelinePlayheadReadout", "TimelinePlayheadLine", "TimelinePlayheadHandle"]
         ),
+
+        "timecodeReading": (
+            "timecodeReading", /\.timecodeReading\b/, ["TimecodeSignalReadout", "TimecodeStatusChip"]
+        ),
+        "timecodeLevel": ("timecodeLevel", /\.timecodeLevel\b/, ["TimecodeSignalReadout"]),
 
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
         "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
