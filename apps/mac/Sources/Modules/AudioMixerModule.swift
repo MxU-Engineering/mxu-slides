@@ -14,6 +14,12 @@ struct AudioMixerModule: View {
     @State private var groupStore = MixerGroupStore.shared
 
     @AppStorage("mixer.scope") private var scope = 3
+    @State private var consoleContentHeight: CGFloat = 0
+    @State private var consoleFrameHeight: CGFloat = 0
+
+    private var grabBarRow: CGFloat {
+        max(0, consoleContentHeight - consoleFrameHeight + ConsoleScrolling.scrollerHeight)
+    }
 
     var body: some View {
         let audio = controls.audio
@@ -110,9 +116,12 @@ struct AudioMixerModule: View {
                     }
                 }
                 .padding(.horizontal, 2)
+                .padding(.bottom, grabBarRow)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { consoleContentHeight = $0 }
 
                 .consoleScrolling()
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { consoleFrameHeight = $0 }
         }
         .onAppear { mixer.setMetering(true) }
         .onDisappear { mixer.setMetering(false) }
@@ -1582,6 +1591,7 @@ private struct FoldCard: View {
     let rename: ((String) -> Void)?
     let remove: (() -> Void)?
     @Environment(\.runOnly) private var runOnly
+    @Environment(\.moduleViewportHeight) private var viewportHeight
     @State private var renaming = false
     @State private var draft = ""
 
@@ -1612,7 +1622,9 @@ private struct FoldCard: View {
         }
         .padding(.vertical, 8)
         .frame(width: 46)
-        .frame(maxHeight: .infinity)
+
+        .frame(height: MixerStripLayout.stripHeight(
+            viewportHeight: viewportHeight, scrollerHeight: ConsoleScrolling.scrollerHeight))
         .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
         .contextMenu {
             if !runOnly, let rename {

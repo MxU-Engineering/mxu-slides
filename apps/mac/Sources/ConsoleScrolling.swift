@@ -58,6 +58,9 @@ private struct ConsoleScrollingHost: NSViewRepresentable {
 
         func showScroller() {
             guard let scrollView = view?.enclosingScrollView else { return }
+            let shown = scrollView.horizontalScroller is GrabbableScroller && scrollView.hasHorizontalScroller
+                && scrollView.scrollerStyle == .legacy && !scrollView.autohidesScrollers
+            guard !shown else { return }
             if !(scrollView.horizontalScroller is GrabbableScroller) {
                 let scroller = GrabbableScroller()
                 scroller.controlSize = .small
@@ -66,6 +69,8 @@ private struct ConsoleScrollingHost: NSViewRepresentable {
             scrollView.hasHorizontalScroller = true
             scrollView.scrollerStyle = .legacy
             scrollView.autohidesScrollers = false
+
+            scrollView.tile()
         }
 
         func install() {
@@ -110,11 +115,23 @@ private struct ConsoleScrollingHost: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    final class HostView: NSView {
+        var onWindow: (() -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            onWindow?()
+        }
+    }
+
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.view = view
-        context.coordinator.install()
-        DispatchQueue.main.async { context.coordinator.showScroller() }
+        let view = HostView()
+        let coordinator = context.coordinator
+        coordinator.view = view
+        coordinator.install()
+        view.onWindow = { DispatchQueue.main.async { coordinator.showScroller() } }
+        DispatchQueue.main.async { coordinator.showScroller() }
         return view
     }
 
