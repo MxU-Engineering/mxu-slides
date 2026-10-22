@@ -344,18 +344,22 @@ final class EffectPreviewFeedback: @unchecked Sendable {
     private var entries: [Int: Entry] = [:]
     private let lock = NSLock()
 
-    func trail(at index: Int, time: Double, fade: Double, extent: CGRect) -> CIImage? {
+    func trail(at index: Int, time: Double, fade: Double, extent: CGRect) -> (image: CIImage, keep: CGFloat)? {
         lock.lock()
         defer { lock.unlock() }
         guard let entry = entries[index], entry.image.extent == extent else { return nil }
         let elapsed = time - entry.time
         guard elapsed > 0, elapsed <= Compositor.historyGap else { return nil }
-        let keep = CGFloat(pow(0.1, max(elapsed, 1.0 / 240) / max(fade, 0.01)))
-        return entry.image.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: keep, y: 0, z: 0, w: 0),
-            "inputGVector": CIVector(x: 0, y: keep, z: 0, w: 0),
-            "inputBVector": CIVector(x: 0, y: 0, z: keep, w: 0),
-            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: keep),
+        let keep = CGFloat(min(pow(0.1, max(elapsed, 1.0 / 240) / max(fade, 0.01)), 0.999))
+        return (Self.scaled(entry.image, by: keep), keep)
+    }
+
+    static func scaled(_ image: CIImage, by factor: CGFloat) -> CIImage {
+        image.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: factor, y: 0, z: 0, w: 0),
+            "inputGVector": CIVector(x: 0, y: factor, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: factor, w: 0),
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: factor),
         ])
     }
 
@@ -471,7 +475,8 @@ enum EffectPreviewRenderer {
                 case .echo(let f): fade = f
                 default: fade = 1
                 }
-                if var trail = feedback.trail(at: index, time: time, fade: fade, extent: current.extent) {
+                if let (decayed, keep) = feedback.trail(at: index, time: time, fade: fade, extent: current.extent) {
+                    var trail = decayed
                     if let driftField, driftField.pixels >= 0.5, let kernel = warpKernel {
 
                         let extent = current.extent
@@ -486,11 +491,19 @@ enum EffectPreviewRenderer {
                             image: trail.clampedToExtent(), arguments: [params, Float(0)]
                         )?.cropped(to: extent) ?? trail
                     }
+                    if driftField != nil {
 
-                    let filter = CIFilter.lightenBlendMode()
-                    filter.inputImage = current
-                    filter.backgroundImage = trail
-                    processed = filter.outputImage ?? current
+                        let filter = CIFilter.additionCompositing()
+                        filter.inputImage = EffectPreviewFeedback.scaled(current, by: 1 - keep)
+                        filter.backgroundImage = trail
+                        processed = filter.outputImage ?? current
+                    } else {
+
+                        let filter = CIFilter.lightenBlendMode()
+                        filter.inputImage = current
+                        filter.backgroundImage = trail
+                        processed = filter.outputImage ?? current
+                    }
                 } else {
                     processed = current
                 }
