@@ -26,6 +26,32 @@ struct ChordChartPDFTests {
         """)
     }
 
+    @Test func theTitleWrappedAtopLaterPagesStaysOutOfTheWords() throws {
+        func bold(_ text: String, y: CGFloat, size: CGFloat) -> [PDFGlyph] {
+            Self.glyphs(text, y: y).map { PDFGlyph(text: $0.text, x: $0.x, y: $0.y, width: $0.width, size: size, bold: true) }
+        }
+        let header = bold("A Thousand Hallelujahs [Live From Passion", y: 726, size: 14.75) + bold("2022]", y: 712, size: 14.75)
+        let pages = [
+            bold("A Thousand Hallelujahs [Live From Passion 2022]", y: 720, size: 23)
+                + bold("CHORUS", y: 650, size: 14.75) + Self.glyphs("A thousand hallelujahs", y: 620),
+            header + bold("A", y: 692, size: 13) + Self.glyphs("And a thousand more", y: 680)
+                + bold("BRIDGE", y: 640, size: 14.75) + Self.glyphs("Now He reigns", y: 610),
+            header + Self.glyphs("We will sing forever", y: 680),
+        ].map { PDFPageText(glyphs: $0, bounds: CGRect(x: 0, y: 0, width: 612, height: 792)) }
+
+        #expect(ChordChartPDF.chordPro(from: pages) == """
+        {title: A Thousand Hallelujahs [Live From Passion 2022]}
+
+        Chorus
+        A thousand hallelujahs
+        [A]And a thousand more
+
+        Bridge
+        Now He reigns
+        We will sing forever
+        """)
+    }
+
     @Test func aChordOnlySectionRepeatsOnlyWithTheSameChords() {
 
         let sections: [ChordChartPDF.Section] = [

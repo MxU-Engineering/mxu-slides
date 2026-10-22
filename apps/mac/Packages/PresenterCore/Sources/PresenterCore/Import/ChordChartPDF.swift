@@ -27,11 +27,16 @@ public enum ChordChartPDF {
             let printed = Self.printedLines(of: page)
             printed.forEach { metadata.read($0.text) }
             let footerTop = printed.first { ccliSongNumber($0.text) != nil }?.baseline
+            let fullTitle = metadata.title.map(normalized) ?? ""
+
+            var titleLeft = fullTitle
             for row in Self.rows(of: page, index: pageIndex, body: body) {
                 let isFooter = footerTop.map { row.baseline <= $0 + 0.5 } ?? false
 
-                let isTitle = metadata.title.map { normalized(row.text) == normalized($0) } ?? false
-                    && row.glyphs.allSatisfy { $0.bold || $0.text == " " }
+                let text = normalized(row.text)
+                let isTitle = !text.isEmpty && titleLeft.hasPrefix(text)
+                    && row.glyphs.allSatisfy { $0.bold || $0.text == " " } && chords(of: row, body: body) == nil
+                titleLeft = isTitle && titleLeft.count > text.count ? String(titleLeft.dropFirst(text.count)) : fullTitle
                 if !isFooter, !isTitle, !row.isOversized(body: body) {
                     rows.append(row)
                 }
