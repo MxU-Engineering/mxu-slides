@@ -12,6 +12,8 @@ struct PresentationSettingsButton: View {
     @State private var popoverShown = false
     @State private var sheet: PresentationSettingsSheet?
 
+    @State private var pendingSheet: PresentationSettingsSheet?
+
     var body: some View {
         let changed = presentation.autoAdvance != nil || presentation.transition != nil
         Button {
@@ -40,6 +42,10 @@ struct PresentationSettingsButton: View {
         .help("Presentation settings")
         .popover(isPresented: $popoverShown, arrowEdge: .bottom) {
             popover
+                .onDisappear {
+                    sheet = pendingSheet
+                    pendingSheet = nil
+                }
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {
@@ -84,8 +90,8 @@ struct PresentationSettingsButton: View {
     }
 
     private func open(_ next: PresentationSettingsSheet) {
+        pendingSheet = next
         popoverShown = false
-        sheet = next
     }
 
     private var themeSheet: some View {
