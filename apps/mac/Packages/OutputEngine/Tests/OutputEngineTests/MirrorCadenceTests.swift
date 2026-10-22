@@ -149,7 +149,7 @@ final class MirrorCadenceTests: XCTestCase {
         XCTAssertGreaterThan(closest, 0.004)
     }
 
-    func testACardClockOutranksTheLiveSourceOnScreen() throws {
+    func testTheLiveSourceOnScreenOutranksACardClock() throws {
         let compositor: Compositor
         do {
             compositor = try Compositor()
@@ -159,31 +159,32 @@ final class MirrorCadenceTests: XCTestCase {
         let source = CadenceSource()
         compositor.mediaSource = source
         let canvas = CGSize(width: 320, height: 180)
-        var scene = RenderScene(canvasSize: canvas)
-        scene.addItem(
+        var live = RenderScene(canvasSize: canvas)
+        live.addItem(
             RenderItem(
                 id: "cam", frame: CGRect(origin: .zero, size: canvas),
                 content: .media(id: "camera", scaleMode: .fill, sourceRect: nil)),
             to: .stillGraphics)
-        let shown = scene
+        let shown = live
+        let empty = RenderScene(canvasSize: canvas)
         let card = LiveCadence(lastArrival: 50, period: 1.0 / 30)
-        let paced = try XCTUnwrap(OutputMirror(
+        let cardOnly = try XCTUnwrap(OutputMirror(
+            compositor: compositor, width: 320, height: 180,
+            provider: { empty }, pacing: { card }, sink: { _, _ in }))
+        let cardAndCamera = try XCTUnwrap(OutputMirror(
             compositor: compositor, width: 320, height: 180,
             provider: { shown }, pacing: { card }, sink: { _, _ in }))
-        let steered = try XCTUnwrap(OutputMirror(
-            compositor: compositor, width: 320, height: 180,
-            provider: { shown }, sink: { _, _ in }))
-        for mirror in [paced, steered] {
+        for mirror in [cardOnly, cardAndCamera] {
             mirror.startWithoutTimerForTesting()
-            mirror.tick(at: 50)
+            mirror.tick(at: 42)
         }
 
-        let cardStep = try XCTUnwrap(paced.steeringStep(nominal: nominal, at: 50.01))
-        XCTAssertEqual(cardStep.period, card.period)
-        let liveStep = try XCTUnwrap(steered.steeringStep(nominal: nominal, at: 42.01))
+        let liveStep = try XCTUnwrap(cardAndCamera.steeringStep(nominal: nominal, at: 42.01))
         XCTAssertEqual(liveStep.period, CadenceSource.cadence.period)
-        paced.stop()
-        steered.stop()
+        let cardStep = try XCTUnwrap(cardOnly.steeringStep(nominal: nominal, at: 50.01))
+        XCTAssertEqual(cardStep.period, card.period)
+        cardOnly.stop()
+        cardAndCamera.stop()
         withExtendedLifetime(source) {}
     }
 }

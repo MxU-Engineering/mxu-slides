@@ -72,6 +72,7 @@ public final class MediaEngine: @unchecked Sendable {
     private struct LiveSource {
         let latestFrame: @Sendable () -> CVPixelBuffer?
         let onStop: @Sendable () -> Void
+        let cadence: (@Sendable () -> LiveCadence?)?
     }
     private let liveSources = Locked<[String: LiveSource]>([:])
 
@@ -339,11 +340,12 @@ extension MediaEngine {
     public func registerLiveSource(
         id: String,
         latestFrame: @escaping @Sendable () -> CVPixelBuffer?,
-        onStop: @escaping @Sendable () -> Void
+        onStop: @escaping @Sendable () -> Void,
+        cadence: (@Sendable () -> LiveCadence?)? = nil
     ) {
         let previous = liveSources.withLock { table -> LiveSource? in
             let existing = table[id]
-            table[id] = LiveSource(latestFrame: latestFrame, onStop: onStop)
+            table[id] = LiveSource(latestFrame: latestFrame, onStop: onStop, cadence: cadence)
             return existing
         }
         previous?.onStop()
@@ -381,6 +383,6 @@ extension MediaEngine: MediaTextureSource {
     }
 
     public func liveCadence(for mediaID: String) -> LiveCadence? {
-        captures.value[mediaID]?.cadence
+        captures.value[mediaID]?.cadence ?? liveSources.value[mediaID]?.cadence?()
     }
 }

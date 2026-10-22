@@ -3,7 +3,9 @@ import AudioEngine
 import CoreVideo
 import Foundation
 import IOSurface
+import MediaEngine
 import QuartzCore
+import RenderEngine
 
 enum DeckLinkDirect {
 
@@ -82,6 +84,8 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var latest: CVPixelBuffer?
     private var lastFrameAt: Double = -.infinity
+
+    private var arrivals = ArrivalWindow()
     private var audioSinks: [UUID: AudioSink] = [:]
     private var connection: NSXPCConnection?
     private var generation = 0
@@ -95,6 +99,10 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
 
     func latestFrame() -> CVPixelBuffer? {
         lock.withLock { latest }
+    }
+
+    var cadence: LiveCadence? {
+        lock.withLock { arrivals.cadence }
     }
 
     func isReceiving(at now: Double) -> Bool {
@@ -221,6 +229,7 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
                 if generation == self.generation {
                     latest = buffer
                     lastFrameAt = now
+                    arrivals.record(now)
                     liveness.arrived(at: now)
                 }
             }

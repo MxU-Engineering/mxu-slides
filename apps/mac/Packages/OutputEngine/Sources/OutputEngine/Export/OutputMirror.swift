@@ -197,17 +197,15 @@ public final class OutputMirror: @unchecked Sendable {
     }
 
     func steeringStep(nominal: Double, at now: CFTimeInterval) -> MirrorCadence.Step? {
-        if let pacing {
+        if let step = MirrorCadence.next(nominal: nominal, now: now, reference: liveCadence.value) {
+            RenderPulse.shared.mirrorSteered(
+                edgeDistanceMS: step.edgeDistance * 1000, periodMS: step.period * 1000)
+            return step
+        } else if let pacing {
             return MirrorCadence.next(
                 nominal: nominal, now: now, reference: pacing(), target: MirrorCadence.cardTarget)
         } else {
-            let step = MirrorCadence.next(
-                nominal: nominal, now: now, reference: liveCadence.value)
-            if let step {
-                RenderPulse.shared.mirrorSteered(
-                    edgeDistanceMS: step.edgeDistance * 1000, periodMS: step.period * 1000)
-            }
-            return step
+            return nil
         }
     }
 
@@ -618,7 +616,7 @@ public final class PixelBufferConverter: @unchecked Sendable {
                 var minusKnee: Float = -1.0 / 12.0 * 1e6
                 vDSP_vsmsa(values, 1, &kneeScale, &minusKnee, values, 1, vDSP_Length(count))
                 vDSP_vclip(values, 1, &floor, &ceil, values, 1, vDSP_Length(count))
-                vDSP_vsub(low, 1, high, 1, &high, 1, vDSP_Length(count))  
+                vDSP_vsub(low, 1, high, 1, &high, 1, vDSP_Length(count))
                 vDSP_vma(values, 1, high, 1, low, 1, values, 1, vDSP_Length(count))
 
                 var wideBuffer = vImage_Buffer(

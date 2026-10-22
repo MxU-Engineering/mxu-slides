@@ -290,7 +290,8 @@ struct DLKOutput {
     IDeckLinkVideoBuffer *frameBuffers[kFrameCount] = {};
     DLKScheduleCallback *callback = nullptr;
 
-    uint8_t *latest = nullptr;
+    static const int kSlotCount = 3;
+    uint8_t *slots[kSlotCount] = {};
     std::mutex mutex;
     BMDTimeValue streamTime = 0;
     BMDTimeValue frameDuration = 0;
@@ -354,12 +355,13 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
             case bmdOutputFrameFlushed: tallied = DLKCompletionFlushed; break;
             default: break;
         }
-        dlk_tally_completion(&output->timing, hostSeconds(), tallied, jumped);
+        int32_t slot = dlk_tally_completion(
+            &output->timing, hostSeconds(), tallied, jumped);
         IDeckLinkVideoBuffer *buffer = output->bufferFor(frame);
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, output->latest,
+                memcpy(destination, output->slots[slot],
                        (size_t)output->width * 4 * output->height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
@@ -503,10 +505,12 @@ DLKOutput *dlk_output_open(
     handle->height = height;
     handle->frameDuration = frameDuration;
     handle->timeScale = timeScale;
-    handle->latest =
-        (uint8_t *)calloc((size_t)width * 4 * height, 1);
-
-    bool framesReady = handle->latest != nullptr;
+    bool framesReady = true;
+    for (int index = 0; index < DLKOutput::kSlotCount; index += 1) {
+        handle->slots[index] =
+            (uint8_t *)calloc((size_t)width * 4 * height, 1);
+        framesReady = framesReady && handle->slots[index] != nullptr;
+    }
     for (int index = 0; framesReady && index < DLKOutput::kFrameCount;
          index += 1) {
         if (output->CreateVideoFrame(
@@ -526,7 +530,7 @@ DLKOutput *dlk_output_open(
             if (handle->frameBuffers[index]) handle->frameBuffers[index]->Release();
             if (handle->frames[index]) handle->frames[index]->Release();
         }
-        free(handle->latest);
+        for (uint8_t *slot : handle->slots) free(slot);
         delete handle;
         writeError(error, errorLength, "video frame allocation failed");
         return nullptr;
@@ -541,7 +545,7 @@ DLKOutput *dlk_output_open(
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, handle->latest,
+                memcpy(destination, handle->slots[0],
                        (size_t)width * 4 * height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
@@ -560,7 +564,7 @@ DLKOutput *dlk_output_open(
             handle->frames[index]->Release();
         }
         handle->callback->Release();
-        free(handle->latest);
+        for (uint8_t *slot : handle->slots) free(slot);
         delete handle;
         writeError(error, errorLength, "scheduled playback failed to start");
         return nullptr;
@@ -583,33 +587,50 @@ bool dlk_output_display(
     const size_t destinationRow = (size_t)output->width * 4;
     const size_t copyRow =
         bytesPerRow < destinationRow ? bytesPerRow : destinationRow;
+    uint8_t *slot = output->slots[dlk_latch_slot(&output->timing)];
     for (int32_t row = 0; row < output->height; row += 1) {
-        memcpy(output->latest + (size_t)row * destinationRow,
+        memcpy(slot + (size_t)row * destinationRow,
                bgra + (size_t)row * bytesPerRow, copyRow);
     }
-    output->timing.latched += 1;
     return true;
 }
 
-void dlk_tally_completion(
+int32_t dlk_latch_slot(DLKOutputTiming *timing) {
+    if (!timing) return 0;
+    if (timing->waitingCount == 2) {
+        timing->waiting[0] = timing->waiting[1];
+        timing->waitingCount = 1;
+        timing->skips += 1;
+    }
+
+    int32_t slot = 0;
+    while (slot == timing->shownSlot ||
+           (timing->waitingCount > 0 && slot == timing->waiting[0]))
+        slot += 1;
+    timing->waiting[timing->waitingCount] = slot;
+    timing->waitingCount += 1;
+    timing->latched += 1;
+    return slot;
+}
+
+int32_t dlk_tally_completion(
     DLKOutputTiming *timing, double hostTime, DLKCompletionResult result,
     bool jumped) {
-    if (!timing) return;
+    if (!timing) return 0;
     timing->completions += 1;
     timing->lastCompletionHostTime = hostTime;
+    if (timing->waitingCount > 0) {
+        timing->shownSlot = timing->waiting[0];
+        timing->waiting[0] = timing->waiting[1];
+        timing->waitingCount -= 1;
+    } else if (timing->latched > 0) {
 
-    if (timing->latched > 0) {
-        uint64_t fresh = timing->latched - timing->shownLatch;
-        if (fresh == 0) {
-            timing->repeats += 1;
-        } else if (fresh > 1) {
-            timing->skips += fresh - 1;
-        }
+        timing->repeats += 1;
     }
-    timing->shownLatch = timing->latched;
     if (result == DLKCompletionLate) timing->late += 1;
     if (result == DLKCompletionDropped) timing->dropped += 1;
     if (jumped) timing->jumps += 1;
+    return timing->shownSlot;
 }
 
 DLKOutputTiming dlk_output_timing(DLKOutput *output) {
@@ -638,7 +659,7 @@ void dlk_output_close(DLKOutput *output) {
     output->callback->Release();
     output->output->Release();
     output->device->Release();
-    free(output->latest);
+    for (uint8_t *slot : output->slots) free(slot);
     delete output;
 }
 

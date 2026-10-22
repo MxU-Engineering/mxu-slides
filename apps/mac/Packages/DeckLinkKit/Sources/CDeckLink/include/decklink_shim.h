@@ -72,7 +72,10 @@ typedef struct {
     double lastCompletionHostTime;
 
     uint64_t latched;
-    uint64_t shownLatch;
+
+    int32_t waiting[2];
+    int32_t waitingCount;
+    int32_t shownSlot;
 
     uint64_t repeats;
     uint64_t skips;
@@ -90,7 +93,9 @@ typedef enum {
     DLKCompletionFlushed = 3,
 } DLKCompletionResult;
 
-void dlk_tally_completion(
+int32_t dlk_latch_slot(DLKOutputTiming *timing);
+
+int32_t dlk_tally_completion(
     DLKOutputTiming *timing, double hostTime, DLKCompletionResult result,
     bool jumped);
 

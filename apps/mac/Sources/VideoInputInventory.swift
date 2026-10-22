@@ -303,7 +303,8 @@ final class VideoInputInventory {
                 render.media.registerLiveSource(
                     id: entry.engineID,
                     latestFrame: { capture.latestFrame() },
-                    onStop: { DeckLinkDirectInputs.shared.release(persistentID: persistentID) })
+                    onStop: { DeckLinkDirectInputs.shared.release(persistentID: persistentID) },
+                    cadence: { capture.cadence })
                 running.insert(entry.id)
                 DiagnosticsStore.shared.note("input.decklink", detail: "warm: \(entry.name)")
             } else {
