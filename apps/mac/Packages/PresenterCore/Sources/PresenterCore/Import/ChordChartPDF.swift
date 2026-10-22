@@ -299,19 +299,38 @@ public enum ChordChartPDF {
 
     static func written(sections: [Section], leading: [String]) -> [String] {
         var out = leading
-        var seen: [(name: String, words: String)] = []
+
+        var seen: [(chartName: String, name: String, content: String)] = []
         for section in sections {
             let words = section.lines.map { ChordMath.extractLine($0).text.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }.joined(separator: "\n")
+            let content = words.isEmpty
+                ? section.lines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: "\n")
+                : words
+            let sameName = seen.filter { $0.chartName.caseInsensitiveCompare(section.name) == .orderedSame }
+            let earlier = sameName.first { $0.content == content }
+            let name = earlier?.name
+                ?? (words.isEmpty && !sameName.isEmpty ? numbered(section.name, taken: seen.map(\.name)) : section.name)
             if !out.isEmpty { out.append("") }
-            out.append(Reflow.labelName(of: section.name) != nil ? section.name : "{start_of_part: \(section.name)}")
-            let repeated = seen.contains { $0.name.caseInsensitiveCompare(section.name) == .orderedSame && $0.words == words }
-            if !repeated {
+            out.append(Reflow.labelName(of: name) != nil ? name : "{start_of_part: \(name)}")
+            if earlier == nil {
                 out += section.lines
-                seen.append((section.name, words))
+                seen.append((section.name, name, content))
             }
         }
         return out
+    }
+
+    static func numbered(_ name: String, taken: [String]) -> String {
+        var words = name.split(separator: " ").map(String.init)
+        let last = words.count > 1 ? words.last.flatMap { Int($0) } : nil
+        if last != nil { words.removeLast() }
+        let base = words.joined(separator: " ")
+        var number = (last ?? 1) + 1
+        while taken.contains(where: { $0.caseInsensitiveCompare("\(base) \(number)") == .orderedSame }) {
+            number += 1
+        }
+        return "\(base) \(number)"
     }
 
     struct Metadata {

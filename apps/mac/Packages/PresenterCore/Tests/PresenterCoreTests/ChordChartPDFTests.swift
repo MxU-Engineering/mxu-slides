@@ -26,6 +26,25 @@ struct ChordChartPDFTests {
         """)
     }
 
+    @Test func aChordOnlySectionRepeatsOnlyWithTheSameChords() {
+
+        let sections: [ChordChartPDF.Section] = [
+            .init(name: "Interlude", lines: ["[D][Aadd4][G2]"]),
+            .init(name: "Interlude", lines: ["[D][Aadd4][G2]"]),
+            .init(name: "Interlude", lines: ["[Bm][G]"]),
+            .init(name: "Interlude", lines: ["[Bm][G]"]),
+            .init(name: "Chorus", lines: ["[D]Hallelujah"]),
+            .init(name: "Chorus", lines: ["[G]Hallelujah"]),
+        ]
+        #expect(ChordChartPDF.written(sections: sections, leading: []) == [
+            "Interlude", "[D][Aadd4][G2]", "", "Interlude",
+            "", "Interlude 2", "[Bm][G]", "", "Interlude 2",
+
+            "", "Chorus", "[D]Hallelujah", "", "Chorus",
+        ])
+        #expect(ChordChartPDF.numbered("Interlude 2", taken: ["Interlude 2"]) == "Interlude 3")
+    }
+
     @Test func theChartImportsAsADeckInItsKey() throws {
         let text = try #require(ChordChartPDF.importText(from: Self.chartPDF(), filename: "Chord Chart.pdf"))
         let presentation = LyricTextImporter.makePresentation(text, linesPerSlide: 2)

@@ -52,21 +52,31 @@ public enum SlideSceneBuilder {
 
     public static func arrangedSlides(
         for presentation: Presentation,
-        arrangementId: String? = nil
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
     ) -> [Slide] {
         let id = arrangementId
         guard let id, !id.isEmpty,
               let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
               !arrangement.sectionIds.isEmpty
         else { return presentation.slides }
-        return playedBlocks(sectionIds: arrangement.sectionIds, in: presentation).flatMap { $0 }
+        return playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce)
+            .flatMap { $0 }
     }
 
-    public static func playedBlocks(sectionIds: [String], in presentation: Presentation) -> [[Slide]] {
+    public static let emptyRepeatsOnceKey = "present.emptyRepeatsOnce"
+
+    public static var emptyRepeatsOnce: Bool {
+        UserDefaults.standard.bool(forKey: emptyRepeatsOnceKey)
+    }
+
+    public static func playedBlocks(
+        sectionIds: [String], in presentation: Presentation, emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
+    ) -> [[Slide]] {
         var previous: String?
         return sectionIds.map { sectionId in
             let slides = presentation.slides.filter { $0.sectionId == sectionId }
-            let repeatsEmpty = sectionId == previous && slides.allSatisfy(showsNothing)
+            let repeatsEmpty = emptyRepeatsOnce && sectionId == previous && slides.allSatisfy(showsNothing)
             previous = sectionId
             return repeatsEmpty ? [] : slides
         }
@@ -80,14 +90,15 @@ public enum SlideSceneBuilder {
 
     public static func arrangementBlockStarts(
         for presentation: Presentation,
-        arrangementId: String? = nil
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
     ) -> [Int] {
         if let id = arrangementId, !id.isEmpty,
            let arrangement = presentation.arrangements?.first(where: { $0.id == id }),
            !arrangement.sectionIds.isEmpty {
             var starts: [Int] = []
             var index = 0
-            for block in playedBlocks(sectionIds: arrangement.sectionIds, in: presentation) {
+            for block in playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce) {
                 starts.append(index)
                 index += block.count
             }

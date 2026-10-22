@@ -1127,10 +1127,12 @@ final class AppModel {
     @ObservationIgnored private var arrangedCache: [String: [Slide]] = [:]
 
     func arrangedSlides(_ presentation: Presentation, arrangementId: String?) -> [Slide] {
-        let key = "\(presentation.id)|\(kindVersions[.presentation])|\(arrangementId ?? "")"
+
+        let once = SlideSceneBuilder.emptyRepeatsOnce
+        let key = "\(presentation.id)|\(kindVersions[.presentation])|\(arrangementId ?? "")|\(once)"
         if let hit = arrangedCache[key] { return hit }
         let slides = SlideSceneBuilder.arrangedSlides(
-            for: presentation, arrangementId: arrangementId
+            for: presentation, arrangementId: arrangementId, emptyRepeatsOnce: once
         )
         if decks.currentValue(presentation.id) != nil {
             if arrangedCache.count > 64 { arrangedCache.removeAll() }

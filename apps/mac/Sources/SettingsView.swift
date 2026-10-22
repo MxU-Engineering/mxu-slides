@@ -27,6 +27,7 @@ struct AppSettingsView: View {
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @AppStorage(ServiceControls.clearAllIncludesAudioKey) private var clearAllIncludesAudio = true
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
+    @AppStorage(SlideSceneBuilder.emptyRepeatsOnceKey) private var emptyRepeatsOnce = false
 
     @State private var category: SettingsCategory = .appearance
     @State private var query = ""
@@ -290,6 +291,20 @@ struct AppSettingsView: View {
                 caption: "Off protects walk-in music from the panic clear.",
                 keywords: "clear all audio panic walk-in music",
                 control: AnyView(Toggle("", isOn: $clearAllIncludesAudio).settingsToggle())
+            ),
+            SettingsRowSpec(
+                id: "present.emptyRepeatsOnce", category: .present,
+                title: "Show a repeated chord-only section once",
+                caption: "When a song plays the same section twice in a row and it has only chords or nothing on it (an Interlude played twice), Present shows it once. Off, every repeat the order calls for is a slide to click. Sections with words, media or a different set of chords always play.",
+                keywords: "repeat repeated duplicate interlude instrumental turnaround chords blank empty section skip once arrangement",
+                control: AnyView(Toggle("", isOn: Binding(
+                    get: { emptyRepeatsOnce },
+                    set: {
+                        emptyRepeatsOnce = $0
+
+                        controls?.refreshNextSlide()
+                    }
+                )).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.nextSkipsBlanks", category: .present,

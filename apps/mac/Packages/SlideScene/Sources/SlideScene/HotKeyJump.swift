@@ -5,7 +5,8 @@ extension SlideSceneBuilder {
 
     public static func blockSectionNames(
         for presentation: Presentation,
-        arrangementId: String? = nil
+        arrangementId: String? = nil,
+        emptyRepeatsOnce: Bool = SlideSceneBuilder.emptyRepeatsOnce
     ) -> [(start: Int, normalizedName: String)] {
         let sections = presentation.sections ?? []
         func normalized(_ id: String?) -> String {
@@ -18,7 +19,7 @@ extension SlideSceneBuilder {
            !arrangement.sectionIds.isEmpty {
             var result: [(start: Int, normalizedName: String)] = []
             var index = 0
-            for (sectionId, block) in zip(arrangement.sectionIds, playedBlocks(sectionIds: arrangement.sectionIds, in: presentation)) {
+            for (sectionId, block) in zip(arrangement.sectionIds, playedBlocks(sectionIds: arrangement.sectionIds, in: presentation, emptyRepeatsOnce: emptyRepeatsOnce)) {
                 result.append((index, normalized(sectionId)))
                 index += block.count
             }
@@ -42,9 +43,11 @@ extension SlideSceneBuilder {
         matching normalizedNames: [String],
         liveIndex: Int?
     ) -> Int? {
-        let blocks = blockSectionNames(for: presentation, arrangementId: arrangementId)
+
+        let once = emptyRepeatsOnce
+        let blocks = blockSectionNames(for: presentation, arrangementId: arrangementId, emptyRepeatsOnce: once)
         let slideCount = arrangedSlides(
-            for: presentation, arrangementId: arrangementId).count
+            for: presentation, arrangementId: arrangementId, emptyRepeatsOnce: once).count
         func width(_ index: Int) -> Int {
             let end = index + 1 < blocks.count ? blocks[index + 1].start : slideCount
             return end - blocks[index].start
