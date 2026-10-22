@@ -46,9 +46,33 @@ public enum TimelineTracks {
         return (0 ... words.count - phrase.count).contains { Array(words[$0 ..< $0 + phrase.count]) == phrase }
     }
 
+    static func numbered(_ name: String) -> (words: [String], number: Int?) {
+        var words = words(name)
+        guard let last = words.last else { return (words, nil) }
+        let digits = String(last.reversed().prefix { $0.isNumber }.reversed())
+        guard !digits.isEmpty else { return (words, nil) }
+        if digits.count == last.count {
+            guard words.count > 1 else { return (words, nil) }
+            words.removeLast()
+        } else {
+            let stem = String(last.dropLast(digits.count))
+            guard aliases.contains(where: { $0.words.contains([stem]) }) else { return (words, nil) }
+            words[words.count - 1] = stem
+        }
+        return (words, Int(digits))
+    }
+
     static func alias(_ name: String) -> (name: String, role: Role)? {
-        let words = words(name)
-        return aliases.first { $0.words.contains { contains(words, $0) } }.map { ($0.name, $0.role) }
+        let words = numbered(name).words
+        func position(_ phrase: [String]) -> Int? {
+            guard !phrase.isEmpty, phrase.count <= words.count else { return nil }
+            return (0 ... words.count - phrase.count).first { Array(words[$0 ..< $0 + phrase.count]) == phrase }
+        }
+        let found = aliases.compactMap { alias in
+            alias.words.compactMap(position).min().map { (alias: alias, at: $0) }
+        }
+        let pick = found.first { $0.alias.role != .music } ?? found.min { $0.at < $1.at }
+        return pick.map { ($0.alias.name, $0.alias.role) }
     }
 
     public static func role(forName name: String) -> Role {
@@ -56,16 +80,19 @@ public enum TimelineTracks {
     }
 
     public static func channel(forFileName fileName: String, in channels: [TrackChannel]) -> TrackChannel? {
-        let words = words(fileName)
+        let file = numbered(fileName)
+        let number = file.number ?? 1
+        let sameNumber = channels.filter { (numbered($0.name).number ?? 1) == number }
         var best: (channel: TrackChannel, length: Int)?
-        for channel in channels {
-            for phrase in ([channel.name] + (channel.matchNames ?? [])).map(Self.words) where contains(words, phrase) {
+        for channel in sameNumber {
+            for phrase in [numbered(channel.name).words] + (channel.matchNames ?? []).map(Self.words)
+            where contains(file.words, phrase) {
                 if phrase.count > best?.length ?? 0 { best = (channel, phrase.count) }
             }
         }
         if let best { return best.channel }
         guard let alias = alias(fileName) else { return nil }
-        return channels.first { Self.alias($0.name)?.name == alias.name }
+        return sameNumber.first { Self.alias($0.name)?.name == alias.name }
     }
 
     public static func assign(
@@ -73,17 +100,43 @@ public enum TimelineTracks {
     ) -> (channels: [TrackChannel], assignments: [String: String]) {
         var channels = channels
         var assignments: [String: String] = [:]
+        var used: Set<String> = []
         for fileName in fileNames {
-            if let channel = channel(forFileName: fileName, in: channels) {
-                assignments[fileName] = channel.id
+            let matched = channel(forFileName: fileName, in: channels)
+            if let matched, !used.contains(matched.id) {
+                assignments[fileName] = matched.id
+                used.insert(matched.id)
                 continue
             }
             let alias = alias(fileName)
-            let name = alias?.name ?? words(fileName).map(\.capitalized).joined(separator: " ")
+            let file = numbered(fileName)
+            let base = alias?.name ?? file.words.map(\.capitalized).joined(separator: " ")
             let role = alias?.role ?? .music
-            let made = TrackChannel(id: newID(), name: name.isEmpty ? "Track" : name, role: role == .music ? nil : role.rawValue)
-            channels.append(made)
-            assignments[fileName] = made.id
+            var number = file.number
+            var channel: TrackChannel?
+            if matched != nil {
+
+                number = (number ?? 1) + 1
+                while true {
+                    let name = "\(base) \(number!)"
+                    if let existing = channels.first(where: { $0.name == name }) {
+                        if !used.contains(existing.id) { channel = existing; break }
+                        number! += 1
+                    } else {
+                        break
+                    }
+                }
+            }
+            let chosen = channel ?? {
+                let name = number.map { "\(base) \($0)" } ?? base
+                let made = TrackChannel(
+                    id: newID(), name: name.trimmingCharacters(in: .whitespaces).isEmpty ? "Track" : name,
+                    role: role == .music ? nil : role.rawValue)
+                channels.append(made)
+                return made
+            }()
+            assignments[fileName] = chosen.id
+            used.insert(chosen.id)
         }
         return (channels, assignments)
     }

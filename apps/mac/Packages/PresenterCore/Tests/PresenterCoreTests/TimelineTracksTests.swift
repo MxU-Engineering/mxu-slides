@@ -17,7 +17,8 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(on("Click.wav") == "click")
     #expect(on("01 - Way Maker (Keys 1).wav") == "keys")
     #expect(on("Piano.m4a") == "keys")
-    #expect(on("EG 2.wav") == "eg")
+    #expect(on("EG.wav") == "eg")
+    #expect(on("EG 2.wav") == nil)
     #expect(on("Atmos.wav") == "loop")
     #expect(on("Metronome.aif") == "click")
     #expect(on("Bass.wav") == nil)
@@ -28,12 +29,14 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     let result = TimelineTracks.assign(
         fileNames: ["Click Track.wav", "Cues.wav", "Drums.wav", "Keys.wav", "Piano.wav", "Strange Noise.wav"],
         to: [], newID: { counter += 1; return "c\(counter)" })
-    #expect(result.channels.map(\.name) == ["Click", "Guide", "Drums", "Keys", "Strange Noise"])
-    #expect(result.channels.map(\.trackRole) == [.click, .guide, .music, .music, .music])
 
-    #expect(result.assignments["Piano.wav"] == result.assignments["Keys.wav"])
+    #expect(result.channels.map(\.name) == ["Click", "Guide", "Drums", "Keys", "Keys 2", "Strange Noise"])
+    #expect(result.channels.map(\.trackRole) == [.click, .guide, .music, .music, .music, .music])
+    #expect(result.assignments["Piano.wav"] != result.assignments["Keys.wav"])
     #expect(TimelineTracks.role(forName: "Click") == .click)
     #expect(TimelineTracks.role(forName: "Vocal Cues") == .guide)
+    #expect(TimelineTracks.role(forName: "Drum Click") == .click)
+    #expect(TimelineTracks.alias("EG Lead")?.name == "Electric Guitar")
 }
 
 @Test func stemsAreBlocksThatMoveTogetherAndNeverTrimTheirStart() {
@@ -80,4 +83,29 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     _ = TimelineTracks.place([.init(fileName: "Mystery.wav", audioID: "a4", seconds: 10)],
                              at: 1, channel: "keys", channels: [keys] + made, into: &cues, newID: newID)
     #expect(cues.first { $0.mediaId == "a4" }?.trackChannelId == "keys")
+}
+
+@Test func eightGuitarsAreEightChannelsAndNoStemReplacesAnother() {
+    var ids = 0
+    let newID = { ids += 1; return "g\(ids)" }
+    let guitars = (1 ... 8).map { "EG \($0).wav" }
+    let first = TimelineTracks.assign(fileNames: guitars, to: [], newID: newID)
+    #expect(first.channels.map(\.name) == (1 ... 8).map { "Electric Guitar \($0)" })
+    #expect(Set(first.assignments.values).count == 8)
+
+    let again = TimelineTracks.assign(fileNames: guitars.reversed(), to: first.channels, newID: newID)
+    #expect(again.channels == first.channels)
+    #expect(again.assignments["EG 3.wav"] == first.assignments["EG 3.wav"])
+
+    #expect(TimelineTracks.channel(forFileName: "EG2.aif", in: first.channels)?.name == "Electric Guitar 2")
+    let keys = [TrackChannel(id: "k", name: "Keys")]
+    #expect(TimelineTracks.channel(forFileName: "Keys 1.wav", in: keys)?.id == "k")
+    #expect(TimelineTracks.channel(forFileName: "Keys 2.wav", in: keys) == nil)
+
+    let pair = TimelineTracks.assign(fileNames: ["EG.wav", "EG Lead.wav", "Keys.wav", "Piano.wav"], to: keys, newID: newID)
+    #expect(pair.channels.map(\.name) == ["Keys", "Electric Guitar", "Electric Guitar 2", "Keys 2"])
+    var cues: [TimelineCue] = []
+    _ = TimelineTracks.place(guitars.enumerated().map { .init(fileName: $1, audioID: "a\($0)", seconds: 60) },
+                             at: 0, channels: first.channels, into: &cues, newID: newID)
+    #expect(cues.count == 8)
 }
