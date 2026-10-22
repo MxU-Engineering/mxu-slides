@@ -279,8 +279,6 @@ public enum PresentationTimelines {
         _ cue: TimelineCue, in cues: [TimelineCue], mode: TimelineBlockEdit.Mode, by seconds: Double,
         openEnd: Double? = nil
     ) -> TimelineCue {
-
-        let mode = cue.trackChannelId != nil && mode == .trim ? .move : mode
         guard cue.isBlock, mode != .move else { return moved(cue, by: seconds) }
         var end = end(of: cue, in: cues)
         if !end.isFinite, let openEnd { end = openEnd }
@@ -289,6 +287,10 @@ public enum PresentationTimelines {
         switch mode {
         case .stretch:
             edited.duration = max(snappedToFrame(end - cue.at + seconds), frame)
+            if TimelineClips.isClip(cue) { edited = TimelineClips.fitted(edited) }
+        case .trim where TimelineClips.isClip(cue):
+
+            return TimelineClips.trimmedStart(cue, by: seconds, end: end)
         case .trim:
             edited.at = min(max(0, snappedToFrame(cue.at + seconds)), end - frame)
             edited.duration = snappedToFrame(end - edited.at)

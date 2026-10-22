@@ -10,8 +10,14 @@ public struct MultitrackStem: Codable, Equatable, Sendable {
 
     public var duration: Double?
 
-    public init(path: String, channelId: String, at: Double = 0, inPoint: Double? = nil, duration: Double? = nil) {
+    public var envelope: ClipEnvelope?
+
+    public init(
+        path: String, channelId: String, at: Double = 0, inPoint: Double? = nil, duration: Double? = nil,
+        envelope: ClipEnvelope? = nil
+    ) {
         self.path = path; self.channelId = channelId; self.at = at; self.inPoint = inPoint; self.duration = duration
+        self.envelope = envelope
     }
 }
 
@@ -63,12 +69,16 @@ final class StemReader {
     private var flushed = false
     private let source: AVAudioPCMBuffer?
     private let zeros: UnsafeMutablePointer<Float>
+    private let envelope: ClipEnvelope?
+    private let sampleRate: Double
     private static let chunk = 4096
 
     private(set) var failure: String?
 
     init(stem: MultitrackStem, sampleRate: Double, startFrame: Int64, capacity: Int) {
         ring = StemRing(capacity: capacity)
+        envelope = stem.envelope
+        self.sampleRate = sampleRate
         target = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
         songFrame = startFrame
         audioStart = Int64((stem.at * sampleRate).rounded())
@@ -136,9 +146,15 @@ final class StemReader {
                     done += run
                     continue
                 }
-                run = min(count - done, Int(decoded.frameLength) - decodedOffset, Int(audioEnd - frame))
-                left = UnsafePointer(decoded.floatChannelData![0] + decodedOffset)
-                right = UnsafePointer(decoded.floatChannelData![1] + decodedOffset)
+                run = min(count - done, Int(decoded.frameLength) - decodedOffset, Int(audioEnd - frame), Self.chunk)
+                let l = decoded.floatChannelData![0] + decodedOffset, r = decoded.floatChannelData![1] + decodedOffset
+
+                if let envelope, !dropping {
+                    envelope.apply(
+                        [l, r], count: run, from: Double(frame - audioStart) / sampleRate, rate: sampleRate,
+                        length: Double(audioEnd - audioStart) / sampleRate)
+                }
+                left = UnsafePointer(l); right = UnsafePointer(r)
                 decodedOffset += run
             }
             run = min(run, Self.chunk)

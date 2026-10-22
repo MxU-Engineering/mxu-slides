@@ -229,11 +229,28 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             guard let channel = cue.trackChannelId, let id = cue.mediaId, let item = model.audio(id),
                   let url = controls.audioFileURL(item), FileManager.default.fileExists(atPath: url.path)
             else { missing += 1; return nil }
-            return MultitrackStem(path: url.path, channelId: channel, at: cue.at, inPoint: item.inPoint, duration: cue.duration)
+
+            return MultitrackStem(
+                path: url.path, channelId: channel, at: cue.at, inPoint: (item.inPoint ?? 0) + (cue.inPoint ?? 0),
+                duration: cue.duration, envelope: Self.envelope(cue, in: cues))
         }
         if missing > 0 { DiagnosticsStore.shared.note("tracks.missing", detail: "\(missing) stems not on this Mac") }
         guard !stems.isEmpty else { return nil }
         return MultitrackSong(id: [itemID, presentationID, arrangementId ?? ""].joined(separator: "|"), stems: stems)
+    }
+
+    static func envelope(_ cue: TimelineCue, in cues: [TimelineCue]) -> ClipEnvelope {
+        func fade(_ fade: ClipFade?) -> ClipEnvelope.Fade? {
+            fade.map {
+                ClipEnvelope.Fade(
+                    seconds: $0.seconds, shape: ClipEnvelope.Shape(rawValue: TimelineClips.Shape($0.shape).rawValue) ?? .linear,
+                    midpoint: $0.midpoint ?? 0.5)
+            }
+        }
+        let edges = TimelineClips.edges(of: cue, in: cues)
+        return ClipEnvelope(
+            fadeIn: fade(cue.fadeIn), fadeOut: fade(cue.fadeOut), edge: TimelineClips.edgeSeconds,
+            edgeIn: edges.start, edgeOut: edges.end)
     }
 
     func cueAhead(_ items: [(itemID: String, deck: Presentation, arrangementId: String?)]) {

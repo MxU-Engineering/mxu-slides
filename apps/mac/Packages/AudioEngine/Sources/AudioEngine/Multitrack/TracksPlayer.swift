@@ -57,7 +57,7 @@ public struct TracksPlayerStatus: Codable, Equatable, Sendable {
 
 public enum TracksPlayerWire {
 
-    public static let version = 4
+    public static let version = 5
 
     public static func socketPath(appIdentity: String) -> String {
         var hash: UInt32 = 2_166_136_261

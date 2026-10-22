@@ -38,7 +38,7 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(TimelineTracks.canonical(["eg", "lead"]).name == "Electric Guitar Lead")
 }
 
-@Test func stemsAreBlocksThatMoveTogetherAndNeverTrimTheirStart() {
+@Test func stemsAreBlocksThatMoveTogetherAndTrimWithTheirAudioInPlace() {
     let a = stem("click", at: 2, duration: 200)
     let b = stem("keys", at: 2, duration: 190)
     let late = stem("pad", at: 30, duration: 20)
@@ -52,7 +52,10 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
 
     let trimmed = PresentationTimelines.edited(a, in: cues, mode: .trim, by: 1)
     #expect(trimmed.at == 3)
-    #expect(trimmed.duration == 200)
+    #expect(trimmed.duration == 199)
+    #expect(trimmed.inPoint == 1)
+
+    #expect(PresentationTimelines.edited(a, in: cues, mode: .trim, by: -1).at == 2)
     let shortened = PresentationTimelines.edited(a, in: cues, mode: .stretch, by: -10)
     #expect(shortened.duration == 190)
 

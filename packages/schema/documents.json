@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 148,
+  "schemaVersion": 149,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1681,6 +1681,45 @@
         {
           "name": "actions",
           "type": "list:SlideAction",
+          "optional": true
+        },
+        {
+          "name": "inPoint",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "fadeIn",
+          "type": "ClipFade",
+          "optional": true
+        },
+        {
+          "name": "fadeOut",
+          "type": "ClipFade",
+          "optional": true
+        },
+        {
+          "name": "edgeFades",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
+    "ClipFade": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seconds",
+          "type": "double"
+        },
+        {
+          "name": "shape",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "midpoint",
+          "type": "double",
           "optional": true
         }
       ]

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 148,
+  "schemaVersion": 149,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1360,12 +1360,41 @@
           "items": {
             "$ref": "#/components/schemas/SlideAction"
           }
+        },
+        "inPoint": {
+          "type": "number"
+        },
+        "fadeIn": {
+          "$ref": "#/components/schemas/ClipFade"
+        },
+        "fadeOut": {
+          "$ref": "#/components/schemas/ClipFade"
+        },
+        "edgeFades": {
+          "type": "boolean"
         }
       },
       "required": [
         "id",
         "lane",
         "at"
+      ]
+    },
+    "ClipFade": {
+      "type": "object",
+      "properties": {
+        "seconds": {
+          "type": "number"
+        },
+        "shape": {
+          "type": "string"
+        },
+        "midpoint": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "seconds"
       ]
     },
     "PresentationTimeline": {

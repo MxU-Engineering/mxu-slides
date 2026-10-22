@@ -892,8 +892,12 @@ public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
     public var alertId: String?
     public var liveInputId: String?
     public var actions: [SlideAction]?
+    public var inPoint: Double?
+    public var fadeIn: ClipFade?
+    public var fadeOut: ClipFade?
+    public var edgeFades: Bool?
 
-    public init(id: String, lane: String, at: Double, duration: Double? = nil, sectionId: String? = nil, sectionOccurrence: Int? = nil, slideId: String? = nil, mediaId: String? = nil, overlayId: String? = nil, alertId: String? = nil, liveInputId: String? = nil, actions: [SlideAction]? = nil) {
+    public init(id: String, lane: String, at: Double, duration: Double? = nil, sectionId: String? = nil, sectionOccurrence: Int? = nil, slideId: String? = nil, mediaId: String? = nil, overlayId: String? = nil, alertId: String? = nil, liveInputId: String? = nil, actions: [SlideAction]? = nil, inPoint: Double? = nil, fadeIn: ClipFade? = nil, fadeOut: ClipFade? = nil, edgeFades: Bool? = nil) {
         self.id = id
         self.lane = lane
         self.at = at
@@ -906,6 +910,22 @@ public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
         self.alertId = alertId
         self.liveInputId = liveInputId
         self.actions = actions
+        self.inPoint = inPoint
+        self.fadeIn = fadeIn
+        self.fadeOut = fadeOut
+        self.edgeFades = edgeFades
+    }
+}
+
+public struct ClipFade: Codable, Sendable, Equatable {
+    public var seconds: Double
+    public var shape: String?
+    public var midpoint: Double?
+
+    public init(seconds: Double, shape: String? = nil, midpoint: Double? = nil) {
+        self.seconds = seconds
+        self.shape = shape
+        self.midpoint = midpoint
     }
 }
 
