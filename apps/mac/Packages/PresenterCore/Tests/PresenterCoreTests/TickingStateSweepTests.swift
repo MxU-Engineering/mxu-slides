@@ -20,7 +20,9 @@ import Testing
             .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the timeline that owns the drag"),
         ],
         "MediaTransportController.swift": [.quiet("refresh() writes rows and rowsVersion only when a row moved")],
-        "VideoInputInventory.swift": [.quiet("the 1 s connectivity poll writes the connected set only when it changes")],
+        "VideoInputInventory.swift": [
+            .quiet("the 1 s connectivity poll writes the connected set only when it changes; its 10 s camera-grant read runs off main"),
+        ],
         "MenuTrackingRecorder.swift": [.quiet("diagnostics while a menu is open; writes breadcrumbs, not observed state")],
         "SheetWatchRecorder.swift": [.quiet("the 1 s sheet and modal watch writes breadcrumbs, not observed state")],
         "ServiceControls.swift": [
@@ -151,6 +153,22 @@ import Testing
             )
         }
         #expect(writes >= 1)
+    }
+
+    @Test func connectivityPollReadsTheCameraGrantOffMain() throws {
+        let sweep = try SourceSweep.app()
+        let file = try #require(sweep.file("VideoInputInventory.swift"))
+        let start = try #require(file.lines.firstIndex { $0.contains("private func pollConnectivity() {") })
+        let body = file.block(from: start)
+        let reads = body.filter { file.code($0).contains("authorizationStatus(for:") }
+        #expect(reads.count == 1)
+        for read in reads {
+            let detached = body.filter { $0 < read && file.code($0).contains("Task.detached") }
+            #expect(
+                detached.contains { file.block(from: $0).contains(read) },
+                "VideoInputInventory.swift:\(read + 1) reads the camera grant on the poll's tick: read it off main"
+            )
+        }
     }
 
     @Test func slideGridHostsNeverReadTheLiveSlide() throws {

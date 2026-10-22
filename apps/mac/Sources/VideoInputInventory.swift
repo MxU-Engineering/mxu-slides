@@ -390,7 +390,10 @@ final class VideoInputInventory {
 
         if now - cameraGrantCheckedAt >= Self.cameraGrantCheckInterval {
             cameraGrantCheckedAt = now
-            cameraGranted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
+            Task.detached(priority: .utility) { [weak self] in
+                let granted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
+                await MainActor.run { self?.cameraGranted = granted }
+            }
         }
         if cameraGranted {
             reconcileCameraHotplug()
