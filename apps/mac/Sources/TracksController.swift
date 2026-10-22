@@ -62,9 +62,9 @@ final class TracksController {
         }
 
         NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+            forName: UserDefaults.didChangeNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.queueRefresh() }
+            Task { @MainActor in self?.queueRefresh() }
         }
     }
 
