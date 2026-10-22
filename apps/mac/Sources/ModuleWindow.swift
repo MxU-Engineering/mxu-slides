@@ -25,7 +25,6 @@ struct ModuleWindowView: View {
                         switch module {
                         case .audio: AudioModule(model: model, controls: controls)
                         case .mixer: AudioMixerModule(model: model, controls: controls)
-                        case .media: MediaPlaylistsModule(model: model, controls: controls)
                         case .timers: TimersModule(model: model, controls: controls)
                         case .tracking: ServiceTrackingModule(model: model, controls: controls)
                         case .alerts: AlertsModule(model: model, controls: controls)

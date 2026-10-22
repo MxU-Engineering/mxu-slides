@@ -268,7 +268,7 @@ struct AppSettingsView: View {
                 id: "present.clearAllAudio",
                 title: "Clear All clears",
                 caption: "Unticked stays up through Clear All.",
-                keywords: "clear all audio panic walk-in music inputs camera video input signage skip keep",
+                keywords: "clear all audio panic walk-in music inputs camera video input skip keep",
                 control: AnyView(ClearAllChecklist()),
                 stacked: true
             ),

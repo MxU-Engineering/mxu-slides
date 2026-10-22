@@ -33,8 +33,8 @@ struct InspectorView: View {
                     case .midiDevice: Text("MIDI devices are managed in Settings \u{203A} MIDI.")
                     case .streamDestination: Text("Destinations are managed in Settings \u{203A} Stream & Record.")
                     case .note: EmptyView()
-                    case .controlBoard, .groupPalette, .signageBoard, .effectPresetBoard,
-                         .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: EmptyView() 
+                    case .controlBoard, .groupPalette, .effectPresetBoard,
+                         .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: EmptyView()
                     }
                 }
                 .formStyle(.grouped)
@@ -281,13 +281,6 @@ struct PlaylistEditor: View {
                 .lineLimit(1)
             Spacer(minLength: 6)
 
-            if let override = item.autoAdvanceDelaySeconds {
-                Text(String(format: "⏱ %.0fs", override))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                    .help("This item's own Auto Advance delay — right-click to change")
-            }
-
             Text(entryDuration(item) ?? "—")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
@@ -313,10 +306,6 @@ struct PlaylistEditor: View {
             hoveredEntryID = inside ? item.id : (hoveredEntryID == item.id ? nil : hoveredEntryID)
         }
         .contextMenu {
-            if (list.playlistKind ?? .audio) == .media {
-                autoAdvanceOverrideMenu(item, in: list)
-                Divider()
-            }
             Button("Remove", role: .destructive) {
                 model.removePlaylistEntry(list.id, entryID: item.id)
             }
@@ -396,78 +385,9 @@ struct PlaylistEditor: View {
                     .controlSize(.small)
                 }
             }
-
-            if (list.playlistKind ?? .audio) == .media {
-                HStack {
-                    Text("Auto Advance")
-                        .font(.caption)
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { (try? model.playlist(list.id))?.autoAdvance ?? false },
-                        set: { v in model.updatePlaylist(list.id) { $0.autoAdvance = v } }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .tint(.green)
-                    .controlSize(.mini)
-                }
-                if list.autoAdvance ?? false {
-                    HStack {
-                        Text("Delay")
-                            .font(.caption)
-                        Spacer()
-                        Stepper(
-                            String(format: "%.1fs", list.autoAdvanceDelaySeconds ?? 0),
-                            value: Binding(
-                                get: { (try? model.playlist(list.id))?.autoAdvanceDelaySeconds ?? 0 },
-                                set: { v in
-                                    model.updatePlaylist(list.id) {
-                                        $0.autoAdvanceDelaySeconds = max(0, v)
-                                    }
-                                }
-                            ),
-                            step: 0.5
-                        )
-                        .font(.caption.monospacedDigit())
-                        .controlSize(.small)
-                    }
-                    Text("Stills hold this long; videos play to the end, then wait this long. Right-click an item for its own delay.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-    }
-
-    private static let overrideDelayChoices: [Double] = [0, 1, 2, 3, 5, 7, 10, 15, 30, 60]
-
-    @ViewBuilder
-    private func autoAdvanceOverrideMenu(_ entry: PlaylistEntry, in list: Playlist) -> some View {
-        Menu("Auto Advance Delay") {
-            Button(entry.autoAdvanceDelaySeconds == nil
-                ? "✓ Playlist Delay" : "Playlist Delay"
-            ) {
-                setOverrideDelay(nil, entryID: entry.id, in: list)
-            }
-            Divider()
-            ForEach(Self.overrideDelayChoices, id: \.self) { seconds in
-                let label = String(format: "%.0fs", seconds)
-                Button(entry.autoAdvanceDelaySeconds == seconds ? "✓ \(label)" : label) {
-                    setOverrideDelay(seconds, entryID: entry.id, in: list)
-                }
-            }
-        }
-    }
-
-    private func setOverrideDelay(_ seconds: Double?, entryID: String, in list: Playlist) {
-        model.updatePlaylist(list.id) { playlist in
-            guard let index = playlist.entries.firstIndex(where: { $0.id == entryID })
-            else { return }
-            playlist.entries[index].autoAdvanceDelaySeconds = seconds
-        }
     }
 
     private func entryDuration(_ entry: PlaylistEntry) -> String? {

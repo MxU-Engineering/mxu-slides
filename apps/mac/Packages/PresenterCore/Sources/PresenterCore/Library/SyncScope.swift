@@ -11,7 +11,7 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
              .alertPreset, .actionCombo, .scheduleTrigger, .confidenceLayout, .groupPalette,
              .effectPresetBoard, .animationPresetBoard, .serviceLinkRules, .note, .slideBuildingSettings, .font:
             .team
-        case .outputPreset, .controlBoard, .schedulerBoard, .signageBoard, .midiDevice,
+        case .outputPreset, .controlBoard, .schedulerBoard, .midiDevice,
              .streamDestination, .streamRecordPreset, .stationSettings, .workspaceSettings:
             .station
         case .importLedger:
@@ -46,7 +46,6 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
         case .controlBoard: ControlBoard.self
         case .confidenceLayout: ConfidenceLayout.self
         case .groupPalette: GroupPalette.self
-        case .signageBoard: SignageBoard.self
         case .effectPresetBoard: EffectPresetBoard.self
         case .animationPresetBoard: AnimationPresetBoard.self
         case .midiDevice: MIDIDevice.self

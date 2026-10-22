@@ -8,7 +8,6 @@ extension SlideActionKind {
         case .clearLayer: "Clear Layer"
         case .clearAll: "Clear All"
         case .clearAudio: "Clear Music"
-        case .clearSignage: "Clear Signage"
         case .switchOutputPreset: "Switch Output Preset"
         case .fireMedia: "Fire Media"
         case .fireAlert: "Fire Alert"
@@ -26,8 +25,8 @@ extension SlideActionKind {
         case .fireOverlay: "Fire Overlay"
         case .dismissOverlay: "Take Down Overlay"
         case .fireLiveInput: "Fire Live Input"
-        case .setSignage: "Set Signage Content"
-        case .setScreenSource: "Set Screen Source"
+
+        case .setSignage, .setScreenSource, .clearSignage: "Signage (removed)"
         case .enableAudioInput: "Audio Input On"
         case .disableAudioInput: "Audio Input Off"
         case .fireAudio: "Music File"
@@ -162,7 +161,6 @@ struct ActionParameterFields: View {
 
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @Environment(\.signage) private var signage
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
@@ -389,34 +387,10 @@ struct ActionParameterFields: View {
                     }
                 }
             }
-        case .setSignage:
-            Picker("Signage", selection: stringBinding(action, \.signageId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Text(channel.name).tag(channel.id)
-                }
-            }
-            Picker("Playlist", selection: stringBinding(action, \.playlistId)) {
-
-                Text("Choose\u{2026}").tag("")
-                ForEach(model.playlists(in: .media), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-        case .setScreenSource:
-            Picker("Screen", selection: stringBinding(action, \.screenId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(signage?.screens ?? [], id: \.id) { screen in
-                    Text(screen.name).tag(screen.id.uuidString)
-                }
-            }
-            Picker("Source", selection: stringBinding(action, \.signageId)) {
-
-                Text("Program").tag("")
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Text("Signage — \(channel.name)").tag(channel.id)
-                }
-            }
+        case .setSignage, .setScreenSource, .clearSignage:
+            Text("Digital Signage was removed. This step does nothing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .enableAudioInput, .disableAudioInput:
             Picker("Input", selection: stringBinding(action, \.audioInputId)) {
                 Text("Choose\u{2026}").tag("")
@@ -448,7 +422,7 @@ struct ActionParameterFields: View {
                 }
             }
             repeatPicker(action)
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .clearAudio, .dismissAlert:
             EmptyView()
         }
     }
@@ -676,8 +650,6 @@ struct AddActionMenuItems: View {
 
     let add: (SlideAction) -> Void
 
-    @Environment(\.signage) private var signage
-
     var body: some View {
         let presets = entries(of: .outputPreset)
         if !presets.isEmpty {
@@ -701,7 +673,6 @@ struct AddActionMenuItems: View {
             Divider()
 
             Button("Clear Music") { add(make(.clearAudio)) }
-            Button("Clear Signage") { add(make(.clearSignage)) }
         }
         Button("Fire Media\u{2026}") { add(make(.fireMedia)) }
         Button("Fire Presentation") { add(make(.firePresentation)) }
@@ -769,51 +740,6 @@ struct AddActionMenuItems: View {
             ForEach(layouts, id: \.id) { layout in
                 Button(layout.name) {
                     add(make(.setConfidenceLayout) { $0.confidenceLayoutId = layout.id })
-                }
-            }
-        }
-
-        let channels = signage?.channels ?? []
-        if !channels.isEmpty {
-            let signagePlaylists = model.playlists(in: .media)
-            Menu("Signage") {
-                if !signagePlaylists.isEmpty {
-                    Menu("Set Content") {
-                        ForEach(channels, id: \.id) { channel in
-                            Menu(channel.name) {
-                                ForEach(signagePlaylists, id: \.id) { playlist in
-                                    Button(playlist.name) {
-                                        add(make(.setSignage) {
-                                            $0.signageId = channel.id
-                                            $0.playlistId = playlist.id
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                let screens = signage?.screens ?? []
-                if !screens.isEmpty {
-                    Menu("Screen Source") {
-                        ForEach(screens, id: \.id) { screen in
-                            Menu(screen.name) {
-                                Button("Program") {
-                                    add(make(.setScreenSource) {
-                                        $0.screenId = screen.id.uuidString
-                                    })
-                                }
-                                ForEach(channels, id: \.id) { channel in
-                                    Button("Signage — \(channel.name)") {
-                                        add(make(.setScreenSource) {
-                                            $0.screenId = screen.id.uuidString
-                                            $0.signageId = channel.id
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

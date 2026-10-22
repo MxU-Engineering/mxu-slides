@@ -411,8 +411,6 @@ final class ServiceControls {
 
     weak var actionRouter: ActionRouter?
 
-    weak var signage: SignageController?
-
     weak var serviceTracking: ServiceTimingController?
 
     private(set) var mediaFireContexts: [String: String] = [:]
@@ -1071,8 +1069,6 @@ final class ServiceControls {
 
         case direct
 
-        case playlistWalk
-
         case serviceItem(id: String)
     }
 
@@ -1114,7 +1110,6 @@ final class ServiceControls {
         actionRouter?.mediaDidFire(mediaItem, on: layer)
         switch context {
         case .direct: cancelMediaAdvance()
-        case .playlistWalk: break
         case .serviceItem(let id):
             armMediaAdvance(for: mediaItem, serviceItemID: id)
             serviceTracking?.noteItemFired(serviceItemID: id)
@@ -1284,7 +1279,6 @@ final class ServiceControls {
             refreshNextSlide()
         }
         if function == .audio { audio.stop() }
-        if function == .signage { signage?.clearAllChannels() }
         apply()
         if function == .alerts { syncFlashClock() }
     }
@@ -1322,8 +1316,6 @@ final class ServiceControls {
         state.clearAll(sweeping: swept, protecting: protecting)
         if swept.contains(.audio) { audio.stop() }
 
-        if swept.contains(.signage) { signage?.clearAllChannels() }
-
         if state.liveSlide == nil {
             liveContextID = nil
             liveOccurrence = nil
@@ -1342,7 +1334,6 @@ final class ServiceControls {
         case .overlays: !state.liveOverlays.isEmpty
         case .audio: !state.liveAudio.isEmpty
         case .alerts: state.liveAlert != nil
-        case .signage: signage?.hasAnyChannelContent ?? false
         }
     }
 

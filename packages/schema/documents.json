@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 139,
+  "schemaVersion": 140,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1959,11 +1959,6 @@
         {
           "name": "refId",
           "type": "string"
-        },
-        {
-          "name": "autoAdvanceDelaySeconds",
-          "type": "double",
-          "optional": true
         }
       ]
     },
@@ -2016,16 +2011,6 @@
         },
         {
           "name": "crossfadeSeconds",
-          "type": "double",
-          "optional": true
-        },
-        {
-          "name": "autoAdvance",
-          "type": "bool",
-          "optional": true
-        },
-        {
-          "name": "autoAdvanceDelaySeconds",
           "type": "double",
           "optional": true
         }
@@ -3237,16 +3222,6 @@
           "optional": true
         },
         {
-          "name": "signageId",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "screenId",
-          "type": "string",
-          "optional": true
-        },
-        {
           "name": "delaySeconds",
           "type": "double",
           "optional": true
@@ -3942,37 +3917,6 @@
         }
       ]
     },
-    "SignageChannel": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "playlistId",
-          "type": "string",
-          "optional": true
-        }
-      ]
-    },
-    "SignageBoard": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "signages",
-          "type": "list:SignageChannel"
-        }
-      ]
-    },
     "NoteRun": {
       "kind": "record",
       "fields": [
@@ -4630,11 +4574,6 @@
         },
         {
           "name": "confidence",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "signage",
           "type": "string",
           "optional": true
         },

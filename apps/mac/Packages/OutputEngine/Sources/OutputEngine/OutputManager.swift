@@ -40,8 +40,6 @@ public final class OutputManager {
 
     public var confidenceSceneProvider: (@Sendable (UUID) -> RenderScene)?
 
-    public var signageSceneProvider: (@Sendable (UUID) -> RenderScene?)?
-
     public private(set) var screenRoles: [UUID: ScreenRole] = [:]
     private let roleBox = Locked<[UUID: ScreenRole]>([:])
 
@@ -558,7 +556,6 @@ public final class OutputManager {
     private func provider(for targetID: String) -> @Sendable () -> RenderScene {
         let base = sceneProvider ?? { .empty }
         let confidence = confidenceSceneProvider
-        let signage = signageSceneProvider
         let variants = variantSceneProvider
         let routing = layerRouting
         let themeRouting = slideThemeRouting
@@ -582,10 +579,6 @@ public final class OutputManager {
             }
             if let screenID, let syncTest, syncTests.value.contains(screenID) {
                 return syncTest
-            }
-
-            if let screenID, let signage, let scene = signage(screenID) {
-                return scene
             }
             if let screenID, let confidence, roles.value[screenID] == .confidence {
                 return confidence(screenID)

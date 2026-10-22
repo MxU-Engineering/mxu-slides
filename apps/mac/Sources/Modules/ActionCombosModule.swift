@@ -10,7 +10,6 @@ struct ActionCombosModule: View {
     @Environment(\.runOnly) private var runOnly
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @Environment(\.signage) private var signage
 
     @State private var expanded: Set<String> = []
     @State private var mediaPick: MediaPickTarget?
@@ -621,45 +620,6 @@ struct ActionCombosModule: View {
                     }
                 }
             }
-        case .setSignage:
-            QuietMenuChip(title: signageChannelTitle(action.signageId) ?? "Signage\u{2026}") {
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Button(channel.name) {
-                        updateAction(comboID, action.id) { $0.signageId = channel.id }
-                    }
-                }
-            }
-
-            QuietMenuChip(title: (action.playlistId?.isEmpty ?? true)
-                ? "Playlist\u{2026}" : (entryName(action.playlistId) ?? "Playlist\u{2026}")
-            ) {
-                ForEach(model.playlists(in: .media), id: \.id) { playlist in
-                    Button(playlist.name) {
-                        updateAction(comboID, action.id) { $0.playlistId = playlist.id }
-                    }
-                }
-            }
-        case .setScreenSource:
-            QuietMenuChip(title: signageScreenTitle(action.screenId)) {
-                ForEach(signage?.screens ?? [], id: \.id) { screen in
-                    Button(screen.name) {
-                        updateAction(comboID, action.id) { $0.screenId = screen.id.uuidString }
-                    }
-                }
-            }
-            QuietMenuChip(title: (action.signageId?.isEmpty ?? true)
-                ? "Program" : (signageChannelTitle(action.signageId) ?? "Signage\u{2026}")
-            ) {
-                Button("Program") {
-                    updateAction(comboID, action.id) { $0.signageId = nil }
-                }
-                Divider()
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Button("Signage — \(channel.name)") {
-                        updateAction(comboID, action.id) { $0.signageId = channel.id }
-                    }
-                }
-            }
         case .enableAudioInput, .disableAudioInput:
             QuietMenuChip(title: audioInputTitle(action)) {
                 ForEach(AudioInputInventory.shared.entries) { entry in
@@ -713,7 +673,7 @@ struct ActionCombosModule: View {
                     updateAction(comboID, action.id) { $0.audioRepeat = false }
                 }
             }
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .clearAudio, .dismissAlert, .setSignage, .setScreenSource, .clearSignage:
             EmptyView()
         }
     }
@@ -749,16 +709,6 @@ struct ActionCombosModule: View {
         return AudioInputInventory.shared.name(forId: id) ?? "Missing input"
     }
 
-    private func signageChannelTitle(_ id: String?) -> String? {
-        guard let id, !id.isEmpty else { return nil }
-        return signage?.channel(id)?.name ?? "Missing"
-    }
-
-    private func signageScreenTitle(_ id: String?) -> String {
-        guard let id, !id.isEmpty else { return "Screen\u{2026}" }
-        return signage?.screens.first { $0.id.uuidString == id }?.name ?? "Screen\u{2026}"
-    }
-
     private func liveInputTitle(_ action: SlideAction) -> String {
         if let itemId = action.liveInputId, !itemId.isEmpty {
             return VideoInputInventory.shared.entry(id: itemId)?.name ?? "Missing input"
@@ -781,7 +731,9 @@ struct ActionCombosModule: View {
 
     private func hasParameters(_ kind: SlideActionKind) -> Bool {
         switch kind {
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert: false
+        case .clearAll, .clearAudio, .dismissAlert: false
+
+        case .setSignage, .setScreenSource, .clearSignage: false
 
         case .midiOut: true
         default: true

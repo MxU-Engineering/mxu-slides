@@ -18,7 +18,6 @@ public enum DocumentKind: String, CaseIterable, Sendable {
     case controlBoard
     case confidenceLayout
     case groupPalette
-    case signageBoard
     case effectPresetBoard
     case animationPresetBoard
     case midiDevice
@@ -58,7 +57,6 @@ public enum DocumentKind: String, CaseIterable, Sendable {
         case .controlBoard: "control-boards"
         case .confidenceLayout: "confidence-layouts"
         case .groupPalette: "groups"
-        case .signageBoard: "signage"
         case .effectPresetBoard: "effect-presets"
         case .animationPresetBoard: "animation-presets"
         case .midiDevice: "midi-devices"
@@ -253,17 +251,6 @@ public extension AnimationPresetBoard {
 
 extension MIDIDevice: DocumentEntity {
     public static var documentKind: DocumentKind { .midiDevice }
-}
-
-extension SignageBoard: DocumentEntity {
-    public static var documentKind: DocumentKind { .signageBoard }
-
-    public var name: String { "Digital Signage" }
-}
-
-public extension SignageBoard {
-
-    static let wellKnownID = "signage-board"
 }
 
 extension ConfidenceLayout: DocumentEntity {

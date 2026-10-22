@@ -162,18 +162,6 @@ private func cue(
     #expect(show.liveOverlays.isEmpty)
 }
 
-@Test func signageFunctionNeverTouchesTheRoomShow() {
-
-    let a = slide("a", background: cue("ocean"))
-    var show = ShowState()
-    show.fire(slide: a, presentation: presentation([a]))
-    show.fire(overlay: Overlay(id: "o", name: "O", objects: []))
-    show.clear(function: .signage)
-    #expect(show.liveSlide != nil)
-    #expect(!show.liveMedia.isEmpty)
-    #expect(!show.liveOverlays.isEmpty)
-}
-
 @Test func wantedMediaCarriesLoopOverridesAndSlideObjects() {
     var mediaObject = SlideObject(id: "m", objectKind: .media, name: "Clip", text: "")
     mediaObject.mediaId = "clip"
@@ -581,7 +569,9 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     #expect(ClearAllScope.skips(stored: nil, legacyIncludesAudio: false) == [.inputs, .audio],
             "the old Music switch carries over")
     #expect(ClearAllScope.skips(stored: "", legacyIncludesAudio: false) == [], "a saved checklist wins")
-    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .signage]), legacyIncludesAudio: nil) == [.audio, .signage])
+    #expect(ClearAllScope.skips(stored: ClearAllScope.encode([.audio, .alerts]), legacyIncludesAudio: nil) == [.audio, .alerts])
+    #expect(ClearAllScope.skips(stored: "audio,signage", legacyIncludesAudio: nil) == [.audio],
+            "a skip saved before Digital Signage left (2026-10-16) drops")
     #expect(ClearAllScope.swept(skips: [.inputs]) == Set(ShowFunction.allCases).subtracting([.inputs]))
 
     let defaults = UserDefaults(suiteName: "ClearAllScopeTests-\(UUID().uuidString)")!

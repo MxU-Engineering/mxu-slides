@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 139,
+  "schemaVersion": 140,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1608,9 +1608,6 @@
         },
         "refId": {
           "type": "string"
-        },
-        "autoAdvanceDelaySeconds": {
-          "type": "number"
         }
       },
       "required": [
@@ -1659,12 +1656,6 @@
           "type": "boolean"
         },
         "crossfadeSeconds": {
-          "type": "number"
-        },
-        "autoAdvance": {
-          "type": "boolean"
-        },
-        "autoAdvanceDelaySeconds": {
           "type": "number"
         }
       },
@@ -2687,12 +2678,6 @@
         "audioRepeat": {
           "type": "boolean"
         },
-        "signageId": {
-          "type": "string"
-        },
-        "screenId": {
-          "type": "string"
-        },
         "delaySeconds": {
           "type": "number"
         }
@@ -3364,42 +3349,6 @@
         "objects"
       ]
     },
-    "SignageChannel": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "playlistId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "name"
-      ]
-    },
-    "SignageBoard": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "signages": {
-          "type": "array",
-          "items": {
-            "$ref": "#/components/schemas/SignageChannel"
-          }
-        }
-      },
-      "required": [
-        "id",
-        "signages"
-      ]
-    },
     "NoteRun": {
       "type": "object",
       "properties": {
@@ -3959,9 +3908,6 @@
           "type": "string"
         },
         "confidence": {
-          "type": "string"
-        },
-        "signage": {
           "type": "string"
         },
         "inputs": {

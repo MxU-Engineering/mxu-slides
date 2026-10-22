@@ -318,7 +318,6 @@ public final class ResidentLibrary {
     public let schedulerBoards: ResidentDocuments<SchedulerBoard>
     public let controlBoards: ResidentDocuments<ControlBoard>
     public let groupPalettes: ResidentDocuments<GroupPalette>
-    public let signageBoards: ResidentDocuments<SignageBoard>
     public let effectPresetBoards: ResidentDocuments<EffectPresetBoard>
     public let animationPresetBoards: ResidentDocuments<AnimationPresetBoard>
     public let serviceLinkRules: ResidentDocuments<ServiceLinkRules>
@@ -332,7 +331,7 @@ public final class ResidentLibrary {
         .media, .audio, .theme, .service, .playlist, .overlay,
         .alertPreset, .streamRecordPreset, .streamDestination, .actionCombo,
         .scheduleTrigger, .confidenceLayout, .schedulerBoard,
-        .controlBoard, .groupPalette, .signageBoard, .effectPresetBoard,
+        .controlBoard, .groupPalette, .effectPresetBoard,
         .animationPresetBoard, .serviceLinkRules, .slideBuildingSettings, .outputPreset, .midiDevice,
     ]
 
@@ -356,7 +355,6 @@ public final class ResidentLibrary {
         schedulerBoards = .init(source: source, epochs: epochs, fills: fills)
         controlBoards = .init(source: source, epochs: epochs, fills: fills)
         groupPalettes = .init(source: source, epochs: epochs, fills: fills)
-        signageBoards = .init(source: source, epochs: epochs, fills: fills)
         effectPresetBoards = .init(source: source, epochs: epochs, fills: fills)
         animationPresetBoards = .init(source: source, epochs: epochs, fills: fills)
         serviceLinkRules = .init(source: source, epochs: epochs, fills: fills)
@@ -367,7 +365,7 @@ public final class ResidentLibrary {
             media, audio, themes, services, playlists, overlays,
             alertPresets, streamPresets, streamDestinations, actionCombos,
             scheduleTriggers, confidenceLayouts, schedulerBoards,
-            controlBoards, groupPalettes, signageBoards, effectPresetBoards,
+            controlBoards, groupPalettes, effectPresetBoards,
             animationPresetBoards, serviceLinkRules, slideBuildingSettings, outputPresets, midiDevices,
         ]
     }

@@ -29,8 +29,6 @@ import Testing
             .quiet("the linked-text clock re-applies the live scene; apply() writes state only on a change"),
         ],
         "PerformanceHUD.swift": [.quiet("the debug HUD samples its own @State twice a second")],
-        "MediaPlaylistController.swift": [.quiet("the 2 Hz walk tick fires only when the item is due")],
-        "SignageController.swift": [.quiet("the 2 Hz loop tick advances only a loop that is due")],
         "MediaSoak.swift": [.quiet("the soak harness's own readout")],
         "AudioMixerModule.swift": [.moves(["displayLevels", "busLevels", "playerLevels", "outputLevels"])],  
     ]

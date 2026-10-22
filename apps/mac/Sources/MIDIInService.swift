@@ -108,7 +108,6 @@ final class MIDIInController {
     }
 
     private var selectedServiceItemID: String?
-    private var selectedMediaPlaylistID: String?
     private var selectedAudioPlaylistID: String?
     private var selectedOverlayFolder: String?
     private var selectedComboFolderID: String?
@@ -154,8 +153,6 @@ final class MIDIInController {
             controls.clear(function: .alerts)
         case .clearInputs:
             controls.clear(function: .inputs)
-        case .clearSignage:
-            controls.clear(function: .signage)
         case .videoGoToBeginning:
             for row in controls.media.rows { controls.media.resetToStart(row.id) }
         case .videoPlayPause:
@@ -217,21 +214,6 @@ final class MIDIInController {
                 slide: slides[index], in: presentation, arrangementId: live.arrangementId,
                 contextID: controls.liveContextID, occurrence: index
             )
-        case .selectMediaPlaylist:
-            let playlists = model.playlists(in: .media)
-            guard playlists.indices.contains(index) else { return miss(command, "index \(index)") }
-            selectedMediaPlaylistID = playlists[index].id
-        case .triggerMedia:
-            guard let playlistID = selectedMediaPlaylistID,
-                  let playlist = try? model.playlist(playlistID)
-            else { return miss(command, "no playlist selected") }
-            guard playlist.entries.indices.contains(index) else {
-                return miss(command, "index \(index)")
-            }
-            guard let item = model.media(playlist.entries[index].refId) else {
-                return miss(command, "mediaId")
-            }
-            controls.fire(mediaItem: item)
         case .selectAudioPlaylist:
             let playlists = model.playlists(in: .audio)
             guard playlists.indices.contains(index) else { return miss(command, "index \(index)") }

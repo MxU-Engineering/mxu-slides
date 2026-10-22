@@ -115,7 +115,6 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     case clearAudio
     case clearAlerts
     case clearInputs
-    case clearSignage
     case videoPlayPause
     case videoGoToBeginning
     case newPresentation
@@ -149,7 +148,6 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .clearOverlays: [KeyChord("f4")]
         case .clearAudio: [KeyChord("f5")]
         case .clearAlerts: [KeyChord("f6")]
-        case .clearSignage: [KeyChord("f7")]
         case .clearInputs: []
         case .videoPlayPause: []
         case .videoGoToBeginning: []
@@ -178,7 +176,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .nextServiceItem, .previousServiceItem:
             .showControl
         case .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
-             .clearAlerts, .clearInputs, .clearSignage:
+             .clearAlerts, .clearInputs:
             .clears
         case .videoPlayPause, .videoGoToBeginning:
             .video
@@ -199,7 +197,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .nextServiceItem, .previousServiceItem, .videoPlayPause,
              .videoGoToBeginning,
              .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
-             .clearAlerts, .clearInputs, .clearSignage:
+             .clearAlerts, .clearInputs:
             .present
         case .boldSelection, .italicSelection, .underlineSelection:
             .editor
@@ -215,7 +213,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .nextSlide, .previousSlide, .goToSlide,
              .nextServiceItem, .previousServiceItem,
              .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
-             .clearAlerts, .clearInputs, .clearSignage,
+             .clearAlerts, .clearInputs,
              .videoPlayPause, .videoGoToBeginning,
              .modePresent, .modeVolunteer, .toggleSidebar, .toggleRightPanels,
              .openKeyboardSettings:
@@ -249,7 +247,6 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .clearAudio: "Clear Music"
         case .clearAlerts: "Clear Alerts"
         case .clearInputs: "Clear Inputs"
-        case .clearSignage: "Clear Signage"
         case .videoPlayPause: "Play/Pause Video"
         case .videoGoToBeginning: "Video to Beginning"
         case .newPresentation: "New Presentation"

@@ -40,11 +40,7 @@ enum LibrarySection: String, CaseIterable, Identifiable {
     }
 
     var playlistKind: PlaylistKind? {
-        switch self {
-        case .media: .media
-        case .audio: .audio
-        default: nil
-        }
+        self == .audio ? .audio : nil
     }
 
     var displayName: String {
@@ -1846,8 +1842,8 @@ final class AppModel {
         case .confidenceLayout: modify(ConfidenceLayout.self, id: entry.id) { $0.name = trimmed }
         case .midiDevice: modify(MIDIDevice.self, id: entry.id) { $0.name = trimmed }
         case .streamDestination: modify(StreamDestination.self, id: entry.id) { $0.name = trimmed }
-        case .note: return 
-        case .schedulerBoard, .controlBoard, .groupPalette, .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break 
+        case .note: return
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break
         }
 
         let oldName = entry.name
@@ -2170,7 +2166,7 @@ final class AppModel {
         case .note: break 
 
         case .streamDestination: copy(StreamDestination.self) { $0.id = newID; $0.name += " Copy" }
-        case .schedulerBoard, .controlBoard, .groupPalette, .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break 
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break
         }
     }
 
@@ -2421,7 +2417,7 @@ final class AppModel {
         let id = UUID().uuidString
         createInDrive(Playlist(
             id: id,
-            name: "Untitled \(kind == .media ? "Media" : "Music") Playlist",
+            name: "Untitled Music Playlist",
             playlistKind: kind, entries: [],
             playbackMode: .playAll
         ))
@@ -2919,17 +2915,6 @@ final class AppModel {
             groupColorsCache = (epoch, fill, colors)
             return colors
         }
-    }
-
-    var signageBoard: SignageBoard {
-        resident.signageBoards.value(SignageBoard.wellKnownID)
-            ?? SignageBoard(id: SignageBoard.wellKnownID, signages: [])
-    }
-
-    func updateSignageBoard(_ mutate: @escaping @Sendable (inout SignageBoard) -> Void) {
-        updateWellKnown(
-            SignageBoard.self, id: SignageBoard.wellKnownID, failure: "signageBoard.saveFailed",
-            orMake: { SignageBoard(id: SignageBoard.wellKnownID, signages: []) }, mutate)
     }
 
     var comboBoard: ControlBoard {

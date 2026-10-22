@@ -10,7 +10,6 @@ public enum ShowFunction: String, CaseIterable, Sendable {
     case audio
     case alerts
     case inputs
-    case signage
 
     public var displayName: String {
         switch self {
@@ -20,7 +19,6 @@ public enum ShowFunction: String, CaseIterable, Sendable {
         case .audio: "Music"
         case .alerts: "Alerts"
         case .inputs: "Inputs"
-        case .signage: "Signage"
         }
     }
 }
@@ -586,9 +584,6 @@ public struct ShowState: Sendable, Equatable {
             }
         case .audio: liveAudio = [] 
         case .alerts: clearAlert(atHostTime: atHostTime)
-        case .signage:
-
-            break
         }
     }
 

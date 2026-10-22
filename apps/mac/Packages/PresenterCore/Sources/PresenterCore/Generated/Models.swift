@@ -1043,13 +1043,11 @@ public struct PlaylistEntry: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var refKind: PlaylistRefKind
     public var refId: String
-    public var autoAdvanceDelaySeconds: Double?
 
-    public init(id: String, refKind: PlaylistRefKind, refId: String, autoAdvanceDelaySeconds: Double? = nil) {
+    public init(id: String, refKind: PlaylistRefKind, refId: String) {
         self.id = id
         self.refKind = refKind
         self.refId = refId
-        self.autoAdvanceDelaySeconds = autoAdvanceDelaySeconds
     }
 }
 
@@ -1087,10 +1085,8 @@ public struct Playlist: Codable, Sendable, Equatable, Identifiable {
     public var playbackMode: PlaybackMode
     public var shuffle: Bool?
     public var crossfadeSeconds: Double?
-    public var autoAdvance: Bool?
-    public var autoAdvanceDelaySeconds: Double?
 
-    public init(id: String, name: String, playlistKind: PlaylistKind? = nil, entries: [PlaylistEntry], playbackMode: PlaybackMode, shuffle: Bool? = nil, crossfadeSeconds: Double? = nil, autoAdvance: Bool? = nil, autoAdvanceDelaySeconds: Double? = nil) {
+    public init(id: String, name: String, playlistKind: PlaylistKind? = nil, entries: [PlaylistEntry], playbackMode: PlaybackMode, shuffle: Bool? = nil, crossfadeSeconds: Double? = nil) {
         self.id = id
         self.name = name
         self.playlistKind = playlistKind
@@ -1098,8 +1094,6 @@ public struct Playlist: Codable, Sendable, Equatable, Identifiable {
         self.playbackMode = playbackMode
         self.shuffle = shuffle
         self.crossfadeSeconds = crossfadeSeconds
-        self.autoAdvance = autoAdvance
-        self.autoAdvanceDelaySeconds = autoAdvanceDelaySeconds
     }
 }
 
@@ -1716,11 +1710,9 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var audioItemId: String?
     public var audioEntryId: String?
     public var audioRepeat: Bool?
-    public var signageId: String?
-    public var screenId: String?
     public var delaySeconds: Double?
 
-    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil) {
+    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, delaySeconds: Double? = nil) {
         self.id = id
         self.kind = kind
         self.layer = layer
@@ -1753,8 +1745,6 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
         self.audioItemId = audioItemId
         self.audioEntryId = audioEntryId
         self.audioRepeat = audioRepeat
-        self.signageId = signageId
-        self.screenId = screenId
         self.delaySeconds = delaySeconds
     }
 }
@@ -2169,28 +2159,6 @@ public struct ConfidenceLayout: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
-public struct SignageChannel: Codable, Sendable, Equatable, Identifiable {
-    public var id: String
-    public var name: String
-    public var playlistId: String?
-
-    public init(id: String, name: String, playlistId: String? = nil) {
-        self.id = id
-        self.name = name
-        self.playlistId = playlistId
-    }
-}
-
-public struct SignageBoard: Codable, Sendable, Equatable, Identifiable {
-    public var id: String
-    public var signages: [SignageChannel]
-
-    public init(id: String, signages: [SignageChannel]) {
-        self.id = id
-        self.signages = signages
-    }
-}
-
 public struct NoteRun: Codable, Sendable, Equatable {
     public var text: String
     public var bold: Bool?
@@ -2533,11 +2501,10 @@ public struct WorkspaceSettings: Codable, Sendable, Equatable, Identifiable {
     public var controlMappings: String?
     public var audio: String?
     public var confidence: String?
-    public var signage: String?
     public var inputs: String?
     public var behavior: String?
 
-    public init(id: String, screens: String? = nil, timers: String? = nil, transitions: String? = nil, controlMappings: String? = nil, audio: String? = nil, confidence: String? = nil, signage: String? = nil, inputs: String? = nil, behavior: String? = nil) {
+    public init(id: String, screens: String? = nil, timers: String? = nil, transitions: String? = nil, controlMappings: String? = nil, audio: String? = nil, confidence: String? = nil, inputs: String? = nil, behavior: String? = nil) {
         self.id = id
         self.screens = screens
         self.timers = timers
@@ -2545,7 +2512,6 @@ public struct WorkspaceSettings: Codable, Sendable, Equatable, Identifiable {
         self.controlMappings = controlMappings
         self.audio = audio
         self.confidence = confidence
-        self.signage = signage
         self.inputs = inputs
         self.behavior = behavior
     }

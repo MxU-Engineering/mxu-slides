@@ -946,7 +946,7 @@ struct LibrarySidebar: View {
             AppModel.folderableSections.contains { $0.kind == entry.kind }
         }
         Section("Organize") {
-            if !tracks.isEmpty, tracks.allSatisfy({ $0.kind == tracks[0].kind }) {
+            if !tracks.isEmpty, tracks.allSatisfy({ $0.kind == .audio }) {
                 Menu("Add to Playlist") {
                     ForEach(menus.playlists, id: \.id) { playlist in
                         Button(playlist.name) {
@@ -1032,7 +1032,7 @@ struct LibrarySidebar: View {
                     Button("New Folder…") { newFolderTarget = entry }
                 }
             }
-            if entry.kind == .audio || entry.kind == .media {
+            if entry.kind == .audio {
 
                 Menu("Add to Playlist") {
                     ForEach(menus.playlists, id: \.id) { playlist in
@@ -1110,9 +1110,9 @@ struct LibrarySidebar: View {
         case .actionCombo: nil
         case .confidenceLayout: .confidence
         case .note: nil
-        case .midiDevice: nil  
-        case .streamDestination: nil  
-        case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette, .signageBoard,
+        case .midiDevice: nil
+        case .streamDestination: nil
+        case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette,
             .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: nil
         }
     }

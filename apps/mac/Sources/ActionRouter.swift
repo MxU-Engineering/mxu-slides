@@ -16,19 +16,15 @@ final class ActionRouter {
 
     init(
         model: AppModel, controls: ServiceControls, presets: OutputPresetsController,
-        confidenceMonitor: ConfidenceMonitorController? = nil,
-        signage: SignageController? = nil
+        confidenceMonitor: ConfidenceMonitorController? = nil
     ) {
         self.model = model
         self.controls = controls
         self.presets = presets
         self.confidenceMonitor = confidenceMonitor
-        self.signage = signage
     }
 
     private let confidenceMonitor: ConfidenceMonitorController?
-
-    private let signage: SignageController?
 
     var timerChoices: [(id: String, name: String)] {
         controls.timers.timers.map { ($0.id, $0.name) }
@@ -331,8 +327,6 @@ final class ActionRouter {
             controls.clearAll(protecting: protected, cancelsPendingActions: false)
         case .clearAudio:
             controls.clear(function: .audio)
-        case .clearSignage:
-            controls.clear(function: .signage)
         case .switchOutputPreset:
 
             guard !skippingPresetSwitches else { return }
@@ -499,20 +493,9 @@ final class ActionRouter {
             } else {
                 controls.mixer.disableInput(id: inputID)
             }
-        case .setSignage:
-            guard let signage else { return miss(action, "signage") }
-            guard let channelID = action.signageId, !channelID.isEmpty else {
-                return miss(action, "signageId")
-            }
+        case .setSignage, .setScreenSource, .clearSignage:
 
-            signage.assign(playlistID: action.playlistId, toSignage: channelID)
-        case .setScreenSource:
-            guard let signage else { return miss(action, "signage") }
-            guard let raw = action.screenId, let screenID = UUID(uuidString: raw) else {
-                return miss(action, "screenId")
-            }
-
-            signage.setSource(action.signageId, forScreen: screenID)
+            DiagnosticsStore.shared.note("actions.retired", detail: action.kind.rawValue)
         case .fireAudio:
 
             guard let itemID = action.audioItemId, !itemID.isEmpty,

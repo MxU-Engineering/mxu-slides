@@ -98,7 +98,6 @@ import Testing
             "var serviceLinkRules: ServiceLinkRules {",
             "var effectPresetBoard: EffectPresetBoard {",
             "var animationPresetBoard: AnimationPresetBoard {",
-            "var signageBoard: SignageBoard {",
             "private func controlBoard(id: String, itemIDs: [String]) -> ControlBoard {",
             "func flaggedMediaCount() -> Int {",
             "func mediaSceneEffects(id: String)",
@@ -145,7 +144,7 @@ import Testing
             .media, .audio, .theme, .service, .playlist, .overlay, .alertPreset,
             .streamRecordPreset, .streamDestination, .actionCombo, .scheduleTrigger,
             .confidenceLayout, .schedulerBoard, .controlBoard, .groupPalette,
-            .signageBoard, .effectPresetBoard, .animationPresetBoard, .serviceLinkRules,
+            .effectPresetBoard, .animationPresetBoard, .serviceLinkRules,
             .slideBuildingSettings, .outputPreset, .midiDevice,
         ])
         #expect(kinds.count == library.all.count)

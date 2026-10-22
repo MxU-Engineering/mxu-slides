@@ -18,7 +18,6 @@ public final class DocumentKindVersions {
     private var controlBoard = 0
     private var confidenceLayout = 0
     private var groupPalette = 0
-    private var signageBoard = 0
     private var effectPresetBoard = 0
     private var animationPresetBoard = 0
     private var midiDevice = 0
@@ -57,7 +56,6 @@ public final class DocumentKindVersions {
         case .controlBoard: controlBoard
         case .confidenceLayout: confidenceLayout
         case .groupPalette: groupPalette
-        case .signageBoard: signageBoard
         case .effectPresetBoard: effectPresetBoard
         case .animationPresetBoard: animationPresetBoard
         case .midiDevice: midiDevice
@@ -91,7 +89,6 @@ public final class DocumentKindVersions {
         case .controlBoard: controlBoard += 1
         case .confidenceLayout: confidenceLayout += 1
         case .groupPalette: groupPalette += 1
-        case .signageBoard: signageBoard += 1
         case .effectPresetBoard: effectPresetBoard += 1
         case .animationPresetBoard: animationPresetBoard += 1
         case .midiDevice: midiDevice += 1

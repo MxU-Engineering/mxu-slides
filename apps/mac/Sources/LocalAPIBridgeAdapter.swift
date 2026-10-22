@@ -93,7 +93,7 @@ final class AppAPIBridge: LocalAPIBridge {
         case .confidenceLayout: try await encode(ConfidenceLayout.self, id: id)
 
         case .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
-            .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
+            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
         }
     }
 
@@ -864,7 +864,7 @@ final class AppAPIBridge: LocalAPIBridge {
         case .scheduleTrigger: try await create(ScheduleTrigger.self, body: body)
         case .confidenceLayout: try await create(ConfidenceLayout.self, body: body)
         case .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
-            .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
+            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
         }
     }
 
@@ -884,7 +884,7 @@ final class AppAPIBridge: LocalAPIBridge {
         case .scheduleTrigger: try await update(ScheduleTrigger.self, id: id, body: body)
         case .confidenceLayout: try await update(ConfidenceLayout.self, id: id, body: body)
         case .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
-            .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
+            .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
         }
     }
 

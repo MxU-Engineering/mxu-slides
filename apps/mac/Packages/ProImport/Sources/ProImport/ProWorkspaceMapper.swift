@@ -1100,7 +1100,7 @@ public enum ProWorkspaceMapper {
                     if screenLook.propsLayerEnabled || screenLook.propsEnabled { layers.append("overlays") }
                     if screenLook.messagesLayerEnabled { layers.append("alerts") }
                     if screenLook.announcementsEnabled {
-                        warnings.append("look \"\(look.name)\": the announcements layer has no MxU room layer — Digital Signage routes per-screen in Screen Configuration — and was dropped")
+                        warnings.append("look \"\(look.name)\": the announcements layer has no MxU room layer and was dropped")
                     }
                     return ProLookPlan.ScreenLook(
                         proScreenUUID: screenLook.proScreenUuid.string.lowercased(),

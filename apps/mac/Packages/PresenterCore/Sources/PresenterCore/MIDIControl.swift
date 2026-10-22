@@ -243,7 +243,6 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     case clearAudio
     case clearAlerts
     case clearInputs
-    case clearSignage
     case videoGoToBeginning
     case videoPlayPause
     case videoPlay
@@ -255,8 +254,6 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     case selectService
     case selectServiceItem
     case triggerSlide
-    case selectMediaPlaylist
-    case triggerMedia
     case selectAudioPlaylist
     case triggerAudio
     case toggleOverlay
@@ -276,7 +273,6 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .clearOverlays: 3
         case .clearAudio: 4
         case .clearAlerts: 28
-        case .clearSignage: 34
         case .clearInputs: 35
         case .videoGoToBeginning: 6
         case .videoPlayPause: 7
@@ -289,8 +285,6 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .selectService: 17
         case .selectServiceItem: 18
         case .triggerSlide: 19
-        case .selectMediaPlaylist: 20
-        case .triggerMedia: 21
         case .selectAudioPlaylist: 22
         case .triggerAudio: 23
         case .toggleOverlay: 24
@@ -311,14 +305,14 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     public var group: MIDICommandGroup {
         switch self {
         case .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio, .clearAlerts,
-             .clearInputs, .clearSignage:
+             .clearInputs:
             .clears
         case .videoGoToBeginning, .videoPlayPause, .videoPlay, .videoPause:
             .video
         case .nextServiceItem, .previousServiceItem, .nextSlide, .previousSlide:
             .presentation
         case .selectService, .selectServiceItem, .triggerSlide,
-             .selectMediaPlaylist, .triggerMedia, .selectAudioPlaylist, .triggerAudio,
+             .selectAudioPlaylist, .triggerAudio,
              .toggleOverlay, .selectOverlayFolder, .selectActionComboFolder,
              .startTimer, .stopTimer, .resetTimer, .triggerActionCombo, .fireAlert:
             .selectByIndex
@@ -334,7 +328,6 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .clearAudio: "Clear Music"
         case .clearAlerts: "Clear Alerts"
         case .clearInputs: "Clear Inputs"
-        case .clearSignage: "Clear Signage"
         case .videoGoToBeginning: "Go to Beginning"
         case .videoPlayPause: "Play/Pause"
         case .videoPlay: "Play"
@@ -346,8 +339,6 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .selectService: "Select Service"
         case .selectServiceItem: "Select Service Item"
         case .triggerSlide: "Trigger Slide"
-        case .selectMediaPlaylist: "Select Media Playlist"
-        case .triggerMedia: "Trigger Media"
         case .selectAudioPlaylist: "Select Music Playlist"
         case .triggerAudio: "Trigger Music"
         case .toggleOverlay: "Toggle Overlay"

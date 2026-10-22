@@ -1868,7 +1868,7 @@ struct SlideTile: View {
     private func badgeGlyph(_ kind: SlideActionKind) -> GlyphKind {
         switch kind {
         case .switchOutputPreset: .screens
-        case .clearLayer, .clearAll, .clearAudio, .clearSignage: .clear
+        case .clearLayer, .clearAll, .clearAudio: .clear
         case .fireMedia: .media
         case .fireAlert, .dismissAlert: .alerts
         case .timerStart, .timerPause, .timerReset, .timerConfigure: .timers
@@ -1879,8 +1879,7 @@ struct SlideTile: View {
         case .setConfidenceLayout: .confidence
         case .fireOverlay, .dismissOverlay: .overlays
         case .fireLiveInput: .screens
-        case .setSignage: .media
-        case .setScreenSource: .screens
+        case .setSignage, .setScreenSource, .clearSignage: .clear
         case .enableAudioInput, .disableAudioInput: .audio
         case .fireAudio, .fireAudioPlaylist: .audio
         }
@@ -1964,7 +1963,6 @@ func slideActionLabel(
         "Clear \(action.layer.flatMap(LayerKind.init(rawValue:))?.displayName ?? "Layer")"
     case .clearAll: "Clear All"
     case .clearAudio: "Clear Music"
-    case .clearSignage: "Clear Signage"
     case .fireMedia: "Fire Media: \(entryName(action.mediaId))"
     case .fireAlert: "Fire Alert: \(entryName(action.alertId))"
     case .dismissAlert: "Dismiss Alert"
@@ -2002,14 +2000,7 @@ func slideActionLabel(
             : "Take Down Overlay: \(entryName(action.overlayId))"
     case .fireLiveInput:
         "Fire Live Input: \(liveInputName(action) ?? "not set")"
-    case .setSignage:
-        (action.playlistId?.isEmpty ?? true)
-            ? "Clear Signage"
-            : "Signage: \(entryName(action.playlistId))"
-    case .setScreenSource:
-        (action.signageId?.isEmpty ?? true)
-            ? "Screen Source : Program"
-            : "Screen Source : Signage"
+    case .setSignage, .setScreenSource, .clearSignage: action.kind.displayName
     case .enableAudioInput:
         "Audio Input On: \(audioInputName(action) ?? "not set")"
     case .disableAudioInput:
