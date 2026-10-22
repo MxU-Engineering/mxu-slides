@@ -1142,11 +1142,11 @@ struct PresentationTimelineLanes: View {
 
         let next = cues.filter { $0.kind == cue.kind && $0.at > cue.at }.map(\.at).min()
 
-        let pin = cue.kind == .actions
+        let pin = !isBlock
         let gap = (next.map { map.x(ofTime: $0) } ?? left + 140) - left
         let width: CGFloat = isBlock
             ? (end.isFinite ? map.x(ofTime: end) - left : max(map.width - left, TimelineBlockEdit.minimumWidth))
-            : pin ? min(max(gap - 4, 16), 140) : min(max(gap - 1, 10), 90)
+            : min(max(gap - 4, 16), 140)
 
         let groupMove = edit.mode == .move && edit.id.map { selection.contains($0) && selection.contains(cue.id) } == true
         let mode = edit.mode(of: cue.id).map { isBlock ? $0 : .move } ?? (groupMove ? .move : nil)
@@ -1159,7 +1159,9 @@ struct PresentationTimelineLanes: View {
 
         let audio = cue.kind == .audio || cue.trackChannelId != nil
         let face: AnyView = pin
-            ? AnyView(actionPin(cue, width: span.width, height: height, selected: selection.contains(cue.id)))
+            ? AnyView(pinFace(
+                cue, width: span.width, height: height, selected: selection.contains(cue.id),
+                tint: cue.kind == .slide ? tint : .secondary))
             : AnyView(TimelineBlockCard(
                 width: span.width, height: height - 4, tint: tint, selected: selection.contains(cue.id), contentX: span.x,
                 backdrop: audio ? AnyView(
@@ -1169,8 +1171,8 @@ struct PresentationTimelineLanes: View {
                         pointsPerSecond: Double(map.pointsPerSecond), contentX: span.x, color: tint.opacity(0.55))
                         .padding(.vertical, 2)) : nil
             ) {
-                Text(title ?? (cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue)))
-                    .font(.system(size: 10, weight: cue.kind == .slide ? .semibold : .regular).monospacedDigit())
+                Text(title ?? context.label(cue))
+                    .font(.system(size: 10).monospacedDigit())
                     .lineLimit(1)
             })
         return face
@@ -1243,21 +1245,27 @@ struct PresentationTimelineLanes: View {
 
     static let pinSize: CGFloat = 16
 
-    private func actionPin(_ cue: TimelineCue, width: CGFloat, height: CGFloat, selected: Bool) -> some View {
-        HStack(spacing: 3) {
+    private func pinFace(_ cue: TimelineCue, width: CGFloat, height: CGFloat, selected: Bool, tint: Color) -> some View {
+        let slide = cue.kind == .slide
 
+        let room = width - Self.pinSize - 3
+        let full = context.slideBadge(cue, width: .infinity)
+        let badge = CGFloat(full.count) * 6.5 <= room ? full : context.slideBadge(cue, width: min(room, 75))
+        return HStack(spacing: 3) {
             Rectangle()
-                .fill(selected ? Color.accentColor : Color.secondary)
-                .frame(width: selected ? 2 : 1, height: height - 4)
+                .fill(selected ? Color.accentColor : tint)
+                .frame(width: selected ? 2 : slide ? 2 : 1, height: height - 4)
                 .frame(width: Self.pinSize)
-            Image(systemName: TimelineLane.actions.symbol)
-                .font(.system(size: 9))
-            Text(context.label(cue))
-                .font(.system(size: 10))
+            if !slide {
+                Image(systemName: TimelineLane.actions.symbol)
+                    .font(.system(size: 9))
+            }
+            Text(slide ? badge : context.label(cue))
+                .font(.system(size: 10, weight: slide ? .semibold : .regular).monospacedDigit())
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+        .foregroundStyle(selected ? Color.accentColor : slide ? Color.primary : Color.secondary)
         .frame(width: width, height: height, alignment: .leading)
         .contentShape(Rectangle())
         .clipped()
