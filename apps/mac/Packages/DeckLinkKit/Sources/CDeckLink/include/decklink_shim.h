@@ -15,6 +15,10 @@ typedef struct {
     bool supportsPlayback;
     bool supportsInternalKeying;
     bool supportsExternalKeying;
+
+    bool supportsCapture;
+
+    int32_t maxAudioChannels;
 } DLKDeviceInfo;
 
 bool dlk_runtime_available(void);
@@ -93,6 +97,42 @@ void dlk_tally_completion(
 DLKOutputTiming dlk_output_timing(DLKOutput *output);
 
 void dlk_output_close(DLKOutput *output);
+
+typedef struct DLKInput DLKInput;
+
+typedef struct {
+    const uint8_t *bytes;
+    size_t rowBytes;
+    int32_t width;
+    int32_t height;
+
+    bool interlaced;
+
+    bool hasSignal;
+
+    double hostTime;
+    const int32_t *audio;
+    int32_t audioFrames;
+    int32_t audioChannels;
+} DLKInputFrame;
+
+typedef void (*DLKInputFrameHandler)(void *context, const DLKInputFrame *frame);
+
+typedef void (*DLKInputFormatHandler)(
+    void *context, const char *modeName, int32_t width, int32_t height,
+    int64_t frameDuration, int64_t timeScale, bool interlaced);
+
+DLKInput *dlk_input_open(
+    int64_t persistentID, int32_t audioChannels,
+    DLKInputFrameHandler onFrame, DLKInputFormatHandler onFormat,
+    void *context, char *error, size_t errorLength);
+
+void dlk_input_close(DLKInput *input);
+
+void dlk_deinterlace_blend(
+    const uint8_t *source, size_t sourceRowBytes,
+    uint8_t *destination, size_t destinationRowBytes,
+    size_t rowLength, int32_t height);
 
 #ifdef __cplusplus
 }

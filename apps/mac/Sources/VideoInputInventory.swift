@@ -105,6 +105,10 @@ final class VideoInputInventory {
         startConnectivityPoll()
         startHotplugWatch()
         for entry in entries where entry.kind == .ndi { start(entry) }
+
+        let direct = entries.filter { $0.kind == .decklink }
+        if !direct.isEmpty { DeckLinkDeviceCatalog.shared.refresh() }
+        for entry in direct { start(entry) }
         let cameras = entries.filter { $0.kind == .camera && $0.isAssigned }
         guard !cameras.isEmpty else { return }
         withCameraPermission { [weak self] granted in
@@ -292,6 +296,20 @@ final class VideoInputInventory {
                 DiagnosticsStore.shared.note("input.ndi", detail: "runtime unavailable: \(error)")
                 return
             }
+        case .decklink:
+
+            if let persistentID = Int64(sourceId) {
+                let capture = DeckLinkDirectInputs.shared.acquire(persistentID: persistentID, name: entry.name)
+                render.media.registerLiveSource(
+                    id: entry.engineID,
+                    latestFrame: { capture.latestFrame() },
+                    onStop: { DeckLinkDirectInputs.shared.release(persistentID: persistentID) })
+                running.insert(entry.id)
+                DiagnosticsStore.shared.note("input.decklink", detail: "warm: \(entry.name)")
+            } else {
+                DiagnosticsStore.shared.note("input.decklink", detail: "bad device id for \(entry.name): \(sourceId)")
+                return
+            }
         }
 
         render.media.setInputDelay(id: entry.engineID, frames: entry.delayFrames ?? 0)
@@ -377,6 +395,8 @@ final class VideoInputInventory {
         if cameraGranted {
             reconcileCameraHotplug()
         }
+
+        DeckLinkDirectInputs.shared.checkLiveness(at: now)
         var connected: [String] = []
         for entry in entries where running.contains(entry.id) {
             switch entry.kind {
@@ -387,6 +407,11 @@ final class VideoInputInventory {
                 }
             case .ndi:
                 if case .receiving = ndiSources[entry.id]?.state {
+                    connected.append(entry.id)
+                }
+            case .decklink:
+                if let persistentID = entry.sourceId.flatMap({ Int64($0) }),
+                   DeckLinkDirectInputs.shared.capture(persistentID: persistentID)?.isReceiving(at: now) == true {
                     connected.append(entry.id)
                 }
             case nil:

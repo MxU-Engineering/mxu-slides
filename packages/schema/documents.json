@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 137,
+  "schemaVersion": 138,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -3019,7 +3019,8 @@
       "kind": "enum",
       "cases": [
         "camera",
-        "ndi"
+        "ndi",
+        "decklink"
       ]
     },
     "SlideActionKind": {

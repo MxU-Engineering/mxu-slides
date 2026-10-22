@@ -1637,6 +1637,7 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
 public enum CaptureSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case camera
     case ndi
+    case decklink
 }
 
 public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable {

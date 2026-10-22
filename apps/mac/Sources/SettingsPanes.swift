@@ -292,7 +292,7 @@ private struct VideoInputsSection: View {
             ForEach(inventory.entries) { entry in
                 Button { open(entry.id) } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: entry.kind == .ndi ? "network" : "video")
+                        Image(systemName: VideoInputWords.symbol(entry))
                             .foregroundStyle(.secondary)
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
@@ -316,6 +316,13 @@ private struct VideoInputsSection: View {
                         }
                     }
                 }
+                Section("Blackmagic (Direct)") {
+                    ForEach(VideoInputWords.addableDirect(inventory)) { device in
+                        Button(device.name) {
+                            inventory.create(name: device.name, kind: .decklink, sourceId: String(device.persistentID))
+                        }
+                    }
+                }
                 Section("NDI Sources") {
                     ForEach(addableNDI, id: \.self) { name in
                         Button(name) { inventory.create(name: name, kind: .ndi, sourceId: name) }
@@ -333,6 +340,7 @@ private struct VideoInputsSection: View {
         } header: {
             Text("Video Inputs")
         }
+        .task { DeckLinkDeviceCatalog.shared.refresh() }
         .task {
             while !Task.isCancelled {
                 let names = await Task.detached(priority: .utility) { () -> [String]? in
@@ -367,8 +375,28 @@ private struct VideoInputsSection: View {
 private enum VideoInputWords {
     static func device(_ entry: VideoInputInventory.Entry) -> String {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "No device" }
-        if kind == .ndi { return "NDI \u{B7} \(sourceId)" }
-        return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Missing camera"
+        switch kind {
+        case .ndi: return "NDI \u{B7} \(sourceId)"
+        case .decklink: return "Blackmagic direct \u{B7} \(directName(sourceId) ?? "card not found")"
+        case .camera: return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Missing camera"
+        }
+    }
+
+    static func symbol(_ entry: VideoInputInventory.Entry) -> String {
+        switch entry.kind {
+        case .ndi: "network"
+        case .decklink: "cable.connector"
+        case .camera, nil: "video"
+        }
+    }
+
+    static func directName(_ sourceId: String) -> String? {
+        DeckLinkDeviceCatalog.shared.inputDevices.first { String($0.persistentID) == sourceId }?.name
+    }
+
+    static func addableDirect(_ inventory: VideoInputInventory) -> [DeckLinkHelperDevice] {
+        let assigned = Set(inventory.entries.filter { $0.kind == .decklink }.compactMap(\.sourceId))
+        return DeckLinkDeviceCatalog.shared.inputDevices.filter { !assigned.contains(String($0.persistentID)) }
     }
 
     static func newName(_ inventory: VideoInputInventory) -> String {
@@ -413,6 +441,7 @@ private struct VideoInputDetail: View {
                         set: { tag in
                             if tag == "" { inventory.assignDevice(id: id, kind: nil, sourceId: nil) }
                             else if tag.hasPrefix("ndi:") { inventory.assignDevice(id: id, kind: .ndi, sourceId: String(tag.dropFirst(4))) }
+                            else if tag.hasPrefix("decklink:") { inventory.assignDevice(id: id, kind: .decklink, sourceId: String(tag.dropFirst(9))) }
                             else if tag == "ndi-by-name" { addingNDI = true }
                             else { inventory.assignDevice(id: id, kind: .camera, sourceId: tag) }
                         })
@@ -420,6 +449,12 @@ private struct VideoInputDetail: View {
                         Text("No device").tag("")
                         Section("Cameras") {
                             ForEach(VideoInputWords.allCameras, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
+                        }
+                        Section("Blackmagic (Direct)") {
+                            ForEach(DeckLinkDeviceCatalog.shared.inputDevices) { Text($0.name).tag("decklink:\($0.persistentID)") }
+                            if let sourceId = entry.sourceId, entry.kind == .decklink, VideoInputWords.directName(sourceId) == nil {
+                                Text("Blackmagic card (not found)").tag("decklink:\(sourceId)")
+                            }
                         }
                         Section("NDI Sources") {
                             ForEach(discoveredNDI, id: \.self) { Text($0).tag("ndi:\($0)") }
@@ -468,10 +503,11 @@ private struct VideoInputDetail: View {
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
                 } footer: {
-                    Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
+                    Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it. Blackmagic (Direct) reads the card itself: the picture follows the switcher's format (1080i is deinterlaced) and its audio arrives with the picture — pick the card's \u{201C}(Direct)\u{201D} device for this input's audio and video delay can stay at 0.")
                 }
             }
             .settingsForm()
+            .task { DeckLinkDeviceCatalog.shared.refresh() }
             .task(id: entry.kind == .camera ? entry.sourceId : nil) {
                 let sourceId = entry.kind == .camera ? entry.sourceId : nil
                 frameRates = await Task.detached(priority: .utility) {
@@ -509,7 +545,11 @@ private struct VideoInputDetail: View {
 
     private func deviceTag(_ entry: VideoInputInventory.Entry) -> String {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "" }
-        return kind == .ndi ? "ndi:\(sourceId)" : sourceId
+        switch kind {
+        case .ndi: return "ndi:\(sourceId)"
+        case .decklink: return "decklink:\(sourceId)"
+        case .camera: return sourceId
+        }
     }
 }
 
@@ -559,6 +599,8 @@ private struct AudioInputsSection: View {
             Text("Audio Inputs")
         }
         .sheet(item: $channelPickerDevice) { AudioChannelPickerSheet(device: $0) }
+
+        .task { DeckLinkDeviceCatalog.shared.refresh() }
         .task {
             while !Task.isCancelled {
                 devices = AudioDeviceList.inputDevices()

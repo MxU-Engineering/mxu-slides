@@ -117,6 +117,8 @@ public final class AudioInputHub: @unchecked Sendable {
     private var running = false
     private var configObserver: (any NSObjectProtocol)?
 
+    private let external: Bool
+
     public init(
         deviceUID: String,
         trim: @escaping @Sendable (String) -> (gain: Float, muted: Bool)
@@ -124,6 +126,7 @@ public final class AudioInputHub: @unchecked Sendable {
         self.deviceUID = deviceUID
         self.trim = trim
         engine = AVAudioEngine()
+        external = false
 
         try Self.pin(deviceUID: deviceUID, to: engine)
         try installTap()
@@ -145,15 +148,36 @@ public final class AudioInputHub: @unchecked Sendable {
         self.deviceUID = deviceUID
         self.engine = engine
         self.trim = trim
+        external = false
         installConfigObserver()
+    }
+
+    public init(
+        externalDeviceUID: String,
+        trim: @escaping @Sendable (String) -> (gain: Float, muted: Bool)
+    ) {
+        deviceUID = externalDeviceUID
+        self.trim = trim
+        engine = AVAudioEngine()
+        external = true
     }
 
     deinit {
         if let configObserver {
             NotificationCenter.default.removeObserver(configObserver)
         }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+
+        if !external {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+    }
+
+    public func push(_ buffer: AVAudioPCMBuffer, when: AVAudioTime, hostSeconds: Double) {
+        let level = trim(deviceUID)
+        fanout.push(
+            buffer, when: when, hostSeconds: hostSeconds,
+            gain: level.gain, muted: level.muted)
     }
 
     public func addTap(
@@ -308,6 +332,9 @@ public final class AudioInputHubPool: @unchecked Sendable {
     private var _trimProvider: (@Sendable (String) -> (gain: Float, muted: Bool))?
     private var hubs: [String: (hub: AudioInputHub, refCount: Int)] = [:]
 
+    private var feeds: [String: any ExternalInputFeed] = [:]
+    private var _externalFeedProvider: (@Sendable (String) -> (any ExternalInputFeed)?)?
+
     var hubFactory: ((String, @escaping @Sendable (String) -> (gain: Float, muted: Bool)) throws -> AudioInputHub)?
 
     public var trimProvider: (@Sendable (String) -> (gain: Float, muted: Bool))? {
@@ -315,8 +342,14 @@ public final class AudioInputHubPool: @unchecked Sendable {
         set { providerLock.withLock { _trimProvider = newValue } }
     }
 
+    public var externalFeedProvider: (@Sendable (String) -> (any ExternalInputFeed)?)? {
+        get { providerLock.withLock { _externalFeedProvider } }
+        set { providerLock.withLock { _externalFeedProvider = newValue } }
+    }
+
     public func acquire(deviceUID: String) throws -> AudioInputHub {
-        try lock.withLock {
+        let feed = externalFeedProvider?(deviceUID)
+        return try lock.withLock {
             if let existing = hubs[deviceUID] {
                 hubs[deviceUID] = (existing.hub, existing.refCount + 1)
                 return existing.hub
@@ -324,8 +357,15 @@ public final class AudioInputHubPool: @unchecked Sendable {
             let trim: @Sendable (String) -> (gain: Float, muted: Bool) = { [weak self] uid in
                 self?.trimProvider?(uid) ?? (1, false)
             }
-            let hub = try hubFactory?(deviceUID, trim)
-                ?? AudioInputHub(deviceUID: deviceUID, trim: trim)
+            let hub: AudioInputHub
+            if let feed {
+                hub = AudioInputHub(externalDeviceUID: deviceUID, trim: trim)
+                try feed.start(into: hub)
+                feeds[deviceUID] = feed
+            } else {
+                hub = try hubFactory?(deviceUID, trim)
+                    ?? AudioInputHub(deviceUID: deviceUID, trim: trim)
+            }
             hubs[deviceUID] = (hub, 1)
             return hub
         }
@@ -334,15 +374,18 @@ public final class AudioInputHubPool: @unchecked Sendable {
     public func release(deviceUID: String) {
 
         var dying: AudioInputHub?
+        var stoppedFeed: (any ExternalInputFeed)?
         lock.withLock {
             guard let entry = hubs[deviceUID] else { return }
             if entry.refCount <= 1 {
                 hubs.removeValue(forKey: deviceUID)
                 dying = entry.hub
+                stoppedFeed = feeds.removeValue(forKey: deviceUID)
             } else {
                 hubs[deviceUID] = (entry.hub, entry.refCount - 1)
             }
         }
+        stoppedFeed?.stop()
         _ = dying
     }
 

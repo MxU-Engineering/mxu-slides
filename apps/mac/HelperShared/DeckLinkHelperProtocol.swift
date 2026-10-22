@@ -26,6 +26,22 @@ import IOSurface
     func stopOutput()
 
     func ping(reply: @escaping (Bool) -> Void)
+
+    func startInput(
+        devicePersistentID: Int64, reply: @escaping (_ error: String?) -> Void)
+
+    func stopInput()
+}
+
+@objc protocol DeckLinkInputSinkProtocol {
+
+    func inputFrame(_ surface: IOSurface, hostTime: Double, reply: @escaping () -> Void)
+
+    func inputAudio(_ samples: Data, frames: Int32, channels: Int32, hostTime: Double)
+
+    func inputFormat(_ name: String, interlaced: Bool)
+
+    func inputSignal(_ present: Bool)
 }
 
 struct DeckLinkHelperDevice: Codable, Equatable, Identifiable {
@@ -34,6 +50,10 @@ struct DeckLinkHelperDevice: Codable, Equatable, Identifiable {
     let supportsPlayback: Bool
     let supportsInternalKeying: Bool
     let supportsExternalKeying: Bool
+
+    var supportsCapture = false
+
+    var captureAudioChannels = 2
 
     var id: Int64 { persistentID }
 }
