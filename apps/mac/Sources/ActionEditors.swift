@@ -562,6 +562,8 @@ struct SlideActionsSheet: View {
 struct ActionPlacementSheet: View {
     let model: AppModel
     var editingComboID: String? = nil
+
+    var editing = false
     @State private var draft: SlideAction
     let commit: (SlideAction) -> Void
 
@@ -571,11 +573,12 @@ struct ActionPlacementSheet: View {
     @State private var pickingAudio = false
 
     init(
-        model: AppModel, editingComboID: String? = nil,
+        model: AppModel, editingComboID: String? = nil, editing: Bool = false,
         draft: SlideAction, commit: @escaping (SlideAction) -> Void
     ) {
         self.model = model
         self.editingComboID = editingComboID
+        self.editing = editing
         self.commit = commit
         _draft = State(initialValue: draft)
     }
@@ -583,7 +586,7 @@ struct ActionPlacementSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Add Action")
+                Text(editing ? "Edit Action" : "Add Action")
                     .font(.headline)
                 Spacer()
             }
@@ -619,7 +622,7 @@ struct ActionPlacementSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Add") {
+                Button(editing ? "Save" : "Add") {
                     commit(draft)
                     dismiss()
                 }
@@ -639,6 +642,36 @@ struct ActionPlacementSheet: View {
                 draft.audioItemId = entry.id
                 pickingAudio = false
             }
+        }
+    }
+}
+
+struct ActionMenuRows: View {
+    let model: AppModel
+    let actionRouter: ActionRouter?
+    let actions: [SlideAction]
+    let add: (SlideAction) -> Void
+    let edit: (SlideAction) -> Void
+    let remove: (SlideAction) -> Void
+
+    let editAll: () -> Void
+    let removeAll: () -> Void
+
+    var body: some View {
+        let timers = actionRouter?.timerChoices ?? []
+        let screens = actionRouter?.confidenceScreenChoices ?? []
+        ForEach(actions) { action in
+            Menu(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens)) {
+                Button("Edit…") { edit(action) }
+                Button("Remove", role: .destructive) { remove(action) }
+            }
+        }
+        Menu("Add Action") {
+            AddActionMenuItems(model: model, timers: timers, add: add)
+        }
+        if actions.count > 1 {
+            Button("Edit All…") { editAll() }
+            Button("Remove All", role: .destructive) { removeAll() }
         }
     }
 }

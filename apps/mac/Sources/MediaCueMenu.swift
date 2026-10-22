@@ -1,5 +1,6 @@
 import AppKit
 import PresenterCore
+import SlideScene
 import SwiftUI
 
 @MainActor @Observable
@@ -28,6 +29,7 @@ final class MediaCueMenuState {
     struct ActionPlacement: Identifiable {
         var mediaItemID: String
         var draft: SlideAction
+        var editing = false
         var id: String { draft.id }
     }
 }
@@ -163,43 +165,19 @@ struct MediaCueGrammarItems: View {
 
     var body: some View {
         if let item = model.media(mediaID) {
-            Menu("Add Action") {
-                AddActionMenuItems(
-                    model: model,
-                    timers: actionRouter?.timerChoices ?? []
-                ) { action in
-                    addAction(action, to: item)
-                }
-            }
-            let actions = item.actions ?? []
-            if !actions.isEmpty {
-
-                let timers = actionRouter?.timerChoices ?? []
-                Menu("Edit Action") {
-                    ForEach(actions) { action in
-                        Button(slideActionLabel(
-                            action, model: model, timers: timers,
-                            confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])) {
-                            state.actionsEditorTargetID = mediaID
-                        }
+            ActionMenuRows(
+                model: model, actionRouter: actionRouter,
+                actions: item.actions ?? [],
+                add: { addAction($0, to: item) },
+                edit: { state.actionPlacement = .init(mediaItemID: mediaID, draft: $0, editing: true) },
+                remove: { action in
+                    model.updateMedia(mediaID) {
+                        $0.actions = SlideBulkEdit.removing(actionID: action.id, from: $0.actions)
                     }
-                }
-                Menu("Remove Action") {
-                    ForEach(actions) { action in
-                        Button(
-                            slideActionLabel(
-                                action, model: model, timers: timers,
-                                confidenceScreens: actionRouter?.confidenceScreenChoices ?? []),
-                            role: .destructive
-                        ) {
-                            model.updateMedia(mediaID) { media in
-                                let kept = (media.actions ?? []).filter { $0.id != action.id }
-                                media.actions = kept.isEmpty ? nil : kept
-                            }
-                        }
-                    }
-                }
-            }
+                },
+                editAll: { state.actionsEditorTargetID = mediaID },
+                removeAll: { model.updateMedia(mediaID) { $0.actions = nil } }
+            )
             Button(item.autoAdvance == nil ? "Auto Advance…" : "Auto Advance… ✓") {
                 state.autoAdvanceTargetID = mediaID
             }
@@ -258,9 +236,11 @@ private struct MediaCueSheets: ViewModifier {
                 )
             }
             .sheet(item: $state.actionPlacement) { placement in
-                ActionPlacementSheet(model: model, draft: placement.draft) { action in
+                ActionPlacementSheet(model: model, editing: placement.editing, draft: placement.draft) { action in
                     model.updateMedia(placement.mediaItemID) { media in
-                        media.actions = (media.actions ?? []) + [action]
+                        media.actions = placement.editing
+                            ? SlideBulkEdit.replacing(action, in: media.actions)
+                            : (media.actions ?? []) + [action]
                     }
                 }
             }

@@ -109,6 +109,21 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertNil(doc.slides[0].actions, "nil kind sweeps everything")
     }
 
+    func testReplacingAndRemovingOneAction() {
+        let actions = [
+            SlideAction(id: "a1", kind: .clearAll),
+            SlideAction(id: "a2", kind: .fireMedia),
+        ]
+        let edited = SlideAction(id: "a1", kind: .fireCombo)
+        XCTAssertEqual(
+            SlideBulkEdit.replacing(edited, in: actions)?.map(\.kind), [.fireCombo, .fireMedia],
+            "swapped in place by id")
+        XCTAssertEqual(SlideBulkEdit.removing(actionID: "a1", from: actions)?.map(\.id), ["a2"])
+        XCTAssertNil(
+            SlideBulkEdit.removing(actionID: "a1", from: [actions[0]]),
+            "empty collapses to absent (the schema rule)")
+    }
+
     func testSetAutoAdvanceWritesEveryTarget() {
         var doc = presentation([
             slide("s1", advance: AutoAdvance(delaySeconds: 3)),

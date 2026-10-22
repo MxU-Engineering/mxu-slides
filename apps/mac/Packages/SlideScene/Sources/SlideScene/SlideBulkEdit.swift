@@ -59,6 +59,19 @@ public enum SlideBulkEdit {
         }
     }
 
+    public static func replacing(
+        _ action: SlideAction, in actions: [SlideAction]?
+    ) -> [SlideAction]? {
+        actions?.map { $0.id == action.id ? action : $0 }
+    }
+
+    public static func removing(
+        actionID: String, from actions: [SlideAction]?
+    ) -> [SlideAction]? {
+        let kept = (actions ?? []).filter { $0.id != actionID }
+        return kept.isEmpty ? nil : kept
+    }
+
     public static func setAutoAdvance(
         _ advance: AutoAdvance?, on slideIDs: [String], in presentation: inout Presentation
     ) {
