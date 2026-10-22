@@ -57,6 +57,11 @@ struct PresentationTimelineContext {
         SlideSceneBuilder.timelineBlocks(for: presentation, arrangementId: item.arrangementId)
     }
     var isCurrent: Bool { clock.isCurrent(item.id) }
+
+    var shownLength: Double {
+        let length = max(timeline.map(PresentationTimelines.length) ?? 0, 1)
+        return timeline?.length ?? length + max(2, length * 0.08)
+    }
     var isPlaying: Bool { isCurrent && clock.playing }
 
     func play() { clock.play(itemID: item.id, presentation: presentation, arrangementId: item.arrangementId) }
@@ -117,8 +122,7 @@ struct PresentationTimelineStrip: View {
         let clock = context.clock
         let timeline = context.timeline
         let length = max(timeline.map(PresentationTimelines.length) ?? 0, 1)
-
-        let shown = timeline?.length ?? length + max(2, length * 0.08)
+        let shown = context.shownLength
         let start = timeline?.timecodeStart ?? 0
         let clashes = context.window.map { mine in
             context.windows().filter { mine.overlaps($0.window) }
@@ -147,7 +151,12 @@ struct PresentationTimelineStrip: View {
                     ? "Stop recording"
                     : "Record: plays from the playhead and makes each slide you click a cue (its actions stay on the slide)")
             }
-            sections(timeline, length: shown)
+
+            if expanded {
+                Spacer(minLength: 0)
+            } else {
+                sections(length: shown)
+            }
             if context.isCurrent {
                 TimelinePlayheadReadout(source: clock, duration: length) { t in
                     PresentationTimelines.timecode(frames: start + Int((t * Double(PresentationTimelines.framesPerSecond)).rounded(.down)))
@@ -191,14 +200,43 @@ struct PresentationTimelineStrip: View {
         .foregroundStyle(.secondary)
     }
 
-    private func sections(_ timeline: PresentationTimeline?, length: Double) -> some View {
+    private func sections(length: Double) -> some View {
+        PresentationTimelineSectionsBar(context: context, length: length) {
+            CGFloat(min(max($0 / length, 0), 1)) * width
+        }
+        .frame(height: 18)
+        .frame(maxWidth: .infinity)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
+                }
+                .onEnded { value in
+                    if context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
+                }
+        )
+    }
+}
+
+struct PresentationTimelineSectionsBar: View {
+    let context: PresentationTimelineContext
+    let length: Double
+    let x: (Double) -> CGFloat
+
+    var body: some View {
+        let timeline = context.timeline
+        let blocks = context.blocks
         let spans = timeline.map {
-            PresentationTimelines.sectionSpans($0.cues, blocks: context.blocks, length: length)
+            PresentationTimelines.sectionSpans($0.cues, blocks: blocks, length: length)
         } ?? []
+        let ticks = (timeline?.cues ?? [])
+            .filter { $0.lane == .slides && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
+            .map(\.at)
         let palette = context.model.groupColors
-        let x: (Double) -> CGFloat = { CGFloat(min(max($0 / length, 0), 1)) * width }
-        return ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.06))
+        ZStack(alignment: .leading) {
             if spans.isEmpty {
                 Text(context.runOnlyHint(timeline))
                     .font(.caption2)
@@ -222,8 +260,7 @@ struct PresentationTimelineStrip: View {
                     .clipped()
                     .position(x: left + spanWidth / 2, y: 9)
             }
-
-            ForEach(slideTicks(timeline), id: \.self) { at in
+            ForEach(ticks, id: \.self) { at in
                 Rectangle()
                     .fill(Color.primary.opacity(0.55))
                     .frame(width: 1, height: 12)
@@ -234,33 +271,10 @@ struct PresentationTimelineStrip: View {
                 TimelinePlayheadLine(source: context.clock, x: x)
             }
         }
-        .frame(height: 18)
-        .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if !context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
-                }
-                .onEnded { value in
-                    if context.isPlaying { context.seek(to: Double(value.location.x / max(width, 1)) * length) }
-                }
-        )
     }
 }
 
-extension PresentationTimelineStrip {
-
-    fileprivate func slideTicks(_ timeline: PresentationTimeline?) -> [Double] {
-        let blocks = context.blocks
-        return (timeline?.cues ?? [])
-            .filter { $0.lane == .slides && PresentationTimelines.occurrence(of: $0, in: blocks) != nil }
-            .map(\.at)
-    }
-}
-
-private extension PresentationTimelineContext {
+extension PresentationTimelineContext {
     func runOnlyHint(_ timeline: PresentationTimeline?) -> String {
         timeline?.cues.isEmpty == false
             ? "No slide cues yet"
@@ -357,8 +371,8 @@ struct PresentationTimelineLanes: View {
 
     var body: some View {
         let cues = context.timeline?.cues ?? []
-        let length = context.timeline.map(PresentationTimelines.length) ?? 0
-        let display = max(length, 30) + 10
+
+        let display = cues.isEmpty ? 30 : context.shownLength
         let pps = pointsPerSecond
             ?? TimelineZoom.fit(seconds: display, viewportWidth: viewport, reserve: 0, in: TimelineZoom.songRange)
             ?? 12
@@ -370,14 +384,20 @@ struct PresentationTimelineLanes: View {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
                     Color.clear.frame(height: Self.rulerHeight)
+                    Text("Sections")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(height: Self.laneHeight)
                     ForEach(Self.lanes, id: \.self) { lane in
                         Text(Self.name(lane))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                            .frame(width: 104, height: Self.laneHeight, alignment: .leading)
+                            .frame(height: Self.laneHeight)
                     }
                 }
+
+                .frame(width: 104, alignment: .leading)
                 ScrollView(.horizontal) {
                     lanes(cues, map: map)
                 }
@@ -490,6 +510,9 @@ struct PresentationTimelineLanes: View {
                 }
             }
             .frame(width: map.width, height: Self.rulerHeight, alignment: .topLeading)
+            PresentationTimelineSectionsBar(context: context, length: context.shownLength) { map.x(ofTime: $0) }
+            .frame(width: map.width, height: Self.laneHeight, alignment: .leading)
+            .background(Color.primary.opacity(0.04))
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(Self.lanes, id: \.self) { lane in
