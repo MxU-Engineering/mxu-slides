@@ -175,14 +175,29 @@ enum SlideGridMetrics {
     static var lastWidths: [String: CGFloat] = [:]
 
     static var continuousWidth: CGFloat {
-        get { CGFloat(UserDefaults.standard.double(forKey: continuousWidthKey)) }
+        get { liveContinuousWidth }
         set {
-            if abs(newValue - continuousWidth) >= 1 {
-                UserDefaults.standard.set(Double(newValue), forKey: continuousWidthKey)
+            if abs(newValue - liveContinuousWidth) >= 1 {
+                liveContinuousWidth = newValue
+                savesContinuousWidthAtQuit()
             }
         }
     }
     static let continuousWidthKey = "slideGrid.continuousWidth"
+    private static var liveContinuousWidth = CGFloat(UserDefaults.standard.double(forKey: continuousWidthKey))
+    private static var quitSave: (any NSObjectProtocol)?
+
+    private static func savesContinuousWidthAtQuit() {
+        if quitSave == nil {
+            quitSave = NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+            ) { _ in
+                MainActor.assumeIsolated {
+                    UserDefaults.standard.set(Double(liveContinuousWidth), forKey: continuousWidthKey)
+                }
+            }
+        }
+    }
 
     static let labelHeight: CGFloat = 14
 

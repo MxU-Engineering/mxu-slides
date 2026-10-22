@@ -3,6 +3,14 @@ import RenderEngine
 import SlideScene
 import SwiftUI
 
+extension ServiceContinuousView: @MainActor Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.model === rhs.model && lhs.render === rhs.render && lhs.controls === rhs.controls
+            && lhs.serviceID == rhs.serviceID && lhs.focusItemID == rhs.focusItemID
+            && lhs.focusScroll == rhs.focusScroll
+    }
+}
+
 struct ServiceContinuousView: View {
     let model: AppModel
     let render: RenderContext?

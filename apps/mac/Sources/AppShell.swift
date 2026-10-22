@@ -422,7 +422,8 @@ struct ShellView: View {
                 sidebar
                     .frame(width: draftSidebarWidth ?? sidebarWidth)
                     .overlay(alignment: .trailing) { widthGrip }
-                    .transition(.move(edge: .leading))
+
+                    .transition(.move(edge: .leading).animation(.easeOut(duration: 0.15)))
             }
             mainRegion
 
@@ -520,15 +521,9 @@ struct ShellView: View {
                 .frame(height: Self.headerHeight)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: sidebarVisible)
         .coordinateSpace(name: Self.shellSpace)
 
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: ShellWidthKey.self, value: geo.size.width)
-            }
-        )
-        .onPreferenceChange(ShellWidthKey.self) { shellWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { shellWidth = $0 }
         .background(BasePlane())
         .background(WindowChromeConfigurator(isFullScreen: $isFullScreen))
         .ignoresSafeArea(.container, edges: .top)
@@ -1547,6 +1542,7 @@ struct ShellView: View {
                         serviceID: serviceID, focusItemID: serviceItemID,
                         focusScroll: $presentFocusScroll
                     )
+                    .equatable()
                 } else {
                     ServiceItemDetailView(
                         model: model, render: render, controls: controls,
@@ -1726,13 +1722,6 @@ struct BasePlane: View {
     var body: some View {
         Color.basePlane
             .ignoresSafeArea()
-    }
-}
-
-private struct ShellWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
     }
 }
 
