@@ -26,6 +26,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var firing = false
 
+    @ObservationIgnored private var underTimecode = false
+
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
     func insertionTime(for itemID: String) -> Double {
@@ -101,6 +103,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         } else {
             stop()
         }
+        underTimecode = true
+        defer { underTimecode = false }
         switch command {
         case .play(_, let from, let to):
             lastPosition = from
@@ -158,6 +162,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     private func apply(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {
+
+        let effects = underTimecode ? TimecodeFollow.underTimecode(effects) : effects
         guard let controls, !effects.isEmpty else { return }
         let model = controls.appModel
         for effect in effects {

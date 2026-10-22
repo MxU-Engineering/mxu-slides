@@ -196,6 +196,16 @@ public struct TimecodeFollow: Sendable {
         return Self.enter(id, at: position)
     }
 
+    public static func underTimecode(_ effects: [PresentationTimelines.Effect]) -> [PresentationTimelines.Effect] {
+        effects.filter {
+            switch $0 {
+            case .playAudio: false
+            case .fire(let lane, _), .clear(let lane, _): lane != .audio
+            case .showSlide, .runActions: true
+            }
+        }
+    }
+
     private static func enter(_ id: String, at position: Double) -> Command {
         position <= jump
             ? .play(itemID: id, from: -PresentationTimelines.frame, to: position)

@@ -137,7 +137,7 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
     @Test func anOpenEndedTimelineKeepsATailOtherSongsBeat() {
         let timeline = PresentationTimeline(
             id: "t", timecodeEnabled: true, timecodeStart: 108_000,
-            cues: [TimelineCue(id: "s", lane: .slides, at: 30, slideId: "x")])
+            cues: [TimelineCue(id: "s", lane: "slide", at: 30, slideId: "x")])
         let song = TimecodeFollow.Song(itemID: "a", timeline: timeline)
         #expect(song.length == 30)
         #expect(song.tail == 1)
@@ -246,22 +246,24 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
 
     private var cues: [TimelineCue] {
         [
-            TimelineCue(id: "s0", lane: .slides, at: 0, sectionId: "v", sectionOccurrence: 0, slideId: "v1"),
-            TimelineCue(id: "s1", lane: .slides, at: 10, sectionId: "v", sectionOccurrence: 0, slideId: "v2"),
-            TimelineCue(id: "s2", lane: .slides, at: 20, sectionId: "c", sectionOccurrence: 0, slideId: "c1"),
-            TimelineCue(id: "bg", lane: .background, at: 0, mediaId: "loop"),
-            TimelineCue(id: "ov", lane: .overlays, at: 5, duration: 10, overlayId: "lower"),
-            TimelineCue(id: "act", lane: .actions, at: 12),
+            TimelineCue(id: "s0", lane: "slide", at: 0, sectionId: "v", sectionOccurrence: 0, slideId: "v1"),
+            TimelineCue(id: "s1", lane: "slide", at: 10, sectionId: "v", sectionOccurrence: 0, slideId: "v2"),
+            TimelineCue(id: "s2", lane: "slide", at: 20, sectionId: "c", sectionOccurrence: 0, slideId: "c1"),
+            TimelineCue(id: "bg", lane: "loopingVideos", at: 0, mediaId: "loop"),
+            TimelineCue(id: "ov", lane: "overlays", at: 5, duration: 10, overlayId: "lower"),
+            TimelineCue(id: "act", lane: "actions", at: 12),
+            TimelineCue(id: "track", lane: "audio", at: 0, duration: 30, mediaId: "stems"),
         ]
     }
 
-    private func effects(_ command: TimecodeFollow.Command, live: PresentationTimelines.Live = .init()) -> [PresentationTimelines.Effect] {
-        switch command {
+    private func effects(_ command: TimecodeFollow.Command, live: PresentationTimelines.Live = []) -> [PresentationTimelines.Effect] {
+        let effects = switch command {
         case .play(_, let from, let to):
             PresentationTimelines.crossing(cues, blocks: blocks, from: from, to: to, live: live)
         case .land(_, let at):
             PresentationTimelines.landing(cues, blocks: blocks, at: at, live: live)
         }
+        return TimecodeFollow.underTimecode(effects)
     }
 
     @Test func playingThroughFiresEverythingInTime() {
@@ -274,23 +276,31 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
             let reading = TimecodeClock.Reading(state: .locked, position: 3600 + Double(frame) / 30, rate: .fps30)
             guard let command = follow.step(reading, songs: songs) else { continue }
             let step = effects(command, live: live)
-            for case .fireMedia(let id, _) in step { live.mediaIds.insert(id) }
+            for case .fire(_, let id) in step { live.insert(id) }
             fired += step
         }
         #expect(fired == [
-            .fireMedia(id: "loop", lane: .background),
+            .fire(lane: .loopingVideos, id: "loop"),
             .showSlide(occurrence: 0, actions: true),
-            .fireOverlay(id: "lower"),
+            .fire(lane: .overlays, id: "lower"),
             .showSlide(occurrence: 1, actions: true),
             .runActions(cueId: "act"),
 
-            .clearOverlay(id: "lower"),
+            .clear(lane: .overlays, id: "lower"),
         ])
     }
 
     @Test func aJumpShowsTheSlideWithoutActionsAndRunsNoActions() {
-        let landed = effects(.land(itemID: "a", at: 13), live: PresentationTimelines.Live(mediaIds: ["loop"]))
+        let landed = effects(.land(itemID: "a", at: 13), live: ["loop"])
 
-        #expect(landed == [.showSlide(occurrence: 1, actions: false), .fireOverlay(id: "lower")])
+        #expect(landed == [.showSlide(occurrence: 1, actions: false), .fire(lane: .overlays, id: "lower")])
+    }
+
+    @Test func theBackingTrackNeverChasesTimecode() {
+        let raw = PresentationTimelines.landing(cues, blocks: blocks, at: 13, live: [])
+        #expect(raw.contains { if case .playAudio = $0 { true } else { false } })
+        let followed = TimecodeFollow.underTimecode(raw + [.clear(lane: .audio, id: "stems")])
+        #expect(followed == raw.filter { if case .playAudio = $0 { false } else { true } })
+        #expect(followed.contains(.showSlide(occurrence: 1, actions: false)))
     }
 }
