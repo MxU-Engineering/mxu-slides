@@ -249,7 +249,8 @@ public enum ChordMath {
 
     public static func bracketed(_ text: String, chords: [ChordPlacement]) -> String {
         var lines = text.isEmpty ? [""] : text.components(separatedBy: "\n")
-        let byLine = Dictionary(grouping: chords, by: \.line)
+        let named = chords.filter { !$0.symbol.trimmingCharacters(in: .whitespaces).isEmpty }
+        let byLine = Dictionary(grouping: named, by: \.line)
         for (lineIndex, placements) in byLine {
             while lines.count <= lineIndex { lines.append("") }
             var line = lines[lineIndex]
