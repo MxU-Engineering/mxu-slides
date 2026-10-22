@@ -635,11 +635,6 @@ struct SettingsRowSpec: Identifiable {
     var help: String? { Self.help[id] }
 
     static let help: [String: String] = [
-        "account.autoSwitchServiceTimes": "Ten minutes before each service time (rehearsals don't count), a one-minute countdown moves this computer onto it and ends the rehearsal or earlier time still running in MxU. Cancel keeps the current time. Same as the dashboards' auto switch.",
-        "account.documentSync": "Force Sync re-checks everything with MxU and retries anything stuck.",
-        "account.messageNotesReview": "After the first deck is made, a Ready click either lists every change under the note (new slides, replaced words, removals) for Apply or Skip, or applies them all at once. The first run always lands whole. The web's per-service-type setting wins when the plan carries one; this is the fallback.",
-        "account.messageNotesTheme": "The theme slides are made on when a pastor marks message notes ready for slides on the web. Decks land in the Message Notes folder. Blank = the lyrics theme.",
-        "account.session": "Linked streaming destinations, synced service plans, notes and dashboards come from this account.",
         "api.address": "Enter this address and port in whatever connects to the API, then sign in with an access key from the row below.",
         "api.docs": "A browsable page of every endpoint with descriptions and copyable examples, served by this Mac.",
         "api.enabled": "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
@@ -667,9 +662,7 @@ struct SettingsRowSpec: Identifiable {
         "present.slideTransition": "How the slide layer changes between slides. The header's transition chips change the same setting.",
         "present.slidesAcross": "How many slide thumbnails share a row in Present: a fixed count, never a fit to the window or the sidebars.",
         "present.transparencyGrid": "Checkerboard shows wherever nothing opaque covers the slide, where lower layers would show through on glass.",
-        "station.offline": "To free space, right-click a folder in the library and choose Sync › Cloud Only.",
         "streamRecord.pane": "Destinations are the places you can stream to; presets say which ones, what streams, and what records.",
-        "updates.automatic": "Checks at launch and every hour and downloads in the background. Check for Updates… in the app menu always works.",
     ]
 
     var category: SettingsCategory {

@@ -9,15 +9,8 @@ import Testing
     ]
     ServiceRunOrder.replaceMedia(in: &items, itemID: "a", mediaID: "m2", name: "New")
     #expect(items[0].refId == "m2")
-    #expect(items[0].name == "New", "a local row takes the new item's name")
+    #expect(items[0].name == "New", "the row takes the new item's name")
     #expect(items[1].refId == "m1", "another row using the same media is untouched")
-}
-
-@Test func replaceMediaKeepsASyncedRowsPlanName() {
-    var items = [ServiceItem(id: "a", itemKind: .media, name: "Walk-in", refId: "m1", mxuItemHexId: "hex")]
-    ServiceRunOrder.replaceMedia(in: &items, itemID: "a", mediaID: "m2", name: "New")
-    #expect(items[0].refId == "m2")
-    #expect(items[0].name == "Walk-in")
 }
 
 @Test func replaceMediaLeavesOtherKindsAlone() {

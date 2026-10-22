@@ -24,7 +24,7 @@ import Testing
             LibrarySort.dateAdded.ordered(byName, addedAt: { added[$0] }),
             cloud: [TeamCloudItem(kind: .media, id: "c-x", name: "0 cloud", folder: "", updatedAt: nil)],
             addedAt: { added[$0] }
-        ).map(\.id) == ["c", "b", "c-x", "a"], "a Drive row sits with the undated, by name")
+        ).map(\.id) == ["c", "b", "c-x", "a"], "a listed row without a file sits with the undated, by name")
         #expect(LibrarySort.choices(for: .media).contains(.dateAdded))
         #expect(!LibrarySort.choices(for: .presentation).contains(.dateAdded))
     }

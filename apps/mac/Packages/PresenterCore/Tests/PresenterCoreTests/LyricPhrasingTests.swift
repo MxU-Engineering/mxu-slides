@@ -143,7 +143,7 @@ import Testing
 }
 
 @Test func reflowSplitsImportedDecksByPhraseButNotTypedOnes() {
-    #expect(LyricPhrasing.applies(to: PresentationOrigin(.planningCenterLyrics), text: "Words"))
+    #expect(LyricPhrasing.applies(to: PresentationOrigin(.songSelect), text: "Words"))
     #expect(LyricPhrasing.applies(to: PresentationOrigin(.chartFile), text: "Words"))
     #expect(LyricPhrasing.applies(to: PresentationOrigin(.pastedLyrics), text: "[G]Words\n[C]More"))
     #expect(!LyricPhrasing.applies(to: PresentationOrigin(.pastedLyrics), text: "Words\nMore"))

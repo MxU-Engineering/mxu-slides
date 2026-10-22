@@ -7,7 +7,7 @@ public enum ServiceRunOrder {
     ) {
         for index in items.indices where items[index].id == itemID && items[index].itemKind == .media {
             items[index].refId = mediaID
-            if items[index].mxuItemHexId == nil, let name {
+            if let name {
                 items[index].name = name
             }
         }
