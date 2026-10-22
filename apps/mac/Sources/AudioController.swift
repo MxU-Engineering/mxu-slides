@@ -7,6 +7,16 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 
+struct TimelineMusicClip {
+    var id: String
+    var item: AudioItem
+    var start: TimeInterval
+    var end: TimeInterval?
+    var from: TimeInterval
+    var envelope: ClipEnvelope
+    var overlap: Bool
+}
+
 @MainActor
 @Observable
 final class AudioPlayer {
@@ -105,6 +115,7 @@ final class AudioPlayer {
     }
 
     func play(audioItem: AudioItem, repeatOverride: Bool? = nil) {
+        clipID = nil
         queue = nil
         playlistID = nil
         singleItemID = audioItem.id
@@ -116,11 +127,40 @@ final class AudioPlayer {
         startPolling()
     }
 
+    private(set) var clipID: String?
+
+    func play(clip: TimelineMusicClip) {
+        guard let url = blobs?.url(forHash: clip.item.fileHash) else { return }
+        queue = nil
+        playlistID = nil
+        singleItemID = clip.item.id
+        clipID = clip.id
+        repeatOverride = false
+        crossfadeSeconds = 0
+        crossfadeArmedEntryID = nil
+        currentEntryID = nil
+        let fadeIn = clip.overlap || clip.envelope.fadeIn != nil || clip.from > 0.05 ? 0 : transportFade()
+        do {
+            try engine.play(
+                url: url, fadeIn: fadeIn, trimStart: clip.start, trimEnd: clip.end, from: clip.start + clip.from,
+                shape: AudioClipShape(envelope: clip.envelope, start: clip.start, end: clip.end ?? .infinity),
+                overlap: clip.overlap)
+            currentTrimStart = clip.start
+            currentTrackName = clip.item.name
+            isPlaying = true
+            refreshPosition()
+        } catch {
+            isPlaying = false
+        }
+        startPolling()
+    }
+
     func stop(fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
         engine.stop(fade: fade ?? transportFade(), curve: curve)
         defer { onTransportChanged?() }
         queue = nil
         repeatOverride = nil
+        clipID = nil
         currentEntryID = nil
         currentTrackName = nil
         isPlaying = false
@@ -535,6 +575,23 @@ final class AudioController {
 
         applyLevels(to: player)
         player.play(audioItem: audioItem, repeatOverride: repeatOverride)
+        players.append(player)
+        onPlayersChanged?()
+        onTransportChanged?()
+        return replaced
+    }
+
+    func play(clip: TimelineMusicClip) -> [CueAudio] {
+        let routing = defaultRouting()
+        if let existing = players.first(where: { $0.targetKey == routing.key }), existing.singleItemID != nil {
+            existing.play(clip: clip)
+            onTransportChanged?()
+            return []
+        }
+        let replaced = claimTarget(routing.key)
+        let player = makePlayer(routing: routing)
+        applyLevels(to: player)
+        player.play(clip: clip)
         players.append(player)
         onPlayersChanged?()
         onTransportChanged?()

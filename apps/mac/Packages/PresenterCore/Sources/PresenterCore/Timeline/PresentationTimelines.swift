@@ -175,13 +175,16 @@ public enum PresentationTimelines {
 
         case runActions(cueId: String)
 
-        case playAudio(id: String, from: Double)
+        case playAudio(id: String, from: Double, clip: String)
+
+        case endAudio(id: String, clip: String)
     }
 
     public static func crossing(
         _ cues: [TimelineCue], blocks: [TimelinePlayedBlock], from: Double, to: Double, live: Live
     ) -> [Effect] {
         guard to > from else { return [] }
+        let cues = TimelineClips.withMusicRuns(cues)
         let crossed: (Double) -> Bool = { $0 > from && $0 <= to }
         var timed: [(time: Double, order: Int, effect: Effect)] = []
         var lastSlide: (at: Double, occurrence: Int)?
@@ -197,9 +200,9 @@ public enum PresentationTimelines {
                 if crossed(cue.at) { timed.append((cue.at, 1, .runActions(cueId: cue.id))) }
             case .audio:
                 guard let id = cue.contentId else { continue }
-                if crossed(cue.at) { timed.append((cue.at, 1, .playAudio(id: id, from: to - cue.at))) }
+                if crossed(cue.at) { timed.append((cue.at, 1, .playAudio(id: id, from: to - cue.at, clip: cue.id))) }
                 let end = end(of: cue, in: cues)
-                if crossed(end) { timed.append((end, 0, .clear(lane: lane, id: id))) }
+                if crossed(end) { timed.append((end, 0, .endAudio(id: id, clip: cue.id))) }
             case .loopingVideos:
 
                 if crossed(cue.at), let id = cue.contentId, !live.contains(id) {
@@ -225,6 +228,7 @@ public enum PresentationTimelines {
         _ cues: [TimelineCue], blocks: [TimelinePlayedBlock], at position: Double, live: Live
     ) -> [Effect] {
         var effects: [Effect] = []
+        let cues = TimelineClips.withMusicRuns(cues)
         let holds: (TimelineCue) -> Bool = { $0.at <= position && position < end(of: $0, in: cues) }
 
         let slide = cues
@@ -235,12 +239,13 @@ public enum PresentationTimelines {
         if let slide { effects.append(.showSlide(occurrence: slide, actions: false)) }
 
         let tracks = cues.filter { $0.kind == .audio && $0.contentId != nil }
-        let track = tracks.filter(holds).max { $0.at < $1.at }
-        for id in Set(tracks.compactMap(\.contentId)).sorted() where id != track?.contentId && live.contains(id) {
+        let held = tracks.filter(holds).sorted { $0.at < $1.at }.suffix(2)
+        let heldIDs = Set(held.compactMap(\.contentId))
+        for id in Set(tracks.compactMap(\.contentId)).sorted() where !heldIDs.contains(id) && live.contains(id) {
             effects.append(.clear(lane: .audio, id: id))
         }
-        if let track, let id = track.contentId {
-            effects.append(.playAudio(id: id, from: position - track.at))
+        for track in held {
+            if let id = track.contentId { effects.append(.playAudio(id: id, from: position - track.at, clip: track.id)) }
         }
         for lane in TimelineLane.allCases where lane.isBlock && lane != .audio {
             let blocks = cues.filter { $0.kind == lane && $0.contentId != nil }.sorted { $0.at < $1.at }

@@ -129,3 +129,39 @@ func eachFadeShapeComesOutOnItsCurve(shape: ClipEnvelope.Shape) throws {
 
     #expect(ClipEnvelope.Shape.allCases.map(\.rawValue) == ["linear", "sCurve", "equalPower", "fast", "slow"])
 }
+
+private func flat(_ name: String, seconds: Double) throws -> URL {
+    URL(fileURLWithPath: try file(name, seconds: seconds) { _ in 0.5 })
+}
+
+@Test func theStereoPlayerShapesAClipAsItReads() throws {
+    let url = try flat("deck", seconds: 4)
+    let engine = AudioEngine()
+    try engine.enableManualRenderingForTests()
+
+    let shape = AudioClipShape(envelope: ClipEnvelope(fadeIn: .init(seconds: 1), edge: 0), start: 1, end: 3)
+    try engine.play(url: url, trimStart: 1, trimEnd: 3, from: 1.5, shape: shape)
+    let out = try engine.renderOfflineForTests(frames: 48_000)
+    let left = out.floatChannelData![0]
+    let full = left[at(0.75)]
+    #expect(full > 0.1)
+
+    #expect(abs(left[at(0.05)] / full - 0.55) < 0.01)
+    #expect(abs(left[at(0.25)] / full - 0.75) < 0.01)
+    #expect(abs(left[at(0.6)] / full - 1) < 1e-4)
+}
+
+@Test func twoMusicClipsCrossfadeOnTheTwoDecks() throws {
+    let url = try flat("decks", seconds: 4)
+    let engine = AudioEngine()
+    try engine.enableManualRenderingForTests()
+    let fade = ClipEnvelope.Fade(seconds: 1)
+    try engine.play(url: url, trimStart: 0, trimEnd: 2, shape: AudioClipShape(envelope: ClipEnvelope(fadeOut: fade, edge: 0), start: 0, end: 2))
+    let first = try engine.renderOfflineForTests(frames: 48_000)
+    let full = first.floatChannelData![0][at(0.5)]
+
+    try engine.play(url: url, trimStart: 1, trimEnd: 3, shape: AudioClipShape(envelope: ClipEnvelope(fadeIn: fade, edge: 0), start: 1, end: 3), overlap: true)
+    let across = try engine.renderOfflineForTests(frames: 48_000)
+    let left = across.floatChannelData![0]
+    for t in [0.1, 0.5, 0.9] { #expect(abs(left[at(t)] / full - 1) < 0.01, "at \(t): \(left[at(t)] / full)") }
+}

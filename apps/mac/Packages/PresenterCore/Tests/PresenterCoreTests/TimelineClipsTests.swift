@@ -171,3 +171,88 @@ private func read(_ cue: TimelineCue, at t: Double) -> Double? {
     #expect(C.Shape.allCases.map(\.rawValue) == ["linear", "sCurve", "equalPower", "fast", "slow"])
     #expect(C.Shape("unknown") == .linear && C.Shape(nil) == .linear)
 }
+
+private func music(_ id: String, at: Double, duration: Double?, inPoint: Double? = nil, media: String = "song") -> TimelineCue {
+    TimelineCue(id: id, lane: TimelineLane.audio.rawValue, at: at, duration: duration, mediaId: media, inPoint: inPoint)
+}
+
+@Test func aSplitMusicClipPlaysAsOneRunUntilItsPiecesMove() throws {
+    let whole = music("m", at: 2, duration: 30)
+    let (left, right) = try #require(C.split(whole, at: 10, in: [whole], newID: ids()))
+    let runs = C.withMusicRuns([left, right])
+    #expect(runs == [whole])
+
+    let blocks: [TimelinePlayedBlock] = []
+    #expect(PresentationTimelines.crossing([left, right], blocks: blocks, from: 9.9, to: 10.1, live: ["song"]).isEmpty)
+
+    let moved = PresentationTimelines.moved(right, by: 2)
+    #expect(C.withMusicRuns([left, moved]).count == 2)
+    var faded = right
+    faded.fadeIn = ClipFade(seconds: 1)
+    #expect(C.withMusicRuns([left, faded]).count == 2)
+
+    #expect(C.withMusicRuns([left, music("o", at: 10, duration: 5, inPoint: 8, media: "other")]).count == 2)
+}
+
+@Test func musicClipsEndAndLandByClip() {
+    let a = music("a", at: 0, duration: 10), b = music("b", at: 8, duration: 10, inPoint: 30)
+    let blocks: [TimelinePlayedBlock] = []
+
+    #expect(PresentationTimelines.crossing([a, b], blocks: blocks, from: 7.9, to: 8.1, live: ["song"])
+        == [.playAudio(id: "song", from: 8.1 - 8, clip: "b")])
+    #expect(PresentationTimelines.crossing([a, b], blocks: blocks, from: 9.9, to: 10.1, live: ["song"])
+        == [.endAudio(id: "song", clip: "a")])
+
+    #expect(PresentationTimelines.landing([a, b], blocks: blocks, at: 9, live: [])
+        == [.playAudio(id: "song", from: 9, clip: "a"), .playAudio(id: "song", from: 1, clip: "b")])
+}
+
+@Test func aCrossfadeAtAButtCutUsesTheAudioPastTheEdges() throws {
+
+    let verse = stem("v", at: 0, duration: 20)
+    let bridge = stem("b", at: 20, duration: 20, inPoint: 40)
+    let cues = [verse, bridge]
+    #expect(C.cut(between: bridge, verse, in: cues) == 20)
+    let handlesV = C.handles(verse, windowLength: 60, in: cues), handlesB = C.handles(bridge, windowLength: 60, in: cues)
+    #expect(handlesV.after == 40 && handlesB.before == 40)
+    let made = try #require(C.crossfadedAtCut(
+        verse, bridge, in: cues, seconds: 2, after: handlesV.after, before: handlesB.before))
+    #expect(made.placement == .centered)
+    #expect(made.left.duration == 21 && made.right.at == 19 && made.right.inPoint == 39 && made.right.duration == 21)
+    #expect(made.left.fadeOut?.seconds == 2 && made.right.fadeIn?.seconds == 2)
+
+    #expect(read(made.left, at: 19.5) == read(verse, at: 19.5))
+    #expect(read(made.right, at: 20.5) == read(bridge, at: 20.5))
+
+    let undone = try #require(C.uncrossfaded(made.left, made.right, in: [made.left, made.right]))
+    #expect(undone.left == verse && undone.right == bridge)
+}
+
+@Test func theCrossfadeSitsWhereThereIsAudio() {
+    #expect(C.placement(seconds: 2, after: 5, before: 5)! == (.centered, 2))
+
+    #expect(C.placement(seconds: 2, after: 5, before: 0)! == (.post, 2))
+
+    #expect(C.placement(seconds: 2, after: 0, before: 5)! == (.pre, 2))
+
+    #expect(C.placement(seconds: 2, after: 0.5, before: 0.2)! == (.post, 0.5))
+
+    #expect(C.placement(seconds: 2, after: 0, before: 0) == nil)
+
+    #expect(C.placement(seconds: 2, after: 5, before: 0.4, preferring: .centered)! == (.centered, 0.8))
+    #expect(C.placement(seconds: 2, after: 5, before: 0, preferring: .pre) == nil)
+}
+
+@Test func fadeHandlesDragLengthAndMidpoint() {
+    let clip = stem("a", at: 0, duration: 10)
+    let fade = ClipFade(seconds: 2, shape: "sCurve")
+    #expect(C.dragged(fade, midpoint: false, out: false, by: 1, clip: clip, end: 10).seconds == 3)
+
+    #expect(C.dragged(fade, midpoint: false, out: true, by: 1, clip: clip, end: 10).seconds == 1)
+
+    var both = clip
+    both.fadeOut = ClipFade(seconds: 4)
+    #expect(C.dragged(fade, midpoint: false, out: false, by: 20, clip: both, end: 10).seconds == 6)
+    #expect(C.dragged(fade, midpoint: true, out: false, by: 0.5, clip: clip, end: 10).midpoint == 0.75)
+    #expect(C.dragged(fade, midpoint: true, out: false, by: 5, clip: clip, end: 10).midpoint == 0.95)
+}

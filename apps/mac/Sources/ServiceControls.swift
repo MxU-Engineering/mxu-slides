@@ -1214,6 +1214,13 @@ final class ServiceControls {
         apply()
     }
 
+    func fire(musicClip clip: TimelineMusicClip) {
+        let replaced = audio.play(clip: clip)
+        for cue in replaced { state.dismissAudio(cue) }
+        state.fire(audio: CueAudio(audioItemId: clip.item.id))
+        apply()
+    }
+
     func fire(audioItem: AudioItem, repeatOverride: Bool? = nil) {
         let replaced = audio.play(audioItem: audioItem, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }

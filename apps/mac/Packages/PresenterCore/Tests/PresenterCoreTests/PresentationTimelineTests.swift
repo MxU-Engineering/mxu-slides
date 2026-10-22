@@ -293,12 +293,12 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
 
     let cues = [block("t", .audio, at: 2, duration: 180, ref: "track")]
     let started = T.crossing(cues, blocks: blocks, from: 1.99, to: 2.02, live: [])
-    guard case .playAudio("track", let from)? = started.first, started.count == 1 else {
+    guard case .playAudio("track", let from, "t")? = started.first, started.count == 1 else {
         Issue.record("the track starts once: \(started)")
         return
     }
     #expect(abs(from - 0.02) < 0.001)
-    #expect(T.crossing(cues, blocks: blocks, from: 181, to: 183, live: ["track"]) == [.clear(lane: .audio, id: "track")])
-    #expect(T.landing(cues, blocks: blocks, at: 62, live: ["track"]) == [.playAudio(id: "track", from: 60)])
+    #expect(T.crossing(cues, blocks: blocks, from: 181, to: 183, live: ["track"]) == [.endAudio(id: "track", clip: "t")])
+    #expect(T.landing(cues, blocks: blocks, at: 62, live: ["track"]) == [.playAudio(id: "track", from: 60, clip: "t")])
     #expect(T.landing(cues, blocks: blocks, at: 190, live: ["track"]) == [.clear(lane: .audio, id: "track")])
 }

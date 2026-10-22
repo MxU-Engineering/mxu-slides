@@ -254,7 +254,7 @@ public struct TimecodeFollow: Sendable {
         if playsAudio { return effects }
         return effects.filter {
             switch $0 {
-            case .playAudio: false
+            case .playAudio, .endAudio: false
             case .fire(let lane, _), .clear(let lane, _): lane != .audio
             case .showSlide, .runActions: true
             }
@@ -272,6 +272,7 @@ public struct TimecodeFollow: Sendable {
     public static func audioSync(
         _ cues: [TimelineCue], at position: Double, playing: [String: Double]
     ) -> [PresentationTimelines.Effect] {
+        let cues = TimelineClips.withMusicRuns(cues)
         let tracks = cues.filter { $0.kind == .audio && $0.contentId != nil }
         let held = tracks.filter {
             $0.at <= position && position < PresentationTimelines.end(of: $0, in: cues)
@@ -285,7 +286,7 @@ public struct TimecodeFollow: Sendable {
             if let at = playing[id], abs(at - due) <= audioDrift {
                 return effects
             }
-            effects.append(.playAudio(id: id, from: due))
+            effects.append(.playAudio(id: id, from: due, clip: held.id))
         }
         return effects
     }

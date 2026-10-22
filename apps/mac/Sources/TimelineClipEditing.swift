@@ -139,17 +139,7 @@ struct ClipFadesOverlay: View {
     }
 
     static func dragged(_ fade: ClipFade, _ kind: Handle, out: Bool, by seconds: Double, clip: TimelineCue, end: Double) -> ClipFade {
-        var fade = fade
-        switch kind {
-        case .length:
-            let other = (out ? clip.fadeIn : clip.fadeOut)?.seconds ?? 0
-            let room = max(end - clip.at - other, 0.01)
-            fade.seconds = min(max(fade.seconds + (out ? -seconds : seconds), 0.01), room)
-        case .midpoint:
-            let mid = (fade.midpoint ?? 0.5) + seconds / max(fade.seconds, 0.01)
-            fade.midpoint = min(max(mid, 0.05), 0.95)
-        }
-        return fade
+        TimelineClips.dragged(fade, midpoint: kind == .midpoint, out: out, by: seconds, clip: clip, end: end)
     }
 }
 

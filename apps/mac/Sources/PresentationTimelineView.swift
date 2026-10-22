@@ -1203,12 +1203,35 @@ struct PresentationTimelineLanes: View {
             fadeMenu(cue, out: false)
             fadeMenu(cue, out: true)
             let overlapping = TimelineClips.overlapping(cue, in: cues)
-            if !overlapping.isEmpty {
-                Menu("Crossfade") {
-                    ForEach(overlapping, id: \.id) { other in
-                        if overlapping.count > 1 { Text("With the clip at \(Self.clock(other.at))") }
+            ForEach(overlapping, id: \.id) { other in
+                let pair = cue.at <= other.at ? (cue, other) : (other, cue)
+                if let placement = pair.1.fadeIn?.placement.flatMap(TimelineClips.Placement.init(rawValue:)) {
+
+                    Menu("Crossfade: \(placement.title)") {
+                        ForEach(TimelineClips.Placement.allCases, id: \.self) { choice in
+                            Button(choice == placement ? "\(choice.title) ✓" : choice.title) {
+                                replace(cue, other, placement: choice, cues: cues)
+                            }
+                            .disabled(choice != placement && placed(pair.0, pair.1, choice, cues: cues) == nil)
+                        }
+                        Divider()
+                        Button("Remove Crossfade") { uncrossfade(cue, other) }
+                    }
+                } else {
+                    Menu(overlapping.count > 1 ? "Crossfade with the Clip at \(Self.clock(other.at))" : "Crossfade") {
                         ClipFadeShapeItems { shape in crossfade(cue, other, shape: shape) }
                     }
+                }
+            }
+
+            ForEach(TimelineClips.butted(cue, in: cues), id: \.id) { other in
+                let pair = cue.at <= other.at ? (cue, other) : (other, cue)
+                if let made = placed(pair.0, pair.1, nil, cues: cues) {
+                    Menu("Crossfade at the Cut (\(made.placement.title))") {
+                        ClipFadeShapeItems { shape in crossfadeAtCut(pair.0, pair.1, shape: shape, cues: cues) }
+                    }
+                } else {
+                    Button("Crossfade at the Cut: no audio past either clip's edge") {}.disabled(true)
                 }
             }
             Toggle("Edge Fades (5 ms)", isOn: Binding(get: { cue.edgeFades ?? true }, set: { on in
@@ -1258,6 +1281,61 @@ struct PresentationTimelineLanes: View {
         context.edit("Crossfade") { timeline in
             guard let made = TimelineClips.crossfaded(a, b, in: timeline.cues, shape: shape) else { return }
             for clip in [made.left, made.right] {
+                if let index = timeline.cues.firstIndex(where: { $0.id == clip.id }) { timeline.cues[index] = clip }
+            }
+        }
+    }
+
+    private func handles(_ left: TimelineCue, _ right: TimelineCue, cues: [TimelineCue]) -> (after: Double, before: Double) {
+        func window(_ cue: TimelineCue) -> Double? {
+            guard let item = cue.mediaId.flatMap(context.model.audio) else { return nil }
+            return ((item.outPoint ?? item.durationSeconds) ?? 0) - (item.inPoint ?? 0)
+        }
+        return (TimelineClips.handles(left, windowLength: window(left), in: cues).after,
+                TimelineClips.handles(right, windowLength: window(right), in: cues).before)
+    }
+
+    private func placed(
+        _ left: TimelineCue, _ right: TimelineCue, _ placement: TimelineClips.Placement?, cues: [TimelineCue]
+    ) -> (left: TimelineCue, right: TimelineCue, placement: TimelineClips.Placement)? {
+        var cues = cues, left = left, right = right
+        if let undone = TimelineClips.uncrossfaded(left, right, in: cues) {
+            (left, right) = (undone.left, undone.right)
+            cues = cues.map { $0.id == left.id ? left : $0.id == right.id ? right : $0 }
+        }
+        let room = handles(left, right, cues: cues)
+        let seconds = right.fadeIn?.seconds ?? 1
+        return TimelineClips.crossfadedAtCut(
+            left, right, in: cues, seconds: seconds, shape: TimelineClips.Shape(right.fadeIn?.shape ?? "equalPower"),
+            after: room.after, before: room.before, placement: placement)
+    }
+
+    private func crossfadeAtCut(_ left: TimelineCue, _ right: TimelineCue, shape: TimelineClips.Shape, cues: [TimelineCue]) {
+        let room = handles(left, right, cues: cues)
+        guard let made = TimelineClips.crossfadedAtCut(left, right, in: cues, shape: shape, after: room.after, before: room.before)
+        else { return }
+        write([made.left, made.right], "Crossfade")
+        DiagnosticsStore.shared.note("timeline.crossfade.cut", detail: made.placement.rawValue)
+    }
+
+    private func replace(_ a: TimelineCue, _ b: TimelineCue, placement: TimelineClips.Placement, cues: [TimelineCue]) {
+        let pair = a.at <= b.at ? (a, b) : (b, a)
+        guard let made = placed(pair.0, pair.1, placement, cues: cues) else { return }
+        write([made.left, made.right], "Crossfade")
+    }
+
+    private func uncrossfade(_ a: TimelineCue, _ b: TimelineCue) {
+        context.edit("Remove Crossfade") { timeline in
+            guard let undone = TimelineClips.uncrossfaded(a, b, in: timeline.cues) else { return }
+            for clip in [undone.left, undone.right] {
+                if let index = timeline.cues.firstIndex(where: { $0.id == clip.id }) { timeline.cues[index] = clip }
+            }
+        }
+    }
+
+    private func write(_ clips: [TimelineCue], _ label: String) {
+        context.edit(label) { timeline in
+            for clip in clips {
                 if let index = timeline.cues.firstIndex(where: { $0.id == clip.id }) { timeline.cues[index] = clip }
             }
         }

@@ -73,19 +73,32 @@ public enum TimelineClips {
     public static func fitted(_ cue: TimelineCue) -> TimelineCue {
         guard let duration = cue.duration else { return cue }
         var fitted = cue
-        if let fadeIn = cue.fadeIn {
-            fitted.fadeIn = fadeIn.seconds > 0 ? ClipFade(seconds: min(fadeIn.seconds, duration), shape: fadeIn.shape, midpoint: fadeIn.midpoint) : nil
+        if var fadeIn = cue.fadeIn {
+            fadeIn.seconds = min(fadeIn.seconds, duration)
+            fitted.fadeIn = fadeIn.seconds > 0 ? fadeIn : nil
         }
-        if let fadeOut = cue.fadeOut {
-            let room = duration - (fitted.fadeIn?.seconds ?? 0)
-            fitted.fadeOut = fadeOut.seconds > 0 && room > 0
-                ? ClipFade(seconds: min(fadeOut.seconds, room), shape: fadeOut.shape, midpoint: fadeOut.midpoint) : nil
+        if var fadeOut = cue.fadeOut {
+            fadeOut.seconds = min(fadeOut.seconds, duration - (fitted.fadeIn?.seconds ?? 0))
+            fitted.fadeOut = fadeOut.seconds > 0 ? fadeOut : nil
         }
         return fitted
     }
 
     public static func defaultFadeSeconds(_ cue: TimelineCue) -> Double {
         min(1, (cue.duration ?? 3) / 3)
+    }
+
+    public static func dragged(
+        _ fade: ClipFade, midpoint: Bool, out: Bool, by seconds: Double, clip: TimelineCue, end: Double
+    ) -> ClipFade {
+        var fade = fade
+        if midpoint {
+            fade.midpoint = min(max((fade.midpoint ?? 0.5) + seconds / max(fade.seconds, 0.01), 0.05), 0.95)
+        } else {
+            let other = (out ? clip.fadeIn : clip.fadeOut)?.seconds ?? 0
+            fade.seconds = min(max(fade.seconds + (out ? -seconds : seconds), 0.01), max(end - clip.at - other, 0.01))
+        }
+        return fade
     }
 
     public static func overlap(_ a: TimelineCue, _ b: TimelineCue, in cues: [TimelineCue]) -> ClosedRange<Double>? {
@@ -113,6 +126,102 @@ public enum TimelineClips {
         return (fitted(left), fitted(right))
     }
 
+    public enum Placement: String, CaseIterable, Sendable {
+
+        case pre
+
+        case centered
+
+        case post
+
+        public var title: String {
+            switch self {
+            case .pre: "Before the Cut"
+            case .centered: "Centered on the Cut"
+            case .post: "After the Cut"
+            }
+        }
+    }
+
+    public static func cut(between a: TimelineCue, _ b: TimelineCue, in cues: [TimelineCue]) -> Double? {
+        guard a.id != b.id, a.lane == b.lane, isClip(a), isClip(b) else { return nil }
+        let (left, right) = a.at <= b.at ? (a, b) : (b, a)
+        let end = PresentationTimelines.end(of: left, in: cues)
+        return abs(end - right.at) < sameTime ? right.at : nil
+    }
+
+    public static func butted(_ cue: TimelineCue, in cues: [TimelineCue]) -> [TimelineCue] {
+        cues.filter { cut(between: cue, $0, in: cues) != nil }.sorted { $0.at < $1.at }
+    }
+
+    public static func placement(
+        seconds: Double, after: Double, before: Double, preferring wanted: Placement? = nil
+    ) -> (placement: Placement, seconds: Double)? {
+        let frame = PresentationTimelines.frame
+        func fit(_ placement: Placement) -> Double {
+            switch placement {
+            case .centered: min(seconds, 2 * min(after, before))
+            case .post: min(seconds, after)
+            case .pre: min(seconds, before)
+            }
+        }
+        if let wanted { return fit(wanted) >= frame ? (wanted, fit(wanted)) : nil }
+        for placement in [Placement.centered, .post, .pre] where fit(placement) >= seconds - sameTime {
+            return (placement, seconds)
+        }
+        let best: Placement = after >= before ? .post : .pre
+        return fit(best) >= frame ? (best, fit(best)) : nil
+    }
+
+    public static func crossfadedAtCut(
+        _ a: TimelineCue, _ b: TimelineCue, in cues: [TimelineCue], seconds: Double = 1, shape: Shape = .equalPower,
+        after: Double, before: Double, placement wanted: Placement? = nil
+    ) -> (left: TimelineCue, right: TimelineCue, placement: Placement)? {
+        guard let cut = cut(between: a, b, in: cues),
+              let (placement, length) = placement(seconds: seconds, after: after, before: before, preferring: wanted)
+        else { return nil }
+        var (left, right) = a.at <= b.at ? (a, b) : (b, a)
+        let early: Double = switch placement {
+        case .pre: length
+        case .centered: length / 2
+        case .post: 0
+        }
+        left.duration = (cut - left.at) + (length - early)
+        right.at = cut - early
+        right.inPoint = (right.inPoint ?? 0) - early
+        if right.inPoint ?? 0 < sameTime { right.inPoint = nil }
+        right.duration = right.duration.map { $0 + early }
+        left.fadeOut = ClipFade(seconds: length, shape: shape.rawValue)
+        right.fadeIn = ClipFade(seconds: length, shape: shape.rawValue, placement: placement.rawValue)
+        return (left, right, placement)
+    }
+
+    public static func uncrossfaded(_ a: TimelineCue, _ b: TimelineCue, in cues: [TimelineCue]) -> (left: TimelineCue, right: TimelineCue)? {
+        guard let overlap = overlap(a, b, in: cues) else { return nil }
+        var (left, right) = a.at <= b.at ? (a, b) : (b, a)
+        guard let placement = right.fadeIn?.placement.flatMap(Placement.init(rawValue:)) else { return nil }
+        let length = overlap.upperBound - overlap.lowerBound
+        let cut = switch placement {
+        case .pre: overlap.upperBound
+        case .centered: overlap.lowerBound + length / 2
+        case .post: overlap.lowerBound
+        }
+        right.inPoint = (right.inPoint ?? 0) + (cut - right.at)
+        if right.inPoint ?? 0 < sameTime { right.inPoint = nil }
+        right.duration = right.duration.map { $0 - (cut - right.at) }
+        right.at = cut
+        left.duration = cut - left.at
+        left.fadeOut = nil
+        right.fadeIn = nil
+        return (left, right)
+    }
+
+    public static func handles(_ cue: TimelineCue, windowLength: Double?, in cues: [TimelineCue]) -> (before: Double, after: Double) {
+        let end = PresentationTimelines.end(of: cue, in: cues)
+        let read = (cue.inPoint ?? 0) + (end - cue.at)
+        return (cue.inPoint ?? 0, max(0, (windowLength ?? read) - read))
+    }
+
     public static func edges(of cue: TimelineCue, in cues: [TimelineCue]) -> (start: Bool, end: Bool) {
         guard cue.edgeFades ?? true else { return (false, false) }
         let end = PresentationTimelines.end(of: cue, in: cues)
@@ -128,6 +237,30 @@ public enum TimelineClips {
                 && abs((other.inPoint ?? 0) + (otherEnd - other.at) - (cue.inPoint ?? 0)) < sameTime
         }
         return (!joinsPrevious, !joinsNext)
+    }
+
+    public static func withMusicRuns(_ cues: [TimelineCue]) -> [TimelineCue] {
+        let music = cues.filter { $0.kind == .audio && isClip($0) }.sorted { $0.at < $1.at }
+        guard music.count > 1 else { return cues }
+        var runs: [TimelineCue] = []
+        var merged: Set<String> = []
+        for clip in music {
+            if let index = runs.indices.last(where: { runs[$0].mediaId == clip.mediaId }) {
+                let run = runs[index]
+                let end = PresentationTimelines.end(of: run, in: cues)
+                if run.fadeOut == nil, clip.fadeIn == nil, abs(clip.at - end) < sameTime,
+                   abs((clip.inPoint ?? 0) - ((run.inPoint ?? 0) + end - run.at)) < sameTime {
+                    runs[index].duration = clip.duration.map { clip.at + $0 - run.at }
+                    runs[index].fadeOut = clip.fadeOut
+                    merged.insert(clip.id)
+                    continue
+                }
+            }
+            runs.append(clip)
+        }
+        guard !merged.isEmpty else { return cues }
+        let byID = Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return cues.compactMap { merged.contains($0.id) ? nil : byID[$0.id] ?? $0 }
     }
 
     public static func copied(_ cues: [TimelineCue], range: ClosedRange<Double>? = nil, all: [TimelineCue]) -> [TimelineCue] {

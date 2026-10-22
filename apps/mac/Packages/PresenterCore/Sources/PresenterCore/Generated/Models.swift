@@ -921,11 +921,13 @@ public struct ClipFade: Codable, Sendable, Equatable {
     public var seconds: Double
     public var shape: String?
     public var midpoint: Double?
+    public var placement: String?
 
-    public init(seconds: Double, shape: String? = nil, midpoint: Double? = nil) {
+    public init(seconds: Double, shape: String? = nil, midpoint: Double? = nil, placement: String? = nil) {
         self.seconds = seconds
         self.shape = shape
         self.midpoint = midpoint
+        self.placement = placement
     }
 }
 

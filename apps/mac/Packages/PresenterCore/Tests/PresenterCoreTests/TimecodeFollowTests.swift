@@ -337,11 +337,11 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
         #expect(TimecodeFollow.underTimecode(raw, playsAudio: true) == raw)
         let track = TimelineCue(id: "t", lane: TimelineLane.audio.rawValue, at: 2, duration: 100, mediaId: "track")
 
-        #expect(TimecodeFollow.audioSync([track], at: 12, playing: [:]) == [.playAudio(id: "track", from: 10)])
+        #expect(TimecodeFollow.audioSync([track], at: 12, playing: [:]) == [.playAudio(id: "track", from: 10, clip: track.id)])
 
         #expect(TimecodeFollow.audioSync([track], at: 12, playing: ["track": 9.7]).isEmpty)
 
-        #expect(TimecodeFollow.audioSync([track], at: 12, playing: ["track": 8]) == [.playAudio(id: "track", from: 10)])
+        #expect(TimecodeFollow.audioSync([track], at: 12, playing: ["track": 8]) == [.playAudio(id: "track", from: 10, clip: track.id)])
 
         #expect(TimecodeFollow.audioSync([track], at: 150, playing: ["track": 140]) == [.clear(lane: .audio, id: "track")])
     }

@@ -683,12 +683,24 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                 case .slide, .actions:
                     break
                 }
-            case .playAudio(let id, let from):
+            case .playAudio(let id, let from, let clip):
 
-                if controls.audio.player(forAudioItem: id) == nil, let item = model.audio(id) {
-                    controls.fire(audioItem: item, repeatOverride: false)
+                let runs = TimelineClips.withMusicRuns(cues)
+                let player = controls.audio.players.first { $0.clipID != nil }
+                if let player, player.clipID == clip, player.singleItemID == id {
+                    player.seek(to: from)
+                } else if let run = runs.first(where: { $0.id == clip }), let item = model.audio(id) {
+                    let current = player?.isPlaying == true ? runs.first { $0.id == player?.clipID } : nil
+                    let overlap = current.map { $0.at < run.at && PresentationTimelines.end(of: $0, in: runs) > run.at + 0.001 } ?? false
+                    let start = (item.inPoint ?? 0) + (run.inPoint ?? 0)
+                    let end = run.duration.map { start + $0 } ?? item.outPoint
+                    controls.fire(musicClip: TimelineMusicClip(
+                        id: clip, item: item, start: start, end: end, from: max(from, 0),
+                        envelope: Self.envelope(run, in: runs), overlap: overlap))
                 }
-                if from > PresentationTimelines.frame { controls.audio.player(forAudioItem: id)?.seek(to: from) }
+            case .endAudio(let id, let clip):
+
+                if controls.audio.player(forAudioItem: id)?.clipID == clip { controls.stopAudio(audioItemID: id) }
             case .runActions(let cueID):
                 if let actions = cues.first(where: { $0.id == cueID })?.actions, !actions.isEmpty {
                     controls.actionRouter?.execute(actions)

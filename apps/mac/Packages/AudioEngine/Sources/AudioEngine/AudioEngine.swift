@@ -104,21 +104,28 @@ public final class AudioEngine: @unchecked Sendable {
 
     public func play(
         url: URL, crossfade: TimeInterval = 0, fadeIn: TimeInterval = 0,
-        trimStart: TimeInterval = 0, trimEnd: TimeInterval? = nil
+        trimStart: TimeInterval = 0, trimEnd: TimeInterval? = nil,
+        from: TimeInterval? = nil, shape: AudioClipShape? = nil, overlap: Bool = false
     ) throws {
         try lock.withLock {
             try ensureRunning()
 
             cancelRamp(resolving: true)
             let outgoing = decks[activeIndex]
-            let crossfading = crossfade > 0 && outgoing.player.isPlaying
-            let incoming = crossfading ? decks[1 - activeIndex] : outgoing
+            let overlapping = overlap && outgoing.player.isPlaying
+            let crossfading = !overlapping && crossfade > 0 && outgoing.player.isPlaying
+            let incoming = crossfading || overlapping ? decks[1 - activeIndex] : outgoing
+            incoming.setShape(shape)
             try loadTracked(
-                deck: incoming, url: url, from: trimStart,
+                deck: incoming, url: url, from: from ?? trimStart,
                 windowStart: trimStart, until: trimEnd
             )
             transportPlaying = true
-            if crossfading {
+            if overlapping {
+                activeIndex = 1 - activeIndex
+                incoming.player.volume = 1
+                incoming.player.play()
+            } else if crossfading {
                 activeIndex = 1 - activeIndex
                 incoming.player.volume = 0
                 incoming.player.play()
