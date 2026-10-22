@@ -846,7 +846,7 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func bulkMenu(slideIDs: [String]) -> some View {
         Text("\(slideIDs.count) Slides")
-        Section("Playback") {
+        Section("Slides") {
             Button("Auto Advance: \(SlideBulkEdit.autoAdvanceValue(autoAdvances(slideIDs)))…") {
                 autoAdvanceTarget = AutoAdvanceTarget(
                     slideIDs: slideIDs, name: "\(slideIDs.count) Slides")
@@ -889,7 +889,7 @@ struct SlideGridBody: View {
                 applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
             }
         }
-        Section("Slides") {
+        Section("Arrange") {
             Button("Duplicate \(slideIDs.count) Slides") {
                 confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
 
@@ -1046,7 +1046,8 @@ struct SlideGridBody: View {
             renameText = slide.name
             renamingSlide = slide
         }
-        Section("Playback") {
+
+        Section("Slide") {
 
             Button("Auto Advance: \(SlideBulkEdit.autoAdvanceValue([slide.autoAdvance]))…") {
                 autoAdvanceTarget = AutoAdvanceTarget(slideIDs: [slide.id], name: slide.name)
@@ -1056,24 +1057,11 @@ struct SlideGridBody: View {
                 setTransition(transform, on: [slide.id])
             }
             slideActionsMenu(slide)
-
-            ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
-                Menu("Media: \(model.media(mediaID)?.name ?? "Missing")") {
-
-                    MediaCueMenuItems(
-                        model: model, actionRouter: actionRouter,
-                        mediaID: mediaID, state: mediaMenuState,
-                        includesCueGrammar: false,
-
-                        replace: SpotReplace(label: "Replace on This Slide…") {
-                            [presentationID = presentation.id, slideID = slide.id] oldID, newID in
-                            model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
-                                SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
-                            }
-                        },
-                        inheritedTransition: presentation.transition
-                    )
-                }
+        }
+        let mediaIDs = cueMediaIDs(of: slide)
+        if !mediaIDs.isEmpty {
+            Section("Media") {
+                mediaRows(slide, mediaIDs: mediaIDs)
             }
         }
         Section("Look") {
@@ -1081,7 +1069,7 @@ struct SlideGridBody: View {
                 applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
             }
         }
-        Section("Slide") {
+        Section("Arrange") {
             Button("New Slide After…") { newSlideTarget = NewSlideTarget(after: slide) }
             Button("Duplicate") {
                 confirmingRepeatedSectionEdit(sections: [slide.sectionId]) {
@@ -1103,6 +1091,29 @@ struct SlideGridBody: View {
             deleteSlides([slide.id])
         }
         .disabled(presentation.slides.count == 1)
+    }
+
+    @ViewBuilder
+    private func mediaRows(_ slide: Slide, mediaIDs: [String]) -> some View {
+
+        ForEach(mediaIDs, id: \.self) { mediaID in
+            Menu(model.media(mediaID)?.name ?? "Missing Media") {
+
+                MediaCueMenuItems(
+                    model: model, actionRouter: actionRouter,
+                    mediaID: mediaID, state: mediaMenuState,
+                    includesCueGrammar: false,
+
+                    replace: SpotReplace(label: "Replace on This Slide…") {
+                        [presentationID = presentation.id, slideID = slide.id] oldID, newID in
+                        model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
+                            SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
+                        }
+                    },
+                    inheritedTransition: presentation.transition
+                )
+            }
+        }
     }
 
     @ViewBuilder
