@@ -28,6 +28,7 @@ struct TimelineTransportButtons: View {
             Image(systemName: "backward.end.fill").frame(width: 14)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Go to Start")
         .help(startHelp)
         Button {
             playOrStop()

@@ -590,13 +590,13 @@ final class AppModel {
     }
 
     func entries(in section: LibrarySection) -> [LibraryIndex.Entry] {
-        var entries = listedSnapshot.entries(of: section.kind)
+        Self.inSectionOrder(withoutStems(listedSnapshot.entries(of: section.kind), section), section)
+    }
 
-        if section == .audio {
-            let stems = TrackSets.stemIDs(resident.trackSets.values)
-            if !stems.isEmpty { entries.removeAll { stems.contains($0.id) } }
-        }
-        return Self.inSectionOrder(entries, section)
+    private func withoutStems(_ entries: [LibraryIndex.Entry], _ section: LibrarySection) -> [LibraryIndex.Entry] {
+        guard section == .audio else { return entries }
+        let stems = TrackSets.stemIDs(resident.trackSets.values)
+        return stems.isEmpty ? entries : entries.filter { !stems.contains($0.id) }
     }
 
     func entries(of kind: DocumentKind) -> [LibraryIndex.Entry] {
@@ -705,7 +705,7 @@ final class AppModel {
 
     func browserEntries(in section: LibrarySection) -> [LibraryIndex.Entry] {
         let all = (librarySorts[section] ?? .name).ordered(
-            Self.inSectionOrder(listedSnapshot.entries(of: section.kind), section), addedAt: mediaAddedAt)
+            Self.inSectionOrder(withoutStems(listedSnapshot.entries(of: section.kind), section), section), addedAt: mediaAddedAt)
         return !isFiltered(section) ? all : all.filter { showFiltersAdmit(id: $0.id, kind: $0.kind) }
     }
 

@@ -201,6 +201,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         setPlayhead(position)
         publishClock(position: position, running: true)
         startTimer()
+
+        PresentationTimelineCards.shared.open.insert(parts[0])
         DiagnosticsStore.shared.note("timeline.resume", detail: "tracks at \(String(format: "%.2f", position))")
     }
 

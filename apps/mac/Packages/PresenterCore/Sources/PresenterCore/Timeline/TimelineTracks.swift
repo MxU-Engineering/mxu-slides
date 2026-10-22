@@ -129,13 +129,21 @@ public enum TimelineTracks {
                 let made = TrackChannel(
                     id: newID(), name: name.trimmingCharacters(in: .whitespaces).isEmpty ? "Track" : name,
                     role: role == .music ? nil : role.rawValue)
-                channels.append(made)
+                channels.insert(made, at: insertionIndex(for: made, in: channels))
                 return made
             }()
             assignments[fileName] = chosen.id
             used.insert(chosen.id)
         }
         return (channels, assignments)
+    }
+
+    public static func insertionIndex(for channel: TrackChannel, in channels: [TrackChannel]) -> Int {
+        func rank(_ channel: TrackChannel) -> Int { Family.allCases.firstIndex(of: family(of: channel)) ?? 0 }
+        let mine = rank(channel)
+        return channels.firstIndex {
+            rank($0) > mine || (rank($0) == mine && $0.name.localizedStandardCompare(channel.name) == .orderedDescending)
+        } ?? channels.count
     }
 
     private static func commonPrefix(_ names: [[String]]) -> Int {

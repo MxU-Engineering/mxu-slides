@@ -1021,7 +1021,8 @@ struct PresentationTimelineLanes: View {
     }
 
     private func showsTracks(_ cues: [TimelineCue]) -> Bool {
-        !TimelineTracks.stems(cues).isEmpty || PresentationTimelineCards.shared.addedTracks.contains(context.item.id)
+        tracksOn || !TimelineTracks.stems(cues).isEmpty
+            || PresentationTimelineCards.shared.addedTracks.contains(context.item.id)
     }
 
     private func trackChannels(_ cues: [TimelineCue]) -> [TrackChannel] {
@@ -1042,7 +1043,7 @@ struct PresentationTimelineLanes: View {
         guard !trimmed.isEmpty else { return }
         let role = TimelineTracks.role(forName: trimmed)
         let made = TrackChannel(id: UUID().uuidString, name: trimmed, role: role == .music ? nil : role.rawValue)
-        context.model.updateTrackChannels { $0.channels.append(made) }
+        context.model.updateTrackChannels { $0.channels.insert(made, at: TimelineTracks.insertionIndex(for: made, in: $0.channels)) }
         context.controls.tracks.refresh()
         addTrackRow(made.id)
     }
@@ -1112,8 +1113,10 @@ struct PresentationTimelineLanes: View {
                             .frame(width: 200)
                             .padding(10)
                             .onSubmit {
-                                makeTrack(named: newTrackName ?? "")
+
+                                let name = newTrackName ?? ""
                                 newTrackName = nil
+                                makeTrack(named: name)
                             }
                     }
                 }
@@ -1150,6 +1153,14 @@ struct PresentationTimelineLanes: View {
             ZStack(alignment: .topLeading) {
                 Rectangle()
                     .fill(dropTargeted ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.04))
+                if stems.isEmpty, !runOnly {
+                    Text("Add Stems with + beside Tracks, or drag a song's Tracks from the library")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .padding(.leading, 6)
+                        .frame(maxHeight: .infinity)
+                }
                 if !tracksExpanded {
                     ForEach(leaders, id: \.id) { leader in
                         let group = TimelineTracks.group(of: leader, in: cues)
@@ -1315,7 +1326,9 @@ extension PresentationTimelineContext {
             return first.kind.displayName + (actions.count > 1 ? " +\(actions.count - 1)" : "")
         case nil:
             guard cue.trackChannelId != nil else { return "Unknown lane" }
-            return cue.mediaId.flatMap { model.audio($0)?.name } ?? "Stem"
+
+            let name = cue.mediaId.flatMap { model.audio($0)?.name } ?? "Stem"
+            return name.components(separatedBy: " \u{00B7} ").last ?? name
         }
     }
 }

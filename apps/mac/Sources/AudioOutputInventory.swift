@@ -23,6 +23,14 @@ final class AudioOutputInventory {
 
         var isDeviceless: Bool { deviceUID == AudioOutputInventory.noDeviceUID }
 
+        var shortName: String {
+            if let mono = monoChannel, name.hasSuffix(" \(mono + 1)") { return "Out \(mono + 1)" }
+            if monoChannel == nil, name.hasSuffix(" \(channelOffset + 1)-\(channelOffset + 2)") {
+                return "Out \(channelOffset + 1)\u{2013}\(channelOffset + 2)"
+            }
+            return name
+        }
+
         init(
             id: String = UUID().uuidString, name: String,
             deviceUID: String? = nil, channelOffset: Int = 0,

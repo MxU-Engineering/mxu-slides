@@ -51,8 +51,15 @@ final class TracksController {
                 Task { @MainActor in self?.onFoundPlaying?(status) }
             }
         }
-        client.onConnect = { awaiting.value = true }
-        client.onDisconnect = { latest.value = nil }
+
+        client.onConnect = {
+            awaiting.value = true
+            DiagnosticsStore.shared.note("tracks.connect")
+        }
+        client.onDisconnect = {
+            DiagnosticsStore.shared.note("tracks.disconnect", detail: latest.value.map { "while \($0.playing ? "playing" : "stopped")" } ?? "")
+            latest.value = nil
+        }
 
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main

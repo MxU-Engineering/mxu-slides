@@ -185,6 +185,28 @@ private func solo(_ ids: [String]) -> MultitrackRouting {
     #expect(engine.takeMeters()["d"].map { abs($0.left.peak - 0.5) < 1e-4 && abs($0.right.peak - 0.5) < 1e-4 } == true)
 }
 
+@Test func aMixerEditWhileStoppedThenPlayDoesNotTouchTheOldTable() throws {
+    let path = try file("dc2", rate: 48_000, channels: 1, seconds: 3) { _ in 0.5 }
+    let engine = MultitrackEngine(sampleRate: 48_000, deviceChannels: 1)
+    engine.setRouting(solo(["d"]))
+    engine.cue(MultitrackSong(id: "s", stems: [.init(path: path, channelId: "d")]))
+    engine.play()
+    _ = render(engine, seconds: 0.2)
+    engine.stop()
+    _ = render(engine, seconds: 0.1)
+    var quieter = solo(["d"])
+    quieter.channels[0].gain = 0.5
+    engine.setRouting(quieter)
+    _ = render(engine, seconds: 0.02)
+    engine.setRouting(solo(["d"]))
+    _ = render(engine, seconds: 0.02)
+    Thread.sleep(forTimeInterval: 1.1)
+    engine.tickNow()
+    engine.play()
+    let resumed = render(engine, seconds: 0.1)[0]
+    #expect(abs(resumed.last! - 0.5) < 1e-5)
+}
+
 @Test func stemMetersReadLeftAndRight() throws {
     let path = try file("sides", rate: 48_000, channels: 2, seconds: 1, right: { _ in 0.25 }) { _ in 0.5 }
     let engine = MultitrackEngine(sampleRate: 48_000, deviceChannels: 2)

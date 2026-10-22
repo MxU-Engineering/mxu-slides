@@ -211,7 +211,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
         timer.setEventHandler { [weak self] in self?.beat() }
         timer.resume()
         statusTimer = timer
-        log.info("listening at \(self.path, privacy: .public)")
+        log.notice("listening at \(self.path, privacy: .public)")
         return true
     }
 
@@ -236,7 +236,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
             guard let self, self.client === connection else { return }
             self.client = nil
             self.alone = CFAbsoluteTimeGetCurrent()
-            self.log.info("Slides went away; playing on alone")
+            self.log.notice("Slides went away; playing on alone")
         })
         client = connection
         alone = nil
@@ -247,7 +247,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
         switch message {
         case .hello(let version):
             if version != TracksPlayerWire.version, !engine.isPlaying {
-                log.info("version \(version) != \(TracksPlayerWire.version); exiting for the new player")
+                log.notice("version \(version) != \(TracksPlayerWire.version); exiting for the new player")
                 finish(code: 0)
             }
         case .attach(let uid):
@@ -291,7 +291,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
                 engine.stop()
             }
             if !engine.isPlaying, CFAbsoluteTimeGetCurrent() - alone > orphanLimit {
-                log.info("alone for \(Int(self.orphanLimit)) s; exiting")
+                log.notice("alone for \(Int(self.orphanLimit)) s; exiting")
                 finish(code: 0)
             }
             return

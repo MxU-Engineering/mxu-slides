@@ -350,38 +350,38 @@ struct AudioMixerModule: View {
 
                     Toggle("Mono", isOn: Binding(
                         get: { channel.mono == true },
-                        set: { on in
-                            self.model.updateTrackChannels { list in
-                                guard let index = list.channels.firstIndex(where: { $0.id == channel.id }) else { return }
-                                list.channels[index].mono = on ? true : nil
-                            }
-                        }))
+                        set: { self.setMono(channel, $0) }))
                         .disabled(self.runOnly)
                 })
             }
         ) {
-            if channel.mono == true, channel.trackRole == .music {
-                Text("MONO")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 15)
-                    .help("Mono: the stem folds to one channel before the pan")
-            }
-            if channel.trackRole != .music {
 
-                Text((channel.trackRole == .click ? "CLICK" : "GUIDE") + (channel.mono == true ? " · MONO" : ""))
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.orange)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 15)
-                    .help("\(channel.trackRole == .click ? "Click" : "Guide") starts on no mix, so it never reaches the house unasked; its Main send waits at zero")
-            }
+            let cue = channel.trackRole == .music ? ""
+                : " \(channel.trackRole == .click ? "Click" : "Guide") starts on no mix, so it never reaches the house unasked; its Main send waits at zero."
+            Button(channel.mono == true ? "MONO" : "STEREO") { setMono(channel, channel.mono != true) }
+                .buttonStyle(.plain)
+                .foregroundStyle(channel.trackRole != .music ? Color.orange
+                    : channel.mono == true ? Color.accentColor : Color.secondary)
+                .disabled(runOnly)
+                .help((channel.mono == true
+                    ? "Mono: the stem folds to one channel before the pan. Click for stereo."
+                    : "Stereo. Click to fold this channel to mono.") + cue)
+                .accessibilityLabel(channel.mono == true ? "Mono" : "Stereo")
+            .font(.system(size: 8, weight: .semibold))
+            .frame(maxWidth: .infinity)
+            .frame(height: 15)
+        }
+    }
+
+    private func setMono(_ channel: TrackChannel, _ on: Bool) {
+        model.updateTrackChannels { list in
+            guard let index = list.channels.firstIndex(where: { $0.id == channel.id }) else { return }
+            list.channels[index].mono = on ? true : nil
         }
     }
 
     private func trackRouteSlot(_ channel: TrackChannel, current: String?) -> ConsoleSlot {
-        .menu(current.flatMap { mixInventory.entry(id: $0)?.name } ?? "No Mix", accent: current == nil && channel.trackRole != .music, content: {
+        .menu(current.flatMap { mixInventory.entry(id: $0)?.name } ?? (channel.trackRole == .music ? "Off Main" : "No Mix"), accent: current == nil && channel.trackRole != .music, content: {
             AnyView(Group {
                 Toggle("No Mix", isOn: Binding(
                     get: { current == nil },
@@ -741,7 +741,7 @@ struct AudioMixerModule: View {
         let token = mixInventory.primaryToken(mixId: mix.id)
         if token == AudioMixInventory.noOutputID { return "Virtual" }
         if token == AudioMixInventory.defaultOutputID { return "Default" }
-        return outputInventory.entry(id: token)?.name ?? "Missing"
+        return outputInventory.entry(id: token)?.shortName ?? "Missing"
     }
 
     private func mixSendsSlot(
@@ -754,7 +754,7 @@ struct AudioMixerModule: View {
         let virtual = AudioMixInventory.isVirtual(mix.outputIds)
         let title = sends.isEmpty ? "+ send"
             : (sends.count == 1
-                ? (outputInventory.entry(id: sends[0])?.name ?? "1 send")
+                ? (outputInventory.entry(id: sends[0])?.shortName ?? "1 send")
                 : "\(sends.count) sends")
         return .popover(title, accent: !sends.isEmpty, quiet: sends.isEmpty, content: {
             AnyView(VStack(alignment: .leading, spacing: 8) {

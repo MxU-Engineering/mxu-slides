@@ -102,7 +102,7 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(TimelineTracks.channel(forFileName: "Keys 2.wav", in: keys) == nil)
 
     let pair = TimelineTracks.assign(fileNames: ["EG.wav", "EG Lead.wav", "Keys.wav", "Piano.wav"], to: keys, newID: newID)
-    #expect(pair.channels.map(\.name) == ["Keys", "Electric Guitar", "Electric Guitar Lead", "Piano"])
+    #expect(pair.channels.map(\.name) == ["Electric Guitar", "Electric Guitar Lead", "Keys", "Piano"])
 
     let twice = TimelineTracks.assign(fileNames: ["EG.wav", "eg.WAV"], to: [], newID: newID)
     #expect(twice.channels.map(\.name) == ["Electric Guitar", "Electric Guitar 2"])
@@ -142,10 +142,11 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
                  "Guide", "Keys 1", "Mellotron", "Organ", "Perc", "Piano", "Strings", "Synth Bass 2", "Synth Bass"]
         .map { $0 + ".m4a" }
     let result = TimelineTracks.assign(fileNames: files, to: [])
+
     #expect(result.channels.map(\.name) == [
-        "Acoustic Guitar", "Background Vocals", "Bass", "Click", "Drums", "Electric Guitar 1", "Electric Guitar 2",
-        "Electric Guitar 3", "Electric Guitar 4", "Electric Piano", "Guide", "Keys 1", "Mellotron", "Organ",
-        "Percussion", "Piano", "Strings", "Synth Bass 2", "Synth Bass",
+        "Click", "Guide", "Drums", "Percussion", "Bass", "Synth Bass", "Synth Bass 2",
+        "Electric Guitar 1", "Electric Guitar 2", "Electric Guitar 3", "Electric Guitar 4", "Acoustic Guitar",
+        "Electric Piano", "Keys 1", "Mellotron", "Organ", "Piano", "Background Vocals", "Strings",
     ])
     #expect(Set(result.assignments.values).count == files.count)
     #expect(result.channels.filter { $0.trackRole != .music }.map(\.name) == ["Click", "Guide"])
@@ -158,6 +159,12 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(next.assignments["Way Maker - Click.wav"] == byName["Click"])
     #expect(next.assignments["Way Maker - EG 2.wav"] == byName["Electric Guitar 2"])
     #expect(next.assignments["Way Maker - Keys.wav"] == byName["Keys 1"])
+
+    var moved = result.channels
+    moved.append(moved.remove(at: 0))
+    let pads = TimelineTracks.assign(fileNames: ["Pads.wav"], to: moved)
+    #expect(pads.channels.last?.name == "Click")
+    #expect(pads.channels.firstIndex { $0.name == "Pads" } == pads.channels.firstIndex { $0.name == "Background Vocals" }! - 1)
 }
 
 @Test func everyChannelFeedsItsFamilysBus() {

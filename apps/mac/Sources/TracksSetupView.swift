@@ -16,6 +16,7 @@ struct TracksMixerButton: View {
                 .moduleHeaderGlyph(tracksOn ? AnyShapeStyle(Color.purple) : AnyShapeStyle(.secondary))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Tracks")
         .help(tracksOn ? "Tracks: where click, guide and the tracks go" : "Tracks: play songs' stems from this computer")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             if tracksOn {
@@ -102,8 +103,13 @@ struct TracksSetupGuide: View {
                 if let applied { Text(applied).font(.caption).foregroundStyle(.secondary) }
             }
             DisclosureGroup("Change which mixes go where") {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(TimelineTracks.Family.allCases, id: \.self) { family in outputRow(family, device) }
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+                    ForEach(TimelineTracks.Family.allCases, id: \.self) { family in
+                        GridRow {
+                            Text(family.name).gridColumnAlignment(.trailing)
+                            outputRow(family, device)
+                        }
+                    }
                 }
                 .padding(.top, 4)
             }
@@ -161,7 +167,7 @@ struct TracksSetupGuide: View {
     }
 
     private func outputRow(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?) -> some View {
-        Picker(family.name, selection: Binding(
+        Picker("", selection: Binding(
             get: { current(family, device) },
             set: { assign(family, device, $0) }
         )) {
@@ -169,12 +175,14 @@ struct TracksSetupGuide: View {
             if let device {
                 ForEach(0 ..< device.channelCount, id: \.self) { Text("Output \($0 + 1)").tag($0) }
                 Divider()
-                ForEach(Array(stride(from: 0, to: device.channelCount - 1, by: 2)), id: \.self) {
-                    Text("Outputs \($0 + 1)-\($0 + 2) (stereo)").tag(Self.pairBase + $0)
+
+                ForEach(0 ..< max(0, device.channelCount - 1), id: \.self) {
+                    Text("Outputs \($0 + 1)\u{2013}\($0 + 2) (stereo)").tag(Self.pairBase + $0)
                 }
             }
         }
-        .frame(width: 330)
+        .labelsHidden()
+        .frame(width: 240)
     }
 
     private func current(_ family: TimelineTracks.Family, _ device: AudioOutputDevice?) -> Int {

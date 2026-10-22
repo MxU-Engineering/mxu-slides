@@ -171,7 +171,8 @@ final class MultitrackRenderer: @unchecked Sendable {
         mxu_store_i64(publishedFrame, frame - Int64(playing ? offset : 0))
         mxu_store_i64(publishedHostTime, Int64(bitPattern: hostTime))
         mxu_store_i64(publishedPlaying, playing && envelopeTarget > 0 ? 1 : 0)
-        guard playing, let program = current?.takeUnretainedValue() else { return }
+
+        guard playing, let program = current?.takeUnretainedValue() else { rampFrom = nil; return }
         var done = offset
         while done < total {
             let count = min(maxFrames, total - done)

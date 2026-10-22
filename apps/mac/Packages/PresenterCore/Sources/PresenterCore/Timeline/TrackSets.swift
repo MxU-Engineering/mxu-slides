@@ -26,8 +26,8 @@ public enum TrackSets {
 
     public static func download(forFiles paths: [String]) -> Download {
         for path in paths {
-            var folder = (path as NSString).deletingLastPathComponent
-            for _ in 0 ..< 2 {
+            var folder = path
+            for _ in 0 ..< 3 {
                 let found = download(fromFolder: (folder as NSString).lastPathComponent)
                 if found.key != nil { return found }
                 folder = (folder as NSString).deletingLastPathComponent

@@ -11,6 +11,8 @@ import Testing
 
     let files = ["/Users/x/Downloads/Run To The Father-Run to the Father-C-68.50bpm/MultiTracks/EG 1.m4a"]
     #expect(TrackSets.download(forFiles: files).tempo == 68.5)
+
+    #expect(TrackSets.download(forFiles: ["/Users/x/Downloads/Run To The Father-Run to the Father-C-68.50bpm"]).key == "C")
     #expect(TrackSets.name(song: "Run to the Father", key: "C", tempo: 68.5) == "Run to the Father — C, 68.5 bpm")
     #expect(TrackSets.name(song: "Way Maker", key: nil, tempo: 136) == "Way Maker — 136 bpm")
     #expect(TrackSets.name(song: "Song", key: nil, tempo: nil) == "Song")
