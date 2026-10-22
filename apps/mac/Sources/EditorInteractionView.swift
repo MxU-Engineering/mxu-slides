@@ -1742,7 +1742,23 @@ final class OverlayTextView: NSTextView {
     }
     override func mouseDragged(with event: NSEvent) { super.mouseDragged(with: remapped(event)) }
     override func mouseUp(with event: NSEvent) { super.mouseUp(with: remapped(event)) }
-    override func rightMouseDown(with event: NSEvent) { super.rightMouseDown(with: remapped(event)) }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let event = remapped(event)
+        if let editLayout {
+            let hit = caretIndex(at: event, in: editLayout)
+            var target = selectedRange()
+            if target.length == 0 || hit < target.location || hit > NSMaxRange(target) {
+                target = NSRange(location: hit, length: 0)
+            }
+            if let menu = menu(for: event) {
+                setSelectedRange(target)
+                NSMenu.popUpContextMenu(menu, with: event, for: self)
+            }
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
     override func mouseMoved(with event: NSEvent) { super.mouseMoved(with: remapped(event)) }
 
     var editLayout: TextEditLayout? {

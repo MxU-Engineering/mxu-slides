@@ -180,7 +180,8 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertEqual(new.objects[1].chords, [ChordPlacement(line: 0, column: 4, symbol: "D")])
         XCTAssertEqual(new.objects[1].styleRuns, [TextStyleRun(line: 0, column: 4, length: 5, underline: true)])
         XCTAssertEqual(new.sectionId, "v1", "the new slide stays in the section")
-        XCTAssertNil(new.actions, "an action would fire twice")
+        XCTAssertEqual(new.actions?.map(\.kind), [.fireMedia], "the slide's actions come along")
+        XCTAssertNotEqual(new.actions?.first?.id, "a1", "with their own ids")
         XCTAssertNil(new.notes)
         XCTAssertFalse(new.objects.contains { ["verse", "ref"].contains($0.id) }, "fresh object ids")
 

@@ -279,7 +279,6 @@ public enum SlideBulkEdit {
             var movedStart = cut
             while movedStart < characters.count, characters[movedStart].isWhitespace { movedStart += 1 }
             var copy = presentation.slides[slideIndex].freshIDCopy()
-            copy.actions = nil
             copy.notes = nil
             copy.history = nil
             copy.objects[objectIndex].replaceText(0..<movedStart, with: "")
@@ -304,6 +303,11 @@ extension Slide {
                 object.maskObjectId = moved
             }
             return object
+        }
+        copy.actions = copy.actions?.map { action in
+            var action = action
+            action.id = UUID().uuidString
+            return action
         }
         return copy
     }
