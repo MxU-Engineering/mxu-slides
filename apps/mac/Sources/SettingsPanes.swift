@@ -11,6 +11,8 @@ struct SettingsCategoryPane: View {
     let model: AppModel?
     let controls: ServiceControls?
 
+    var tag: (String) -> SettingsLayout.Tag? = { _ in nil }
+
     enum Page: Equatable {
         case list
         case videoInput(String)
@@ -73,7 +75,7 @@ struct SettingsCategoryPane: View {
             Form {
                 MIDIDevicesSection { page = .midiDevice($0) }
                 Section {
-                    ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0) }
+                    ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0, tag: tag($0.id)) }
                 }
             }
             .settingsForm()
@@ -84,24 +86,27 @@ struct SettingsCategoryPane: View {
         default:
 
             Form {
-                ForEach(Self.sectioned(rows), id: \.first!.id) { run in
-                    if let spec = run.first, spec.stacked {
+                ForEach(Self.sections(rows, page: category.rawValue), id: \.id) { section in
+                    if section.stacked, let spec = section.rows.first {
                         Section {
                             spec.control
                         } header: {
-                            Text(spec.title)
+                            SettingsRowTitle(title: spec.title, tag: tag(spec.id))
+                                .settingsHelp(spec.help)
                         } footer: {
                             if let caption = spec.caption { Text(caption) }
                         }
                     } else {
                         Section {
-                            ForEach(run) { spec in
+                            ForEach(section.rows) { spec in
                                 if spec.id == "groups.palette" {
                                     drillIn(spec) { page = .groups }
                                 } else {
-                                    SettingsFormRow(spec: spec)
+                                    SettingsFormRow(spec: spec, tag: tag(spec.id))
                                 }
                             }
+                        } header: {
+                            if let title = section.title { Text(title) }
                         }
                     }
                 }
@@ -117,7 +122,7 @@ extension SettingsCategoryPane {
         Button(action: open) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(spec.title)
+                    SettingsRowTitle(title: spec.title, tag: tag(spec.id))
                     if let caption = spec.caption {
                         Text(caption).font(.caption).foregroundStyle(.secondary)
                     }
@@ -131,16 +136,21 @@ extension SettingsCategoryPane {
         .buttonStyle(.plain)
     }
 
-    static func sectioned(_ rows: [SettingsRowSpec]) -> [[SettingsRowSpec]] {
-        var runs: [[SettingsRowSpec]] = []
-        for spec in rows {
-            if !spec.stacked, let last = runs.last, let head = last.first, !head.stacked {
-                runs[runs.count - 1].append(spec)
-            } else {
-                runs.append([spec])
-            }
+    struct PageSection: Identifiable {
+        let id: String
+        let title: String?
+        let rows: [SettingsRowSpec]
+        var stacked: Bool { rows.first?.stacked ?? false }
+    }
+
+    static func sections(_ rows: [SettingsRowSpec], page: String) -> [PageSection] {
+        let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return (SettingsLayout.page(id: page)?.sections ?? []).flatMap { section in
+            let specs = section.rows.compactMap { byID[$0] }
+            let inline = specs.filter { !$0.stacked }
+            let runs = specs.filter(\.stacked).map { PageSection(id: $0.id, title: nil, rows: [$0]) }
+            return (inline.isEmpty ? [] : [PageSection(id: inline[0].id, title: section.title, rows: inline)]) + runs
         }
-        return runs
     }
 }
 
@@ -179,17 +189,52 @@ struct SettingsPageHeader: View {
 
 struct SettingsFormRow: View {
     let spec: SettingsRowSpec
+    var tag: SettingsLayout.Tag? = nil
 
     var body: some View {
         LabeledContent {
             spec.control
         } label: {
-            Text(spec.title)
+            SettingsRowTitle(title: spec.title, tag: tag)
             if let caption = spec.caption, !caption.isEmpty {
                 Text(caption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+        }
+        .settingsHelp(spec.help)
+    }
+}
+
+struct SettingsRowTitle: View {
+    let title: String
+    let tag: SettingsLayout.Tag?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+            if let tag {
+                Text(tag.words)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.primary.opacity(0.07), in: Capsule())
+                    .help(tag.help)
+            }
+        }
+    }
+}
+
+extension View {
+
+    @ViewBuilder
+    func settingsHelp(_ text: String?) -> some View {
+        if let text {
+            help(text)
+        } else {
+            self
         }
     }
 }

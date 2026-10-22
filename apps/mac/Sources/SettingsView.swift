@@ -46,7 +46,8 @@ struct AppSettingsView: View {
                 SettingsCategoryPane(
                     category: category,
                     rows: allRows.filter { $0.category == category },
-                    model: model, controls: controls)
+                    model: model, controls: controls,
+                    tag: tag(forRow:))
                     .id(category)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -59,6 +60,8 @@ struct AppSettingsView: View {
         .background(SettingsWindowFrame())
         .background(Color.basePlane)
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
+
+        .task { await workspaceLinks?.refresh() }
         .onAppear {
             if let pending = SettingsRouter.shared.pending {
                 category = pending
@@ -192,7 +195,7 @@ struct AppSettingsView: View {
                                         if let caption = spec.caption { Text(caption).font(.caption).foregroundStyle(.secondary) }
                                     }
                                 } else {
-                                    SettingsFormRow(spec: spec)
+                                    SettingsFormRow(spec: spec, tag: tag(forRow: spec.id))
                                 }
                             }
                         }
@@ -215,7 +218,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "appearance.scheme",
                 title: "Appearance",
-                caption: "One scheme across Present and Edit; dark is the booth default.",
+                caption: "Dark is the booth default.",
                 keywords: "theme dark light system color scheme",
                 control: AnyView(
                     Picker("", selection: $appearanceRaw) {
@@ -229,7 +232,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.mediaTransition",
                 title: "Media transition",
-                caption: "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The header's transition chips change the same setting.",
+                caption: "How backgrounds and media come in.",
                 keywords: "transition dissolve fade blur media default cut clear background foreground",
                 control: AnyView(DefaultTransitionControl(
                     kindKey: "transition.media.kind", durationKey: "transition.media.duration",
@@ -239,7 +242,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.slideTransition",
                 title: "Slide transition",
-                caption: "How the slide layer changes between slides. Cut is the lyrics-safe default.",
+                caption: "How the words change. Cut is safest for lyrics.",
                 keywords: "transition dissolve fade slide default cut lyrics",
                 control: AnyView(DefaultTransitionControl(
                     kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
@@ -249,21 +252,21 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.defaultAnimations",
                 title: "Default animations",
-                caption: "What Apply Default In / Apply Default Out write on the timeline's presence-bar ends. A preset's Set as Default In/Out changes it too.",
+                caption: "What Apply Default In and Out use.",
                 keywords: "animation default in out fade timeline animate steps",
                 control: AnyView(DefaultAnimationsControl(model: model))
             ),
             SettingsRowSpec(
                 id: "present.continuous",
                 title: "Continuous service view",
-                caption: "The whole run order scrolls as one surface; arrows advance across items.",
+                caption: "The whole service scrolls as one list.",
                 keywords: "scroll run order single item",
                 control: AnyView(Toggle("", isOn: $continuousPresent).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.slidesAcross",
                 title: "Slides across",
-                caption: "How many slide thumbnails share a row in Present — a fixed count, never a fit to the window or the sidebars.",
+                caption: "How many slides per row.",
                 keywords: "slide grid columns across per row thumbnails size zoom",
                 control: AnyView(SlidesAcrossControl(count: $slidesAcross).frame(width: 190))
             ),
@@ -277,21 +280,21 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.transparencyGrid",
                 title: "Transparency grid",
-                caption: "Checkerboard shows wherever nothing opaque covers the slide — where lower layers would show through on glass.",
+                caption: "A checkerboard where the slide is see-through.",
                 keywords: "transparency grid checkerboard alpha thumbnails photoshop",
                 control: AnyView(Toggle("", isOn: $transparencyGrid).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.scopedBackgrounds",
                 title: "Backgrounds only on declaring slide",
-                caption: "Thumbnails after the declaring slide drop the shared background.",
+                caption: "Later thumbnails drop a shared background.",
                 keywords: "slide grid backgrounds cue thumbnails",
                 control: AnyView(Toggle("", isOn: $hideScopedBackgrounds).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.clearAllAudio",
                 title: "Clear All clears",
-                caption: "Unticked stays up through Clear All (walk-in music, a live camera); its own Clear button still takes it down. Also on a right-click of the header's Clear.",
+                caption: "Unticked stays up through Clear All.",
                 keywords: "clear all audio panic walk-in music inputs camera video input signage skip keep",
                 control: AnyView(ClearAllChecklist()),
                 stacked: true
@@ -299,7 +302,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.emptyRepeatsOnce",
                 title: "Show a repeated chord-only section once",
-                caption: "When a song plays the same section twice in a row and it has only chords or nothing on it (an Interlude played twice), Present shows it once. Off, every repeat the order calls for is a slide to click. Sections with words, media or a different set of chords always play.",
+                caption: "An Interlude played twice shows once.",
                 keywords: "repeat repeated duplicate interlude instrumental turnaround chords blank empty section skip once arrangement",
                 control: AnyView(Toggle("", isOn: Binding(
                     get: { emptyRepeatsOnce },
@@ -313,7 +316,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.nextSkipsBlanks",
                 title: "Confidence NEXT skips blank slides",
-                caption: "Blank slides parked as clears are ignored — NEXT shows the first upcoming slide that has text.",
+                caption: "NEXT shows the next slide with words.",
                 keywords: "confidence monitor next blank empty slide stage skip",
                 control: AnyView(Toggle("", isOn: Binding(
                     get: { nextSkipsBlanks },
@@ -329,7 +332,7 @@ struct AppSettingsView: View {
             rows.append(SettingsRowSpec(
                 id: "present.layouts",
                 title: "Present layouts",
-                caption: "Save and switch whole workspace arrangements — panels, sizes, and windows (moved here from the footer).",
+                caption: "Save and switch panel arrangements.",
                 keywords: "layout workspace arrangement save panels windows dock",
                 control: AnyView(PresentLayoutMenuControl(layout: layout) { saved in
                     requestRunOnly(applying: saved)
@@ -338,7 +341,7 @@ struct AppSettingsView: View {
             rows.append(SettingsRowSpec(
                 id: "present.runOnly",
                 title: "Run-Only Mode",
-                caption: "Strips every editing affordance — volunteers run slides, clears, and the Service Controls tabs you pick on entry. Exiting asks for the passcode.",
+                caption: "Volunteers run slides with editing hidden.",
                 keywords: "run only volunteer lock passcode pin kiosk",
                 control: AnyView(HStack(spacing: 6) {
                     if layout.hasPIN {
@@ -354,7 +357,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "screens.configuration",
                 title: "Screen Configuration",
-                caption: "Screens, output backing and layer routing.",
+                caption: "Screens, outputs and layer routing.",
                 keywords: "outputs displays routing placeholder ndi screens",
                 control: AnyView(OpenScreenConfigurationButton(count: controls?.render.outputs.placeholderScreens.count))
             )
@@ -372,7 +375,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "avInputs.cameras",
             title: "Video inputs",
-            caption: "Added inputs run warm from launch and appear in Live Input pickers — slides never wait on a camera spinning up.",
+            caption: "Cameras, capture cards and NDI sources.",
             keywords: "camera capture device uvc continuity blackmagic live input video refresh",
             control: AnyView(EmptyView()),
             stacked: true
@@ -380,7 +383,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "avInputs.audio",
             title: "Audio inputs",
-            caption: "Interfaces and board feeds — each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
+            caption: "Interfaces and board feeds.",
             keywords: "audio input microphone interface usb board mix feed sound stream record source channels",
             control: AnyView(EmptyView()),
             stacked: true
@@ -388,7 +391,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "avInputs.outputs",
             title: "Audio outputs",
-            caption: "The output patch bay — named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
+            caption: "Named outputs for the Mixer.",
             keywords: "audio output speaker device dante interface patch stereo pair mix send",
             control: AnyView(EmptyView()),
             stacked: true
@@ -396,7 +399,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "midi.devices",
             title: "MIDI devices",
-            caption: "Devices MIDI talks to — each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
+            caption: "Devices MIDI sends to and listens to.",
             keywords: "midi device destination source input output port note control change iac lighting console enable disable direction",
             control: AnyView(EmptyView()),
             stacked: true
@@ -404,7 +407,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "midi.map",
             title: "Input map",
-            caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
+            caption: "What incoming notes trigger.",
             keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter overlay prop playlist media audio music alert message select index",
             control: AnyView(MIDIMapManager())
         ))
@@ -412,7 +415,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "network.ndi",
             title: "NDI network",
-            caption: "The network NDI discovers and carries video on — inputs and screen outputs alike. Pin it to the wired production network when this Mac also joins Wi-Fi on another VLAN — even when both carry the same VLAN, the pin keeps NDI on the wire. Applies immediately; live feeds re-tune.",
+            caption: "The network NDI uses. Pin it to the wired one.",
             keywords: "ndi network interface adapter nic vlan ethernet wifi wired discovery pin bind",
             control: AnyView(NDINetworkScopeControl())
         ))
@@ -439,7 +442,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "streamRecord.pane",
                 title: "Stream & Record",
-                caption: "Destinations are the places you can stream to; presets say which ones, what streams, and what records.",
+                caption: "Where you stream to, and what streams and records.",
                 keywords: "stream record preset destination rtmp rtmps srt hls youtube facebook key bitrate go live sunday record only visibility",
                 control: AnyView(Button("Show") { query = ""; category = .streamRecord })
             ),
@@ -451,8 +454,8 @@ struct AppSettingsView: View {
         return [
             SettingsRowSpec(
                 id: "api.enabled",
-                title: "Local API",
-                caption: "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
+                title: "Serve the API",
+                caption: "The REST and WebSocket API on this Mac.",
                 keywords: "api rest websocket http server remote companion stream deck automation bonjour",
                 control: AnyView(LocalAPIEnableToggle(api: api))
             ),
@@ -467,21 +470,21 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "api.address",
                 title: "Connect at",
-                caption: "Enter this address and port in Companion, a Stream Deck, or any remote — then sign in with an access key from the row below.",
+                caption: "Enter this in Companion or a Stream Deck.",
                 keywords: "api address ip port connect companion stream deck remote host default key",
                 control: AnyView(LocalAPIAddressRow(api: api))
             ),
             SettingsRowSpec(
                 id: "api.tokens",
                 title: "Access keys",
-                caption: "Required — nothing connects without one. Create a key here and paste it into the client. Each key grants Watch, Operate, or Manage access.",
+                caption: "Every client needs one.",
                 keywords: "api tokens keys auth bearer secret scope watch operate manage revoke password required",
                 control: AnyView(LocalAPITokensButton(api: api))
             ),
             SettingsRowSpec(
                 id: "api.docs",
                 title: "API reference",
-                caption: "A browsable page of every endpoint with descriptions and copyable examples — served by this Mac, works offline.",
+                caption: "Every endpoint, with examples. Works offline.",
                 keywords: "api reference docs documentation openapi explorer examples endpoints developer",
                 control: AnyView(LocalAPIContractRow(api: api))
             ),
@@ -494,7 +497,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "audio.fadeEnabled",
                 title: "Fade in and out",
-                caption: "Play, pause, and Clear Music ease over the fade time — every bus.",
+                caption: "Play, pause and Clear Music ease in and out.",
                 keywords: "audio fade transport ease",
                 control: AnyView(
                     Toggle("", isOn: Binding(
@@ -608,12 +611,49 @@ struct SettingsRowSpec: Identifiable {
 
     var stacked: Bool = false
 
+    var help: String? { Self.help[id] }
+
+    static let help: [String: String] = [
+        "account.autoSwitchServiceTimes": "Ten minutes before each service time (rehearsals don't count), a one-minute countdown moves this computer onto it and ends the rehearsal or earlier time still running in MxU. Cancel keeps the current time. Same as the dashboards' auto switch.",
+        "account.documentSync": "Force Sync re-checks everything with MxU and retries anything stuck.",
+        "account.messageNotesReview": "After the first deck is made, a Ready click either lists every change under the note (new slides, replaced words, removals) for Apply or Skip, or applies them all at once. The first run always lands whole. The web's per-service-type setting wins when the plan carries one; this is the fallback.",
+        "account.messageNotesTheme": "The theme slides are made on when a pastor marks message notes ready for slides on the web. Decks land in the Message Notes folder. Blank = the lyrics theme.",
+        "account.session": "Linked streaming destinations, synced service plans, notes and dashboards come from this account.",
+        "api.address": "Enter this address and port in Companion, a Stream Deck, or any remote, then sign in with an access key from the row below.",
+        "api.docs": "A browsable page of every endpoint with descriptions and copyable examples, served by this Mac.",
+        "api.enabled": "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
+        "api.tokens": "Required: nothing connects without one. Create a key here and paste it into the client. Each key grants Watch, Operate, or Manage access.",
+        "appearance.scheme": "One scheme across Present and Edit.",
+        "audio.fadeEnabled": "Every bus.",
+        "avInputs.audio": "Each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
+        "avInputs.cameras": "Added inputs run warm from launch and appear in Live Input pickers, so slides never wait on a camera spinning up.",
+        "avInputs.outputs": "The output patch bay: named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
+        "midi.devices": "Each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
+        "midi.map": "Clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
+        "network.ndi": "NDI discovers and carries video on this network, inputs and screen outputs alike. Pin it to the wired production network when this Mac also joins Wi-Fi on another VLAN. Applies immediately; live feeds re-tune.",
+        "present.clearAllAudio": "Walk-in music or a live camera can stay up through Clear All; its own Clear button still takes it down. Also on a right-click of the header's Clear.",
+        "present.continuous": "The whole run order scrolls as one surface; arrows advance across items.",
+        "present.defaultAnimations": "What Apply Default In / Apply Default Out write on the timeline's presence-bar ends. A preset's Set as Default In/Out changes it too.",
+        "present.emptyRepeatsOnce": "When a song plays the same section twice in a row and it has only chords or nothing on it, Present shows it once. Off, every repeat the order calls for is a slide to click. Sections with words, media or a different set of chords always play.",
+        "present.layouts": "Save and switch whole arrangements: panels, sizes and windows.",
+        "present.mediaTransition": "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The header's transition chips change the same setting.",
+        "present.nextSkipsBlanks": "Blank slides parked as clears are ignored: NEXT shows the first upcoming slide that has text.",
+        "present.runOnly": "Strips every editing affordance: volunteers run slides, clears, and the Service Controls tabs you pick on entry. Exiting asks for the passcode.",
+        "present.scopedBackgrounds": "Thumbnails after the declaring slide drop the shared background.",
+        "present.slideTransition": "How the slide layer changes between slides. The header's transition chips change the same setting.",
+        "present.slidesAcross": "How many slide thumbnails share a row in Present: a fixed count, never a fit to the window or the sidebars.",
+        "present.transparencyGrid": "Checkerboard shows wherever nothing opaque covers the slide, where lower layers would show through on glass.",
+        "station.offline": "To free space, right-click a folder in the library and choose Sync › Cloud Only.",
+        "streamRecord.pane": "Destinations are the places you can stream to; presets say which ones, what streams, and what records.",
+        "updates.automatic": "Checks at launch and every hour and downloads in the background. Check for Updates… in the app menu always works.",
+    ]
+
     var category: SettingsCategory {
         SettingsLayout.page(ofRow: id).flatMap(SettingsCategory.init(rawValue:)) ?? .general
     }
 
     var searchText: String {
-        "\(title) \(caption ?? "") \(keywords) \(category.title)".lowercased()
+        "\(title) \(caption ?? "") \(help ?? "") \(keywords) \(category.title)".lowercased()
     }
 }
 
