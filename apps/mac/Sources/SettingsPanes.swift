@@ -1044,8 +1044,11 @@ private struct TrackChannelDetail: View {
 
                 Section {
                     let names = channel.matchNames ?? []
-                    if names.isEmpty {
-                        Text("None").foregroundStyle(.secondary)
+
+                    HStack {
+                        Text(channel.name)
+                        Spacer()
+                        Text("Track name").foregroundStyle(.secondary)
                     }
                     ForEach(names, id: \.self) { name in
                         HStack {
@@ -1067,7 +1070,7 @@ private struct TrackChannelDetail: View {
                 } header: {
                     Text("Matching File Names")
                 } footer: {
-                    Text("When you import audio, files with these names go on this track too.")
+                    Text("When you import audio, files with these names go on this track.")
                 }
                 Section {
                     Button(checkingUses ? "Checking Songs\u{2026}" : "Delete Track\u{2026}", role: .destructive) {
@@ -1125,6 +1128,7 @@ private struct TrackChannelDetail: View {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         tracks?.editChannel(id) { channel in
+            guard channel.name.caseInsensitiveCompare(trimmed) != .orderedSame else { return }
             var names = channel.matchNames ?? []
             if !names.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { names.append(trimmed) }
             channel.matchNames = names
