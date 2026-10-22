@@ -646,7 +646,7 @@ struct ActionPlacementSheet: View {
     }
 }
 
-struct ActionMenuRows: View {
+struct ActionsMenu: View {
     let model: AppModel
     let actionRouter: ActionRouter?
     let actions: [SlideAction]
@@ -660,18 +660,24 @@ struct ActionMenuRows: View {
     var body: some View {
         let timers = actionRouter?.timerChoices ?? []
         let screens = actionRouter?.confidenceScreenChoices ?? []
-        ForEach(actions) { action in
-            Menu(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens)) {
-                Button("Edit…") { edit(action) }
-                Button("Remove", role: .destructive) { remove(action) }
+        Menu(actions.isEmpty ? "Actions: None" : "Actions: \(actions.count)") {
+            Menu("Add Action") {
+                AddActionMenuItems(model: model, timers: timers, add: add)
             }
-        }
-        Menu("Add Action") {
-            AddActionMenuItems(model: model, timers: timers, add: add)
-        }
-        if actions.count > 1 {
-            Button("Edit All…") { editAll() }
-            Button("Remove All", role: .destructive) { removeAll() }
+            if !actions.isEmpty {
+                Divider()
+                ForEach(actions) { action in
+                    Menu(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens)) {
+                        Button("Edit…") { edit(action) }
+                        Button("Remove", role: .destructive) { remove(action) }
+                    }
+                }
+            }
+            if actions.count > 1 {
+                Divider()
+                Button("Edit All…") { editAll() }
+                Button("Remove All", role: .destructive) { removeAll() }
+            }
         }
     }
 }

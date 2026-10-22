@@ -165,7 +165,7 @@ struct MediaCueGrammarItems: View {
 
     var body: some View {
         if let item = model.media(mediaID) {
-            ActionMenuRows(
+            ActionsMenu(
                 model: model, actionRouter: actionRouter,
                 actions: item.actions ?? [],
                 add: { addAction($0, to: item) },

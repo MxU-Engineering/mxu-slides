@@ -864,32 +864,31 @@ struct SlideGridBody: View {
             TransitionMenu(current: first, mixed: transitions.contains { $0 != first }, inherited: presentation.transition) { transform in
                 setTransition(transform, on: slideIDs)
             }
-        }
 
-        Section("Actions") {
-            Menu("Add Action") {
-                AddActionMenuItems(
-                    model: model,
-                    timers: actionRouter?.timerChoices ?? []
-                ) { action in
+            Menu("Actions") {
+                Menu("Add Action") {
+                    AddActionMenuItems(
+                        model: model,
+                        timers: actionRouter?.timerChoices ?? []
+                    ) { action in
 
-                    actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
+                        actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
+                    }
                 }
-            }
-            let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
-            if !kinds.isEmpty {
-                Menu("Remove Actions") {
-                    ForEach(kinds, id: \.rawValue) { kind in
-                        Button(kind.displayName, role: .destructive) {
-                            model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Action") {
-                                SlideBulkEdit.removeActions(
-                                    ofKind: kind, from: slideIDs, in: &$0)
+                let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
+                if !kinds.isEmpty {
+                    Section("Remove") {
+                        ForEach(kinds, id: \.rawValue) { kind in
+                            Button(kind.displayName, role: .destructive) {
+                                model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Action") {
+                                    SlideBulkEdit.removeActions(
+                                        ofKind: kind, from: slideIDs, in: &$0)
+                                }
                             }
                         }
-                    }
-                    Divider()
-                    Button("All Actions", role: .destructive) {
-                        removeAllActions(from: slideIDs)
+                        Button("All Actions", role: .destructive) {
+                            removeAllActions(from: slideIDs)
+                        }
                     }
                 }
             }
@@ -1066,8 +1065,8 @@ struct SlideGridBody: View {
             TransitionMenu(current: slide.transition, inherited: presentation.transition) { transform in
                 setTransition(transform, on: [slide.id])
             }
+            slideActionsMenu(slide)
         }
-        slideActionsSection(slide)
         let mediaIDs = cueMediaIDs(of: slide)
         if !mediaIDs.isEmpty {
             Section("Media") {
@@ -1126,22 +1125,20 @@ struct SlideGridBody: View {
         }
     }
 
-    private func slideActionsSection(_ slide: Slide) -> some View {
-        Section("Actions") {
-            ActionMenuRows(
-                model: model, actionRouter: actionRouter,
-                actions: slide.actions ?? [],
-                add: { actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: $0) },
-                edit: { actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: $0, editing: true) },
-                remove: { action in
-                    model.updateSlide(presentationID: presentation.id, slideID: slide.id, undoLabel: "Remove Action") {
-                        $0.actions = SlideBulkEdit.removing(actionID: action.id, from: $0.actions)
-                    }
-                },
-                editAll: { actionEditorSlide = slide },
-                removeAll: { removeAllActions(from: [slide.id]) }
-            )
-        }
+    private func slideActionsMenu(_ slide: Slide) -> some View {
+        ActionsMenu(
+            model: model, actionRouter: actionRouter,
+            actions: slide.actions ?? [],
+            add: { actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: $0) },
+            edit: { actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: $0, editing: true) },
+            remove: { action in
+                model.updateSlide(presentationID: presentation.id, slideID: slide.id, undoLabel: "Remove Action") {
+                    $0.actions = SlideBulkEdit.removing(actionID: action.id, from: $0.actions)
+                }
+            },
+            editAll: { actionEditorSlide = slide },
+            removeAll: { removeAllActions(from: [slide.id]) }
+        )
     }
 
     private func removeAllActions(from slideIDs: [String]) {
