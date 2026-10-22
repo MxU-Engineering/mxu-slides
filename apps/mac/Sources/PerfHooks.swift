@@ -9,13 +9,15 @@ enum PerfHooks {
 
     private static weak var editor: SlideEditorModel?
 
+    static weak var controls: ServiceControls?
+
     static func start(model: AppModel) {
         guard let spec = ProcessInfo.processInfo.environment[PerfScenario.environmentKey] else { return }
         guard let scenario = PerfScenario(spec) else {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
             return
         }
-        observe(["mark", "targets", "play", "stop", "themes"])
+        observe(["mark", "targets", "play", "stop", "themes", "timeline"])
         Task { await run(scenario, spec: spec, model: model) }
     }
 
@@ -146,6 +148,19 @@ enum PerfHooks {
             }
         case "stop":
             editor?.stopAnimationPreview()
+            controls?.timeline.stop()
+        case "timeline":
+            guard let controls else { return }
+            let model = controls.appModel
+            guard let service = model.currentServiceID.flatMap({ try? model.service($0) }),
+                  let (item, deck) = model.fireableItems(service).lazy.compactMap({ item -> (ServiceItem, Presentation)? in
+                      guard item.itemKind == .presentation, let deck = model.presentation(item.refId),
+                            PresentationTimelines.timeline(for: item.arrangementId, in: deck) != nil else { return nil }
+                      return (item, deck)
+                  }).first
+            else { return fail("no song with a timeline in the current service") }
+            controls.timeline.play(itemID: item.id, presentation: deck, arrangementId: item.arrangementId)
+            DiagnosticsStore.shared.note("perf.timeline", detail: deck.name)
         case "themes":
 
             if let editor {

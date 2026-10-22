@@ -127,6 +127,9 @@ struct MxUSlidesApp: App {
         _appModel = State(initialValue: model)
         if let render {
             let controls = ServiceControls(appModel: model, render: render)
+            #if DEBUG || MXU_PERF_HOOKS
+            PerfHooks.controls = controls
+            #endif
             let presets = OutputPresetsController(
                 appModel: model, outputs: render.outputs, controls: controls
             )

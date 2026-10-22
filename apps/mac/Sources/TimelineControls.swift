@@ -1,3 +1,4 @@
+import AppKit
 import PresenterCore
 import SlideScene
 import SwiftUI
@@ -99,7 +100,6 @@ struct TimelineRowHeightControls: View {
         }
         .buttonStyle(.plain)
         .controlSize(.mini)
-        .accessibilityLabel("Shorter Rows")
         .help("Shorter rows")
         Slider(value: Binding(get: { height }, set: { set($0.rounded()) }), in: range)
             .controlSize(.mini)
@@ -112,7 +112,6 @@ struct TimelineRowHeightControls: View {
         }
         .buttonStyle(.plain)
         .controlSize(.mini)
-        .accessibilityLabel("Taller Rows")
         .help("Taller rows")
     }
 }
@@ -158,7 +157,7 @@ struct TimelineRuler: View {
                 let ticks = max(Int(segment.displayDuration / interval), 1)
                 ForEach(0..<ticks, id: \.self) { tick in
                     let seconds = Double(tick) * interval
-                    Text(label?(seconds) ?? (tick == 0 ? "0s" : String(format: "%.1f", seconds)))
+                    Text(tick == 0 ? "0s" : label?(seconds) ?? String(format: "%.1f", seconds))
                         .font(.system(size: 8).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 2)
@@ -212,11 +211,45 @@ struct TimelineScrubStrip<Playhead: View>: View {
     var timelinePlayheadTime: Double { get }
 }
 
+struct TickingIsland<Content: View>: NSViewRepresentable {
+    var fits = false
+    @ViewBuilder let content: Content
+
+    func makeNSView(context: Context) -> TickingHostingView<Content> {
+        let view = TickingHostingView(rootView: content)
+        view.sizingOptions = []
+        return view
+    }
+
+    func updateNSView(_ view: TickingHostingView<Content>, context: Context) {
+        view.rootView = content
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: TickingHostingView<Content>, context: Context) -> CGSize? {
+        fits ? nsView.fittingSize : proposal.replacingUnspecifiedDimensions()
+    }
+}
+
+final class TickingHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 struct TimelinePlayheadReadout<Source: TimelinePlayheadSource>: View {
     let source: Source
     let duration: Double
 
     var text: ((Double) -> String)?
+
+    var body: some View {
+        TickingIsland(fits: true) { PlayheadReadoutFace(source: source, duration: duration, text: text) }
+            .allowsHitTesting(false)
+    }
+}
+
+private struct PlayheadReadoutFace<Source: TimelinePlayheadSource>: View {
+    let source: Source
+    let duration: Double
+    let text: ((Double) -> String)?
 
     var body: some View {
         let t = source.timelinePlayheadTime
@@ -231,31 +264,49 @@ struct TimelinePlayheadReadout<Source: TimelinePlayheadSource>: View {
 struct TimelinePlayheadHandle<Source: TimelinePlayheadSource>: View {
     let source: Source
     let segmentStarts: [Double]
+    let x: (Double) -> CGFloat
 
-    var text: ((Double) -> String)?
+    var body: some View {
+        TickingIsland { PlayheadHandleFace(source: source, segmentStarts: segmentStarts, x: x) }
+            .allowsHitTesting(false)
+    }
+}
 
-    var width: CGFloat = 34
+private struct PlayheadHandleFace<Source: TimelinePlayheadSource>: View {
+    let source: Source
+    let segmentStarts: [Double]
     let x: (Double) -> CGFloat
 
     var body: some View {
         let t = source.timelinePlayheadTime
         let start = segmentStarts.last { $0 <= t } ?? segmentStarts.first
         let within = start.map { max(t - $0, 0) } ?? t
-        Text(text?(within) ?? String(format: "%.2fs", within))
+        Text(String(format: "%.2fs", within))
             .font(.system(size: 8.5, weight: .semibold).monospacedDigit())
             .foregroundStyle(.white)
 
-            .frame(width: width)
+            .frame(width: 34)
             .padding(.vertical, 1)
             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 3))
-
-            .offset(x: max(x(t) - width / 2, 0), y: 2)
+            .offset(x: x(t) - 17, y: 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
 struct TimelinePlayheadLine<Source: TimelinePlayheadSource>: View {
     let source: Source
     var cap = false
+    let x: (Double) -> CGFloat
+
+    var body: some View {
+        TickingIsland { PlayheadLineFace(source: source, cap: cap, x: x) }
+            .allowsHitTesting(false)
+    }
+}
+
+private struct PlayheadLineFace<Source: TimelinePlayheadSource>: View {
+    let source: Source
+    let cap: Bool
     let x: (Double) -> CGFloat
 
     var body: some View {
@@ -267,13 +318,13 @@ struct TimelinePlayheadLine<Source: TimelinePlayheadSource>: View {
             }
             .frame(width: 9)
             .offset(x: x(source.timelinePlayheadTime) - 4.5)
-            .allowsHitTesting(false)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             Rectangle()
                 .fill(Color.accentColor)
                 .frame(width: 1.5)
                 .offset(x: x(source.timelinePlayheadTime))
-                .allowsHitTesting(false)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -296,9 +347,20 @@ struct TimelinePageFollow<Source: TimelinePlayheadSource>: View {
     let turned: (Int) -> Void
 
     var body: some View {
+        TickingIsland { PageFollowFace(source: source, pageWidth: pageWidth, x: x, turned: turned) }
+            .allowsHitTesting(false)
+    }
+}
+
+private struct PageFollowFace<Source: TimelinePlayheadSource>: View {
+    let source: Source
+    let pageWidth: CGFloat
+    let x: (Double) -> CGFloat
+    let turned: (Int) -> Void
+
+    var body: some View {
         let page = pageWidth > 0 ? Int(max(x(source.timelinePlayheadTime), 0) / pageWidth) : 0
         Color.clear
-            .frame(width: 0, height: 0)
             .onChange(of: page) { _, page in turned(page) }
     }
 }
@@ -310,36 +372,21 @@ struct TimelineBlockCard<Content: View>: View {
     let selected: Bool
     var rampIn = false
     var rampOut = false
-
-    var contentX: CGFloat?
-
-    var backdrop: AnyView?
     @ViewBuilder let content: () -> Content
-    @Environment(TimelineVisibleWindow.self) private var window: TimelineVisibleWindow?
 
     var body: some View {
-        let shown = TimelineBlockCard.shown(width: width, contentX: contentX, window: window?.shown)
         HStack(spacing: 4) {
             content()
             Spacer(minLength: 0)
         }
-        .padding(.leading, 9 + shown.lowerBound)
-        .padding(.trailing, 9)
+        .padding(.horizontal, 9)
         .frame(width: width, height: height, alignment: .leading)
-        .background(alignment: .leading) {
-            ZStack(alignment: .leading) {
-                tint.opacity(0.16)
-                backdrop
-            }
-            .mask(alignment: .leading) { Self.shape(shown) }
-        }
-        .overlay(alignment: .leading) {
+        .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .stroke(selected ? Color.accentColor : tint.opacity(0.4),
                         lineWidth: selected ? 1.5 : 1)
-                .frame(width: shown.upperBound - shown.lowerBound)
-                .offset(x: shown.lowerBound)
-        }
+        )
         .overlay(alignment: .leading) {
 
             if rampIn { rampWedge(leading: true) }
@@ -366,18 +413,6 @@ struct TimelineBlockCard<Content: View>: View {
                 .help("Drag to move where it starts; the end stays put")
         }
         .clipped()
-    }
-
-    static func shown(width: CGFloat, contentX: CGFloat?, window: ClosedRange<Double>?) -> ClosedRange<CGFloat> {
-        guard let contentX, let window else { return 0 ... max(width, 0) }
-        let from = min(max(CGFloat(window.lowerBound) - contentX, 0), max(width, 0))
-        return from ... max(min(CGFloat(window.upperBound) - contentX, width), from)
-    }
-
-    private static func shape(_ shown: ClosedRange<CGFloat>) -> some View {
-        RoundedRectangle(cornerRadius: 6)
-            .frame(width: shown.upperBound - shown.lowerBound)
-            .offset(x: shown.lowerBound)
     }
 
     private func rampWedge(leading: Bool) -> some View {

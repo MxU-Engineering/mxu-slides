@@ -42,7 +42,7 @@ import Testing
 
         "timelinePlayheadTime": (
             "timelinePlayheadTime", /\btimelinePlayheadTime\b/,
-            ["TimelinePlayheadReadout", "TimelinePlayheadLine", "TimelinePlayheadHandle", "TimelinePageFollow"]
+            ["PlayheadReadoutFace", "PlayheadLineFace", "PlayheadHandleFace", "PageFollowFace"]
         ),
 
         "timecodeReading": (
@@ -220,6 +220,25 @@ import Testing
         for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine"] {
             #expect(leafSection.contains("struct \(leaf)<Source: TimelinePlayheadSource>: View"))
             #expect(panel.contains("\(leaf)(source: model"), "the panel draws the playhead through \(leaf)")
+        }
+    }
+
+    @Test func playheadFacesDrawInTheirOwnHostingView() throws {
+        let sweep = try SourceSweep.app()
+        let faces = try #require(readers["timelinePlayheadTime"]).views
+        for file in sweep.files {
+            for index in file.lines.indices {
+                let code = file.code(index)
+                for face in faces where code.contains("\(face)(") {
+                    #expect(
+                        code.contains("TickingIsland"),
+                        "\(file.name):\(index + 1) draws \(face) outside a TickingIsland: each tick redraws the window")
+                }
+            }
+        }
+        let shared = try #require(sweep.file("TimelineControls.swift"))
+        for face in faces {
+            #expect(shared.text.contains("TickingIsland(fits: true) { \(face)(") || shared.text.contains("TickingIsland { \(face)("))
         }
     }
 }

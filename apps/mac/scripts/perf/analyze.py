@@ -173,6 +173,7 @@ def metrics(detail):
     if seconds and "bodies" in playback:
         values["playback.timelineBodiesPerSecond"] = round(
             playback["bodies"].get("AnimationTimelinePanel", 0) / seconds, 1)
+    values["timeline.mainBusy"] = first("timeline", "mainBusy")
     values["render.renderBusy"] = first("render", "renderBusy")
     drags = detail.get("drag") or []
     if drags:

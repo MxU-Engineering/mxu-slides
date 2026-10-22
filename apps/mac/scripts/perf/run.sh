@@ -273,6 +273,29 @@ step "{\"step\": \"playback\", \"sample\": \"playback.txt\", \"from\": \"$from\"
 quit_app
 cp -R "$(support)/Diagnostics" "$RUN/diagnostics-animate"
 
+log "(f) a song's timeline playing, the Present grid on screen"
+await_quiet
+fresh_home timeline
+defaults write $DOMAIN currentServiceID perf.service
+launch "$FRESH" idle
+await_ready "the timeline scenario"
+sleep 6
+await_idle
+front || die "the staged Presenter is not in front: the timeline would draw nothing"
+signal timeline
+[[ $(crumb "perf\.timeline" 10) == *"perf.timeline —"* ]] || die "the timeline never played (app log: $RUN)"
+sleep 2
+signal mark
+from=$(now)
+sample $APP_PID 5 1 -mayDie -file "$RUN/timeline.txt" >/dev/null 2>&1
+to=$(now)
+signal mark
+sleep 1.2
+signal stop
+step "{\"step\": \"timeline\", \"sample\": \"timeline.txt\", \"from\": \"$from\", \"to\": \"$to\", \"diagnostics\": \"diagnostics-timeline\", \"seconds\": 5}"
+quit_app
+cp -R "$(support)/Diagnostics" "$RUN/diagnostics-timeline"
+
 log "(e) render thread, \"Path Text Perf\" slide 1 on screen"
 await_quiet
 fresh_home edit
