@@ -20,7 +20,8 @@ import IOSurface
         reply: @escaping (_ error: String?, _ wireDetail: String) -> Void
     )
 
-    func sendFrame(_ surface: IOSurface, reply: @escaping (_ delivered: Bool) -> Void)
+    func sendFrame(
+        _ surface: IOSurface, reply: @escaping (_ delivered: Bool, _ timing: Data) -> Void)
 
     func stopOutput()
 
@@ -59,6 +60,20 @@ struct DeckLinkHelperDisplayMode: Codable, Equatable, Identifiable {
     var mirrorFramesPerSecond: Int {
         Int((framesPerSecond).rounded())
     }
+}
+
+struct DeckLinkCardTiming: Codable, Equatable {
+
+    let completions: UInt64
+    let lastCompletionHostTime: Double
+
+    let repeats: UInt64
+    let skips: UInt64
+
+    let late: UInt64
+    let dropped: UInt64
+
+    let jumps: UInt64
 }
 
 enum DeckLinkHelperIdentity {

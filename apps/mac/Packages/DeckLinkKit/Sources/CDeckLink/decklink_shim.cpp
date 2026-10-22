@@ -1,5 +1,7 @@
 #include "decklink_shim.h"
 
+#include <mach/mach_time.h>
+
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -25,6 +27,19 @@ struct COMRef {
         return result;
     }
 };
+
+/// Host seconds on CACurrentMediaTime's clock — mach absolute time is
+/// system-wide, so the app reads completions on the same timeline as its
+/// own mirror ticks.
+double hostSeconds() {
+    static const mach_timebase_info_data_t timebase = [] {
+        mach_timebase_info_data_t info;
+        mach_timebase_info(&info);
+        return info;
+    }();
+    return (double)mach_absolute_time() * timebase.numer / timebase.denom /
+           1e9;
+}
 
 void writeError(char *error, size_t errorLength, const std::string &message) {
     if (!error || errorLength == 0) return;
@@ -281,6 +296,8 @@ struct DLKOutput {
 
     std::chrono::steady_clock::time_point lastCompletion =
         std::chrono::steady_clock::now();
+    /// The card's clock and wire accounting, under `mutex`.
+    DLKOutputTiming timing = {};
     int32_t width = 0;
     int32_t height = 0;
 
@@ -320,10 +337,19 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
         std::lock_guard<std::mutex> guard(output->mutex);
         if (!output->playing) return S_OK;
         output->lastCompletion = std::chrono::steady_clock::now();
-        if (haveHardwareTime &&
-            output->streamTime < hardwareTime + output->frameDuration) {
+        bool jumped = haveHardwareTime &&
+                      output->streamTime < hardwareTime + output->frameDuration;
+        if (jumped) {
             output->streamTime = hardwareTime + 2 * output->frameDuration;
         }
+        DLKCompletionResult tallied = DLKCompletionOnTime;
+        switch (result) {
+            case bmdOutputFrameDisplayedLate: tallied = DLKCompletionLate; break;
+            case bmdOutputFrameDropped: tallied = DLKCompletionDropped; break;
+            case bmdOutputFrameFlushed: tallied = DLKCompletionFlushed; break;
+            default: break;
+        }
+        dlk_tally_completion(&output->timing, hostSeconds(), tallied, jumped);
         IDeckLinkVideoBuffer *buffer = output->bufferFor(frame);
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
@@ -347,7 +373,6 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
             output->timeScale);
         output->streamTime += output->frameDuration;
     }
-    (void)result;
     return S_OK;
 }
 
@@ -557,7 +582,36 @@ bool dlk_output_display(
         memcpy(output->latest + (size_t)row * destinationRow,
                bgra + (size_t)row * bytesPerRow, copyRow);
     }
+    output->timing.latched += 1;
     return true;
+}
+
+void dlk_tally_completion(
+    DLKOutputTiming *timing, double hostTime, DLKCompletionResult result,
+    bool jumped) {
+    if (!timing) return;
+    timing->completions += 1;
+    timing->lastCompletionHostTime = hostTime;
+    // Before the app's first latch the wire carries preroll black — there
+    // is no frame yet to repeat or skip.
+    if (timing->latched > 0) {
+        uint64_t fresh = timing->latched - timing->shownLatch;
+        if (fresh == 0) {
+            timing->repeats += 1;
+        } else if (fresh > 1) {
+            timing->skips += fresh - 1;
+        }
+    }
+    timing->shownLatch = timing->latched;
+    if (result == DLKCompletionLate) timing->late += 1;
+    if (result == DLKCompletionDropped) timing->dropped += 1;
+    if (jumped) timing->jumps += 1;
+}
+
+DLKOutputTiming dlk_output_timing(DLKOutput *output) {
+    if (!output) return DLKOutputTiming{};
+    std::lock_guard<std::mutex> guard(output->mutex);
+    return output->timing;
 }
 
 void dlk_output_close(DLKOutput *output) {

@@ -124,6 +124,15 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
             }
             parts.append("capture " + rates.joined(separator: ", "))
         }
+        if !snapshot.cardTimings.isEmpty {
+            let cards = snapshot.cardTimings.sorted { $0.key < $1.key }.map {
+                String(
+                    format: "%@ rep %d skip %d late %d drop %d jump %d held %d",
+                    $0.key, $0.value.repeats, $0.value.skips, $0.value.late,
+                    $0.value.dropped, $0.value.jumps, $0.value.held)
+            }
+            parts.append("decklink " + cards.joined(separator: ", "))
+        }
         if snapshot.textRasterizations > 0 {
             parts.append(String(
                 format: "textRaster %d avg %.1fms",

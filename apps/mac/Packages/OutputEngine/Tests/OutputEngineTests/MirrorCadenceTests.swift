@@ -108,4 +108,82 @@ final class MirrorCadenceTests: XCTestCase {
         XCTAssertNil(mirror.liveCadence.value)
         mirror.stop()
     }
+
+    func testACardTargetHoldsItsPlaceInTheCardsFrame() throws {
+        let reference = LiveCadence(lastArrival: 10, period: ntsc)
+        let next = try XCTUnwrap(MirrorCadence.next(
+            nominal: nominal, now: 10 + ntsc * MirrorCadence.cardTarget, reference: reference,
+            target: MirrorCadence.cardTarget))
+        XCTAssertEqual(next.interval, ntsc, accuracy: 1e-9)
+    }
+
+    func testATickPastTheTargetComesRoundTheShortWay() throws {
+        let next = try XCTUnwrap(MirrorCadence.next(
+            nominal: nominal, now: 10 + ntsc * 0.9,
+            reference: LiveCadence(lastArrival: 10, period: ntsc),
+            target: MirrorCadence.cardTarget))
+        XCTAssertGreaterThan(next.interval, ntsc)
+    }
+
+    func testCardPacingLandsEveryFrameClearOfTheCardsCopy() {
+        var generator = SystemRandomNumberGenerator()
+        let card = ntsc * (1 + 40e-6)
+        var clock = CardClock()
+        var deadline = 100.0
+        var closest = Double.infinity
+        for index in 0..<3600 {
+            let fired = deadline + Double.random(in: 0...0.002, using: &generator)
+            let landing = fired + Double.random(in: 0.006...0.020, using: &generator)
+            let phase = landing.truncatingRemainder(dividingBy: card)
+            if index > 300 { closest = min(closest, phase, card - phase) }
+            let completions = Int((fired / card).rounded(.down))
+            let observed = Double(completions) * card + Double.random(in: 0...0.002, using: &generator)
+            _ = clock.record(
+                completions: completions, lastCompletion: min(observed, fired),
+                counters: .init())
+            let next = MirrorCadence.next(
+                nominal: nominal, now: fired, reference: clock.cadence,
+                target: MirrorCadence.cardTarget)
+            deadline += next?.interval ?? nominal
+        }
+        XCTAssertGreaterThan(closest, 0.004)
+    }
+
+    func testACardClockOutranksTheLiveSourceOnScreen() throws {
+        let compositor: Compositor
+        do {
+            compositor = try Compositor()
+        } catch CompositorError.noMetalDevice {
+            throw XCTSkip("no Metal device on this machine")
+        }
+        let source = CadenceSource()
+        compositor.mediaSource = source
+        let canvas = CGSize(width: 320, height: 180)
+        var scene = RenderScene(canvasSize: canvas)
+        scene.addItem(
+            RenderItem(
+                id: "cam", frame: CGRect(origin: .zero, size: canvas),
+                content: .media(id: "camera", scaleMode: .fill, sourceRect: nil)),
+            to: .stillGraphics)
+        let shown = scene
+        let card = LiveCadence(lastArrival: 50, period: 1.0 / 30)
+        let paced = try XCTUnwrap(OutputMirror(
+            compositor: compositor, width: 320, height: 180,
+            provider: { shown }, pacing: { card }, sink: { _, _ in }))
+        let steered = try XCTUnwrap(OutputMirror(
+            compositor: compositor, width: 320, height: 180,
+            provider: { shown }, sink: { _, _ in }))
+        for mirror in [paced, steered] {
+            mirror.startWithoutTimerForTesting()
+            mirror.tick(at: 50)
+        }
+
+        let cardStep = try XCTUnwrap(paced.steeringStep(nominal: nominal, at: 50.01))
+        XCTAssertEqual(cardStep.period, card.period)
+        let liveStep = try XCTUnwrap(steered.steeringStep(nominal: nominal, at: 42.01))
+        XCTAssertEqual(liveStep.period, CadenceSource.cadence.period)
+        paced.stop()
+        steered.stop()
+        withExtendedLifetime(source) {}
+    }
 }

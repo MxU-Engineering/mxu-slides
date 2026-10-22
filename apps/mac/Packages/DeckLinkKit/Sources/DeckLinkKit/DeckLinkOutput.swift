@@ -42,7 +42,63 @@ public final class DeckLinkOutput: @unchecked Sendable {
             CVPixelBufferGetBytesPerRow(pixelBuffer))
     }
 
+    public var timing: DeckLinkOutputTiming {
+        DeckLinkOutputTiming(dlk_output_timing(handle))
+    }
+
     deinit {
         dlk_output_close(handle)
+    }
+}
+
+public struct DeckLinkOutputTiming: Equatable, Sendable {
+    public enum Completion: Sendable {
+        case onTime, late, dropped, flushed
+    }
+
+    public var completions: UInt64 = 0
+    public var lastCompletionHostTime: Double = 0
+    public var latched: UInt64 = 0
+    public var shownLatch: UInt64 = 0
+    public var repeats: UInt64 = 0
+    public var skips: UInt64 = 0
+    public var late: UInt64 = 0
+    public var dropped: UInt64 = 0
+    public var jumps: UInt64 = 0
+
+    public init() {}
+
+    init(_ raw: DLKOutputTiming) {
+        completions = raw.completions
+        lastCompletionHostTime = raw.lastCompletionHostTime
+        latched = raw.latched
+        shownLatch = raw.shownLatch
+        repeats = raw.repeats
+        skips = raw.skips
+        late = raw.late
+        dropped = raw.dropped
+        jumps = raw.jumps
+    }
+
+    private var raw: DLKOutputTiming {
+        DLKOutputTiming(
+            completions: completions, lastCompletionHostTime: lastCompletionHostTime,
+            latched: latched, shownLatch: shownLatch, repeats: repeats, skips: skips,
+            late: late, dropped: dropped, jumps: jumps)
+    }
+
+    public mutating func tallyCompletion(
+        at hostTime: Double, result: Completion = .onTime, jumped: Bool = false
+    ) {
+        var updated = raw
+        let tallied: DLKCompletionResult =
+            switch result {
+            case .onTime: DLKCompletionOnTime
+            case .late: DLKCompletionLate
+            case .dropped: DLKCompletionDropped
+            case .flushed: DLKCompletionFlushed
+            }
+        dlk_tally_completion(&updated, hostTime, tallied, jumped)
+        self = DeckLinkOutputTiming(updated)
     }
 }

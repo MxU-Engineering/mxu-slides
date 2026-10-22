@@ -61,6 +61,8 @@ public final class OutputMirror: @unchecked Sendable {
 
     private let composite: [CompositeLayer]
 
+    private let pacing: (@Sendable () -> LiveCadence?)?
+
     private let held = Locked<[CVPixelBuffer]>([])
     private let slots: [RingSlot]
     private let nextSlot = Locked(0)
@@ -107,6 +109,7 @@ public final class OutputMirror: @unchecked Sendable {
         mask: (@Sendable () -> MTLTexture?)? = nil,
         composite: [CompositeLayer] = [],
         consumerHeldFrames: Int = 0,
+        pacing: (@Sendable () -> LiveCadence?)? = nil,
         sink: @escaping @Sendable (CVPixelBuffer, Double) -> Void
     ) {
         guard width > 0, height > 0, framesPerSecond > 0,
@@ -129,6 +132,7 @@ public final class OutputMirror: @unchecked Sendable {
         self.placement = placement
         self.mask = mask
         self.composite = composite
+        self.pacing = pacing
         self.sink = sink
         self.converter = converter
 
@@ -174,12 +178,8 @@ public final class OutputMirror: @unchecked Sendable {
             let now = CACurrentMediaTime()
             self.tick(at: now)
 
-            let step = MirrorCadence.next(
-                nominal: interval, now: now, reference: self.liveCadence.value)
-            if let step {
+            if let step = self.steeringStep(nominal: interval, at: now) {
                 let steered = step.interval
-                RenderPulse.shared.mirrorSteered(
-                    edgeDistanceMS: step.edgeDistance * 1000, periodMS: step.period * 1000)
 
                 let armed = self.steeredDeadline.value ?? fired
                 let next = max(armed + steered, fired + steered / 2)
@@ -194,6 +194,21 @@ public final class OutputMirror: @unchecked Sendable {
         source.resume()
         tickSource.value = source
         Self.debugNote.value?("mirror \(identity): timer resumed")
+    }
+
+    func steeringStep(nominal: Double, at now: CFTimeInterval) -> MirrorCadence.Step? {
+        if let pacing {
+            return MirrorCadence.next(
+                nominal: nominal, now: now, reference: pacing(), target: MirrorCadence.cardTarget)
+        } else {
+            let step = MirrorCadence.next(
+                nominal: nominal, now: now, reference: liveCadence.value)
+            if let step {
+                RenderPulse.shared.mirrorSteered(
+                    edgeDistanceMS: step.edgeDistance * 1000, periodMS: step.period * 1000)
+            }
+            return step
+        }
     }
 
     func startWithoutTimerForTesting() {

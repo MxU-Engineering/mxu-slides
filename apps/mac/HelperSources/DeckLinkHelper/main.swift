@@ -184,12 +184,12 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
         }
     }
 
-    func sendFrame(_ surface: IOSurface, reply: @escaping (Bool) -> Void) {
+    func sendFrame(_ surface: IOSurface, reply: @escaping (Bool, Data) -> Void) {
         guard let device, let generation,
             let output = DeckLinkOutputStore.shared.output(
                 device: device, generation: generation)
         else {
-            reply(false)
+            reply(false, Data())
             return
         }
         var unmanaged: Unmanaged<CVPixelBuffer>?
@@ -198,10 +198,20 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
             kCFAllocatorDefault, surfaceRef, nil, &unmanaged) == kCVReturnSuccess,
             let pixelBuffer = unmanaged?.takeRetainedValue()
         else {
-            reply(false)
+            reply(false, Self.encoded(output.timing))
             return
         }
-        reply(output.display(pixelBuffer: pixelBuffer))
+        let delivered = output.display(pixelBuffer: pixelBuffer)
+        reply(delivered, Self.encoded(output.timing))
+    }
+
+    private static func encoded(_ timing: DeckLinkOutputTiming) -> Data {
+        let wire = DeckLinkCardTiming(
+            completions: timing.completions,
+            lastCompletionHostTime: timing.lastCompletionHostTime,
+            repeats: timing.repeats, skips: timing.skips,
+            late: timing.late, dropped: timing.dropped, jumps: timing.jumps)
+        return (try? JSONEncoder().encode(wire)) ?? Data()
     }
 
     func stopOutput() {
