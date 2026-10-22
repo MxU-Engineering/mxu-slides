@@ -1385,9 +1385,10 @@ struct PresentationTimelineLanes: View {
         panel.begin { response in
             guard response == .OK else { return }
             let urls = panel.urls
+            let joining = joiningSet(urls)
             Task { @MainActor in
 
-                guard let made = await context.model.importTrackSet(urls, song: context.presentation.name) else { return }
+                guard let made = await context.model.importTrackSet(urls, song: context.presentation.name, joining: joining) else { return }
                 placeStems(made.stems, at: at, set: made.set.id)
                 if !tracksOn { offeringTracks = true }
             }
@@ -1399,12 +1400,18 @@ struct PresentationTimelineLanes: View {
         guard !runOnly, let track, TimelineTracks.takesFinderDrop(urls) else { return false }
         let channel = if case .channel(let id) = track { id } else { String?.none }
         let at = PresentationTimelines.snappedToFrame(time)
+        let joining = joiningSet(urls)
         Task { @MainActor in
-            guard let made = await context.model.importTrackSet(urls, song: context.presentation.name) else { return }
+            guard let made = await context.model.importTrackSet(urls, song: context.presentation.name, joining: joining) else { return }
             placeStems(made.stems, at: at, channel: made.stems.count == 1 ? channel : nil, set: made.set.id)
             if !tracksOn { offeringTracks = true }
         }
         return true
+    }
+
+    private func joiningSet(_ urls: [URL]) -> String? {
+        guard urls.count == 1, !urls[0].hasDirectoryPath else { return nil }
+        return TrackSets.usedBy(context.timeline?.cues ?? [], in: context.model.trackSets)?.id
     }
 
     private func placeStems(_ stems: [TimelineStemImport], at: Double, channel: String? = nil, set: String? = nil) {

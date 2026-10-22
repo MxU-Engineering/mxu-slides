@@ -64,4 +64,17 @@ public enum TrackSets {
         let wanted = Set(audioIDs)
         return sets.first { Set($0.stems.map(\.audioId)) == wanted }
     }
+
+    public static func usedBy(_ cues: [TimelineCue], in sets: some Sequence<TrackSet>) -> TrackSet? {
+
+        let onSong = Set(TimelineTracks.stems(cues).compactMap(\.mediaId))
+        let held = sets.map { set in (set, set.stems.filter { onSong.contains($0.audioId) }.count) }
+        return held.filter { $0.1 > 0 }.max { $0.1 < $1.1 }?.0
+    }
+
+    public static func joining(_ stems: [TrackSetStem], to set: TrackSet) -> TrackSet {
+        var set = set
+        for stem in stems where !set.stems.contains(where: { $0.audioId == stem.audioId }) { set.stems.append(stem) }
+        return set
+    }
 }

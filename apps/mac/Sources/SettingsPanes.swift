@@ -893,6 +893,13 @@ private struct TrackChannelsForm: View {
     @State private var adding = false
     @State private var newName = ""
 
+    @State private var dropTarget: String?
+
+    static let dragPrefix = "mxutrackchannel::"
+    static func channelID(_ payload: String) -> String? {
+        payload.hasPrefix(dragPrefix) ? String(payload.dropFirst(dragPrefix.count)) : nil
+    }
+
     var body: some View {
         let channels = model.trackChannels
         Form {
@@ -902,6 +909,21 @@ private struct TrackChannelsForm: View {
                 }
                 ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
                     TrackChannelRow(channel: channel) { open(channel.id) }
+
+                        .draggable(Self.dragPrefix + channel.id)
+                        .dropDestination(for: String.self) { payloads, _ in
+                            guard let id = payloads.first.flatMap(Self.channelID),
+                                  let drop = TimelineTracks.dropping(id, onto: channel.id, in: channels) else { return false }
+                            tracks?.moveChannel(id, before: drop.before)
+                            return true
+                        } isTargeted: { on in
+                            if on { dropTarget = channel.id } else if dropTarget == channel.id { dropTarget = nil }
+                        }
+                        .overlay {
+                            if dropTarget == channel.id {
+                                RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2)
+                            }
+                        }
                         .contextMenu {
                             Button("Move Up") { tracks?.moveChannel(channel.id, before: channels[index - 1].id) }
                                 .disabled(index == 0)
@@ -911,14 +933,10 @@ private struct TrackChannelsForm: View {
                             .disabled(index == channels.count - 1)
                         }
                 }
-                .onMove { from, to in
-                    guard let index = from.first else { return }
-                    tracks?.moveChannel(channels[index].id, before: to < channels.count ? channels[to].id : nil)
-                }
                 Button("Add Track\u{2026}") { newName = ""; adding = true }
             } footer: {
-                Text("Every song's stems land on these tracks, in this order.")
-                    .help("Import Audio puts each file on the track its name matches. Drag a track, or right-click it, to move it.")
+                Text("Every song's stems land on these tracks, in this order. Drag a track to move it.")
+                    .help("Import Audio puts each file on the track its name matches. Right-click a track for Move Up and Move Down.")
             }
         }
         .settingsForm()
@@ -988,12 +1006,13 @@ private struct TrackChannelDetail: View {
     let tracks: TracksController?
     let back: () -> Void
     @State private var name = ""
-    @State private var matches = ""
+    @State private var addingName = false
+    @State private var newName = ""
     @FocusState private var focus: Field?
     @State private var checkingUses = false
     @State private var uses: Int?
 
-    private enum Field { case name, matches }
+    private enum Field { case name }
 
     var body: some View {
         if let channel = model.trackChannels.first(where: { $0.id == id }) {
@@ -1022,12 +1041,33 @@ private struct TrackChannelDetail: View {
                     }
                     .pickerStyle(.segmented)
                 }
+
                 Section {
-                    TextField("Also matches", text: $matches, prompt: Text("None"))
-                        .focused($focus, equals: .matches)
-                        .onSubmit(commitMatches)
+                    let names = channel.matchNames ?? []
+                    if names.isEmpty {
+                        Text("No other names").foregroundStyle(.secondary)
+                    }
+                    ForEach(names, id: \.self) { name in
+                        HStack {
+                            Text(name)
+                            Spacer()
+                            Button {
+                                tracks?.editChannel(id) { channel in
+                                    channel.matchNames?.removeAll { $0 == name }
+                                    if channel.matchNames?.isEmpty == true { channel.matchNames = nil }
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove \u{201C}\(name)\u{201D}")
+                        }
+                    }
+                    Button("Add Name\u{2026}") { newName = ""; addingName = true }
+                } header: {
+                    Text("Also lands here")
                 } footer: {
-                    Text("Other stem names that land on this track, separated by commas.")
+                    Text("Stems with these names go on this track when you import.")
                 }
                 Section {
                     Button(checkingUses ? "Checking Songs\u{2026}" : "Delete Track\u{2026}", role: .destructive) {
@@ -1041,18 +1081,18 @@ private struct TrackChannelDetail: View {
                 }
             }
             .settingsForm()
-            .onAppear {
-                name = channel.name
-                matches = (channel.matchNames ?? []).joined(separator: ", ")
-            }
+            .onAppear { name = channel.name }
             .onChange(of: focus) { old, _ in
                 if old == .name { commitName() }
-                if old == .matches { commitMatches() }
             }
 
-            .onDisappear {
-                commitName()
-                commitMatches()
+            .onDisappear(perform: commitName)
+            .alert("Add Name", isPresented: $addingName) {
+                TextField("Stem name", text: $newName)
+                Button("Add") { addName() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("A stem with this name goes on \u{201C}\(channel.name)\u{201D}.")
             }
             .alert("Delete \u{201C}\(channel.name)\u{201D}?", isPresented: Binding(
                 get: { uses != nil }, set: { if !$0 { uses = nil } })
@@ -1081,9 +1121,14 @@ private struct TrackChannelDetail: View {
         tracks?.editChannel(id) { $0.name = trimmed }
     }
 
-    private func commitMatches() {
-        let list = matches.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        tracks?.editChannel(id) { $0.matchNames = list.isEmpty ? nil : list }
+    private func addName() {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        tracks?.editChannel(id) { channel in
+            var names = channel.matchNames ?? []
+            if !names.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { names.append(trimmed) }
+            channel.matchNames = names
+        }
     }
 }
 

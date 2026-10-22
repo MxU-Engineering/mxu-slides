@@ -167,3 +167,31 @@ private let click = TrackChannel(id: "click", name: "Click", role: "click")
     #expect(line("Background Vocals", nil, nil) == "Vocals mix · Stereo")
     #expect(line("Drum Click", "click", true) == "Click mix · Mono")
 }
+
+@Test func oneMoreFileJoinsTheTracksItemTheSongUses() {
+    let set = TrackSet(id: "s", name: "Song", stems: [TrackSetStem(audioId: "a", name: "Click"), TrackSetStem(audioId: "b", name: "Keys")])
+    let other = TrackSet(id: "o", name: "Other", stems: [TrackSetStem(audioId: "z", name: "Bass")])
+    let cues = [TimelineCue(id: "c", lane: TimelineTracks.lane(for: "keys"), at: 0, mediaId: "b"),
+                TimelineCue(id: "x", lane: TimelineLane.slide.rawValue, at: 0)]
+    #expect(TrackSets.usedBy(cues, in: [other, set])?.id == "s")
+    #expect(TrackSets.usedBy([], in: [other, set]) == nil)
+
+    let shared = TrackSet(id: "x", name: "Another", stems: [TrackSetStem(audioId: "a", name: "Click")])
+    let both = cues + [TimelineCue(id: "d", lane: TimelineTracks.lane(for: "click"), at: 0, mediaId: "a")]
+    #expect(TrackSets.usedBy(both, in: [shared, set])?.id == "s")
+    let joined = TrackSets.joining([TrackSetStem(audioId: "n", name: "Drums"), TrackSetStem(audioId: "a", name: "Click")], to: set)
+    #expect(joined.stems.map(\.audioId) == ["a", "b", "n"])
+}
+
+@Test func aRowDroppedOnAnotherTakesItsPlace() {
+    let list = ["a", "b", "c", "d"].map { TrackChannel(id: $0, name: $0) }
+    func order(_ id: String, onto target: String) -> [String]? {
+        guard let drop = TimelineTracks.dropping(id, onto: target, in: list) else { return nil }
+        return TimelineTracks.move(id, before: drop.before, in: list)?.next.map(\.id)
+    }
+    #expect(order("d", onto: "b") == ["a", "d", "b", "c"])
+    #expect(order("a", onto: "c") == ["b", "c", "a", "d"])
+    #expect(order("a", onto: "d") == ["b", "c", "d", "a"])
+    #expect(TimelineTracks.dropping("a", onto: "a", in: list) == nil)
+    #expect(TimelineTracks.dropping("gone", onto: "a", in: list) == nil)
+}

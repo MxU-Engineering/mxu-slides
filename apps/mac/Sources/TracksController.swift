@@ -449,6 +449,7 @@ extension TracksController {
     func moveChannel(_ id: String, before: String?) {
         guard let model, let move = TimelineTracks.move(id, before: before, in: model.trackChannels) else { return }
         model.moveTrackChannel(id, before: before, next: move.next)
+        DiagnosticsStore.shared.note("tracks.channel.move", detail: "\(move.from) → before \(before ?? "end")")
         refresh()
     }
 

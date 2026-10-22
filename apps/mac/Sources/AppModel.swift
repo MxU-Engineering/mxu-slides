@@ -2888,12 +2888,18 @@ final class AppModel {
         DiagnosticsStore.shared.note("trackSet.delete", detail: "\(set.name), \(set.stems.count) stems")
     }
 
-    func importTrackSet(_ urls: [URL], song: String) async -> (set: TrackSet, stems: [TimelineStemImport])? {
+    func importTrackSet(_ urls: [URL], song: String, joining: String? = nil) async -> (set: TrackSet, stems: [TimelineStemImport])? {
         let stems = await importStems(urls, song: song)
         guard !stems.isEmpty else { return nil }
         if let existing = TrackSets.existing(withStems: stems.map(\.audioID), in: resident.trackSets.values) {
             let known = Dictionary(existing.stems.map { ($0.audioId, $0.channelId) }, uniquingKeysWith: { first, _ in first })
             return (existing, stems.map { var stem = $0; stem.channelId = known[$0.audioID] ?? nil; return stem })
+        }
+        if let joining, let set = trackSet(joining) {
+            let added = stems.map { TrackSetStem(audioId: $0.audioID, name: ($0.fileName as NSString).deletingPathExtension) }
+            updateTrackSet(joining) { $0 = TrackSets.joining(added, to: $0) }
+            DiagnosticsStore.shared.note("trackSet.join", detail: "\(set.name), \(added.count) stems")
+            return (TrackSets.joining(added, to: set), stems)
         }
         let download = TrackSets.download(forFiles: urls.map(\.path))
         let set = TrackSet(
