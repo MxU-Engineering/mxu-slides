@@ -21,7 +21,7 @@ struct TimecodeModule: View {
                     .font(.caption)
                     .help("Songs with a timecode start play from it on this computer")
             }
-            if follower.deviceUID == nil {
+            if !follower.hasInput {
                 Text("No timecode input on this computer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

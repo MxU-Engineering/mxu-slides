@@ -75,6 +75,35 @@ import Testing
     #expect(MIDICommand.allCases.filter(\.usesVelocityIndex).count == 13)
 }
 
+@Test func timelineCommandsWearProPresenterNotes() {
+
+    let map = MIDICommandMap()
+    #expect(map.command(forNote: 14) == .startTimeline)
+    #expect(map.command(forNote: 15) == .stopTimeline)
+    #expect(map.command(forNote: 16) == .rewindTimeline)
+    for command in [MIDICommand.startTimeline, .stopTimeline, .rewindTimeline] {
+        #expect(command.group == .presentation)
+        #expect(!command.usesVelocityIndex)
+    }
+
+    var moved = MIDICommandMap()
+    moved.setNote(14, for: .clearAll)
+    #expect(moved.command(forNote: 14) == .clearAll)
+}
+
+@Test func playbackAndProPresenterCueRecipesResolve() {
+    let map = MIDICommandMap()
+
+    #expect(MIDINote.name(19) == "G-1")
+    #expect(map.resolve(status: 0x90, data1: 19, data2: 2)! == (.triggerSlide, 2))
+
+    #expect(map.resolve(status: 0x90, data1: 17, data2: 1)! == (.selectService, 1))
+    #expect(map.resolve(status: 0x90, data1: 18, data2: 4)! == (.selectServiceItem, 4))
+
+    #expect(map.resolve(status: 0x90, data1: 10, data2: 127)! == (.nextServiceItem, 127))
+    #expect(map.resolve(status: 0x80, data1: 19, data2: 64) == nil)
+}
+
 @Test func deviceChannelFilterDefaultsToOmni() throws {
 
     let legacy = try JSONDecoder().decode(

@@ -408,8 +408,8 @@ struct AppSettingsView: View {
             rows.append(SettingsRowSpec(
                 id: "timecode.input",
                 title: "Input",
-                caption: "The LTC feed. It's read, never played out.",
-                keywords: "timecode ltc smpte input device channel blackhole loopback audio interface",
+                caption: "LTC on an audio channel or MTC over MIDI. Never played out.",
+                keywords: "timecode ltc mtc smpte midi input device channel blackhole loopback audio interface iac ableton quarter frame",
                 control: AnyView(TimecodeInputControl(follower: timecode))
             ))
             rows.append(SettingsRowSpec(

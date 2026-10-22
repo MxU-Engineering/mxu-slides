@@ -8,19 +8,12 @@ import QuartzCore
 import SlideScene
 import SwiftUI
 
-final class LTCReader: @unchecked Sendable {
-    struct Heard: Sendable {
-        var frame: LTCFrame
-        var rate: TimecodeRate
-
-        var hostTime: Double
-    }
-
+final class LTCReader: TimecodeReader, @unchecked Sendable {
     let deviceUID: String
     private let hub: AudioInputHub
     private var token: UUID?
     private let lock = NSLock()
-    private var heard: [Heard] = []
+    private var heard: [TimecodeHeard] = []
     private var peak: Float = 0
 
     private var decoder = LTCDecoder(sampleRate: 48_000)
@@ -57,7 +50,7 @@ final class LTCReader: @unchecked Sendable {
         let rate = decoder.rate ?? .fps30
         let sampleRate = buffer.format.sampleRate
         let new = frames.map {
-            Heard(frame: $0, rate: rate, hostTime: hostSeconds + Double($0.endSample - start) / sampleRate)
+            TimecodeHeard(ltc: $0, rate: rate, hostTime: hostSeconds + Double($0.endSample - start) / sampleRate)
         }
         lock.withLock {
             heard += new
@@ -67,7 +60,7 @@ final class LTCReader: @unchecked Sendable {
         }
     }
 
-    func drain() -> (heard: [Heard], peak: Float) {
+    func drain() -> (heard: [TimecodeHeard], peak: Float) {
         lock.withLock {
             defer {
                 heard.removeAll(keepingCapacity: true)
@@ -83,7 +76,13 @@ final class LTCReader: @unchecked Sendable {
 final class TimecodeFollower {
     @ObservationIgnored weak var controls: ServiceControls?
 
+    private(set) var source = UserDefaults.standard.string(forKey: TimecodeStation.sourceKey)
+        .flatMap(TimecodeSource.init(rawValue:)) ?? .ltc
+
     private(set) var deviceUID: String? = UserDefaults.standard.string(forKey: TimecodeStation.deviceKey)
+
+    private(set) var midiSourceUID = (UserDefaults.standard.object(forKey: TimecodeStation.midiSourceKey) as? Int)
+        .map { Int32(truncatingIfNeeded: $0) }
     private(set) var channel = UserDefaults.standard.integer(forKey: TimecodeStation.channelKey)
     private(set) var offsetFrames = UserDefaults.standard.integer(forKey: TimecodeStation.offsetKey)
     private(set) var follows = UserDefaults.standard.object(forKey: TimecodeStation.followKey) as? Bool ?? true
@@ -102,7 +101,7 @@ final class TimecodeFollower {
 
     private(set) var detectedRate: TimecodeRate?
 
-    @ObservationIgnored private var reader: LTCReader?
+    @ObservationIgnored private var reader: (any TimecodeReader)?
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var clock = TimecodeClock()
     @ObservationIgnored private var follow = TimecodeFollow()
@@ -114,15 +113,41 @@ final class TimecodeFollower {
         return reading.state == .locked ? ("Locked", .green) : ("Lost", .orange)
     }
 
+    enum Input: Hashable {
+        case none
+        case audio(String)
+        case midi(Int32)
+    }
+
+    var input: Input {
+        switch source {
+        case .ltc: deviceUID.map(Input.audio) ?? .none
+        case .mtc: midiSourceUID.map(Input.midi) ?? .none
+        }
+    }
+
+    var hasInput: Bool { input != .none }
+
     func start() {
-        guard reader == nil, let deviceUID else { return }
-        do {
-            reader = try LTCReader(deviceUID: deviceUID, channel: channel)
-            problem = nil
-        } catch {
-            problem = "Not connected"
-            DiagnosticsStore.shared.note("timecode.input", detail: "\(deviceUID): \(error)")
+        guard reader == nil else { return }
+        switch input {
+        case .none:
             return
+        case .audio(let deviceUID):
+            do {
+                reader = try LTCReader(deviceUID: deviceUID, channel: channel)
+                problem = nil
+            } catch {
+                problem = "Not connected"
+                DiagnosticsStore.shared.note("timecode.input", detail: "\(deviceUID): \(error)")
+                return
+            }
+            DiagnosticsStore.shared.note("timecode.input", detail: "\(deviceUID) ch \(channel + 1)")
+        case .midi(let uid):
+
+            reader = MTCReader(sourceUID: uid)
+            problem = nil
+            DiagnosticsStore.shared.note("timecode.input", detail: "MTC \(uid)")
         }
         clock = TimecodeClock()
         follow = TimecodeFollow()
@@ -131,7 +156,6 @@ final class TimecodeFollower {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        DiagnosticsStore.shared.note("timecode.input", detail: "\(deviceUID) ch \(channel + 1)")
     }
 
     func stopInput() {
@@ -145,11 +169,24 @@ final class TimecodeFollower {
         isLocked = false
     }
 
-    func setDevice(_ uid: String?) {
-        guard uid != deviceUID else { return }
+    func setInput(_ input: Input) {
+        guard input != self.input else { return }
         stopInput()
-        deviceUID = uid
-        UserDefaults.standard.set(uid, forKey: TimecodeStation.deviceKey)
+        switch input {
+        case .none:
+            deviceUID = nil
+            midiSourceUID = nil
+        case .audio(let uid):
+            source = .ltc
+            deviceUID = uid
+        case .midi(let uid):
+            source = .mtc
+            midiSourceUID = uid
+        }
+        let defaults = UserDefaults.standard
+        defaults.set(source.rawValue, forKey: TimecodeStation.sourceKey)
+        defaults.set(deviceUID, forKey: TimecodeStation.deviceKey)
+        defaults.set(midiSourceUID.map { Int($0) }, forKey: TimecodeStation.midiSourceKey)
         problem = nil
         start()
     }
@@ -157,7 +194,7 @@ final class TimecodeFollower {
     func setChannel(_ channel: Int) {
         self.channel = channel
         UserDefaults.standard.set(channel, forKey: TimecodeStation.channelKey)
-        reader?.setChannel(channel)
+        (reader as? LTCReader)?.setChannel(channel)
     }
 
     func setOffset(_ frames: Int) {
@@ -188,9 +225,7 @@ final class TimecodeFollower {
     private func tick() {
         guard let reader else { return }
         let (heard, peak) = reader.drain()
-        for frame in heard {
-            clock.receive(frame.frame, rate: frame.rate, hostTime: frame.hostTime)
-        }
+        for frame in heard { clock.receive(frame) }
         var reading = clock.reading(at: CACurrentMediaTime())
         publishDisplay(reading)
         if let rate = reading.rate, let position = reading.position {
@@ -278,18 +313,35 @@ struct TimecodeInputControl: View {
     let follower: TimecodeFollower
     @State private var devices: [AudioDeviceList.AudioInputDevice] = []
 
+    private typealias Input = TimecodeFollower.Input
+
     var body: some View {
-        let uid = follower.deviceUID ?? ""
-        let device = devices.first { $0.uid == uid }
+        let input = follower.input
+        let midiSources = MIDIDeviceInventory.shared.discoveredSources
+        let device: AudioDeviceList.AudioInputDevice? = if case .audio(let uid) = input {
+            devices.first { $0.uid == uid }
+        } else {
+            nil
+        }
+        let missing: String? = switch input {
+        case .none: nil
+        case .audio: device == nil ? "Device (not connected)" : nil
+        case .midi(let uid): midiSources.contains { $0.uid == uid } ? nil : "MIDI source (not connected)"
+        }
         HStack(spacing: 8) {
             if follower.problem != nil {
                 Text("Not connected").foregroundStyle(.orange)
             }
-            Picker("", selection: Binding(get: { uid }, set: { follower.setDevice($0.isEmpty ? nil : $0) })) {
-                Text("None").tag("")
-                ForEach(devices, id: \.uid) { Text($0.name).tag($0.uid) }
-                if !uid.isEmpty, device == nil {
-                    Text("Device (not connected)").tag(uid)
+            Picker("", selection: Binding(get: { input }, set: { follower.setInput($0) })) {
+                Text("None").tag(Input.none)
+                Section("LTC (audio)") {
+                    ForEach(devices, id: \.uid) { Text($0.name).tag(Input.audio($0.uid)) }
+                }
+                Section("MTC (MIDI)") {
+                    ForEach(midiSources, id: \.uid) { Text($0.name).tag(Input.midi($0.uid)) }
+                }
+                if let missing {
+                    Text(missing).tag(input)
                 }
             }
             .labelsHidden()
@@ -305,7 +357,9 @@ struct TimecodeInputControl: View {
         .task {
             while !Task.isCancelled {
                 devices = AudioDeviceList.inputDevices()
-                if let uid = follower.deviceUID, devices.contains(where: { $0.uid == uid }) { follower.retry() }
+                if case .audio(let uid) = follower.input, devices.contains(where: { $0.uid == uid }) {
+                    follower.retry()
+                }
                 try? await Task.sleep(for: .seconds(4))
             }
         }
