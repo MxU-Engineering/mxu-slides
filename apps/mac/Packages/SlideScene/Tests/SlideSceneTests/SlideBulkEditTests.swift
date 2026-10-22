@@ -34,6 +34,24 @@ final class SlideBulkEditTests: XCTestCase {
         )
     }
 
+    func testReplaceMediaRepointsThisSlidesBackgroundAndFireMediaOnly() {
+        var doc = presentation([
+            slide("s1", actions: [
+                SlideAction(id: "a1", kind: .fireMedia, mediaId: "m1"),
+                SlideAction(id: "a2", kind: .fireMedia, mediaId: "m9"),
+            ]),
+            slide("s2", actions: [SlideAction(id: "a3", kind: .fireMedia, mediaId: "m1")]),
+        ])
+        doc.slides[0].background = CueMedia(mediaId: "m1")
+        doc.slides[1].background = CueMedia(mediaId: "m1")
+        SlideBulkEdit.replaceMedia("m1", with: "m2", onSlide: "s1", in: &doc)
+
+        XCTAssertEqual(doc.slides[0].background?.mediaId, "m2")
+        XCTAssertEqual(doc.slides[0].actions?.map(\.mediaId), ["m2", "m9"], "only the old media's action moves")
+        XCTAssertEqual(doc.slides[1].background?.mediaId, "m1", "another slide keeps it")
+        XCTAssertEqual(doc.slides[1].actions?.first?.mediaId, "m1")
+    }
+
     func testAddActionLandsFreshIDCopiesAndReturnsPairs() {
         var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
         let template = SlideAction(id: "menu-id", kind: .fireMedia)

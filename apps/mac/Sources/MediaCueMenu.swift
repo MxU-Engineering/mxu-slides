@@ -5,6 +5,8 @@ import SwiftUI
 @MainActor @Observable
 final class MediaCueMenuState {
     var settingsTargetID: String?
+
+    var settingsReplace: ((_ oldID: String, _ newID: String) -> Void)?
     var autoAdvanceTargetID: String?
     var actionsEditorTargetID: String?
     var actionPicker: ActionPicker?
@@ -36,6 +38,8 @@ struct MediaCueMenuItems: View {
 
     var includesCueGrammar = true
 
+    var onReplace: ((_ oldID: String, _ newID: String) -> Void)? = nil
+
     var body: some View {
         if model.media(mediaID) == nil {
 
@@ -61,7 +65,10 @@ struct MediaCueMenuItems: View {
         }
         if let item = model.media(mediaID) {
 
-            Button("Media Settings…") { state.settingsTargetID = mediaID }
+            Button("Media Settings…") {
+                state.settingsReplace = onReplace
+                state.settingsTargetID = mediaID
+            }
             MediaEditorDoors(model: model, mediaID: mediaID, item: item)
             Button("Rename…") {
                 state.renameText = item.name
@@ -217,7 +224,7 @@ private struct MediaCueSheets: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(item: target(\.settingsTargetID)) { target in
-                MediaSettingsSheet(model: model, mediaID: target.id)
+                MediaQuickEditSheet(model: model, mediaID: target.id, onReplace: state.settingsReplace)
             }
             .sheet(item: target(\.autoAdvanceTargetID)) { target in
                 AutoAdvanceSheet(

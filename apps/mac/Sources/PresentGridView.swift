@@ -1076,7 +1076,13 @@ struct SlideGridBody: View {
                 MediaCueMenuItems(
                     model: model, actionRouter: actionRouter,
                     mediaID: mediaID, state: mediaMenuState,
-                    includesCueGrammar: false
+                    includesCueGrammar: false,
+
+                    onReplace: { [presentationID = presentation.id, slideID = slide.id] oldID, newID in
+                        model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
+                            SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
+                        }
+                    }
                 )
             }
         }
@@ -2334,6 +2340,8 @@ struct MediaFireView: View {
 
     var serviceItemID: String? = nil
 
+    var serviceID: String? = nil
+
     @State private var mediaMenuState = MediaCueMenuState()
 
     @Environment(\.runOnly) private var runOnly
@@ -2359,7 +2367,8 @@ struct MediaFireView: View {
                         if !runOnly {
                             MediaCueMenuItems(
                                 model: model, actionRouter: controls?.actionRouter,
-                                mediaID: mediaID, state: mediaMenuState
+                                mediaID: mediaID, state: mediaMenuState,
+                                onReplace: replaceInRow
                             )
                         }
                     }
@@ -2414,6 +2423,14 @@ struct MediaFireView: View {
                 }
             }
             .mediaCueSheets(model: model, state: mediaMenuState)
+        }
+    }
+
+    private var replaceInRow: ((_ oldID: String, _ newID: String) -> Void)? {
+        if let serviceID, let serviceItemID {
+            { _, newID in model.replaceServiceItemMedia(serviceID, itemID: serviceItemID, mediaID: newID) }
+        } else {
+            nil
         }
     }
 }

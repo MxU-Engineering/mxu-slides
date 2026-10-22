@@ -2,6 +2,17 @@ import Foundation
 
 public enum ServiceRunOrder {
 
+    public static func replaceMedia(
+        in items: inout [ServiceItem], itemID: String, mediaID: String, name: String?
+    ) {
+        for index in items.indices where items[index].id == itemID && items[index].itemKind == .media {
+            items[index].refId = mediaID
+            if items[index].mxuItemHexId == nil, let name {
+                items[index].name = name
+            }
+        }
+    }
+
     public static func nextFireable(in show: [ServiceItem], after itemID: String) -> ServiceItem? {
         guard let index = show.firstIndex(where: { $0.id == itemID }) else { return nil }
         return show[(index + 1)...].first { $0.itemKind == .presentation || $0.itemKind == .media }

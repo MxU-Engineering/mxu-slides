@@ -79,6 +79,23 @@ public enum SlideBulkEdit {
         }
     }
 
+    public static func replaceMedia(
+        _ oldID: String, with newID: String, onSlide slideID: String, in presentation: inout Presentation
+    ) {
+        for index in presentation.slides.indices where presentation.slides[index].id == slideID {
+            if presentation.slides[index].background?.mediaId == oldID {
+                presentation.slides[index].background?.mediaId = newID
+            }
+            presentation.slides[index].actions = presentation.slides[index].actions?.map { action in
+                var next = action
+                if action.kind == .fireMedia, action.mediaId == oldID {
+                    next.mediaId = newID
+                }
+                return next
+            }
+        }
+    }
+
     public static func duplicateSlides(
         _ slideIDs: [String], in presentation: inout Presentation
     ) {

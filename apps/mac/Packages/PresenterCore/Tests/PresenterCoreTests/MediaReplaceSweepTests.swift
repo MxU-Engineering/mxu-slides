@@ -28,13 +28,28 @@ import Testing
 
     @Test func quickMediaSurfacesOpenTheEditorAndTheFile() throws {
         let menu = try source("MediaCueMenu.swift")
-        #expect(menu.contains("Button(\"Media Settings…\") { state.settingsTargetID = mediaID }\n            MediaEditorDoors(model: model, mediaID: mediaID, item: item)"))
+        #expect(menu.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item)\n            Button(\"Rename…\")"))
         #expect(menu.contains("model.openInEditor(entryID: mediaID)\n            UserDefaults.standard.set(AppMode.edit.rawValue, forKey: \"appMode\")"))
         #expect(menu.contains("NSWorkspace.shared.activateFileViewerSelecting([url])"))
-        let popup = try source("InspectorView.swift")
+        #expect(menu.contains("MediaQuickEditSheet(model: model, mediaID: target.id, onReplace: state.settingsReplace)"))
+        let popup = try source("MediaQuickEditSheet.swift")
         #expect(popup.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item) { dismiss() }"), "the popup closes before the mode flips")
+        #expect(popup.contains("MediaTrimEdit.points(fractions: range, duration: preview.duration)"), "the editor's trim grammar")
+        #expect(popup.contains("if onReplace != nil {\n                Button(\"Replace…\")"), "Replace… only where there is a spot")
+        #expect(!(try source("InspectorView.swift")).contains("struct MediaSettingsSheet"), "one popup")
         let planner = try source("ServicePlannerView.swift")
         #expect(planner.contains("entry.kind.opensInEditor, item.itemKind != .media {"), "media rows don't show Edit twice")
+    }
+
+    @Test func quickEditReplaceSwapsOnlyItsSpot() throws {
+        let grid = try source("PresentGridView.swift")
+        #expect(grid.contains("SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)"))
+        #expect(grid.contains("model.replaceServiceItemMedia(serviceID, itemID: serviceItemID, mediaID: newID)"))
+        for name in ["ServicePlannerView.swift", "ServiceContinuousView.swift"] {
+            #expect(try source(name).contains("model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)"), "\(name)")
+        }
+        #expect(!(try source("LibraryView.swift")).contains("MediaQuickEditSheet(model: model, mediaID: target.id, onReplace:"), "the Library has no spot")
+        #expect(!(try source("MediaQuickEditSheet.swift")).contains("replaceMediaFile("))
     }
 
     @Test func mediaPickersSearchOrImportANewItem() throws {

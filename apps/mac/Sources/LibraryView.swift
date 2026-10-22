@@ -120,7 +120,8 @@ struct LibrarySidebar: View {
             NewFolderSheet(model: model, entry: entry, parentPath: realPath(folderPath ?? []))
         }
         .sheet(item: $mediaSettingsTarget) { target in
-            MediaSettingsSheet(model: model, mediaID: target.id)
+
+            MediaQuickEditSheet(model: model, mediaID: target.id)
         }
         .sheet(item: $resolutionTarget) { target in
             PresentationResolutionSheet(model: model, target: target)

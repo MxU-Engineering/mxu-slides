@@ -595,7 +595,7 @@ extension String {
     }
 }
 
-private struct VideoPreviewSurface: NSViewRepresentable {
+struct VideoPreviewSurface: NSViewRepresentable {
     let player: AVPlayer
 
     final class PlayerLayerView: NSView {
@@ -736,11 +736,9 @@ struct MediaEditorView: View {
         let canvasWidth = Double(SlideSceneBuilder.canvasSize.width)
         let effects = SlideSceneBuilder.sceneEffects(cachedMedia?.effects)
         if isTimeBased {
-            let inPoint = max(trimIn ?? 0, 0)
-            let outPoint = min(trimOut ?? preview.duration, preview.duration)
-            preview.trimWindow =
-                (inPoint > 0.05 || outPoint < preview.duration - 0.05) && outPoint > inPoint
-                    ? inPoint ... outPoint : nil
+            preview.trimWindow = MediaTrimEdit.window(
+                inPoint: trimIn, outPoint: trimOut, duration: preview.duration
+            )
             preview.playRate = cachedMedia?.playRate ?? 1
             if isVideo {
                 preview.applyEffects(effects, canvasWidth: canvasWidth)
@@ -779,12 +777,8 @@ struct MediaEditorView: View {
                     onTrimChange: { range, final in
 
                         guard final, preview.duration > 0 else { return }
-                        let duration = preview.duration
-                        let inPoint: Double? = range.lowerBound * duration > 0.05
-                            ? tidy(range.lowerBound * duration) : nil
-                        let outPoint: Double? = range.upperBound * duration < duration - 0.05
-                            ? tidy(range.upperBound * duration) : nil
-                        writeTrim(inPoint: .some(inPoint), outPoint: .some(outPoint))
+                        let points = MediaTrimEdit.points(fractions: range, duration: preview.duration)
+                        writeTrim(inPoint: .some(points.inPoint), outPoint: .some(points.outPoint))
                     }
                 )
                     .padding(.horizontal, 12)
@@ -822,7 +816,7 @@ struct MediaEditorView: View {
         .padding(24)
     }
 
-    private struct TransportPill: View {
+    struct TransportPill: View {
         let preview: MediaPreviewPlayer
         var trimRange: ClosedRange<Double>?
         var onTrimChange: ((ClosedRange<Double>, Bool) -> Void)?
@@ -1156,11 +1150,7 @@ struct MediaEditorView: View {
     private var trimOut: Double? { cachedMedia?.outPoint ?? cachedAudio?.outPoint }
 
     private var editorTrimRange: ClosedRange<Double>? {
-        guard preview.duration > 0 else { return nil }
-        let inP = max(trimIn ?? 0, 0)
-        let outP = min(trimOut ?? preview.duration, preview.duration)
-        guard inP > 0.05 || outP < preview.duration - 0.05, outP > inP else { return nil }
-        return (inP / preview.duration) ... (outP / preview.duration)
+        MediaTrimEdit.fractions(inPoint: trimIn, outPoint: trimOut, duration: preview.duration)
     }
 
     private var trimSection: some View {
@@ -1169,7 +1159,7 @@ struct MediaEditorView: View {
                 trimControls(
                     value: trimIn,
                     set: {
-                        let t = tidy(preview.elapsed)
+                        let t = MediaTrimEdit.tidy(preview.elapsed)
 
                         if let out = trimOut, t >= out { writeTrim(inPoint: t, outPoint: .some(nil)) }
                         else { writeTrim(inPoint: t) }
@@ -1181,7 +1171,7 @@ struct MediaEditorView: View {
                 trimControls(
                     value: trimOut,
                     set: {
-                        let t = tidy(preview.elapsed)
+                        let t = MediaTrimEdit.tidy(preview.elapsed)
                         guard t > (trimIn ?? 0) + 0.05 else { return }
                         writeTrim(outPoint: t)
                     },
@@ -1296,7 +1286,7 @@ struct MediaEditorView: View {
         }
     }
 
-    private static let rateChoices: [Double] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
+    static let rateChoices: [Double] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 
     private func playRatePicker(_ item: MediaItem) -> some View {
         Picker("Play Rate", selection: Binding(
@@ -1312,10 +1302,6 @@ struct MediaEditorView: View {
                 Text(rate == 1 ? "Normal" : String(format: "%g×", rate)).tag(rate)
             }
         }
-    }
-
-    private func tidy(_ seconds: Double) -> Double {
-        (seconds * 100).rounded() / 100
     }
 
     private static func preciseTimecode(_ seconds: Double) -> String {
@@ -1356,7 +1342,7 @@ struct MediaEditorView: View {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
-    private static func timecode(_ seconds: Double) -> String {
+    static func timecode(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
     }

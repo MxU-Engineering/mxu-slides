@@ -1284,6 +1284,14 @@ final class AppModel {
         }
     }
 
+    func replaceServiceItemMedia(_ serviceID: String, itemID: String, mediaID: String) {
+        let name = libraryEntry(mediaID)?.name
+        updateService(serviceID) {
+            ServiceRunOrder.replaceMedia(in: &$0.items, itemID: itemID, mediaID: mediaID, name: name)
+        }
+        markUsed(mediaID)
+    }
+
     func addServiceHeader(_ serviceID: String, name: String) {
         let header = ServiceItem(id: UUID().uuidString, itemKind: .header, name: name, refId: "")
         updateService(serviceID) { $0.items.append(header) }

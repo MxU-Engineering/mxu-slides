@@ -175,47 +175,6 @@ struct MediaSettingsTarget: Identifiable {
     let id: String
 }
 
-struct MediaSettingsSheet: View {
-    let model: AppModel
-    let mediaID: String
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                PosterImage(model: model, mediaId: mediaID)
-                    .frame(width: 96, height: 54)
-                    .clipShape(RoundedRectangle.standard(CornerStandard.element))
-                    .overlay {
-                        RoundedRectangle.standard(CornerStandard.element)
-                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                    }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(model.indexEntry(mediaID)?.name ?? "Media")
-                        .font(.headline)
-                        .lineLimit(2)
-                    if let item = model.media(mediaID) {
-                        HStack(spacing: 6) {
-                            MediaEditorDoors(model: model, mediaID: mediaID, item: item) { dismiss() }
-                        }
-                        .controlSize(.small)
-                    }
-                }
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(12)
-            Divider()
-            if let entry = model.indexEntry(mediaID) {
-                InspectorView(model: model, entry: entry)
-            }
-        }
-        .frame(width: 460, height: 540)
-    }
-}
-
 struct TagsField: View {
     @Binding var tags: [String]
     @State private var text = ""

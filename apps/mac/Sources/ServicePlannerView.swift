@@ -493,7 +493,10 @@ struct RunOrderList: View {
                     MediaCueMenuItems(
                         model: model, actionRouter: controls?.actionRouter,
                         mediaID: item.refId, state: mediaMenuState,
-                        fallbackName: item.name
+                        fallbackName: item.name,
+                        onReplace: { _, newID in
+                            model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)
+                        }
                     )
                     Divider()
                     outputPresetMenu(item)
@@ -825,7 +828,10 @@ struct ServiceItemDetailView: View {
                 )
                 .id(item.id)
             case .media:
-                MediaFireView(model: model, controls: controls, mediaID: item.refId, serviceItemID: item.id)
+                MediaFireView(
+                    model: model, controls: controls, mediaID: item.refId,
+                    serviceItemID: item.id, serviceID: serviceID
+                )
             case .audio:
                 AudioFireView(model: model, controls: controls, audioID: item.refId)
             case .playlist:

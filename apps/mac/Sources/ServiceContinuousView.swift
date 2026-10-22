@@ -727,7 +727,10 @@ struct ServiceContinuousView: View {
                 MediaCueMenuItems(
                     model: model, actionRouter: controls?.actionRouter,
                     mediaID: item.refId, state: mediaMenuState,
-                    fallbackName: item.name
+                    fallbackName: item.name,
+                    onReplace: { _, newID in
+                        model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)
+                    }
                 )
             }
         }
