@@ -1490,6 +1490,8 @@ struct LibraryPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .search
 
+    @AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .lastUsed
+
     @State private var importFolder: String?
     @State private var query = ""
 
@@ -1559,6 +1561,16 @@ struct LibraryPickerSheet: View {
                 TextField(kind == .media ? "Search media" : "Search", text: $query)
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
+                if kind == .media {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(MediaPickerSort.allCases, id: \.self) { choice in
+                            Text(choice.title).tag(choice)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Sort by")
+                }
             }
             .padding(10)
             Divider()
@@ -1610,6 +1622,12 @@ struct LibraryPickerSheet: View {
                             }
                             Text(entry.name)
                             Spacer()
+
+                            if kind == .media, let added = appModel.mediaAddedAt(entry.id) {
+                                Text("Added \(added.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
 
                             if let used = entry.lastUsedAt {
                                 Text("Used \(used, format: .relative(presentation: .named))")
@@ -1725,19 +1743,12 @@ struct LibraryPickerSheet: View {
     }
 
     private var results: [LibraryIndex.Entry] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            return queryHits.filter { $0.kind == kind }
-        }
-        let entries = appModel.entries(of: kind)
-        return entries.sorted { a, b in
-            switch (a.lastUsedAt, b.lastUsedAt) {
-            case let (usedA?, usedB?): usedA > usedB
-            case (.some, nil): true
-            case (nil, .some): false
-            case (nil, nil): a.name.localizedStandardCompare(b.name) == .orderedAscending
-            }
-        }
+        let typed = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        let entries = typed
+            ? queryHits.filter { $0.kind == kind }
+            : appModel.entries(of: kind).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let order = kind == .media ? sort : .bestMatch
+        return order.ordered(entries, typed: typed, addedAt: appModel.mediaAddedAt)
     }
 
     private func symbol(_ entry: LibraryIndex.Entry) -> String {

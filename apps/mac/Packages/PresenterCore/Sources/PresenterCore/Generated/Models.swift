@@ -968,11 +968,12 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var folder: String?
     public var folderId: String?
     public var recordedAt: Double?
+    public var importedAt: Double?
     public var recordedByPresetId: String?
     public var actions: [SlideAction]?
     public var autoAdvance: AutoAdvance?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -996,6 +997,7 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.folder = folder
         self.folderId = folderId
         self.recordedAt = recordedAt
+        self.importedAt = importedAt
         self.recordedByPresetId = recordedByPresetId
         self.actions = actions
         self.autoAdvance = autoAdvance

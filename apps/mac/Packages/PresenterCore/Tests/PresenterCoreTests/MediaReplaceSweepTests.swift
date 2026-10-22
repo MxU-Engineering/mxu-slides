@@ -59,4 +59,20 @@ import Testing
         #expect(try source("ServiceControls.swift").contains("appModel.observeMediaFileChanges(self) { [weak self] id in\n            self?.reloadLiveMedia(id)"))
         #expect(try source("SlideEditorModel.swift").contains("appModel.stopObservingMediaFileChanges(self)"))
     }
+
+    @Test func keepBothNamesAndTheDateAddedShows() throws {
+        let app = try source("AppModel.swift")
+        #expect(app.contains("keptName = replace ? nil : bothName"))
+        #expect(app.contains("at: [url], placement: placement ?? newPlacement, names: keptName.map { [url: $0] } ?? [:]"))
+        #expect(app.contains("Keep Both adds the new file as “\\(keptName)”."))
+        #expect(app.contains("$0.importedAt = Date().timeIntervalSince1970"), "a Duplicate is added now")
+        #expect(try source("MediaEditorView.swift").contains("LabeledContent(\"Added\", value: Date(timeIntervalSince1970: added)"))
+        let picker = try source("SlideEditorView.swift")
+        #expect(picker.contains("@AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .lastUsed"))
+        #expect(picker.contains("return order.ordered(entries, typed: typed, addedAt: appModel.mediaAddedAt)"))
+        #expect(picker.contains("Text(\"Added \\(added.formatted(date: .abbreviated, time: .omitted))\")"))
+        let library = try source("LibraryView.swift")
+        #expect(library.contains("ForEach(LibrarySort.choices(for: section.kind), id: \\.self)"))
+        #expect(library.contains(".merged(items, cloud: cloud, addedAt: model.mediaAddedAt)"))
+    }
 }

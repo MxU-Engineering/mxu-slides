@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 132,
+  "schemaVersion": 137,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1505,6 +1505,9 @@
           "type": "string"
         },
         "recordedAt": {
+          "type": "number"
+        },
+        "importedAt": {
           "type": "number"
         },
         "recordedByPresetId": {

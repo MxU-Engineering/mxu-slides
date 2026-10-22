@@ -299,7 +299,7 @@ struct LibrarySidebar: View {
         let upcoming = UpcomingUse.kinds.contains(section.kind)
         return Menu {
             Section("Sort By") {
-                ForEach(LibrarySort.allCases, id: \.self) { choice in
+                ForEach(LibrarySort.choices(for: section.kind), id: \.self) { choice in
                     Toggle(choice.title, isOn: Binding(get: { sort == choice }, set: { if $0 { model.setSort(choice, for: section) } }))
                 }
             }
@@ -630,7 +630,7 @@ struct LibrarySidebar: View {
         let cloud = tucksLoose ? [] : looseCloud
         return BrowserContents(
             path: path, folders: folders, items: items, cloud: cloud,
-            rows: (model.librarySorts[section] ?? .name).merged(items, cloud: cloud),
+            rows: (model.librarySorts[section] ?? .name).merged(items, cloud: cloud, addedAt: model.mediaAddedAt),
             tucked: tucksLoose ? looseItems.count + looseCloud.count : 0, menus: rowMenuLists(for: section))
     }
 

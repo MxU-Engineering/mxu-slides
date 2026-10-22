@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 132,
+  "schemaVersion": 137,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -1854,6 +1854,11 @@
         },
         {
           "name": "recordedAt",
+          "type": "double",
+          "optional": true
+        },
+        {
+          "name": "importedAt",
           "type": "double",
           "optional": true
         },

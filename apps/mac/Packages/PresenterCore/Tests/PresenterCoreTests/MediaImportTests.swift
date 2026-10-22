@@ -162,6 +162,30 @@ struct MediaImportTests {
         #expect(try await onLibraryActor(reading: libraryRoot) { try $0.index.entries(of: .media).count } == 2)  
     }
 
+    @MainActor @Test func anImportTakesTheGivenNameAndRecordsWhenItCameIn() async throws {
+        let dir = try makeDir()
+        let libraryRoot = try makeDir()
+        defer {
+            try? FileManager.default.removeItem(at: dir)
+            try? FileManager.default.removeItem(at: libraryRoot)
+        }
+        let file = dir.appendingPathComponent("Background.png")
+        try writePNG(to: file)
+
+        let client = LibraryClient(rootURL: libraryRoot)
+        try await client.start().value
+        let importer = try MediaImporter(client: client)
+        let before = Date().timeIntervalSince1970
+        _ = await importer.importFiles(at: [file], names: [file: "Background 2"])
+
+        let snapshot = try await client.settledSnapshot()
+        let entry = try #require(snapshot.entries(of: .media).first)
+        let item = try await client.loadValue(MediaItem.self, id: entry.id)
+        #expect(item.name == "Background 2")
+        #expect(item.fileName == "Background.png")
+        #expect((item.importedAt ?? 0) >= before.rounded(.down))
+    }
+
     @MainActor @Test func importsLandInTheDriveInTheirLibrarysFolder() async throws {
         let dir = try makeDir()
         let libraryRoot = try makeDir()

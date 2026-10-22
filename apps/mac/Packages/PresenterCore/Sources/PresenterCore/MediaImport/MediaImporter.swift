@@ -33,10 +33,13 @@ public struct MediaImporter {
         blobs = try BlobStore(libraryRoot: client.rootURL)
     }
 
-    public func importFiles(at urls: [URL], placement: LibraryHome.Placement = .unplaced) async -> [Result] {
+    public func importFiles(
+        at urls: [URL], placement: LibraryHome.Placement = .unplaced, names: [URL: String] = [:]
+    ) async -> [Result] {
         var results: [Result] = []
         for url in Self.files(in: urls) {
-            results.append(await importOne(url, placement: placement))
+            let name = names[url] ?? url.deletingPathExtension().lastPathComponent
+            results.append(await importOne(url, name: name, placement: placement))
         }
         return results
     }
@@ -66,20 +69,20 @@ public struct MediaImporter {
         }
     }
 
-    private func importOne(_ url: URL, placement: LibraryHome.Placement) async -> Result {
+    private func importOne(_ url: URL, name: String, placement: LibraryHome.Placement) async -> Result {
         guard FileManager.default.isReadableFile(atPath: url.path) else {
             return Result(fileURL: url, outcome: .skipped(reason: "unreadable file"))
         }
         let type = UTType(filenameExtension: url.pathExtension) ?? .data
         do {
             if type.conforms(to: .image) {
-                return Result(fileURL: url, outcome: try await importImage(url, placement: placement))
+                return Result(fileURL: url, outcome: try await importImage(url, name: name, placement: placement))
             }
             if type.conforms(to: .audio) {
-                return Result(fileURL: url, outcome: try await importAudio(url, placement: placement))
+                return Result(fileURL: url, outcome: try await importAudio(url, name: name, placement: placement))
             }
             if type.conforms(to: .movie) || type.conforms(to: .video) {
-                return Result(fileURL: url, outcome: try await importVideo(url, placement: placement))
+                return Result(fileURL: url, outcome: try await importVideo(url, name: name, placement: placement))
             }
             return Result(fileURL: url, outcome: .skipped(reason: "not a media file (\(type.identifier))"))
         } catch {
@@ -87,7 +90,7 @@ public struct MediaImporter {
         }
     }
 
-    private func importImage(_ url: URL, placement: LibraryHome.Placement) async throws -> Result.Outcome {
+    private func importImage(_ url: URL, name: String, placement: LibraryHome.Placement) async throws -> Result.Outcome {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else {
@@ -96,7 +99,7 @@ public struct MediaImporter {
         let hash = try await storeBlob(url)
         var item = MediaItem(
             id: UUID().uuidString,
-            name: url.deletingPathExtension().lastPathComponent,
+            name: name,
             mediaKind: .image,
             classification: .foreground,
             fileHash: hash,
@@ -106,20 +109,21 @@ public struct MediaImporter {
             tags: [], favorite: false, collections: [], loops: false,
             inPoint: nil, outPoint: nil, durationSeconds: nil,
             pixelWidth: properties[kCGImagePropertyPixelWidth] as? Int,
-            pixelHeight: properties[kCGImagePropertyPixelHeight] as? Int
+            pixelHeight: properties[kCGImagePropertyPixelHeight] as? Int,
+            importedAt: Date().timeIntervalSince1970
         )
         item.folder = placement.folder(for: .media)
         _ = try await client.create(item, area: placement.area(for: .media)).value
         return .media(id: item.id, status: .ready)
     }
 
-    private func importAudio(_ url: URL, placement: LibraryHome.Placement) async throws -> Result.Outcome {
+    private func importAudio(_ url: URL, name: String, placement: LibraryHome.Placement) async throws -> Result.Outcome {
         let asset = AVURLAsset(url: url)
         let duration = try? await asset.load(.duration).seconds
         let hash = try await storeBlob(url)
         var item = AudioItem(
             id: UUID().uuidString,
-            name: url.deletingPathExtension().lastPathComponent,
+            name: name,
             fileHash: hash,
             fileName: url.lastPathComponent,
             tags: [], favorite: false,
@@ -130,13 +134,13 @@ public struct MediaImporter {
         return .audio(id: item.id)
     }
 
-    private func importVideo(_ url: URL, placement: LibraryHome.Placement) async throws -> Result.Outcome {
+    private func importVideo(_ url: URL, name: String, placement: LibraryHome.Placement) async throws -> Result.Outcome {
         let asset = AVURLAsset(url: url)
         let probe = await Self.probeVideo(asset)
         let hash = try await storeBlob(url)
         var item = MediaItem(
             id: UUID().uuidString,
-            name: url.deletingPathExtension().lastPathComponent,
+            name: name,
             mediaKind: .video,
             classification: .foreground,
             fileHash: hash,
@@ -147,7 +151,8 @@ public struct MediaImporter {
             inPoint: nil, outPoint: nil,
             durationSeconds: probe.duration,
             pixelWidth: probe.width,
-            pixelHeight: probe.height
+            pixelHeight: probe.height,
+            importedAt: Date().timeIntervalSince1970
         )
         item.folder = placement.folder(for: .media)
         _ = try await client.create(item, area: placement.area(for: .media)).value

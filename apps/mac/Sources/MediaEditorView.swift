@@ -901,6 +901,11 @@ struct MediaEditorView: View {
         Section("File") {
             LabeledContent("Kind", value: item.mediaKind.rawValue.capitalized)
             LabeledContent("Original name", value: item.fileName)
+
+            if let added = item.importedAt {
+                LabeledContent("Added", value: Date(timeIntervalSince1970: added)
+                    .formatted(date: .abbreviated, time: .shortened))
+            }
             if let w = item.pixelWidth, let h = item.pixelHeight {
                 LabeledContent("Dimensions", value: "\(w) × \(h)")
             }

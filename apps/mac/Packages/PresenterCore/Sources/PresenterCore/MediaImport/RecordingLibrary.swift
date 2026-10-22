@@ -50,6 +50,7 @@ public enum RecordingLibrary {
             pixelHeight: probe.height,
             folder: folder.isEmpty ? nil : folder,
             recordedAt: recordedAt.timeIntervalSince1970,
+            importedAt: Date().timeIntervalSince1970,
             recordedByPresetId: presetId
         )
         _ = try await client.create(item).value

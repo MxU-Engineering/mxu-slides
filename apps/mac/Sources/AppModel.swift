@@ -696,8 +696,13 @@ final class AppModel {
     }
 
     func browserEntries(in section: LibrarySection) -> [LibraryIndex.Entry] {
-        let all = (librarySorts[section] ?? .name).ordered(Self.inSectionOrder(listedSnapshot.entries(of: section.kind), section))
+        let all = (librarySorts[section] ?? .name).ordered(
+            Self.inSectionOrder(listedSnapshot.entries(of: section.kind), section), addedAt: mediaAddedAt)
         return !isFiltered(section) ? all : all.filter { showFiltersAdmit(id: $0.id, kind: $0.kind) }
+    }
+
+    func mediaAddedAt(_ id: String) -> Date? {
+        media(id)?.importedAt.map(Date.init(timeIntervalSince1970:))
     }
 
     func showFiltersAdmit(id: String, kind: DocumentKind) -> Bool {
@@ -2124,7 +2129,11 @@ final class AppModel {
         }
         case .service: copy(Service.self) { $0.id = newID; $0.name += " Copy" }
         case .theme: copy(Theme.self) { $0.id = newID; $0.name += " Copy" }
-        case .media: copy(MediaItem.self) { $0.id = newID; $0.name += " Copy" }
+        case .media: copy(MediaItem.self) {
+            $0.id = newID
+            $0.name += " Copy"
+            $0.importedAt = Date().timeIntervalSince1970
+        }
         case .audio: copy(AudioItem.self) { $0.id = newID; $0.name += " Copy" }
         case .playlist: copy(Playlist.self) { $0.id = newID; $0.name += " Copy" }
         case .overlay: copy(Overlay.self) { $0.id = newID; $0.name += " Copy" }
@@ -3133,16 +3142,21 @@ final class AppModel {
             }.value
             let match = if let kind, let hash { dedupe.match(hash: hash, name: name, kind: kind) } else { MediaImportDedupe.Match.new }
             var replacing: String?
-            if case .sameName(let id, let existing) = match {
+            var keptName: String?
+            if case .sameName(let id, let existing) = match, let kind {
+                let bothName = dedupe.availableName(existing, kind: kind)
                 let replace: Bool
                 if let replaceRest {
                     replace = replaceRest
                 } else {
-                    let answer = await askMediaNameConflict(name: existing, othersLeft: files.count - index - 1)
+                    let answer = await askMediaNameConflict(
+                        name: existing, keptName: bothName, othersLeft: files.count - index - 1)
                     replace = answer.replace
                     if answer.forRest { replaceRest = answer.replace }
                 }
                 replacing = replace ? id : nil
+
+                keptName = replace ? nil : bothName
             }
             if case .sameFile(let id) = match {
                 reused += 1
@@ -3156,16 +3170,18 @@ final class AppModel {
                 replaced += 1
                 if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
             } else {
-                let result = await importer?.importFiles(at: [url], placement: placement ?? newPlacement).first
+                let result = await importer?.importFiles(
+                    at: [url], placement: placement ?? newPlacement, names: keptName.map { [url: $0] } ?? [:]
+                ).first
                 switch result?.outcome {
                 case .media(let id, let status)?:
                     added += 1
                     if status == .needsTranscode { flagged += 1 }
                     mediaIDs.append(id)
-                    if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .media) }
+                    if let hash { dedupe.note(id: id, hash: hash, name: keptName ?? name, kind: .media) }
                 case .audio(let id)?:
                     added += 1
-                    if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+                    if let hash { dedupe.note(id: id, hash: hash, name: keptName ?? name, kind: .audio) }
                 case .skipped?, nil:
                     skipped += 1
                 }
@@ -3188,10 +3204,12 @@ final class AppModel {
         return ids.first.flatMap { indexEntry($0) }
     }
 
-    private func askMediaNameConflict(name: String, othersLeft: Int) async -> (replace: Bool, forRest: Bool) {
+    private func askMediaNameConflict(
+        name: String, keptName: String, othersLeft: Int
+    ) async -> (replace: Bool, forRest: Bool) {
         let alert = NSAlert()
         alert.messageText = "“\(name)” is already in your library"
-        alert.informativeText = "Replace it with the new file everywhere it’s used, or keep both?"
+        alert.informativeText = "Replace it with the new file everywhere it’s used, or keep both? Keep Both adds the new file as “\(keptName)”."
         alert.addButton(withTitle: "Keep Both")
         alert.addButton(withTitle: "Replace")
         alert.showsSuppressionButton = othersLeft > 0
