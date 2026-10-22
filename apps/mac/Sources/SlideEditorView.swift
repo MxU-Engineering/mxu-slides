@@ -1490,7 +1490,7 @@ struct LibraryPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .search
 
-    @AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .lastUsed
+    @AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .bestMatch
 
     @State private var importFolder: String?
     @State private var query = ""

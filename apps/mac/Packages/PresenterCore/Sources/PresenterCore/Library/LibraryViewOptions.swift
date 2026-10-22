@@ -117,7 +117,7 @@ public enum UpcomingUse {
 }
 
 public enum MediaPickerSort: String, CaseIterable, Sendable {
-    case lastUsed, bestMatch, dateAdded
+    case bestMatch, lastUsed, dateAdded
 
     public static let defaultsKey = "mediaPicker.sort"
 

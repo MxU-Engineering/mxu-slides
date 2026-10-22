@@ -68,7 +68,7 @@ import Testing
         #expect(app.contains("$0.importedAt = Date().timeIntervalSince1970"), "a Duplicate is added now")
         #expect(try source("MediaEditorView.swift").contains("LabeledContent(\"Added\", value: Date(timeIntervalSince1970: added)"))
         let picker = try source("SlideEditorView.swift")
-        #expect(picker.contains("@AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .lastUsed"))
+        #expect(picker.contains("@AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .bestMatch"))
         #expect(picker.contains("return order.ordered(entries, typed: typed, addedAt: appModel.mediaAddedAt)"))
         #expect(picker.contains("Text(\"Added \\(added.formatted(date: .abbreviated, time: .omitted))\")"))
         let library = try source("LibraryView.swift")
