@@ -929,14 +929,18 @@ private struct TrackChannelsForm: View {
                         .onDrop(of: [.plainText], delegate: TrackRowDrop(
                             target: channel.id, channels: channels, height: rowFrames.byID[channel.id]?.height ?? 44, state: drop
                         ) { id, before in tracks?.moveChannel(id, before: before) })
-                        .overlay(alignment: drop.gap?.above == false ? .bottom : .top) {
-                            if drop.gap?.target == channel.id {
 
-                                let above = drop.gap?.above != false
+                        .overlay(alignment: .top) {
+                            if let gap = drop.gap, gap.before == channel.id {
                                 Rectangle().fill(Color.accentColor).frame(height: 2)
-                                    .offset(y: above
-                                        ? -Self.halfGap(channels, index - 1, index, rowFrames.byID)
-                                        : Self.halfGap(channels, index, index + 1, rowFrames.byID))
+                                    .offset(y: -Self.halfGap(channels, index - 1, index, rowFrames.byID) - 1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if let gap = drop.gap, gap.before == nil, index == channels.count - 1 {
+                                Rectangle().fill(Color.accentColor).frame(height: 2)
+                                    .offset(y: Self.halfGap(channels, index, index + 1, rowFrames.byID) + 1)
                                     .allowsHitTesting(false)
                             }
                         }
@@ -965,9 +969,9 @@ private struct TrackChannelsForm: View {
 }
 
 private struct TrackRowDrop: DropDelegate {
+
     struct Gap: Equatable {
-        var target: String
-        var above: Bool
+        var before: String?
     }
 
     @MainActor @Observable final class State {
@@ -985,26 +989,25 @@ private struct TrackRowDrop: DropDelegate {
         NSPasteboard(name: .drag).string(forType: .string).flatMap(TrackChannelsForm.channelID)
     }
 
-    private func drop(_ info: DropInfo) -> (gap: Gap, before: String?)? {
+    private func drop(_ info: DropInfo) -> Gap? {
         guard let id = dragged else { return nil }
         let above = info.location.y < height / 2
-        return TimelineTracks.dropping(id, at: target, above: above, in: channels)
-            .map { (Gap(target: target, above: above), $0.before) }
+        return TimelineTracks.dropping(id, at: target, above: above, in: channels).map { Gap(before: $0.before) }
     }
 
     func validateDrop(info: DropInfo) -> Bool { dragged != nil }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        let next = drop(info)?.gap
+        let next = drop(info)
         state.updates += 1
         if state.gap != next { state.gap = next }
         return DropProposal(operation: .move)
     }
 
     func dropExited(info: DropInfo) {
-        let state = state, target = target, seen = state.updates
+        let state = state, seen = state.updates
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            if state.updates == seen, state.gap?.target == target { state.gap = nil }
+            if state.updates == seen { state.gap = nil }
         }
     }
 
