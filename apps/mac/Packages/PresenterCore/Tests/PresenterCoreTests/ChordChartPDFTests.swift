@@ -77,6 +77,14 @@ struct ChordChartPDFTests {
             == ["Every single time", "The Lord will provide", "My Father has it", "B"])
     }
 
+    @Test func aWordSpreadForItsChordReadsWhole() {
+        let spread = Self.glyphs("of Hea", y: 600) + Self.glyphs("ven", x: 70 + 6 * 6 + 8, y: 600)
+        #expect(ChordChartPDF.text(of: spread).text == "of Heaven")
+
+        let unspaced = Self.glyphs("Lord", y: 600) + Self.glyphs("will", x: 70 + 4 * 6 + 8, y: 600)
+        #expect(ChordChartPDF.text(of: unspaced).text == "Lord will")
+    }
+
     @Test func aChordOnlySectionRepeatsOnlyWithTheSameChords() {
 
         let sections: [ChordChartPDF.Section] = [

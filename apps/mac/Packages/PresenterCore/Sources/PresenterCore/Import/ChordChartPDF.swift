@@ -152,7 +152,8 @@ public enum ChordChartPDF {
         }
         func column(_ glyph: PDFGlyph) -> Int {
             var start = glyph
-            if isHeading(glyph) {
+
+            if glyph.bold && glyph.size >= body * 1.03 {
                 while let previous = headings.filter({
                     abs($0.y - start.y) < body * 0.2 && $0.maxX <= start.x + 0.5 && start.x - $0.maxX < body
                 }).max(by: { $0.maxX < $1.maxX }) {
@@ -220,13 +221,14 @@ public enum ChordChartPDF {
         var text = ""
         var ends: [CGFloat] = []
         var lastEnd: CGFloat?
+        let drawsSpaces = glyphs.contains { $0.text == " " }
         for glyph in glyphs {
             if glyph.text == " " || glyph.text.trimmingCharacters(in: .whitespaces).isEmpty {
                 if !text.isEmpty, text.last != " " { text.append(" "); ends.append(glyph.maxX) }
                 lastEnd = glyph.maxX
                 continue
             }
-            if let lastEnd, glyph.x - lastEnd > glyph.size * 0.2, !text.isEmpty, text.last != " " {
+            if let lastEnd, glyph.x - lastEnd > glyph.size * (drawsSpaces ? 2 : 0.2), !text.isEmpty, text.last != " " {
                 text.append(" ")
                 ends.append(glyph.x)
             }
