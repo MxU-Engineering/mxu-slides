@@ -42,6 +42,20 @@ public enum TrackSets {
         return details.isEmpty ? song : "\(song) — \(details.joined(separator: ", "))"
     }
 
+    public static func clipName(_ name: String) -> String {
+        var words = name.replacingOccurrences(of: "_", with: " ").split(separator: " ").map(String.init)
+        if let last = words.last, words.count > 1,
+           ["mp3", "wav", "m4a", "aif", "aiff", "flac", "aac", "caf"].contains(last.lowercased()) {
+            words.removeLast()
+        }
+        if let first = words.first, words.count > 1,
+           first.trimmingCharacters(in: CharacterSet(charactersIn: ".-")).allSatisfy(\.isNumber) {
+            words.removeFirst()
+            if words.first == "-", words.count > 1 { words.removeFirst() }
+        }
+        return words.isEmpty ? name : words.joined(separator: " ")
+    }
+
     public static func stemIDs(_ sets: some Sequence<TrackSet>) -> Set<String> {
         Set(sets.flatMap { $0.stems.map(\.audioId) })
     }

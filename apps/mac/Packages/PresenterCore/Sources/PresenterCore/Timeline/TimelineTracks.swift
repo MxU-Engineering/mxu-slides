@@ -13,6 +13,21 @@ public enum TimelineTracks {
         cues.filter { $0.trackChannelId != nil && $0.mediaId != nil }.sorted { $0.at < $1.at }
     }
 
+    public static let foldedPrefix = "folded:"
+
+    public static func folded(_ stems: [TimelineCue], in cues: [TimelineCue]) -> TimelineCue? {
+        guard var bar = stems.min(by: { $0.at < $1.at }) else { return nil }
+        let ends = stems.map { PresentationTimelines.end(of: $0, in: cues) }.filter(\.isFinite)
+        bar.id = foldedPrefix + bar.id
+        bar.duration = ends.max().map { max($0 - bar.at, 0) }
+        return bar
+    }
+
+    public static func reach(of cue: TimelineCue, in cues: [TimelineCue]) -> Set<String> {
+        if cue.id.hasPrefix(foldedPrefix) { return Set(stems(cues).map(\.id)) }
+        return Set(group(of: cue, in: cues).map(\.id))
+    }
+
     public static func group(of cue: TimelineCue, in cues: [TimelineCue]) -> [TimelineCue] {
         guard cue.trackChannelId != nil else { return [cue] }
         return stems(cues).filter { abs($0.at - cue.at) < PresentationTimelines.frame / 2 }

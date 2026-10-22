@@ -47,3 +47,10 @@ import Testing
     #expect(cues.first { $0.mediaId == "a" }?.trackChannelId == "lead")
     #expect(cues.first { $0.mediaId == "b" }?.trackChannelId != "gone")
 }
+
+@Test func clipNamesReadLikeTitles() {
+    #expect(TrackSets.clipName("03 Wind_To_Breathe_Glenn_Campagna_instrumental_MP3") == "Wind To Breathe Glenn Campagna instrumental")
+    #expect(TrackSets.clipName("12 - Way Maker") == "Way Maker")
+    #expect(TrackSets.clipName("EG 1") == "EG 1")
+    #expect(TrackSets.clipName("1999") == "1999")
+}

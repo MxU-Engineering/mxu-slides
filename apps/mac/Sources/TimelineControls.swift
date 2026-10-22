@@ -99,6 +99,7 @@ struct TimelineRowHeightControls: View {
         }
         .buttonStyle(.plain)
         .controlSize(.mini)
+        .accessibilityLabel("Shorter Rows")
         .help("Shorter rows")
         Slider(value: Binding(get: { height }, set: { set($0.rounded()) }), in: range)
             .controlSize(.mini)
@@ -111,6 +112,7 @@ struct TimelineRowHeightControls: View {
         }
         .buttonStyle(.plain)
         .controlSize(.mini)
+        .accessibilityLabel("Taller Rows")
         .help("Taller rows")
     }
 }
@@ -156,7 +158,7 @@ struct TimelineRuler: View {
                 let ticks = max(Int(segment.displayDuration / interval), 1)
                 ForEach(0..<ticks, id: \.self) { tick in
                     let seconds = Double(tick) * interval
-                    Text(tick == 0 ? "0s" : label?(seconds) ?? String(format: "%.1f", seconds))
+                    Text(label?(seconds) ?? (tick == 0 ? "0s" : String(format: "%.1f", seconds)))
                         .font(.system(size: 8).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 2)
@@ -229,20 +231,25 @@ struct TimelinePlayheadReadout<Source: TimelinePlayheadSource>: View {
 struct TimelinePlayheadHandle<Source: TimelinePlayheadSource>: View {
     let source: Source
     let segmentStarts: [Double]
+
+    var text: ((Double) -> String)?
+
+    var width: CGFloat = 34
     let x: (Double) -> CGFloat
 
     var body: some View {
         let t = source.timelinePlayheadTime
         let start = segmentStarts.last { $0 <= t } ?? segmentStarts.first
         let within = start.map { max(t - $0, 0) } ?? t
-        Text(String(format: "%.2fs", within))
+        Text(text?(within) ?? String(format: "%.2fs", within))
             .font(.system(size: 8.5, weight: .semibold).monospacedDigit())
             .foregroundStyle(.white)
 
-            .frame(width: 34)
+            .frame(width: width)
             .padding(.vertical, 1)
             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 3))
-            .offset(x: x(t) - 17, y: 2)
+
+            .offset(x: max(x(t) - width / 2, 0), y: 2)
     }
 }
 
@@ -303,21 +310,36 @@ struct TimelineBlockCard<Content: View>: View {
     let selected: Bool
     var rampIn = false
     var rampOut = false
+
+    var contentX: CGFloat?
+
+    var backdrop: AnyView?
     @ViewBuilder let content: () -> Content
+    @Environment(TimelineVisibleWindow.self) private var window: TimelineVisibleWindow?
 
     var body: some View {
+        let shown = TimelineBlockCard.shown(width: width, contentX: contentX, window: window?.shown)
         HStack(spacing: 4) {
             content()
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 9)
+        .padding(.leading, 9 + shown.lowerBound)
+        .padding(.trailing, 9)
         .frame(width: width, height: height, alignment: .leading)
-        .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
-        .overlay(
+        .background(alignment: .leading) {
+            ZStack(alignment: .leading) {
+                tint.opacity(0.16)
+                backdrop
+            }
+            .mask(alignment: .leading) { Self.shape(shown) }
+        }
+        .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(selected ? Color.accentColor : tint.opacity(0.4),
                         lineWidth: selected ? 1.5 : 1)
-        )
+                .frame(width: shown.upperBound - shown.lowerBound)
+                .offset(x: shown.lowerBound)
+        }
         .overlay(alignment: .leading) {
 
             if rampIn { rampWedge(leading: true) }
@@ -344,6 +366,18 @@ struct TimelineBlockCard<Content: View>: View {
                 .help("Drag to move where it starts; the end stays put")
         }
         .clipped()
+    }
+
+    static func shown(width: CGFloat, contentX: CGFloat?, window: ClosedRange<Double>?) -> ClosedRange<CGFloat> {
+        guard let contentX, let window else { return 0 ... max(width, 0) }
+        let from = min(max(CGFloat(window.lowerBound) - contentX, 0), max(width, 0))
+        return from ... max(min(CGFloat(window.upperBound) - contentX, width), from)
+    }
+
+    private static func shape(_ shown: ClosedRange<CGFloat>) -> some View {
+        RoundedRectangle(cornerRadius: 6)
+            .frame(width: shown.upperBound - shown.lowerBound)
+            .offset(x: shown.lowerBound)
     }
 
     private func rampWedge(leading: Bool) -> some View {

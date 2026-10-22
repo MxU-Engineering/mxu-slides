@@ -213,7 +213,8 @@ import Testing
         )
         #expect(!outsideLeaves.contains("timelinePlayheadTime"), "only the playhead leaves read the ticking time")
         #expect(
-            leafSection.contains(".frame(width: 84, alignment: .trailing)") && leafSection.contains(".frame(width: 34)"),
+            leafSection.contains(".frame(width: 84, alignment: .trailing)")
+                && leafSection.contains("var width: CGFloat = 34") && leafSection.contains(".frame(width: width)"),
             "the ticking labels keep fixed widths: new digits must not re-lay out their rows"
         )
         for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine"] {

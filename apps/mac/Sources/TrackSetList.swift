@@ -12,7 +12,7 @@ struct TrackSetList: View {
         let sets = model.trackSets
         Group {
             if sets.isEmpty {
-                Text("A song's stems show up here once they're added: open the song's timeline, then Tracks › + › Add Stems\u{2026}")
+                Text("A song's stems show up here once they're added: open the song's timeline, then Tracks › + › Import Audio\u{2026}")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

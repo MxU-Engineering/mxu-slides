@@ -241,3 +241,32 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
 
     #expect(TimelineTracks.silencedBySolo(channels, soloed: ["c"]).isEmpty)
 }
+
+@Test func theFoldedBarSpansEveryStemAndReachesThemAll() {
+    let song = (0 ..< 3).map { TimelineCue(id: "s\($0)", lane: "track:c\($0)", at: 2, duration: 300, mediaId: "a\($0)") }
+    let later = TimelineCue(id: "late", lane: "track:c9", at: 90, duration: 250, mediaId: "z")
+    let slide = TimelineCue(id: "slide", lane: "slides", at: 5)
+    let cues = song + [later, slide]
+    let bar = TimelineTracks.folded(TimelineTracks.stems(cues), in: cues)
+    #expect(bar?.at == 2 && bar?.duration == 338)
+    #expect(TimelineTracks.reach(of: bar!, in: cues) == ["s0", "s1", "s2", "late"])
+    #expect(TimelineTracks.reach(of: song[0], in: cues) == ["s0", "s1", "s2"])
+    #expect(TimelineTracks.reach(of: slide, in: cues) == ["slide"])
+}
+
+@Test func thePlayheadReadsLikeTheRuler() {
+    #expect(PresentationTimelines.playheadClock(158.74) == "2:38.7")
+    #expect(PresentationTimelines.playheadClock(0) == "0:00.0")
+    #expect(PresentationTimelines.playheadClock(3599.99) == "59:59.9")
+}
+
+@Test func aDropFindsItsRowWhateverTheHeights() {
+    let heights = [26.0, 26, 60, 20]
+    #expect(PresentationTimelines.row(atY: 0, heights: heights) == 0)
+    #expect(PresentationTimelines.row(atY: 30, heights: heights) == 1)
+    #expect(PresentationTimelines.row(atY: 54, heights: heights) == 2)
+    #expect(PresentationTimelines.row(atY: 114, heights: heights) == 2)
+    #expect(PresentationTimelines.row(atY: 115, heights: heights) == 3)
+    #expect(PresentationTimelines.row(atY: 136, heights: heights) == nil)
+    #expect(PresentationTimelines.row(atY: -1, heights: heights) == nil)
+}

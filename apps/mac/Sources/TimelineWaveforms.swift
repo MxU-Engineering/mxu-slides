@@ -67,6 +67,8 @@ struct TimelineWaveformSource: Hashable, Sendable {
 @Observable
 final class TimelineVisibleWindow {
     var range: ClosedRange<Double>?
+
+    var shown: ClosedRange<Double>?
 }
 
 struct TimelineVisibleWindowTracker: NSViewRepresentable {
@@ -75,6 +77,7 @@ struct TimelineVisibleWindowTracker: NSViewRepresentable {
     final class TrackerView: NSView {
         var visible: TimelineVisibleWindow?
         private var observers: [NSObjectProtocol] = []
+        private var settle: DispatchWorkItem?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -103,6 +106,14 @@ struct TimelineVisibleWindowTracker: NSViewRepresentable {
             let shown = convert(clip.bounds, from: clip)
             let next = Waveforms.drawnWindow(visibleMinX: shown.minX, visibleWidth: shown.width)
             if visible?.range != next { visible?.range = next }
+
+            settle?.cancel()
+            let exact = Double(shown.minX)...Double(shown.maxX)
+            let work = DispatchWorkItem { [weak self] in
+                if self?.visible?.shown != exact { self?.visible?.shown = exact }
+            }
+            settle = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
         }
     }
 

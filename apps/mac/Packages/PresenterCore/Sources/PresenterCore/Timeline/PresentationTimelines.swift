@@ -113,6 +113,20 @@ public enum PresentationTimelines {
         return cues.filter { sameLane($0) && $0.id != cue.id && $0.at > cue.at }.map(\.at).min() ?? .infinity
     }
 
+    public static func row(atY y: Double, heights: [Double], spacing: Double = 1) -> Int? {
+        var top = 0.0
+        for (index, height) in heights.enumerated() {
+            if y >= top, y < top + height + spacing { return index }
+            top += height + spacing
+        }
+        return nil
+    }
+
+    public static func playheadClock(_ seconds: Double) -> String {
+        let tenths = Int((max(seconds, 0) * 10).rounded(.down))
+        return String(format: "%d:%02d.%d", tenths / 600, tenths / 10 % 60, tenths % 10)
+    }
+
     public static func contentEnd(_ cues: [TimelineCue]) -> Double {
         cues.map { cue in
             let end = end(of: cue, in: cues)
