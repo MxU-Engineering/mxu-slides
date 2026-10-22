@@ -373,6 +373,19 @@ struct ShellView: View {
 
     static let headerHeight: CGFloat = 52
 
+    private func editorBackButton(_ back: AppMode) -> some View {
+        Button {
+            modeRaw = back.rawValue
+        } label: {
+            Label(back.title, systemImage: "chevron.left")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Back to \(back.title)")
+    }
+
     static func trafficLightSlot(fullScreen: Bool) -> CGFloat {
         fullScreen ? 10 : 94
     }
@@ -452,6 +465,14 @@ struct ShellView: View {
                 }
                 .frame(height: Self.headerHeight)
                 .padding(.leading, (draftSidebarWidth ?? sidebarWidth) + 16)
+            }
+        }
+
+        .overlay(alignment: .topLeading) {
+            if mode == .edit, sidebarVisible, let back = model.editorReturnMode {
+                editorBackButton(back)
+                    .frame(height: Self.headerHeight)
+                    .padding(.leading, (draftSidebarWidth ?? sidebarWidth) + 16)
             }
         }
 
@@ -575,6 +596,10 @@ struct ShellView: View {
                 if oldRaw == AppMode.present.rawValue {
                     model.stashPresentSelection()
                 }
+
+                model.editorReturnMode = mode == .edit && model.editorJumpPending
+                    ? AppMode(rawValue: oldRaw) : nil
+                model.editorJumpPending = false
 
                 model.protectEditorSelection = mode == .edit
 

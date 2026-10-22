@@ -125,6 +125,10 @@ final class AppModel {
 
     private var stashedEditorEntryID: String?
 
+    var editorJumpPending = false
+
+    var editorReturnMode: AppMode?
+
     var pendingEditorSlideID: String?
 
     var libraryFindPending = false
@@ -171,7 +175,10 @@ final class AppModel {
     func openInEditor(entryID: String, slideID: String? = nil) {
         guard let entry = libraryEntry(entryID) else { return }
 
-        if !protectEditorSelection { stashPresentSelection() }
+        if !protectEditorSelection {
+            stashPresentSelection()
+            editorJumpPending = true
+        }
         if let section = LibrarySection.allCases.first(where: { $0.kind == entry.kind }) {
             selectedSection = section
         }

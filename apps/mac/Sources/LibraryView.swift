@@ -34,7 +34,6 @@ struct LibrarySidebar: View {
     }
     @State private var renameTarget: LibraryIndex.Entry?
     @State private var renameText = ""
-    @State private var mediaSettingsTarget: MediaSettingsTarget?
     @State private var newFolderTarget: LibraryIndex.Entry?
     @State private var resolutionTarget: PresentationResolutionSheet.Target?
 
@@ -118,10 +117,6 @@ struct LibrarySidebar: View {
         .deckThemeConfirmation(model: model, pending: $pendingApplyTheme)
         .sheet(item: $newFolderTarget) { entry in
             NewFolderSheet(model: model, entry: entry, parentPath: realPath(folderPath ?? []))
-        }
-        .sheet(item: $mediaSettingsTarget) { target in
-
-            MediaQuickEditSheet(model: model, mediaID: target.id)
         }
         .sheet(item: $resolutionTarget) { target in
             PresentationResolutionSheet(model: model, target: target)
@@ -997,7 +992,6 @@ struct LibrarySidebar: View {
             }
         }
         if entry.kind == .media {
-            Button("Media Settings…") { mediaSettingsTarget = MediaSettingsTarget(id: entry.id) }
 
             MediaCueGrammarItems(
                 model: model, actionRouter: nil,

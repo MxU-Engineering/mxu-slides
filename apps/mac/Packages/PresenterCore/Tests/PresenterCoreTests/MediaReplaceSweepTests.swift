@@ -26,30 +26,46 @@ import Testing
         #expect(!(try source("ActionEditors.swift")).contains("systemName: \"pencil\""))
     }
 
-    @Test func quickMediaSurfacesOpenTheEditorAndTheFile() throws {
+    @Test func cueMediaMenuOpensTheEditorAndTheFile() throws {
         let menu = try source("MediaCueMenu.swift")
         #expect(menu.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item)\n            Button(\"Rename…\")"))
         #expect(menu.contains("model.openInEditor(entryID: mediaID)\n            UserDefaults.standard.set(AppMode.edit.rawValue, forKey: \"appMode\")"))
         #expect(menu.contains("NSWorkspace.shared.activateFileViewerSelecting([url])"))
-        #expect(menu.contains("MediaQuickEditSheet(model: model, mediaID: target.id, onReplace: state.settingsReplace)"))
-        let popup = try source("MediaQuickEditSheet.swift")
-        #expect(popup.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item) { dismiss() }"), "the popup closes before the mode flips")
-        #expect(popup.contains("MediaTrimEdit.points(fractions: range, duration: preview.duration)"), "the editor's trim grammar")
-        #expect(popup.contains("if onReplace != nil {\n                Button(\"Replace…\")"), "Replace… only where there is a spot")
-        #expect(!(try source("InspectorView.swift")).contains("struct MediaSettingsSheet"), "one popup")
+        for name in ["MediaCueMenu.swift", "LibraryView.swift"] {
+            #expect(!(try source(name)).contains("Media Settings…"), "\(name): no popup")
+        }
         let planner = try source("ServicePlannerView.swift")
         #expect(planner.contains("entry.kind.opensInEditor, item.itemKind != .media {"), "media rows don't show Edit twice")
     }
 
-    @Test func quickEditReplaceSwapsOnlyItsSpot() throws {
+    @Test func aJumpIntoTheEditorCanGoBack() throws {
+        let app = try source("AppModel.swift")
+        #expect(app.contains("stashPresentSelection()\n            editorJumpPending = true"))
+        let shell = try source("AppShell.swift")
+        #expect(shell.contains("model.editorReturnMode = mode == .edit && model.editorJumpPending\n                    ? AppMode(rawValue: oldRaw) : nil"))
+        #expect(shell.contains("if mode == .edit, sidebarVisible, let back = model.editorReturnMode {\n                editorBackButton(back)"))
+        #expect(shell.contains("if mode == .edit, !sidebarVisible, let back = model.editorReturnMode {\n                    editorBackButton(back)"))
+        #expect(shell.contains("Button {\n            modeRaw = back.rawValue"))
+    }
+
+    @Test func spotReplaceSwapsOnlyItsSpot() throws {
+        let menu = try source("MediaCueMenu.swift")
+        #expect(menu.contains("LibraryPickerSheet(appModel: model) { entry in replacing.swap(entry.id) }"))
+        #expect(!menu.contains("Button(\"Replace Media File…\")"), "the file swap stays in the editor and the Library")
         let grid = try source("PresentGridView.swift")
+        #expect(grid.contains("SpotReplace(label: \"Replace on This Slide…\")"))
         #expect(grid.contains("SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)"))
         #expect(grid.contains("model.replaceServiceItemMedia(serviceID, itemID: serviceItemID, mediaID: newID)"))
         for name in ["ServicePlannerView.swift", "ServiceContinuousView.swift"] {
             #expect(try source(name).contains("model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)"), "\(name)")
         }
-        #expect(!(try source("LibraryView.swift")).contains("MediaQuickEditSheet(model: model, mediaID: target.id, onReplace:"), "the Library has no spot")
-        #expect(!(try source("MediaQuickEditSheet.swift")).contains("replaceMediaFile("))
+        #expect(!(try source("LibraryView.swift")).contains("SpotReplace("), "the Library has no spot")
+    }
+
+    @Test func theEditorTypesTrimPoints() throws {
+        let editor = try source("MediaEditorView.swift")
+        #expect(editor.contains("field: TrimPointField(label: \"In\", value: trimIn"))
+        #expect(editor.contains("MediaTrimEdit.typedOut(typed, inPoint: trimIn, duration: preview.duration)"))
     }
 
     @Test func mediaPickersSearchOrImportANewItem() throws {

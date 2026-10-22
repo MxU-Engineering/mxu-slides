@@ -5,7 +5,6 @@ import SwiftUI
 struct TransitionMenu: View {
     let current: MediaTransition?
     var mixed = false
-    var labeled = true
     let apply: (@escaping @Sendable (MediaTransition?) -> MediaTransition?) -> Void
 
     private static let kinds: [TransitionKind] = [.cut, .dissolve, .fadeBlack, .fadeWhite, .fadeColor, .blurDissolve, .filmBurn]
@@ -36,18 +35,14 @@ struct TransitionMenu: View {
     }
 
     private var title: String {
-        labeled ? "Transition: \(setting)" : setting
-    }
-
-    private var setting: String {
         if mixed {
-            "Mixed"
+            "Transition: Mixed"
         } else if let current, current.transitionKind != .cut {
-            "\(current.transitionKind.menuName) \(TransitionEdit.label(seconds: TransitionEdit.seconds(current)))"
+            "Transition: \(current.transitionKind.menuName) \(TransitionEdit.label(seconds: TransitionEdit.seconds(current)))"
         } else if current != nil {
-            "Cut"
+            "Transition: Cut"
         } else {
-            "Room Default"
+            "Transition: Room Default"
         }
     }
 }

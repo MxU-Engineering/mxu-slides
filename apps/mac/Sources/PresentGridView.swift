@@ -1078,7 +1078,8 @@ struct SlideGridBody: View {
                     mediaID: mediaID, state: mediaMenuState,
                     includesCueGrammar: false,
 
-                    onReplace: { [presentationID = presentation.id, slideID = slide.id] oldID, newID in
+                    replace: SpotReplace(label: "Replace on This Slide…") {
+                        [presentationID = presentation.id, slideID = slide.id] oldID, newID in
                         model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
                             SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
                         }
@@ -2368,7 +2369,7 @@ struct MediaFireView: View {
                             MediaCueMenuItems(
                                 model: model, actionRouter: controls?.actionRouter,
                                 mediaID: mediaID, state: mediaMenuState,
-                                onReplace: replaceInRow
+                                replace: replaceInRow
                             )
                         }
                     }
@@ -2426,9 +2427,11 @@ struct MediaFireView: View {
         }
     }
 
-    private var replaceInRow: ((_ oldID: String, _ newID: String) -> Void)? {
+    private var replaceInRow: SpotReplace? {
         if let serviceID, let serviceItemID {
-            { _, newID in model.replaceServiceItemMedia(serviceID, itemID: serviceItemID, mediaID: newID) }
+            SpotReplace(label: "Replace in This Service…") { _, newID in
+                model.replaceServiceItemMedia(serviceID, itemID: serviceItemID, mediaID: newID)
+            }
         } else {
             nil
         }

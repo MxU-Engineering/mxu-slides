@@ -595,7 +595,7 @@ extension String {
     }
 }
 
-struct VideoPreviewSurface: NSViewRepresentable {
+private struct VideoPreviewSurface: NSViewRepresentable {
     let player: AVPlayer
 
     final class PlayerLayerView: NSView {
@@ -816,7 +816,7 @@ struct MediaEditorView: View {
         .padding(24)
     }
 
-    struct TransportPill: View {
+    private struct TransportPill: View {
         let preview: MediaPreviewPlayer
         var trimRange: ClosedRange<Double>?
         var onTrimChange: ((ClosedRange<Double>, Bool) -> Void)?
@@ -1164,7 +1164,12 @@ struct MediaEditorView: View {
                         if let out = trimOut, t >= out { writeTrim(inPoint: t, outPoint: .some(nil)) }
                         else { writeTrim(inPoint: t) }
                     },
-                    clear: { writeTrim(inPoint: .some(nil)) }
+                    clear: { writeTrim(inPoint: .some(nil)) },
+                    field: TrimPointField(label: "In", value: trimIn, placeholder: "—") { typed in
+                        let points = MediaTrimEdit.typedIn(typed, outPoint: trimOut, duration: preview.duration)
+                        writeTrim(inPoint: .some(points.inPoint), outPoint: .some(points.outPoint))
+                        return true
+                    }
                 )
             }
             LabeledContent("Out Point") {
@@ -1175,7 +1180,15 @@ struct MediaEditorView: View {
                         guard t > (trimIn ?? 0) + 0.05 else { return }
                         writeTrim(outPoint: t)
                     },
-                    clear: { writeTrim(outPoint: .some(nil)) }
+                    clear: { writeTrim(outPoint: .some(nil)) },
+                    field: TrimPointField(label: "Out", value: trimOut, placeholder: "—") { typed in
+                        if let points = MediaTrimEdit.typedOut(typed, inPoint: trimIn, duration: preview.duration) {
+                            writeTrim(outPoint: .some(points.outPoint))
+                            return true
+                        } else {
+                            return false
+                        }
+                    }
                 )
             }
             if trimIn != nil || trimOut != nil, preview.duration > 0 {
@@ -1190,12 +1203,14 @@ struct MediaEditorView: View {
     }
 
     private func trimControls(
-        value: Double?, set: @escaping () -> Void, clear: @escaping () -> Void
+        value: Double?, set: @escaping () -> Void, clear: @escaping () -> Void,
+        field: TrimPointField
     ) -> some View {
         HStack(spacing: 6) {
-            Text(value.map(Self.preciseTimecode) ?? "—")
-                .font(.body.monospacedDigit())
-                .foregroundStyle(value == nil ? .tertiary : .primary)
+
+            field
+                .textFieldStyle(.plain)
+                .disabled(preview.duration <= 0)
             Button("Set") { set() }
                 .help("Set at the preview playhead")
             if value != nil {
@@ -1286,7 +1301,7 @@ struct MediaEditorView: View {
         }
     }
 
-    static let rateChoices: [Double] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
+    private static let rateChoices: [Double] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 
     private func playRatePicker(_ item: MediaItem) -> some View {
         Picker("Play Rate", selection: Binding(
@@ -1302,13 +1317,6 @@ struct MediaEditorView: View {
                 Text(rate == 1 ? "Normal" : String(format: "%g×", rate)).tag(rate)
             }
         }
-    }
-
-    private static func preciseTimecode(_ seconds: Double) -> String {
-        let total = max(0, seconds)
-        let minutes = Int(total) / 60
-        let rest = total - Double(minutes * 60)
-        return String(format: "%d:%04.1f", minutes, rest)
     }
 
     private func mediaBinding<T: Equatable & Sendable>(
@@ -1342,7 +1350,7 @@ struct MediaEditorView: View {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
-    static func timecode(_ seconds: Double) -> String {
+    private static func timecode(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
     }

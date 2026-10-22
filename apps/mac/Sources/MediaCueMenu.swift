@@ -4,9 +4,8 @@ import SwiftUI
 
 @MainActor @Observable
 final class MediaCueMenuState {
-    var settingsTargetID: String?
 
-    var settingsReplace: ((_ oldID: String, _ newID: String) -> Void)?
+    var replacing: Replacing?
     var autoAdvanceTargetID: String?
     var actionsEditorTargetID: String?
     var actionPicker: ActionPicker?
@@ -19,6 +18,11 @@ final class MediaCueMenuState {
         var mediaItemID: String
         var actionID: String
         var kind: DocumentKind
+    }
+
+    struct Replacing: Identifiable {
+        let id: String
+        let swap: (_ newID: String) -> Void
     }
 
     struct ActionPlacement: Identifiable {
@@ -38,7 +42,7 @@ struct MediaCueMenuItems: View {
 
     var includesCueGrammar = true
 
-    var onReplace: ((_ oldID: String, _ newID: String) -> Void)? = nil
+    var replace: SpotReplace? = nil
 
     var body: some View {
         if model.media(mediaID) == nil {
@@ -65,10 +69,6 @@ struct MediaCueMenuItems: View {
         }
         if let item = model.media(mediaID) {
 
-            Button("Media Settings…") {
-                state.settingsReplace = onReplace
-                state.settingsTargetID = mediaID
-            }
             MediaEditorDoors(model: model, mediaID: mediaID, item: item)
             Button("Rename…") {
                 state.renameText = item.name
@@ -110,23 +110,20 @@ struct MediaCueMenuItems: View {
                 Text("Yes").tag(true)
                 Text("No").tag(false)
             }
-            Divider()
 
-            Button("Replace Media File…") {
-                let panel = NSOpenPanel()
-                panel.allowsMultipleSelection = false
-                panel.allowedContentTypes = [.image, .movie]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    Task { @MainActor in
-                        if let carried = await model.replaceMediaFile(mediaID, with: url) {
-                            MediaRelinkAlerts.carriedSettingsWarning(itemName: item.name, carried: carried)
-                        }
-                    }
+            if let replace {
+                Divider()
+                Button(replace.label) {
+                    state.replacing = .init(id: mediaID) { newID in replace.swap(mediaID, newID) }
                 }
             }
         }
     }
+}
+
+struct SpotReplace {
+    let label: String
+    let swap: (_ oldID: String, _ newID: String) -> Void
 }
 
 struct MediaEditorDoors: View {
@@ -134,11 +131,8 @@ struct MediaEditorDoors: View {
     let mediaID: String
     let item: MediaItem
 
-    var onOpen: () -> Void = {}
-
     var body: some View {
         Button("Edit Media…") {
-            onOpen()
             model.openInEditor(entryID: mediaID)
             UserDefaults.standard.set(AppMode.edit.rawValue, forKey: "appMode")
         }
@@ -223,8 +217,8 @@ private struct MediaCueSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: target(\.settingsTargetID)) { target in
-                MediaQuickEditSheet(model: model, mediaID: target.id, onReplace: state.settingsReplace)
+            .sheet(item: $state.replacing) { replacing in
+                LibraryPickerSheet(appModel: model) { entry in replacing.swap(entry.id) }
             }
             .sheet(item: target(\.autoAdvanceTargetID)) { target in
                 AutoAdvanceSheet(
