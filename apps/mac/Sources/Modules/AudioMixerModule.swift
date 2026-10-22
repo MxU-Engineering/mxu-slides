@@ -1433,63 +1433,13 @@ private struct MeterScale: View {
     }
 }
 
-private struct VerticalMeter: View {
-
-    let peak: Float
-    let heldPeakDecibels: Float
-
-    var signalPresent: Bool = false
-    var width: CGFloat = 4
-
-    var body: some View {
-        GeometryReader { geometry in
-            let height = geometry.size.height
-            let fill = CGFloat(AudioLevel.meterFraction(peak))
-            let held = CGFloat(AudioLevel.meterFraction(decibels: heldPeakDecibels))
-            let hot = heldPeakDecibels > -1
-            ZStack(alignment: .bottom) {
-                Capsule()
-                    .fill(Color.primary.opacity(0.08))
-                Capsule()
-                    .fill(hot ? Color.orange : Color.green)
-                    .frame(height: max(0, height * fill))
-                if held > 0.01 {
-                    Rectangle()
-                        .fill(hot ? Color.orange : Color.green.opacity(0.8))
-                        .frame(height: 1.5)
-                        .offset(y: -(height * held - 1))
-                }
-                if signalPresent {
-                    Circle()
-                        .fill(Color.green.opacity(0.6))
-                        .frame(width: 3, height: 3)
-                        .offset(y: 5)
-                }
-            }
-
-            .animation(.linear(duration: 0.07), value: fill)
-        }
-        .frame(width: width)
-    }
-}
-
-private enum MeterSource {
+private enum MeterSource: Equatable {
     case display(String), player(String), bus(String), output(String)
 
     case loudestMix([String])
-}
 
-private struct StripMeter: View {
-    let source: MeterSource
-    let mixer: AudioMixerController
-
-    let scale: Float
-    @State private var ticks: [PeakHold] = []
-
-    static let width: CGFloat = 9
-
-    static func peaks(_ source: MeterSource, in mixer: AudioMixerController) -> [Float]? {
-        switch source {
+    @MainActor func peaks(in mixer: AudioMixerController) -> [Float]? {
+        switch self {
         case .display(let key): mixer.displayLevels[key]?.map(\.peak)
         case .player(let key): mixer.playerLevels[key]?.map(\.peak)
         case .bus(let key): mixer.busLevels[key]?.map(\.peak)
@@ -1497,24 +1447,198 @@ private struct StripMeter: View {
         case .loudestMix(let ids): [ids.flatMap { mixer.busLevels[$0] ?? [] }.map(\.peak).max() ?? 0]
         }
     }
+}
 
-    var body: some View {
-        let raw = Self.peaks(source, in: mixer) ?? []
-        let shown = raw.map { min($0 * scale, 1) }
-        HStack(spacing: 1) {
-            ForEach(shown.indices, id: \.self) { bar in
-                VerticalMeter(
-                    peak: shown[bar], heldPeakDecibels: bar < ticks.count ? ticks[bar].decibels : -.infinity,
+private struct MeterLayers: NSViewRepresentable {
+    let source: MeterSource
+    let mixer: AudioMixerController
+    let style: MeterLayerView.Style
 
-                    signalPresent: raw[bar] > 0.001)
+    var scale: Float = 1
+
+    func makeNSView(context: Context) -> MeterLayerView { MeterLayerView(style: style) }
+
+    func updateNSView(_ view: MeterLayerView, context: Context) {
+        view.scale = scale
+        view.source = source
+        view.mixer = mixer
+        view.paint()
+    }
+}
+
+final class MeterLayerView: NSView {
+    enum Style {
+
+        case strip
+
+        case fold
+
+        case peakLabel
+    }
+
+    let style: Style
+    fileprivate var scale: Float = 1
+
+    fileprivate var source: MeterSource? { didSet { if source != oldValue { refollow() } } }
+    fileprivate var mixer: AudioMixerController? { didSet { if mixer !== oldValue { refollow() } } }
+
+    private var peaks: [Float]?
+
+    private var ticks: [PeakHold] = []
+    private var hold = PeakHold()
+    private var generation = 0
+    private var layers: [String: CALayer] = [:]
+    private var barCount = 0
+
+    init(style: Style) {
+        self.style = style
+        super.init(frame: .zero)
+        wantsLayer = true
+        if style == .peakLabel { toolTip = "Highest peak since reset — click to reset" }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { style == .peakLabel ? super.hitTest(point) : nil }
+
+    override func mouseDown(with event: NSEvent) {
+        hold.reset()
+        paint()
+    }
+
+    override func layout() {
+        super.layout()
+        paint()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paint()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        paint()
+    }
+
+    private func refollow() {
+        generation += 1
+        let generation = generation
+        Task { @MainActor [weak self] in self?.follow(generation) }
+    }
+
+    private func follow(_ generation: Int) {
+        guard let source, let mixer, generation == self.generation else { return }
+        withObservationTracking {
+            peaks = source.peaks(in: mixer)
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in self?.follow(generation) }
+        }
+        paint()
+    }
+
+    fileprivate func paint() {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.07)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            switch style {
+            case .strip: paintBars(ticks: true)
+            case .fold: paintBars(ticks: false)
+            case .peakLabel: paintPeakLabel()
             }
         }
-        .frame(width: Self.width, alignment: .leading)
-        .onChange(of: shown, initial: true) {
+        CATransaction.commit()
+    }
+
+    private func paintBars(ticks hasTicks: Bool) {
+        let raw = hasTicks ? peaks ?? [] : peaks.flatMap { $0.isEmpty ? nil : $0 } ?? [0]
+        let count = CGFloat(raw.count)
+        let gap: CGFloat = hasTicks || raw.count <= 12 ? 1 : 0.5
+        let total = hasTicks ? count * 5 - 1 : min(38, count * 4 + (count - 1) * gap)
+        let width = (total - (count - 1) * gap) / max(count, 1)
+        let x0 = hasTicks ? 0 : (bounds.width - total) / 2
+        let height = bounds.height
+        let shown = raw.map { min($0 * scale, 1) }
+        if hasTicks {
             let now = Date().timeIntervalSinceReferenceDate
             if ticks.count != shown.count { ticks = shown.map { _ in PeakHold(holdSeconds: 1) } }
             for bar in shown.indices { ticks[bar].update(shown[bar], at: now) }
         }
+        if shown.count != barCount {
+            layers.values.forEach { $0.removeFromSuperlayer() }
+            layers = [:]
+            barCount = shown.count
+        }
+        for bar in shown.indices {
+            let x = x0 + CGFloat(bar) * (width + gap)
+            let hot = hasTicks && ticks[bar].decibels > -1
+            let color: NSColor = hot ? .systemOrange : .systemGreen
+            let track = sublayer("track\(bar)") { CALayer() }
+            track.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
+            track.cornerRadius = width / 2
+            track.frame = CGRect(x: x, y: 0, width: width, height: height)
+            let fillHeight = max(0, height * CGFloat(AudioLevel.meterFraction(shown[bar])))
+            let fill = sublayer("fill\(bar)") { CALayer() }
+            fill.backgroundColor = color.cgColor
+            fill.cornerRadius = min(width, fillHeight) / 2
+            fill.frame = CGRect(x: x, y: height - fillHeight, width: width, height: fillHeight)
+            guard hasTicks else { continue }
+            let held = CGFloat(AudioLevel.meterFraction(decibels: ticks[bar].decibels))
+            let tick = sublayer("tick\(bar)") { CALayer() }
+            tick.isHidden = held <= 0.01
+            tick.backgroundColor = (hot ? color : color.withAlphaComponent(0.8)).cgColor
+            tick.frame = CGRect(x: x, y: height - height * held - 0.5, width: width, height: 1.5)
+            let dot = sublayer("dot\(bar)") { CALayer() }
+            dot.isHidden = raw[bar] <= 0.001
+            dot.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.6).cgColor
+            dot.cornerRadius = 1.5
+            dot.frame = CGRect(x: x + (width - 3) / 2, y: height + 2, width: 3, height: 3)
+        }
+    }
+
+    private func paintPeakLabel() {
+        let text = sublayer("peak") { CATextLayer() }
+        guard let peaks else {
+            text.isHidden = true
+            return
+        }
+        hold.update(min((peaks.max() ?? 0) * scale, 1))
+        let decibels = hold.decibels
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 7.5, weight: .medium)
+        let lineHeight = ceil(font.ascender - font.descender)
+        text.isHidden = false
+        text.contentsScale = window?.backingScaleFactor ?? 2
+        text.font = font
+        text.fontSize = font.pointSize
+        text.alignmentMode = .center
+        text.foregroundColor = (decibels > -1 ? NSColor.systemOrange : .secondaryLabelColor).cgColor
+        text.string = decibels <= -90 ? "-∞" : String(format: "%.1f", decibels)
+        text.frame = CGRect(x: 0, y: (bounds.height - lineHeight) / 2, width: bounds.width, height: lineHeight)
+    }
+
+    private func sublayer<L: CALayer>(_ name: String, _ make: () -> L) -> L {
+        if let made = layers[name] as? L { return made }
+        let made = make()
+        layer?.addSublayer(made)
+        layers[name] = made
+        return made
+    }
+}
+
+private struct StripMeter: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+
+    let scale: Float
+
+    static let width: CGFloat = 9
+
+    var body: some View {
+        MeterLayers(source: source, mixer: mixer, style: .strip, scale: scale)
+            .frame(width: Self.width)
     }
 }
 
@@ -1522,17 +1646,10 @@ private struct StripPeakLabel: View {
     let source: MeterSource
     let mixer: AudioMixerController
     let scale: Float
-    @State private var hold = PeakHold()
 
     var body: some View {
-        if let raw = StripMeter.peaks(source, in: mixer) {
-            let peak = min((raw.max() ?? 0) * scale, 1)
-            LevelLabel(decibels: hold.decibels, style: .peak)
-                .contentShape(Rectangle())
-                .onTapGesture { hold.reset() }
-                .help("Highest peak since reset — click to reset")
-                .onChange(of: peak, initial: true) { hold.update(peak) }
-        }
+        MeterLayers(source: source, mixer: mixer, style: .peakLabel, scale: scale)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -1541,17 +1658,8 @@ private struct FoldMeter: View {
     let mixer: AudioMixerController
 
     var body: some View {
-        let peaks = StripMeter.peaks(source, in: mixer).flatMap { $0.isEmpty ? nil : $0 } ?? [0]
-        let count = CGFloat(peaks.count)
-        let gap: CGFloat = peaks.count > 12 ? 0.5 : 1
-        let width = min(38, count * 4 + (count - 1) * gap)
-        HStack(spacing: gap) {
-            ForEach(peaks.indices, id: \.self) { index in
-                VerticalMeter(
-                    peak: peaks[index], heldPeakDecibels: -120, width: (width - (count - 1) * gap) / count)
-            }
-        }
-        .frame(width: max(5, width))
+        MeterLayers(source: source, mixer: mixer, style: .fold)
+            .frame(width: 38)
     }
 }
 

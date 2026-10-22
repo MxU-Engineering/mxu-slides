@@ -51,10 +51,10 @@ import Testing
         "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
         "alertVisible": ("alertVisible", /\balertVisible\b/, []),
 
-        "displayLevels": ("displayLevels", /\.displayLevels\b/, ["StripMeter"]),
-        "busLevels": ("busLevels", /\.busLevels\b/, ["StripMeter"]),
-        "playerLevels": ("playerLevels", /\.playerLevels\b/, ["StripMeter"]),
-        "outputLevels": ("outputLevels", /\.outputLevels\b/, ["StripMeter"]),
+        "displayLevels": ("displayLevels", /\.displayLevels\b/, []),
+        "busLevels": ("busLevels", /\.busLevels\b/, []),
+        "playerLevels": ("playerLevels", /\.playerLevels\b/, []),
+        "outputLevels": ("outputLevels", /\.outputLevels\b/, []),
     ]
 
     private let actionOpeners: [Regex<Substring>] = [
@@ -229,5 +229,21 @@ import Testing
             let body = shared[start.upperBound...].prefix(600)
             #expect(body.contains("PlayheadLayers(source: source)"), "\(leaf) draws with layers")
         }
+    }
+
+    @Test func meterLeavesDrawWithLayers() throws {
+        let sweep = try SourceSweep.app()
+        let file = try #require(sweep.file("AudioMixerModule.swift"))
+        let module = file.text
+        #expect(module.contains("final class MeterLayerView: NSView"))
+        #expect(module.contains("func peaks(in mixer: AudioMixerController) -> [Float]?"))
+        for leaf in ["StripMeter", "StripPeakLabel", "FoldMeter"] {
+            let start = try #require(module.range(of: "private struct \(leaf): View {"))
+            let body = module[start.upperBound...].prefix(700)
+            #expect(body.contains("MeterLayers(source: source, mixer: mixer"), "\(leaf) draws with layers")
+        }
+        let update = try #require(file.lines.firstIndex { $0.contains("private struct MeterLayers: NSViewRepresentable") })
+        let reads = file.block(from: update).filter { file.code($0).contains("Levels") }
+        #expect(reads.isEmpty, "MeterLayers' update must not read the ticking maps: \(reads.map { $0 + 1 })")
     }
 }
