@@ -20,7 +20,7 @@ import Testing
         let grid = try source("PresentGridView.swift")
         let continuous = try source("ServiceContinuousView.swift")
         #expect(grid.contains(".padding(-marqueeMargin)"), "the catcher reaches out over the host's padding")
-        #expect(grid.contains("pastesAtEnd: true,\n                        marqueeMargin: 12\n                    )\n                    .padding(12)"), "the deck view hands its padding to the band")
+        #expect(grid.contains("pastesAtEnd: true,\n                        marqueeMargin: 12,\n                        minimumHeight: scrollHeight - 24\n                    )\n                    .padding(12)"), "the deck view hands its padding to the band")
         #expect(continuous.contains("marqueeMargin: 12"), "the continuous view's cards hand their padding to the band")
     }
 

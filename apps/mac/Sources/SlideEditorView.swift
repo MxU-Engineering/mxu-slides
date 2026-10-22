@@ -39,6 +39,8 @@ struct SlideEditorView: View {
 
     @State private var backgroundDropID: String?
 
+    @State private var dropTargetAfterID: String?
+
     @State private var dropSettleUntil = Date.distantPast
 
     @State private var renamingSlideID: String?
@@ -331,6 +333,12 @@ struct SlideEditorView: View {
                                     .offset(y: RowInsertionLine.rowGapOffset)
                             }
                         }
+                        .overlay(alignment: .bottom) {
+                            if dropTargetAfterID == slide.id {
+                                RowInsertionLine()
+                                    .offset(y: -RowInsertionLine.rowGapOffset)
+                            }
+                        }
                         .overlay {
                             if backgroundDropID == slide.id {
 
@@ -528,6 +536,7 @@ struct SlideEditorView: View {
             dropStarted: {
                 dropSettleUntil = Date().addingTimeInterval(0.6)
                 dropTargetID = nil
+                dropTargetAfterID = nil
                 backgroundDropID = nil
             },
             setLine: { on in
@@ -552,7 +561,26 @@ struct SlideEditorView: View {
             performFiles: { urls, insertZone in
                 handleRowFiles(model, urls, slide: slide, insertZone: insertZone)
             },
-            rejectPrefixes: ["mxueditslide::", "mxuslide::", "mxuobj::"]
+            rejectPrefixes: ["mxueditslide::", "mxuslide::", "mxuobj::"],
+            rowSize: { slideRowFrames[slide.id]?.size ?? .zero },
+            setLineAfter: { on in
+                if on && Date() >= dropSettleUntil {
+                    dropTargetAfterID = slide.id
+                } else if !on && dropTargetAfterID == slide.id {
+                    dropTargetAfterID = nil
+                }
+            },
+            performTextAfter: { payload in
+                dropTargetAfterID = nil
+                return model.insertMediaSlides(mediaIDs: [payload], afterSlideID: slide.id)
+            },
+            performFilesAfter: { urls in
+                dropTargetAfterID = nil
+                Task { @MainActor in
+                    let imported = await appModel.importFiles(urls)
+                    model.insertMediaSlides(mediaIDs: imported, afterSlideID: slide.id)
+                }
+            }
         )
     }
 
@@ -561,10 +589,12 @@ struct SlideEditorView: View {
     ) -> Bool {
 
         dropTargetID = nil
+        dropTargetAfterID = nil
         backgroundDropID = nil
         defer {
             Task { @MainActor in
                 dropTargetID = nil
+                dropTargetAfterID = nil
                 backgroundDropID = nil
             }
         }

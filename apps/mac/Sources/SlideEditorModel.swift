@@ -2085,6 +2085,25 @@ final class SlideEditorModel {
         }
     }
 
+    @discardableResult
+    func insertMediaSlides(mediaIDs: [String], afterSlideID: String) -> Bool {
+        let items = isThemeEditor ? [] : mediaIDs.compactMap { appModel.media($0) }
+        if items.isEmpty {
+            return false
+        } else {
+            updateDocument { presentation in
+                if let index = presentation.slides.firstIndex(where: { $0.id == afterSlideID }) {
+                    presentation.slides.insert(
+                        contentsOf: items.map {
+                            Slide.droppedMedia($0, sectionId: presentation.slides[index].sectionId)
+                        },
+                        at: index + 1)
+                }
+            }
+            return true
+        }
+    }
+
     func removeBackground() {
         switch backgroundLocation {
         case .slide(let id)?:

@@ -57,30 +57,23 @@ struct GutterDropDelegate: DropDelegate {
 
     var rejectPrefixes: [String]?
 
-    var rowHeight: (() -> CGFloat)?
-
     var tileWidth: (() -> CGFloat)?
+
+    var rowSize: (() -> CGSize)?
     var setLineAfter: (Bool) -> Void = { _ in }
     var performTextAfter: ((String) -> Bool)?
+    var performFilesAfter: (([URL]) -> Void)?
 
-    private func isAfterZone(_ info: DropInfo) -> Bool {
-        if !isReorder {
-            return false
-        } else if let rowHeight {
-            let height = rowHeight()
-            return height > 0 && info.location.y > height / 2
-        } else if let tileWidth {
-            let width = tileWidth()
-            return width > 0 && info.location.x > width / 2
+    private func zone(_ info: DropInfo) -> SlideDropZone {
+        if let tileWidth {
+            SlideDropZone.tile(at: info.location, width: tileWidth(), reorder: isReorder, insertOnly: insertOnly)
+        } else if let rowSize, !isReorder {
+            SlideDropZone.row(at: info.location, size: rowSize(), insertOnly: insertOnly)
+        } else if insertOnly || isReorder || info.location.x < SlideDropZone.gutter {
+            .before
         } else {
-            return false
+            .on
         }
-    }
-
-    private var insertZone: CGFloat { 26 }
-
-    private func isInsert(_ info: DropInfo) -> Bool {
-        info.location.x < insertZone
     }
 
     static func forcesInsert(payload: String?) -> Bool {
@@ -123,16 +116,10 @@ struct GutterDropDelegate: DropDelegate {
     }
 
     private func updateFeedback(_ info: DropInfo) {
-        if isAfterZone(info) {
-            setLine(false)
-            setRing(false)
-            setLineAfter(true)
-            return
-        }
-        setLineAfter(false)
-        let insert = insertOnly || isInsert(info) || isReorder
-        setLine(insert)
-        setRing(!insert)
+        let zone = zone(info)
+        setLineAfter(zone == .after)
+        setLine(zone == .before)
+        setRing(zone == .on)
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -141,57 +128,72 @@ struct GutterDropDelegate: DropDelegate {
             .joined(separator: " | ")
         MainActor.assumeIsolated { DropLatency.performed() }
         DiagnosticsStore.shared.note("\(breadcrumb).perform", detail: described)
-        let insert = isInsert(info)
-        let after = isAfterZone(info)
+        let zone = zone(info)
         dropStarted()
         setLine(false)
         setRing(false)
         setLineAfter(false)
-        guard enabled else { return false }
-        if after, let performTextAfter,
-           let text = NSPasteboard(name: .drag).string(forType: .string), !text.isEmpty {
-            DiagnosticsStore.shared.note(
-                "\(breadcrumb).after", detail: String(text.prefix(40)))
-            return performTextAfter(text)
-        }
 
         let dragPasteboard = NSPasteboard(name: .drag)
         let fileURLs = (dragPasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        let text = dragPasteboard.string(forType: .string) ?? ""
+        if !enabled {
+            return false
+        } else if zone == .after {
+            return performAfter(fileURLs: fileURLs, text: text)
+        } else {
+            return perform(info, fileURLs: fileURLs, text: text, insert: zone == .before)
+        }
+    }
+
+    private func performAfter(fileURLs: [URL], text: String) -> Bool {
+        if !fileURLs.isEmpty, let performFilesAfter {
+            DiagnosticsStore.shared.note("\(breadcrumb).afterFiles", detail: "\(fileURLs.count)")
+            performFilesAfter(fileURLs)
+            return true
+        } else if !text.isEmpty, let performTextAfter {
+            DiagnosticsStore.shared.note("\(breadcrumb).after", detail: String(text.prefix(40)))
+            return performTextAfter(text)
+        } else {
+            DiagnosticsStore.shared.note("\(breadcrumb).afterNoHandler")
+            return false
+        }
+    }
+
+    private func perform(_ info: DropInfo, fileURLs: [URL], text: String, insert: Bool) -> Bool {
         if !fileURLs.isEmpty {
             DiagnosticsStore.shared.note(
                 "\(breadcrumb).files", detail: "\(fileURLs.count)")
             performFiles(fileURLs, insert)
             return true
-        }
-        if let text = dragPasteboard.string(forType: .string), !text.isEmpty {
+        } else if !text.isEmpty {
             DiagnosticsStore.shared.note(
                 "\(breadcrumb).pasteboard", detail: String(text.prefix(40)))
             return performText(text, insert)
-        }
+        } else if let provider = info.itemProviders(for: [.plainText]).first {
 
-        guard let provider = info.itemProviders(for: [.plainText]).first else {
+            let typeIdentifier = provider.registeredTypeIdentifiers.first ?? "public.utf8-plain-text"
+            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
+
+                DispatchQueue.main.async {
+                    DiagnosticsStore.shared.note(
+                        "\(breadcrumb).loadCallback",
+                        detail: "bytes=\(data?.count ?? -1) error=\(error.map(String.init(describing:)) ?? "nil")")
+                    if let data, let text = String(data: data, encoding: .utf8) {
+                        _ = performText(text, insert)
+                    } else {
+                        DiagnosticsStore.shared.note(
+                            "\(breadcrumb).textLoadFailed", detail: typeIdentifier)
+                    }
+                }
+            }
+            return true
+        } else {
             DiagnosticsStore.shared.note("\(breadcrumb).noTextProvider")
             return false
         }
-
-        let typeIdentifier = provider.registeredTypeIdentifiers.first ?? "public.utf8-plain-text"
-        provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
-
-            DispatchQueue.main.async {
-                DiagnosticsStore.shared.note(
-                    "\(breadcrumb).loadCallback",
-                    detail: "bytes=\(data?.count ?? -1) error=\(error.map(String.init(describing:)) ?? "nil")")
-                guard let data, let text = String(data: data, encoding: .utf8) else {
-                    DiagnosticsStore.shared.note(
-                        "\(breadcrumb).textLoadFailed", detail: typeIdentifier)
-                    return
-                }
-                _ = performText(text, insert)
-            }
-        }
-        return true
     }
 }
 

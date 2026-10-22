@@ -26,6 +26,8 @@ struct PresentGridView: View {
 
     @State private var previewArrangementID: String?
 
+    @State private var scrollHeight: CGFloat = 0
+
     private var fireContext: String { contextID ?? presentationID }
 
     private var effectiveArrangementID: String? {
@@ -93,10 +95,12 @@ struct PresentGridView: View {
                         deleteRequests: deleteRequests,
                         clipboardRequests: clipboardRequests,
                         pastesAtEnd: true,
-                        marqueeMargin: 12
+                        marqueeMargin: 12,
+                        minimumHeight: scrollHeight - 24
                     )
                     .padding(12)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
                 .focusable()
                 .focused($focused)
                 .focusEffectDisabled()
@@ -422,6 +426,8 @@ struct SlideGridBody: View {
 
     var marqueeMargin: CGFloat = 0
 
+    var minimumHeight: CGFloat = 0
+
     @State private var gridWidth: CGFloat = 0
 
     @State private var builtRows: Set<Int> = []
@@ -589,6 +595,7 @@ struct SlideGridBody: View {
         ZStack(alignment: .topLeading) {
 
             Color.clear
+                .frame(minHeight: max(0, minimumHeight + marqueeMargin * 2))
                 .contentShape(Rectangle())
                 .padding(-marqueeMargin)
                 .onTapGesture {
@@ -1245,7 +1252,23 @@ struct SlideGridBody: View {
                 dropTargetIndex = nil
                 dropTargetAfterIndex = nil
                 backgroundDropIndex = nil
-                return !runOnly && dropSlide(payload, after: slide)
+
+                return if runOnly {
+                    false
+                } else if GutterDropDelegate.forcesInsert(payload: payload) {
+                    dropSlide(payload, after: slide)
+                } else {
+                    insertMediaSlides(mediaIDs: [payload], afterIndex: index)
+                }
+            },
+            performFilesAfter: { urls in
+                dropTargetAfterIndex = nil
+                if !runOnly {
+                    Task { @MainActor in
+                        let imported = await model.importFiles(urls)
+                        _ = insertMediaSlides(mediaIDs: imported, afterIndex: index)
+                    }
+                }
             }
         ))
         .overlay(alignment: .leading) {
@@ -1466,6 +1489,19 @@ struct SlideGridBody: View {
                 presentation.id,
                 slides: items.map { Slide.droppedMedia($0, sectionId: anchorSection) },
                 afterSlideID: afterID)
+            return true
+        }
+    }
+
+    private func insertMediaSlides(mediaIDs: [String], afterIndex index: Int) -> Bool {
+        let items = mediaIDs.compactMap { model.media($0) }
+        if items.isEmpty || !slides.indices.contains(index) {
+            return false
+        } else {
+            model.insertSlides(
+                presentation.id,
+                slides: items.map { Slide.droppedMedia($0, sectionId: slides[index].sectionId) },
+                afterSlideID: slides[index].id)
             return true
         }
     }
