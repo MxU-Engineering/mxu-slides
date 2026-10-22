@@ -164,7 +164,7 @@ private struct DestinationsList: View {
             Section {
                 let rows = customRows
                 if rows.isEmpty {
-                    Text("RTMP, RTMPS, SRT, or HLS endpoints — Resi, a campus decoder, a CDN.")
+                    Text("Any RTMP, RTMPS, SRT or HLS endpoint: BoxCast, Restream, Castr, a CDN.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(rows) { row in destinationRow(row) }
@@ -405,7 +405,7 @@ private struct AddCustomDestinationSheet: View {
                 if transport != .srt {
                     SecureField("Stream key", text: $key)
                 }
-                TextField("Name", text: $name, prompt: Text("e.g. Resi"))
+                TextField("Name", text: $name, prompt: Text("e.g. BoxCast"))
             }
             .formStyle(.grouped)
         .scrollContentBackground(.hidden)
