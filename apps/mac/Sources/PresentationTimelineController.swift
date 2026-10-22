@@ -1,4 +1,5 @@
 import Foundation
+import LocalAPI
 import PresenterCore
 import QuartzCore
 import SlideScene
@@ -32,6 +33,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var audioSyncHold: CFTimeInterval = 0
 
+    @ObservationIgnored private(set) var timecodeRecording: TimecodeRecording?
+
     func isCurrent(_ itemID: String) -> Bool { self.itemID == itemID }
 
     func insertionTime(for itemID: String) -> Double {
@@ -41,6 +44,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     func play(itemID: String, presentation: Presentation, arrangementId: String?) {
         if self.itemID != itemID { select(itemID: itemID, presentation: presentation, arrangementId: arrangementId) }
         guard !playing else { return }
+
+        if timecodeRecording != nil { endRecording() }
         playing = true
         if timelinePlayheadTime <= 0 {
             lastPosition = -PresentationTimelines.frame
@@ -60,19 +65,37 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     func stop() {
         timer?.invalidate()
         timer = nil
-        guard playing else { return }
+        let againstTimecode = timecodeRecording != nil
+        endRecording()
+        guard playing else {
+            if againstTimecode {
+                DiagnosticsStore.shared.note("timeline.stop", detail: "timecode take \(String(format: "%.2f", timelinePlayheadTime))")
+            }
+            return
+        }
 
         stopTracks()
         playing = false
         publishClock(position: timelinePlayheadTime, running: false)
+        DiagnosticsStore.shared.note("timeline.stop", detail: String(format: "%.2f", timelinePlayheadTime))
+    }
+
+    private func endRecording() {
         recording = false
         recordingTimeline = nil
-        DiagnosticsStore.shared.note("timeline.stop", detail: String(format: "%.2f", timelinePlayheadTime))
+        timecodeRecording = nil
     }
 
     func record(itemID: String, presentation: Presentation, arrangementId: String?, newStart: Int) {
         stop()
         if self.itemID != itemID { select(itemID: itemID, presentation: presentation, arrangementId: arrangementId) }
+        if let follower = controls?.timecode, case .timecode(let start) = TimecodeRecording.mode(
+            timeline: timeline(of: presentation), hasInput: follower.hasInput, follows: follower.follows) {
+            timecodeRecording = TimecodeRecording(itemID: itemID, start: start)
+            recording = true
+            DiagnosticsStore.shared.note("timeline.record", detail: "armed for timecode")
+            return
+        }
         var timeline = timeline(of: presentation) ?? PresentationTimeline(
             id: UUID().uuidString, arrangementId: arrangementId.flatMap { $0.isEmpty ? nil : $0 },
             timecodeEnabled: false, timecodeStart: newStart, cues: [])
@@ -111,7 +134,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     ) {
         if self.itemID != itemID || presentationID != presentation.id || self.arrangementId != arrangementId {
             select(itemID: itemID, presentation: presentation, arrangementId: arrangementId)
-        } else {
+        } else if playing {
             stop()
         }
         underTimecode = true
@@ -119,7 +142,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         defer { underTimecode = false }
         switch command {
         case .play(_, let from, let to):
-            lastPosition = from
+
+            lastPosition = timecodeRecording?.started == true ? max(from, lastPosition) : from
             advance(to: to)
         case .land(_, let at):
             land(at: at)
@@ -143,6 +167,33 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     func timecodeHeld() {
         guard clockAnchor?.running == true, !playing else { return }
         publishClock(position: timelinePlayheadTime, running: false)
+    }
+
+    func timecodeRecordingTick(_ reading: TimecodeClock.Reading) -> TimecodeRecording? {
+        guard var take = timecodeRecording else { return nil }
+        switch take.step(reading) {
+        case .none:
+            break
+        case .end:
+            stop()
+            return nil
+        case .begin(let start, let at):
+            guard let deck = deck() else { break }
+            var timeline = timeline(of: deck) ?? PresentationTimeline(
+                id: UUID().uuidString, arrangementId: arrangementId.flatMap { $0.isEmpty ? nil : $0 },
+                timecodeEnabled: true, timecodeStart: start, cues: [])
+            timeline.cues = PresentationTimelines.recording(timeline.cues, from: at)
+            recordingTimeline = timeline
+            save(timeline, presentationID: deck.id, undoLabel: "Record Timeline")
+            take.start = start
+            take.started = true
+            timecodeRecording = take
+            lastPosition = at
+            setPlayhead(at)
+            DiagnosticsStore.shared.note(
+                "timeline.record", detail: "against timecode from \(String(format: "%.3f", at)), start \(start)")
+        }
+        return take
     }
 
     struct ClockAnchor: Equatable {
@@ -219,7 +270,15 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     private func apply(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {
 
         let effects = underTimecode ? TimecodeFollow.underTimecode(effects, playsAudio: timecodePlaysAudio) : effects
-        guard let controls, !effects.isEmpty else { return }
+        guard !effects.isEmpty else { return }
+
+        APIFireSource.$current.withValue(APIFireSource(kind: underTimecode ? .timecode : .timeline)) {
+            fire(effects, cues: cues, deck: deck)
+        }
+    }
+
+    private func fire(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {
+        guard let controls else { return }
         let model = controls.appModel
         for effect in effects {
             switch effect {
@@ -290,6 +349,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     func noteSlideLanded(contextID: String?, occurrence: Int?) {
         guard recording, !firing, let itemID, contextID == itemID, let occurrence,
+              timecodeRecording.map(\.started) ?? true,
               let deck = deck(), var timeline = recordingTimeline,
               let anchor = PresentationTimelines.anchor(occurrence: occurrence, in: blocks(of: deck))
         else { return }
@@ -297,6 +357,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             id: UUID().uuidString, at: PresentationTimelines.snappedToFrame(lastPosition), anchor: anchor)
         timeline.cues = PresentationTimelines.recorded(cue, into: timeline.cues)
         recordingTimeline = timeline
+
+        lastPosition = max(lastPosition, cue.at)
         save(timeline, presentationID: deck.id, undoLabel: nil)
         DiagnosticsStore.shared.note("timeline.record", detail: "\(occurrence) at \(cue.at)")
     }

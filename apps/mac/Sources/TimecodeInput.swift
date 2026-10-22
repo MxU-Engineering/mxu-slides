@@ -101,6 +101,10 @@ final class TimecodeFollower {
 
     private(set) var detectedRate: TimecodeRate?
 
+    private(set) var anchoredDisplay: TimecodeDisplay?
+
+    private(set) var songItemID: String?
+
     @ObservationIgnored private var reader: (any TimecodeReader)?
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var clock = TimecodeClock()
@@ -164,6 +168,9 @@ final class TimecodeFollower {
         reader?.stop()
         reader = nil
         controls?.render.confidenceInfo.timecode = nil
+        anchoredDisplay = nil
+
+        if controls?.timeline.timecodeRecording != nil { controls?.timeline.stop() }
         timecodeReading = TimecodeClock.Reading(state: .noInput)
         timecodeLevel = 0
         isLocked = false
@@ -207,6 +214,16 @@ final class TimecodeFollower {
         UserDefaults.standard.set(on, forKey: TimecodeStation.followKey)
 
         follow = TimecodeFollow()
+
+        if !on, controls?.timeline.timecodeRecording != nil { controls?.timeline.stop() }
+    }
+
+    func readingNow() -> TimecodeClock.Reading {
+        var reading = clock.reading(at: CACurrentMediaTime())
+        if let rate = reading.rate, let position = reading.position {
+            reading.position = position + Double(offsetFrames) / rate.actual
+        }
+        return reading
     }
 
     func setPlaysAudio(_ on: Bool) {
@@ -242,16 +259,28 @@ final class TimecodeFollower {
             audioRunning = false
         }
         guard follows, let controls else { return }
+
+        let take = controls.timeline.timecodeRecordingTick(reading)
         guard reading.live else {
 
             if reading.state != .freewheel { controls.timeline.timecodeHeld() }
             return
         }
-        let songs = Self.songs(controls.appModel)
+        var songs = Self.songs(controls.appModel)
+        if let take {
+            songs = songs.compactMap { followed in
+                take.songs([followed.song]).first.map {
+                    var song = followed
+                    song.song = $0
+                    return song
+                }
+            }
+        }
         if let command = follow.step(reading, songs: songs.map(\.song)),
            let item = songs.first(where: { $0.song.itemID == command.itemID }) {
             let newSong = controls.timeline.itemID != command.itemID
             if newSong { revealPending = command.itemID }
+            if songItemID != command.itemID { songItemID = command.itemID }
             if case .land = command {
                 DiagnosticsStore.shared.note("timecode.land", detail: "\(command.itemID) at \(String(format: "%.3f", command.position))")
             } else if newSong {
@@ -285,6 +314,7 @@ final class TimecodeFollower {
         }
         guard held != display else { return }
         render.confidenceInfo.timecode = display
+        anchoredDisplay = display
     }
 
     struct FollowedSong {

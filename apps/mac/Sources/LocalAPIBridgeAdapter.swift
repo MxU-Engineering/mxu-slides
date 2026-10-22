@@ -705,6 +705,33 @@ final class AppAPIBridge: LocalAPIBridge {
         controls.refreshNextSlide()
     }
 
+    func timecodeStatus() -> APITimecodeStatus {
+        let follower = controls.timecode
+        let reading = follower.readingNow()
+        _ = (follower.isLocked, follower.detectedRate)
+        return APITimecodeStatus(
+            hasInput: follower.hasInput, source: follower.source.rawValue, follows: follower.follows,
+            state: "\(reading.state)", label: reading.label?.text(dropFrame: reading.rate == .fps2997DropFrame),
+            rate: reading.rate.map(Self.wireRate), reverse: reading.reverse, offsetFrames: follower.offsetFrames,
+            serviceItemId: follower.songItemID,
+            anchor: follower.anchoredDisplay.map {
+                .init(seconds: $0.seconds, anchoredAt: $0.anchoredAt, running: $0.isRunning, reverse: $0.reverse)
+            },
+            timeline: controls.timeline.clockAnchor.map {
+                .init(serviceItemId: $0.itemID, position: $0.position, anchoredAt: $0.at, running: $0.running, length: $0.length)
+            })
+    }
+
+    private static func wireRate(_ rate: TimecodeRate) -> String {
+        switch rate {
+        case .fps24: "24"
+        case .fps25: "25"
+        case .fps2997: "29.97"
+        case .fps2997DropFrame: "29.97df"
+        case .fps30: "30"
+        }
+    }
+
     func schedulerStatus() -> APISchedulerStatus {
         let board = appModel.schedulerBoard
         let triggers = appModel.scheduleTriggers.compactMap { entry -> APISchedulerTriggerStatus? in
