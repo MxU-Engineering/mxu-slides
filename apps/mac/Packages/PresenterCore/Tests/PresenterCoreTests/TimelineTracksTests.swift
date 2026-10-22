@@ -175,3 +175,15 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
         #expect(TimelineTracks.family(of: TrackChannel(id: name, name: name, role: role)) == family, "\(name)")
     }
 }
+
+@Test func aComputerThatDoesntPlayTracksShowsNoBuses() {
+    let mixes: [(id: String, folderId: String?)] = [
+        ("main", nil), ("bus-keys", "tracks"), ("bus-click", "tracks"), ("stream", "mine"), ("lobby", nil),
+    ]
+    let folders = ["tracks", "mine", "empty"]
+    let off = TimelineTracks.shownMixes(mixes, folders: folders, buses: ["bus-keys", "bus-click"], tracksOn: false)
+    #expect(off.mixes == ["main", "stream", "lobby"])
+    #expect(off.folders == ["mine", "empty"])
+    let on = TimelineTracks.shownMixes(mixes, folders: folders, buses: ["bus-keys", "bus-click"], tracksOn: true)
+    #expect(on.mixes.count == 5 && on.folders.count == 3)
+}

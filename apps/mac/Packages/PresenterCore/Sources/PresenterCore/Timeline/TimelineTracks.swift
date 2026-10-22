@@ -253,6 +253,21 @@ public extension TimelineTracks {
     }
 }
 
+public extension TimelineTracks {
+
+    static func shownMixes(
+        _ mixes: [(id: String, folderId: String?)], folders: [String], buses: Set<String>, tracksOn: Bool
+    ) -> (mixes: Set<String>, folders: Set<String>) {
+        guard !tracksOn else { return (Set(mixes.map(\.id)), Set(folders)) }
+        let shown = mixes.filter { !buses.contains($0.id) }
+        let kept = folders.filter { folder in
+            let members = mixes.filter { $0.folderId == folder }
+            return members.isEmpty || shown.contains { $0.folderId == folder }
+        }
+        return (Set(shown.map(\.id)), Set(kept))
+    }
+}
+
 public extension TrackChannel {
     var trackRole: TimelineTracks.Role { role.flatMap(TimelineTracks.Role.init(rawValue:)) ?? .music }
 }

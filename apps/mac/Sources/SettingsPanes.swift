@@ -69,6 +69,7 @@ struct SettingsCategoryPane: View {
                 VideoInputsSection { page = .videoInput($0) }
                 AudioInputsSection { page = .audioInput($0) }
                 AudioOutputsSection { page = .audioOutput($0) }
+                TracksSection()
             }
             .settingsForm()
         case .midi:
@@ -829,6 +830,22 @@ private struct AudioInputDetail: View {
         switch entry.channels {
         case .stereoPair(let offset): "s\(offset)"
         case .mono(let channel): "m\(channel)"
+        }
+    }
+}
+
+private struct TracksSection: View {
+    @AppStorage(TracksController.enabledKey) private var enabled = false
+
+    var body: some View {
+        Section {
+            Toggle("Play tracks on this computer", isOn: $enabled)
+            Text("Turn on for the computer that plays songs' stems (click, guide and backing tracks) to the band and the room. Its mixer then shows the Tracks strips and a bus for each instrument family to patch to your outputs. Any computer can add stems to songs.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } header: {
+            Text("Tracks")
         }
     }
 }

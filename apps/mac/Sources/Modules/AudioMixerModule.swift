@@ -13,6 +13,8 @@ struct AudioMixerModule: View {
     @State private var outputInventory = AudioOutputInventory.shared
     @State private var groupStore = MixerGroupStore.shared
 
+    @AppStorage(TracksController.enabledKey) private var tracksOn = false
+
     @AppStorage("mixer.scope") private var scope = 3
     @State private var consoleContentHeight: CGFloat = 0
     @State private var consoleFrameHeight: CGFloat = 0
@@ -70,11 +72,13 @@ struct AudioMixerModule: View {
                             busStrip(player, audio: audio, mixer: mixer)
                         }
 
-                        let trackChannels = model.trackChannels
-                        if trackChannels.count == 1, let only = trackChannels.first {
-                            trackStrip(only, mixer: mixer)
-                        } else if !trackChannels.isEmpty {
-                            tracksGroup(trackChannels, mixer: mixer)
+                        if tracksOn {
+                            let trackChannels = model.trackChannels
+                            if trackChannels.count == 1, let only = trackChannels.first {
+                                trackStrip(only, mixer: mixer)
+                            } else {
+                                tracksGroup(trackChannels, mixer: mixer)
+                            }
                         }
 
                         ForEach(inputRows) { row in
@@ -266,7 +270,7 @@ struct AudioMixerModule: View {
                 tint: .purple,
 
                 topSlot: tracksMainSlot(channels),
-                bottomSlot: .static("\(channels.count) channels"),
+                bottomSlot: .static(channels.isEmpty ? "No tracks yet" : "\(channels.count) channels"),
                 gain: Binding(get: { TracksController.trim }, set: { TracksController.setTrim($0) }),
                 muted: Binding(get: { TracksController.trimMuted }, set: { TracksController.setTrimMuted($0) }),
 
@@ -274,7 +278,7 @@ struct AudioMixerModule: View {
                 meterAppliesGain: false,
                 colorKey: "tracks",
                 defaultColorName: "Purple",
-                extraMenu: { AnyView(self.makeTrackMixesButton(channels)) }
+                extraMenu: { AnyView(EmptyView()) }
             ) {
                 Button {
                     groupStore.toggle(Self.tracksGroupKey)
@@ -352,7 +356,6 @@ struct AudioMixerModule: View {
                             }
                         }))
                         .disabled(self.runOnly)
-                    self.makeTrackMixesButton(self.model.trackChannels)
                 })
             }
         ) {
@@ -391,23 +394,6 @@ struct AudioMixerModule: View {
                 }
             })
         })
-    }
-
-    private func makeTrackMixesButton(_ channels: [TrackChannel]) -> some View {
-        Button("Make a Mix for Every Track Channel") {
-            let folder = mixInventory.folder(named: "Tracks")
-            for channel in channels {
-                let mix = mixInventory.entries.first { $0.name == channel.name && $0.folderId == folder.id } ?? {
-
-                    let made = mixInventory.create(name: channel.name)
-                    mixInventory.setPrimary(mixId: made.id, token: AudioMixInventory.noOutputID)
-                    return made
-                }()
-                mixInventory.move(mix.id, toFolder: folder.id)
-                TracksController.setMix(mix.id, for: channel.id)
-            }
-        }
-        .disabled(runOnly || channels.isEmpty)
     }
 
     private func inputStrip(
@@ -654,8 +640,12 @@ struct AudioMixerModule: View {
     }
 
     private var mixRows: [MixRow] {
-        let entries = mixInventory.entries
-        let folders = mixInventory.folders
+
+        let shown = TimelineTracks.shownMixes(
+            mixInventory.entries.map { ($0.id, $0.folderId) }, folders: mixInventory.folders.map(\.id),
+            buses: TracksController.busIDs, tracksOn: tracksOn)
+        let entries = mixInventory.entries.filter { shown.mixes.contains($0.id) }
+        let folders = mixInventory.folders.filter { shown.folders.contains($0.id) }
         var rows: [MixRow] = []
         var placed: Set<String> = []
         for mix in entries {

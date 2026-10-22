@@ -24,6 +24,15 @@ final class TracksController {
 
     nonisolated static let playerName = "MxU Tracks Player"
 
+    nonisolated static let enabledKey = "tracks.enabled"
+    nonisolated static var enabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+
+    nonisolated static var busIDs: Set<String> {
+        Set(TimelineTracks.Family.allCases.compactMap {
+            UserDefaults.standard.string(forKey: "audio.tracks.bus.\($0.rawValue)")
+        })
+    }
+
     init() {
         let path = TracksPlayerWire.socketPath(appIdentity: Bundle.main.bundleIdentifier ?? "io.prodcontrol.mxupresenter")
         client = TracksPlayerClient(socketPath: path) { Self.launchPlayer(socketPath: path) }
@@ -213,7 +222,11 @@ final class TracksController {
     func refresh() {
         guard let model, let mixer else { return }
         let channels = model.trackChannels
-        seedSends(channels)
+
+        if Self.enabled {
+            for family in TimelineTracks.Family.allCases { _ = Self.familyBus(family) }
+            seedSends(channels)
+        }
         let resolved = Self.routing(channels: channels, extra: heardChannels(), mixer: mixer)
         guard client.isConnected || driving.value != nil else { return }
         if sentDevice != .some(resolved.deviceUID) {

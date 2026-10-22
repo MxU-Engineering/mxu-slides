@@ -557,6 +557,10 @@ struct PresentationTimelineLanes: View {
 
     @State private var newTrackName: String?
 
+    @AppStorage(TracksController.enabledKey) private var tracksOn = false
+
+    @State private var offeringTracks = false
+
     private struct PlacingAction: Identifiable {
         var action: SlideAction
         var at: Double
@@ -628,6 +632,12 @@ struct PresentationTimelineLanes: View {
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
+        .alert("Play tracks on this computer?", isPresented: $offeringTracks) {
+            Button("Turn On") { tracksOn = true }
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            Text("The stems are on the song. To hear them here, and to set up the Tracks strips and buses in the mixer, this computer needs Tracks turned on. Any computer can add stems; only the one that plays them needs this.")
+        }
 
         .sheet(item: $placing) { placing in
             ActionPlacementSheet(model: context.model, draft: placing.action) { action in
@@ -1068,6 +1078,14 @@ struct PresentationTimelineLanes: View {
                 .foregroundStyle(.secondary)
                 .help(tracksExpanded ? "Fold this song's tracks into one row" : "Show this song's tracks")
                 Spacer(minLength: 0)
+                if !tracksOn, !runOnly {
+
+                    Button("Turn On") { tracksOn = true }
+                        .buttonStyle(.borderless)
+                        .controlSize(.mini)
+                        .font(.caption2)
+                        .help("Tracks don't play on this computer. Turn them on to hear stems and get the Tracks strips and buses in the mixer (also in Settings › Audio & Video › Tracks).")
+                }
                 if !runOnly {
                     Menu {
                         Button("Add Stems\u{2026}") { addStems() }
@@ -1171,6 +1189,7 @@ struct PresentationTimelineLanes: View {
 
                 guard let made = await context.model.importTrackSet(urls, song: context.presentation.name) else { return }
                 placeStems(made.stems, at: at, set: made.set.id)
+                if !tracksOn { offeringTracks = true }
             }
         }
     }
