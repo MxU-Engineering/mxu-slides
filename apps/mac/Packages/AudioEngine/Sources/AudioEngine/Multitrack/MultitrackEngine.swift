@@ -91,10 +91,20 @@ public final class MultitrackEngine: @unchecked Sendable {
     }
 
     public func position(atHostTime hostTime: UInt64 = mach_absolute_time()) -> Double {
-        renderer.position(atHostTime: hostTime)
+        if let program = queue.sync(execute: { program }), !renderer.isCurrent(program) {
+            return Double(program.session.startFrame) / sampleRate
+        }
+        return renderer.position(atHostTime: hostTime)
     }
 
     public var isPlaying: Bool { renderer.published.playing }
+
+    public var songLength: Double? {
+        queue.sync {
+            guard let session, let group = readers[ObjectIdentifier(session)] else { return nil }
+            return group.map { Double($0.audioEnd) / sampleRate }.max()
+        }
+    }
     public var songID: String? { queue.sync { song?.id } }
 
     public func takeMeters() -> [String: (rms: Float, peak: Float)] {

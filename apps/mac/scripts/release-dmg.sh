@@ -60,6 +60,9 @@ for HELPER in "$APP"/Contents/XPCServices/*.xpc; do
     --sign "$IDENTITY" "$HELPER"
 done
 codesign --force --options runtime --timestamp \
+  --identifier com.example.mxuslides.TracksPlayer \
+  --sign "$IDENTITY" "$APP/Contents/MacOS/MxU Tracks Player"
+codesign --force --options runtime --timestamp \
   --entitlements "$MAC_DIR/Signing/MxUSlides.entitlements" \
   --sign "$IDENTITY" "$APP"
 codesign --verify --strict --deep "$APP"

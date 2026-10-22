@@ -32,7 +32,8 @@ final class StemReader {
 
     private var songFrame: Int64
     private let audioStart: Int64
-    private let audioEnd: Int64
+
+    let audioEnd: Int64
     private let fileEndFrame: AVAudioFramePosition
     private var decoded: AVAudioPCMBuffer
     private var decodedOffset = 0

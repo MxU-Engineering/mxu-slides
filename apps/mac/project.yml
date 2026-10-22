@@ -71,6 +71,10 @@ targets:
         embed: true
       - target: DeckLinkHelper
         embed: true
+      - target: TracksPlayer
+        embed: true
+        copy:
+          destination: executables
     info:
       path: Info.plist
       properties:
@@ -142,6 +146,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides.NDIHelper
         SKIP_INSTALL: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  TracksPlayer:
+    type: tool
+    platform: macOS
+    sources:
+      - HelperSources/TracksPlayer
+    dependencies:
+      - package: AudioEngine
+    settings:
+      base:
+        PRODUCT_NAME: "MxU Tracks Player"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides.TracksPlayer
+        GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
 
   DeckLinkHelper:
     type: xpc-service

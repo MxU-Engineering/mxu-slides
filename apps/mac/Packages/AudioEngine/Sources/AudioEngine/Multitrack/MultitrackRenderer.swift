@@ -121,6 +121,10 @@ final class MultitrackRenderer: @unchecked Sendable {
             || mxu_load_ptr(wanted) == pointer
     }
 
+    func isCurrent(_ program: MultitrackProgram) -> Bool {
+        mxu_load_ptr(usingCurrent) == Unmanaged.passUnretained(program).toOpaque()
+    }
+
     var published: (frame: Int64, hostTime: UInt64, playing: Bool) {
         (mxu_load_i64(publishedFrame), UInt64(bitPattern: mxu_load_i64(publishedHostTime)),
          mxu_load_i64(publishedPlaying) != 0)
