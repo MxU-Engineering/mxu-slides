@@ -40,6 +40,7 @@ public final class PlaceholderScreen: Identifiable {
     private let providerBox = Locked<(@Sendable () -> RenderScene)?>(nil)
     private let frameCounter = Locked(0)
     private let lastRenderedScene = Locked<RenderScene?>(nil)
+    private let lastRenderedStillKey = Locked<[UInt64]?>(nil)
     private let lastRenderedAdjustments = Locked<OutputAdjustments?>(nil)
     private let lastRenderedMask = Locked<ObjectIdentifier?>(nil)
     @ObservationIgnored private var timer: Timer?
@@ -107,7 +108,9 @@ public final class PlaceholderScreen: Identifiable {
 
         let adjustments = adjustmentsBox.value
         let mask = maskBox.value
-        if !scene.isTimeVarying, lastRenderedScene.value == scene,
+        let stillKey = compositor.staticFrameKey(for: scene)
+        if let stillKey, lastRenderedScene.value == scene,
+           lastRenderedStillKey.value == stillKey,
            lastRenderedAdjustments.value == adjustments,
            lastRenderedMask.value == mask.map(ObjectIdentifier.init) {
             RenderPulse.shared.placeholderSkip()
@@ -117,6 +120,7 @@ public final class PlaceholderScreen: Identifiable {
         compositor.render(
             scene: scene, into: texture, at: hostTime, adjustments: adjustments, mask: mask)
         lastRenderedScene.value = scene
+        lastRenderedStillKey.value = stillKey
         lastRenderedAdjustments.value = adjustments
         lastRenderedMask.value = mask.map(ObjectIdentifier.init)
         RenderPulse.shared.placeholderFrame(

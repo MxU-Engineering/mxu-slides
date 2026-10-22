@@ -48,6 +48,29 @@ final class CompositorIntegrationTests: XCTestCase {
         XCTAssertFalse(engine.hasStill(id: "thumb::b"))
     }
 
+    func testStillGenerationTracksSwapsAndLiveSourcesMove() async throws {
+
+        let context = CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        let image = context.makeImage()!
+        let engine = try MediaEngine(device: device)
+        XCTAssertEqual(engine.stillGeneration(for: "slide"), 0, "nothing behind an id draws nothing: static")
+
+        _ = try await engine.showStill(image: image, cacheKey: "a", id: "slide")
+        let first = try XCTUnwrap(engine.stillGeneration(for: "slide"))
+        XCTAssertGreaterThan(first, 0)
+        _ = try await engine.showStill(image: image, cacheKey: "a", id: "slide")
+        XCTAssertEqual(engine.stillGeneration(for: "slide"), first, "re-showing the same still keeps it")
+        _ = try await engine.showStill(image: image, cacheKey: "b", id: "slide")
+        XCTAssertNotEqual(engine.stillGeneration(for: "slide"), first, "a swapped still is a new generation")
+
+        engine.registerLiveSource(id: "input::item::cam", latestFrame: { nil }, onStop: {})
+        XCTAssertNil(engine.stillGeneration(for: "input::item::cam"), "live inputs move")
+    }
+
     func testStillSourceRectCropsThroughTheCompositor() async throws {
 
         let width = 64, height = 64
@@ -85,7 +108,7 @@ final class CompositorIntegrationTests: XCTestCase {
         var red: Float = 0, blue: Float = 0
         frame.data.withUnsafeBytes { raw in
             let halves = raw.baseAddress!.assumingMemoryBound(to: Float16.self)
-            let px = (32 * 64 + 16) * 4  
+            let px = (32 * 64 + 16) * 4
             red = Float(halves[px])
             blue = Float(halves[px + 2])
         }
@@ -109,8 +132,8 @@ final class CompositorIntegrationTests: XCTestCase {
         var leftBlue: Float = 0, rightBlue: Float = 0, rightRed: Float = 0
         outset.data.withUnsafeBytes { raw in
             let halves = raw.baseAddress!.assumingMemoryBound(to: Float16.self)
-            let left = (32 * 64 + 16) * 4   
-            let right = (32 * 64 + 48) * 4  
+            let left = (32 * 64 + 16) * 4
+            let right = (32 * 64 + 48) * 4
             leftBlue = Float(halves[left + 2])
             rightBlue = Float(halves[right + 2])
             rightRed = Float(halves[right])

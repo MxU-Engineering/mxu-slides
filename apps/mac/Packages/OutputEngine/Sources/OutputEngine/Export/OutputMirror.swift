@@ -81,7 +81,7 @@ public final class OutputMirror: @unchecked Sendable {
 
     private let lastConverted = Locked<
         (
-            scene: RenderScene, adjustments: OutputAdjustments?,
+            scene: RenderScene, stillKey: [UInt64]?, adjustments: OutputAdjustments?,
             maskID: ObjectIdentifier?, buffer: CVPixelBuffer
         )?>(nil)
 
@@ -245,8 +245,10 @@ public final class OutputMirror: @unchecked Sendable {
         let currentMask = mask?()
         let currentMaskID = currentMask.map(ObjectIdentifier.init)
 
-        if !scene.isTimeVarying,
+        let stillKey = compositor.staticFrameKey(for: scene)
+        if let stillKey,
            let last = lastConverted.value, last.scene == scene,
+           last.stillKey == stillKey,
            last.adjustments == currentAdjustments,
            last.maskID == currentMaskID {
             convertQueue.async { [weak self] in
@@ -302,7 +304,7 @@ public final class OutputMirror: @unchecked Sendable {
                     return
                 }
                 self.lastConverted.value = (
-                    scene, currentAdjustments, currentMaskID, pixelBuffer
+                    scene, stillKey, currentAdjustments, currentMaskID, pixelBuffer
                 )
                 self.counters.withLock { $0.delivered += 1 }
                 self.deliver(pixelBuffer, at: hostTime)

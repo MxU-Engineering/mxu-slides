@@ -256,6 +256,17 @@ public final class Compositor: @unchecked Sendable {
 
     private let mediaSourceBox = Locked(WeakSource())
 
+    public func staticFrameKey(for scene: RenderScene) -> [UInt64]? {
+        guard !scene.animatesOnHostTime else { return nil }
+        let source = mediaSource
+        var key: [UInt64] = []
+        for id in scene.visibleMediaIDs {
+            guard let generation = source?.stillGeneration(for: id) else { return nil }
+            key.append(generation)
+        }
+        return key
+    }
+
     private struct VideoUniformsGPU {
         var ycbcrMatrix: simd_float3x3
         var ycbcrOffset: SIMD3<Float>
@@ -2038,9 +2049,9 @@ public final class Compositor: @unchecked Sendable {
             let limit = CGFloat(text.tickerRepeat) * periodPx
             if abs(phasePx) >= limit {
                 if flat.isClosed {
-                    phasePx = 0 
+                    phasePx = 0
                 } else {
-                    return 
+                    return
                 }
             } else if text.tickerRamp != .none, periodPx > 0 {
 

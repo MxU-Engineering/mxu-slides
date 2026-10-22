@@ -113,7 +113,9 @@ extension SceneTransitionEngineTests {
             )
             return scene
         }
-        XCTAssertTrue(fillScene("clip-a").isTimeVarying, "fill players re-encode every tick")
+        XCTAssertEqual(
+            fillScene("clip-a").visibleMediaIDs, ["clip-a"],
+            "fill players reach the static-skip media check")
         XCTAssertEqual(
             SceneTransitionEngine.changedLayers(
                 from: fillScene("clip-a"), to: fillScene("clip-b")

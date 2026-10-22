@@ -385,4 +385,11 @@ extension MediaEngine: MediaTextureSource {
     public func liveCadence(for mediaID: String) -> LiveCadence? {
         captures.value[mediaID]?.cadence ?? liveSources.value[mediaID]?.cadence?()
     }
+
+    public func stillGeneration(for mediaID: String) -> UInt64? {
+        guard captures.value[mediaID] == nil, liveSources.value[mediaID] == nil,
+              players.value[mediaID] == nil
+        else { return nil }
+        return stills.value[mediaID]?.generation ?? 0
+    }
 }
