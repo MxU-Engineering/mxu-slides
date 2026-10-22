@@ -88,6 +88,31 @@ public struct TimecodeClock: Sendable {
     }
 }
 
+public struct TimecodeSignalCheck: Sendable {
+
+    public static let level: Float = 0.01
+
+    public static let after = 1.5
+
+    private var since: Double?
+
+    public init() {}
+
+    public mutating func update(level: Float, decoding: Bool, at time: Double) -> Bool {
+        guard level >= Self.level, !decoding else {
+            since = nil
+            return false
+        }
+        let since = self.since ?? time
+        self.since = since
+        return time - since >= Self.after
+    }
+
+    public static func decoding(_ state: TimecodeClock.State) -> Bool {
+        state == .locking || state == .locked || state == .freewheel
+    }
+}
+
 public enum TimecodeStation {
     public static let deviceKey = "timecode.deviceUID"
 

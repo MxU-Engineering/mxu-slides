@@ -99,6 +99,8 @@ final class TimecodeFollower {
 
     private(set) var isLocked = false
 
+    private(set) var noTimecode = false
+
     private(set) var detectedRate: TimecodeRate?
 
     private(set) var anchoredDisplay: TimecodeDisplay?
@@ -109,14 +111,14 @@ final class TimecodeFollower {
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var clock = TimecodeClock()
     @ObservationIgnored private var follow = TimecodeFollow()
+    @ObservationIgnored private var signalCheck = TimecodeSignalCheck()
 
     @ObservationIgnored private var revealPending: String?
 
-    static func status(_ reading: TimecodeClock.Reading, follows: Bool) -> (word: String, color: Color) {
+    static func status(_ reading: TimecodeClock.Reading, follows: Bool, noTimecode: Bool) -> (word: String, color: Color) {
         guard follows else { return ("Off", .secondary) }
-
-        if reading.state == .noInput { return ("Waiting", .secondary) }
-        return reading.state == .locked ? ("Locked", .green) : ("Lost", .orange)
+        if noTimecode { return ("No timecode", .red) }
+        return reading.state == .locked ? ("Locked", .green) : ("Stopped", .secondary)
     }
 
     enum Input: Hashable {
@@ -176,6 +178,8 @@ final class TimecodeFollower {
         timecodeReading = TimecodeClock.Reading(state: .noInput)
         timecodeLevel = 0
         isLocked = false
+        signalCheck = TimecodeSignalCheck()
+        noTimecode = false
     }
 
     func setInput(_ input: Input) {
@@ -255,6 +259,9 @@ final class TimecodeFollower {
         if isLocked != (reading.state == .locked) { isLocked = reading.state == .locked }
         let level = max(peak, timecodeLevel * 0.85)
         if abs(level - timecodeLevel) > 0.002 { timecodeLevel = level < 0.001 ? 0 : level }
+        let heardNoTimecode = signalCheck.update(
+            level: level, decoding: TimecodeSignalCheck.decoding(reading.state), at: CACurrentMediaTime())
+        if heardNoTimecode != noTimecode { noTimecode = heardNoTimecode }
 
         if audioRunning, reading.state == .stopped || reading.state == .noInput {
             controls?.timeline.stopTracks()
@@ -415,7 +422,7 @@ struct TimecodeSignalReadout: View {
 
     var body: some View {
         let reading = follower.timecodeReading
-        let status = TimecodeFollower.status(reading, follows: follower.follows)
+        let status = TimecodeFollower.status(reading, follows: follower.follows, noTimecode: follower.noTimecode)
         HStack(spacing: 8) {
             Text(reading.label.map { $0.text(dropFrame: reading.rate == .fps2997DropFrame) } ?? "--:--:--:--")
                 .font(.caption.monospacedDigit())
@@ -424,11 +431,11 @@ struct TimecodeSignalReadout: View {
             Text(status.word)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(status.color)
-                .frame(width: 46, alignment: .leading)
+                .frame(width: 70, alignment: .leading)
             Text(follower.detectedRate?.title ?? "—")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 118, alignment: .leading)
+                .frame(width: 94, alignment: .leading)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule().fill(Color.green.opacity(0.8))

@@ -346,3 +346,25 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
         #expect(TimecodeFollow.audioSync([track], at: 150, playing: ["track": 140]) == [.clear(lane: .audio, id: "track")])
     }
 }
+
+@Suite struct TimecodeSignalCheckTests {
+
+    private func run(_ ticks: [(Float, Bool, Double)]) -> [Bool] {
+        var check = TimecodeSignalCheck()
+        return ticks.map { check.update(level: $0.0, decoding: $0.1, at: $0.2) }
+    }
+
+    @Test func soundWithNoTimecodeIsAProblemOnceItLasts() {
+
+        #expect(run([
+            (0.2, false, 10), (0.2, false, 11.4), (0.2, false, 11.5),
+            (0.2, true, 12), (0.2, false, 13), (0.2, false, 14.6),
+        ]) == [false, false, true, false, false, true])
+    }
+
+    @Test func silenceIsNeverAProblem() {
+        #expect(run(stride(from: 0.0, through: 10, by: 0.5).map { (0.001, false, $0) }).allSatisfy { !$0 })
+        #expect(TimecodeSignalCheck.decoding(.locked) && TimecodeSignalCheck.decoding(.freewheel))
+        #expect(!TimecodeSignalCheck.decoding(.stopped) && !TimecodeSignalCheck.decoding(.noInput))
+    }
+}

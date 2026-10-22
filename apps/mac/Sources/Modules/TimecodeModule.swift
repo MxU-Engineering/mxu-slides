@@ -13,8 +13,9 @@ struct TimecodeModule: View {
         let follower = controls.timecode
         let rows = rows()
         VStack(alignment: .leading, spacing: 10) {
-            ModuleHeaderBar {
 
+            ModuleHeaderBar {
+                startTimesPicker
             } trailing: {
 
                 Toggle("Follow timecode", isOn: Binding(get: { follower.follows }, set: { follower.setFollows($0) }))
@@ -23,19 +24,11 @@ struct TimecodeModule: View {
                     .font(.caption)
                     .help("Songs with a timecode start play from it on this computer")
             }
-            startTimesPicker
-            if !follower.hasInput {
-                Text("No timecode input on this computer.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Set Up Timecode…") {
-                    SettingsRouter.shared.pending = .midi
-                    openSettings()
-                }
-                .controlSize(.small)
-            } else {
-                TimecodeModuleReadout(follower: follower)
+            TimecodeModuleReadout(follower: follower) {
+                SettingsRouter.shared.pending = .midi
+                openSettings()
             }
+            Divider()
 
             songsSection(rows)
         }
@@ -45,28 +38,25 @@ struct TimecodeModule: View {
     private var startTimesPicker: some View {
         if let serviceID = model.currentServiceID, let service = try? model.service(serviceID) {
             let byOrder = service.timecodeByOrder == true
-            HStack(spacing: 4) {
-                Text("Start times:")
-                    .foregroundStyle(.secondary)
-                Menu {
-                    Picker("Start times", selection: Binding(
-                        get: { byOrder },
-                        set: { on in model.updateService(serviceID) { $0.timecodeByOrder = on ? true : nil } }
-                    )) {
-                        Text("Saved with each song").tag(false)
-                        Text("In service order").tag(true)
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } label: {
-                    Text(byOrder ? "In service order" : "Saved with each song")
+            Menu {
+                Picker("Start times", selection: Binding(
+                    get: { byOrder },
+                    set: { on in model.updateService(serviceID) { $0.timecodeByOrder = on ? true : nil } }
+                )) {
+                    Text("Saved with each song").tag(false)
+                    Text("In service order").tag(true)
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(runOnly)
-                .help("In service order: songs that play from timecode start at 01:00, 02:00, … in run order, for this service only")
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                Text(byOrder ? "In service order" : "Saved with each song")
+                    .font(.caption)
             }
-            .font(.caption)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(runOnly)
+            .accessibilityLabel("Start times")
+            .help("Start times. In service order: songs that play from timecode start at 01:00, 02:00, … in run order, for this service only")
         }
     }
 
@@ -100,21 +90,23 @@ struct TimecodeModule: View {
         TimecodeModuleSongs.shared.open[itemID] ?? (controls.timeline.itemID == itemID)
     }
 
-    private func expandAllButton(_ ids: [String]) -> some View {
-        let allOpen = ids.allSatisfy(isOpen)
-        return Button {
-            var open = TimecodeModuleSongs.shared.open
-            for id in ids { open[id] = !allOpen }
-            TimecodeModuleSongs.shared.open = open
-        } label: {
-            Image(systemName: allOpen ? "chevron.up.2" : "chevron.down.2")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+    private func songsHeader(_ ids: [String]) -> some View {
+        let allOpen = !ids.isEmpty && ids.allSatisfy(isOpen)
+        return HStack(spacing: TimecodeGrid.gap) {
+            Button {
+                var open = TimecodeModuleSongs.shared.open
+                for id in ids { open[id] = !allOpen }
+                TimecodeModuleSongs.shared.open = open
+            } label: {
+                TimecodeGrid.chevron(open: allOpen)
+            }
+            .buttonStyle(.plain)
+            .opacity(ids.isEmpty ? 0 : 1)
+            .disabled(ids.isEmpty)
+            .accessibilityLabel(allOpen ? "Collapse All" : "Expand All")
+            .help(allOpen ? "Collapse all songs" : "Expand all songs")
+            ModuleSectionLabel("Songs")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(allOpen ? "Collapse All" : "Expand All")
-        .help(allOpen ? "Collapse all songs" : "Expand all songs")
     }
 
     @ViewBuilder
@@ -146,15 +138,11 @@ struct TimecodeModule: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 2) {
-                if !expandable.isEmpty {
-                    HStack {
-                        Spacer(minLength: 0)
-                        expandAllButton(expandable)
-                    }
-                }
+                songsHeader(expandable)
                 ForEach(rows, id: \.item.id) { row in
                     if row.item.itemKind == .header {
                         ModuleSectionLabel(row.item.name)
+                            .padding(.leading, TimecodeGrid.lead + TimecodeGrid.gap)
                             .padding(.top, 6)
                     } else {
                         songRow(row, cues: cues[row.item.id] ?? [], clashes: clashes.contains(row.item.id))
@@ -170,15 +158,11 @@ struct TimecodeModule: View {
         let on = row.timeline?.timecodeEnabled == true
         let open = !cues.isEmpty && isOpen(row.item.id)
         let byOrder = model.currentServiceID.flatMap { try? model.service($0) }?.timecodeByOrder == true
-        HStack(spacing: 6) {
+        HStack(spacing: TimecodeGrid.gap) {
             Button {
                 TimecodeModuleSongs.shared.open[row.item.id] = !open
             } label: {
-                Image(systemName: open ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 10)
-                    .contentShape(Rectangle())
+                TimecodeGrid.chevron(open: open)
             }
             .buttonStyle(.plain)
 
@@ -193,7 +177,7 @@ struct TimecodeModule: View {
                 Image(systemName: on ? "clock.fill" : "clock")
                     .font(.system(size: 11))
                     .foregroundStyle(on ? Color.accentColor : Color.secondary.opacity(0.5))
-                    .frame(width: 14)
+                    .frame(width: TimecodeGrid.icon)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -205,14 +189,14 @@ struct TimecodeModule: View {
                 Text(PresentationTimelines.timecode(frames: start))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .frame(width: 78, alignment: .leading)
+                    .frame(width: TimecodeGrid.time, alignment: .leading)
                     .help("By order in this service")
             } else if on, let start = row.start {
                 TimecodeStartField(frames: start) { frames in edit(row, "Timecode Start") { $0.timecodeStart = frames } }
                     .disabled(runOnly)
             } else {
 
-                Color.clear.frame(width: 78, height: 1)
+                Color.clear.frame(width: TimecodeGrid.time, height: 1)
             }
             Text(row.item.name)
                 .font(.system(size: 12, weight: current ? .semibold : .regular))
@@ -229,16 +213,17 @@ struct TimecodeModule: View {
         .padding(.vertical, 2)
         if open {
             ForEach(cues, id: \.id) { cue in
-                HStack(spacing: 8) {
+                HStack(spacing: TimecodeGrid.gap) {
                     Text(cue.timecode)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
+                        .frame(width: TimecodeGrid.time, alignment: .leading)
                     Text(cue.label)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .padding(.leading, 38)
+                .padding(.leading, TimecodeGrid.timeX)
             }
         }
     }
@@ -260,9 +245,12 @@ struct TimecodeStartField: View {
         TextField("HH:MM:SS:FF", text: $text)
             .textFieldStyle(.plain)
             .font(.caption.monospacedDigit())
-            .padding(.horizontal, 3)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle.standard(CornerStandard.element))
-            .frame(width: 78)
+
+            .frame(width: TimecodeGrid.time, alignment: .leading)
+            .background(
+                RoundedRectangle.standard(CornerStandard.element)
+                    .fill(Color.primary.opacity(0.06))
+                    .padding(.horizontal, -3))
             .focused($focused)
             .onSubmit(commit)
             .onChange(of: focused) { if !focused { commit() } }
@@ -280,6 +268,23 @@ struct TimecodeStartField: View {
     }
 }
 
+enum TimecodeGrid {
+    static let lead: CGFloat = 12
+    static let icon: CGFloat = 14
+    static let time: CGFloat = 84
+    static let gap: CGFloat = 6
+
+    static let timeX = lead + gap + icon + gap
+
+    static func chevron(open: Bool) -> some View {
+        Image(systemName: open ? "chevron.down" : "chevron.right")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: lead, height: 14)
+            .contentShape(Rectangle())
+    }
+}
+
 @MainActor
 @Observable
 final class TimecodeModuleSongs {
@@ -289,27 +294,43 @@ final class TimecodeModuleSongs {
 
 struct TimecodeModuleReadout: View {
     let follower: TimecodeFollower
+    let openSettings: () -> Void
 
     var body: some View {
         let reading = follower.timecodeReading
-        let status = TimecodeFollower.status(reading, follows: follower.follows)
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Circle().fill(status.color).frame(width: 8, height: 8)
+        let running = follower.follows && (reading.state == .locked || reading.state == .freewheel)
+        VStack(spacing: 2) {
             Text(reading.label.map { $0.text(dropFrame: reading.rate == .fps2997DropFrame) } ?? "--:--:--:--")
-                .font(.system(size: 20, weight: .medium).monospacedDigit())
+                .font(.system(size: 22, weight: .medium).monospacedDigit())
+                .foregroundStyle(running ? Color.primary : Color.secondary.opacity(0.6))
                 .fixedSize()
-            VStack(alignment: .leading, spacing: 0) {
-                Text(status.word)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(status.color)
-                if let rate = follower.detectedRate {
-                    Text(rate == .fps2997DropFrame ? "29.97 DF" : rate.title)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+            if let issue = issue {
+                HStack(spacing: 4) {
+                    Text(issue.text)
+                        .foregroundStyle(issue.fault ? Color.red : Color.secondary)
+
+                    Button(issue.fault ? "Settings…" : "Choose Input…", action: openSettings)
+                        .buttonStyle(.link)
                 }
+                .font(.caption)
             }
-            .frame(width: 56, alignment: .leading)
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var issue: (text: String, fault: Bool)? {
+        if !follower.hasInput { return ("No timecode input", false) }
+
+        let missingMIDI = if case .midi(let uid) = follower.input {
+            !MIDIDeviceInventory.shared.discoveredSources.contains { $0.uid == uid }
+        } else {
+            false
+        }
+        if follower.problem != nil || missingMIDI { return ("Timecode input not connected", true) }
+        if follower.noTimecode {
+            if case .audio = follower.input { return ("No timecode on channel \(follower.channel + 1)", true) }
+            return ("No timecode", true)
+        }
+        return nil
     }
 }
