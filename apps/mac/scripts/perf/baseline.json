@@ -18,7 +18,7 @@
  },
  "thresholds": {
   "animateIdle.mainBusy": 5,
-  "playback.mainBusy": 25,
+  "playback.mainBusy": 10,
   "playback.timelineBodiesPerSecond": 5,
   "timeline.mainBusy": 10,
   "render.renderBusy": 12,
