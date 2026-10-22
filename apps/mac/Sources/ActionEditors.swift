@@ -665,11 +665,17 @@ struct ActionsMenu: View {
                 AddActionMenuItems(model: model, timers: timers, add: add)
             }
             if !actions.isEmpty {
-                Divider()
-                ForEach(actions) { action in
-                    Menu(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens)) {
-                        Button("Edit…") { edit(action) }
-                        Button("Remove", role: .destructive) { remove(action) }
+
+                Section("On This Slide") {
+                    ForEach(actions) { action in
+                        Menu {
+                            Button("Edit…") { edit(action) }
+                            Button("Remove", role: .destructive) { remove(action) }
+                        } label: {
+                            Label(
+                                slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens),
+                                systemImage: "bolt.fill")
+                        }
                     }
                 }
             }
