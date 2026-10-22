@@ -853,17 +853,17 @@ struct LibrarySidebar: View {
     private func gridCard<Content: View>(
         selected: Bool, action: @escaping () -> Void, @ViewBuilder content: () -> Content
     ) -> some View {
-        Button(action: action) {
-            content()
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .overlay {
-            if selected {
-                RoundedRectangle.standard(CornerStandard.element)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
+
+        content()
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .accessibilityAddTraits(.isButton)
+            .overlay {
+                if selected {
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                }
             }
-        }
     }
 
     private func entryRow(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
@@ -1838,33 +1838,33 @@ struct FolderPreviewCard: View {
     @State private var page = 0
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                face
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .clipShape(RoundedRectangle.standard(CornerStandard.element))
-                    .overlay(
-                        RoundedRectangle.standard(CornerStandard.element)
-                            .strokeBorder(
-                                Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1
-                            )
-                    )
-                HStack(spacing: 4) {
-                    Glyph(kind: .folder, size: 10)
-                        .foregroundStyle(.tertiary)
-                    Text(name)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Text("\(count)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
+
+        VStack(spacing: 4) {
+            face
                 .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipShape(RoundedRectangle.standard(CornerStandard.element))
+                .overlay(
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(
+                            Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1
+                        )
+                )
+            HStack(spacing: 4) {
+                Glyph(kind: .folder, size: 10)
+                    .foregroundStyle(.tertiary)
+                Text(name)
+                    .font(.caption)
+                    .lineLimit(1)
+                Text("\(count)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .accessibilityAddTraits(.isButton)
         .onHover { hovering = $0 }
         .task(id: hovering) {
 
