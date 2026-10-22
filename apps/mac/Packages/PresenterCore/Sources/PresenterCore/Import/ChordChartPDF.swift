@@ -309,8 +309,9 @@ public enum ChordChartPDF {
                 : words
             let sameName = seen.filter { $0.chartName.caseInsensitiveCompare(section.name) == .orderedSame }
             let earlier = sameName.first { $0.content == content }
+            let numbers = words.isEmpty || PlanLyricsImporter.followedName(of: section.name) != nil
             let name = earlier?.name
-                ?? (words.isEmpty && !sameName.isEmpty ? numbered(section.name, taken: seen.map(\.name)) : section.name)
+                ?? (numbers && !sameName.isEmpty ? numbered(section.name, taken: seen.map(\.name)) : section.name)
             if !out.isEmpty { out.append("") }
             out.append(Reflow.labelName(of: name) != nil ? name : "{start_of_part: \(name)}")
             if earlier == nil {
