@@ -62,6 +62,7 @@ struct PresentGridView: View {
                 if presentation.sections?.isEmpty == false {
                     ArrangementStrip(
                         model: model, presentation: presentation,
+                        render: render,
                         selection: stripSelection,
                         onJump: { pill in
                             let starts = SlideSceneBuilder.arrangementBlockStarts(

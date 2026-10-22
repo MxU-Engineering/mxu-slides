@@ -582,6 +582,7 @@ struct ServiceContinuousView: View {
                 if SlideSceneBuilder.showsArrangements(for: presentation) {
                     ArrangementStrip(
                         model: model, presentation: presentation,
+                        render: render,
                         selection: Binding(
                             get: { item.arrangementId },
                             set: { arrangementID in
@@ -1150,6 +1151,8 @@ struct ArrangementStrip: View {
     let model: AppModel
     let presentation: Presentation
 
+    var render: RenderContext? = nil
+
     @Binding var selection: String?
 
     var showsPicker = true
@@ -1159,6 +1162,7 @@ struct ArrangementStrip: View {
     @Environment(\.runOnly) private var runOnly
 
     @State private var dropIndex: Int?
+    @State private var addingSection = false
 
     @State private var pillWidths: [Int: CGFloat] = [:]
 
@@ -1293,25 +1297,25 @@ struct ArrangementStrip: View {
     }
 
     private func addBlockMenu(_ arrangement: Arrangement) -> some View {
-        Menu {
-            ForEach(sections) { section in
-                let slideCount = presentation.slides.count { $0.sectionId == section.id }
-                Button(
-                    "\(section.name)  —  \(slideCount == 1 ? "1 slide" : "\(slideCount) slides")"
-                ) {
-                    model.updateArrangement(
-                        presentation.id, arrangementID: arrangement.id
-                    ) { $0.sectionIds.append(section.id) }
-                }
-            }
+        Button {
+            addingSection = true
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .buttonStyle(.plain)
         .help("Add a section")
+        .popover(isPresented: $addingSection, arrowEdge: .bottom) {
+            SectionPreviewPicker(model: model, render: render, presentation: presentation) { section in
+                model.updateArrangement(
+                    presentation.id, arrangementID: arrangement.id
+                ) { $0.sectionIds.append(section.id) }
+            }
+        }
     }
 
     private func dropBlock(
