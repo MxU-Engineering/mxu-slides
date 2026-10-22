@@ -155,6 +155,8 @@ final class AudioInputInventory {
     private var hotplugReconcilePending = false
 
     private init() {
+
+        AudioInputHubPool.shared.externalFeedProvider = { DeckLinkDirect.feed(forAudioUID: $0) }
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let stored = try? JSONDecoder().decode([Entry].self, from: data) {
             entries = stored
@@ -191,6 +193,9 @@ final class AudioInputInventory {
 
     func warmUp() {
         startHotplugWatch()
+        if entries.contains(where: { DeckLinkDirect.isDirect(audioUID: $0.uid ?? "") }) {
+            DeckLinkDeviceCatalog.shared.refresh()
+        }
         guard entries.contains(where: \.isAssigned) else { return }
         withMicrophonePermission { [weak self] granted in
             guard granted, let self else { return }
@@ -376,7 +381,9 @@ final class AudioInputInventory {
     private func reconcileHotplug() {
         for entry in entries where entry.isAssigned {
             guard let uid = entry.uid else { continue }
-            let present = AudioDeviceList.inputDevice(uid: uid) != nil
+
+            let present = DeckLinkDirect.isDirect(audioUID: uid)
+                || AudioDeviceList.inputDevice(uid: uid) != nil
             guard let source = sources[entry.id] else {
 
                 if present {

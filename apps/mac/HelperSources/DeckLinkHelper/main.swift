@@ -55,6 +55,10 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
     private var device: Int64?
     private var generation: UUID?
 
+    weak var connection: NSXPCConnection?
+
+    private var input: DeckLinkInputRelay?
+
     func listDevices(reply: @escaping (Data) -> Void) {
         let devices = DeckLinkRuntime.devices().map { device in
             DeckLinkHelperDevice(
@@ -62,7 +66,9 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
                 persistentID: device.persistentID,
                 supportsPlayback: device.supportsPlayback,
                 supportsInternalKeying: device.supportsInternalKeying,
-                supportsExternalKeying: device.supportsExternalKeying)
+                supportsExternalKeying: device.supportsExternalKeying,
+                supportsCapture: device.supportsCapture,
+                captureAudioChannels: DeckLinkInput.audioChannels(forMaximum: device.maxAudioChannels))
         }
         reply((try? JSONEncoder().encode(devices)) ?? Data())
     }
@@ -184,12 +190,12 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
         }
     }
 
-    func sendFrame(_ surface: IOSurface, reply: @escaping (Bool) -> Void) {
+    func sendFrame(_ surface: IOSurface, reply: @escaping (Bool, Data) -> Void) {
         guard let device, let generation,
             let output = DeckLinkOutputStore.shared.output(
                 device: device, generation: generation)
         else {
-            reply(false)
+            reply(false, Data())
             return
         }
         var unmanaged: Unmanaged<CVPixelBuffer>?
@@ -198,10 +204,20 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
             kCFAllocatorDefault, surfaceRef, nil, &unmanaged) == kCVReturnSuccess,
             let pixelBuffer = unmanaged?.takeRetainedValue()
         else {
-            reply(false)
+            reply(false, Self.encoded(output.timing))
             return
         }
-        reply(output.display(pixelBuffer: pixelBuffer))
+        let delivered = output.display(pixelBuffer: pixelBuffer)
+        reply(delivered, Self.encoded(output.timing))
+    }
+
+    private static func encoded(_ timing: DeckLinkOutputTiming) -> Data {
+        let wire = DeckLinkCardTiming(
+            completions: timing.completions,
+            lastCompletionHostTime: timing.lastCompletionHostTime,
+            repeats: timing.repeats, skips: timing.skips,
+            late: timing.late, dropped: timing.dropped, jumps: timing.jumps)
+        return (try? JSONEncoder().encode(wire)) ?? Data()
     }
 
     func stopOutput() {
@@ -215,6 +231,42 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
     func ping(reply: @escaping (Bool) -> Void) {
         reply(true)
     }
+
+    func startInput(devicePersistentID: Int64, reply: @escaping (String?) -> Void) {
+        stopInput()
+        if !DeckLinkRuntime.isAvailable {
+            reply("Desktop Video is not installed (blackmagicdesign.com/support)")
+        } else if DeckLinkRuntime.runtimeIsTooOld {
+            reply(
+                "Desktop Video \(DeckLinkRuntime.apiVersionString ?? "?") is too old — "
+                    + "install \(DeckLinkRuntime.requiredAPIMajor).0 or later")
+        } else if let sink = connection?.remoteObjectProxyWithErrorHandler({ _ in })
+            as? DeckLinkInputSinkProtocol {
+            let maximum = DeckLinkRuntime.devices()
+                .first { $0.persistentID == devicePersistentID }?.maxAudioChannels ?? 2
+            do {
+                input = try DeckLinkInputRelay(
+                    persistentID: devicePersistentID,
+                    audioChannels: DeckLinkInput.audioChannels(forMaximum: maximum), sink: sink)
+                reply(nil)
+            } catch DeckLinkError.openFailed(let message) {
+                reply(message)
+            } catch {
+                reply("DeckLink input failed: \(error)")
+            }
+        } else {
+            reply("helper connection unavailable")
+        }
+    }
+
+    func stopInput() {
+
+        let dropped = input
+        input = nil
+        if let dropped {
+            DispatchQueue.global(qos: .utility).async { _ = dropped }
+        }
+    }
 }
 
 final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
@@ -222,7 +274,10 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
         _ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection
     ) -> Bool {
         connection.exportedInterface = NSXPCInterface(with: DeckLinkHelperProtocol.self)
-        connection.exportedObject = DeckLinkHelperService()
+        connection.remoteObjectInterface = NSXPCInterface(with: DeckLinkInputSinkProtocol.self)
+        let service = DeckLinkHelperService()
+        service.connection = connection
+        connection.exportedObject = service
         connection.resume()
         return true
     }

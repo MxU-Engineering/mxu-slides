@@ -268,6 +268,32 @@ extension EffectChainTests {
         XCTAssertGreaterThan(inside, 0.2, "…and is still there, decaying")
     }
 
+    func testGhostTrailsMixesFullFrameMotion() throws {
+        let compositor = try makeCompositor()
+        var clock: CFTimeInterval = 100
+        compositor.cacheClockOverride = { clock }
+        func scene(color: SceneColor) -> RenderScene {
+            var scene = RenderScene(canvasSize: CGSize(width: 192, height: 108))
+            scene.background = .black
+            var item = RenderItem(
+                id: "full", frame: CGRect(x: 0, y: 0, width: 192, height: 108), content: .solid(color)
+            )
+            item.effects = [SceneEffect(kind: .ghostTrails(fade: 1, drift: 0, scale: 160, speed: 0))]
+            scene.addItem(item, to: .slide)
+            return scene
+        }
+        _ = try compositor.renderFrame(scene: scene(color: SceneColor(red: 0, green: 0, blue: 0)), width: 192, height: 108, at: 1)
+        clock += 1.0 / 30
+        let mixed = try compositor.renderFrame(
+            scene: scene(color: .white), width: 192, height: 108, at: 1 + 1.0 / 30
+        )
+        let center = pixel(mixed, x: 96, y: 54).x
+        XCTAssertGreaterThan(center, 0.01, "the fresh white comes through")
+        XCTAssertLessThan(center, 0.5, "…mixed with the black history, not lightened over it")
+        let edge = pixel(mixed, x: 0, y: 0).x
+        XCTAssertEqual(edge, center, accuracy: 0.02, "the edge clamps — no black pulled in from past the frame")
+    }
+
     func testV79ScatterSpecklesEdges() throws {
         let compositor = try makeCompositor()
         var scene = RenderScene(canvasSize: CGSize(width: 192, height: 108))

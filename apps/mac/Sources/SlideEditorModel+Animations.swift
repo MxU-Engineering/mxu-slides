@@ -1004,3 +1004,7 @@ extension SlideEditorModel {
         (seconds * 20).rounded() / 20
     }
 }
+
+extension SlideEditorModel: TimelinePlayheadSource {
+    var timelinePlayheadTime: Double { animationPreviewShownTime }
+}

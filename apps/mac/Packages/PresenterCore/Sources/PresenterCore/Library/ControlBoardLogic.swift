@@ -9,6 +9,19 @@ public extension ControlBoard {
         }
     }
 
+    var visibleItemIDs: [String] {
+        nodes.flatMap { id -> [String] in
+            guard let folder = folder(id: id) else { return [id] }
+            return folder.collapsed == true ? [] : folder.itemIds
+        }
+    }
+
+    static func range(in order: [String], from anchor: String?, through id: String) -> [String] {
+        guard let anchor, let from = order.firstIndex(of: anchor),
+              let to = order.firstIndex(of: id) else { return [id] }
+        return Array(order[min(from, to) ... max(from, to)])
+    }
+
     func folder(id: String) -> ControlFolder? {
         folders.first { $0.id == id }
     }

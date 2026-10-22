@@ -3,6 +3,14 @@ import RenderEngine
 import SlideScene
 import SwiftUI
 
+extension ServiceContinuousView: @MainActor Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.model === rhs.model && lhs.render === rhs.render && lhs.controls === rhs.controls
+            && lhs.serviceID == rhs.serviceID && lhs.focusItemID == rhs.focusItemID
+            && lhs.focusScroll == rhs.focusScroll
+    }
+}
+
 struct ServiceContinuousView: View {
     let model: AppModel
     let render: RenderContext?
@@ -14,19 +22,21 @@ struct ServiceContinuousView: View {
     @Binding var focusScroll: PresentFocusScroll
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
     @Environment(\.runOnly) private var runOnly
     @FocusState private var focused: Bool
 
-    @State private var deleteRequests = 0
-
     @State private var clipboardRequests = SlideClipboardRequests()
+
+    @State private var sweep = GridSweep(space: ServiceContinuousView.contentSpace)
 
     @State private var mediaMenuState = MediaCueMenuState()
     @State private var playlistDropTarget: PlaylistDropTarget?
+
+    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+    @State private var settingsPopoverItemID: String?
 
     @State private var viewportHeight: CGFloat = 0
 
@@ -80,6 +90,7 @@ struct ServiceContinuousView: View {
                             .background(alignment: .topLeading) {
                                 PresentScrollWatch().frame(width: 1, height: 1)
                             }
+                            .overlay(alignment: .topLeading) { GridSweepBand(sweep: sweep) }
                             .coordinateSpace(name: Self.contentSpace)
                         }
                         .coordinateSpace(name: Self.scrollSpace)
@@ -107,7 +118,17 @@ struct ServiceContinuousView: View {
                     }
                     .onAppear {
 
-                        scrollToFocus(focusItemID, reason: "appear", proxy: proxy, service: service)
+                        if let place = focusScroll.comeBack(
+                            to: PresentCardFrames.shared.leftPlace, serviceID: serviceID, focusItemID: focusItemID
+                        ) {
+                            PresentCardFrames.shared.putBack(place)
+                        } else if scrollToFocus(focusItemID, reason: "appear", proxy: proxy, service: service) {
+
+                            PresentCardFrames.shared.keepPlace(because: "appear", waits: PresentCardFrames.mountWaits)
+                        }
+                    }
+                    .onDisappear {
+                        PresentCardFrames.shared.left(serviceID: serviceID, focusItemID: focusItemID)
                     }
                 }
                 .focusable()
@@ -120,7 +141,7 @@ struct ServiceContinuousView: View {
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(service) })
 
-                .onDeleteCommand { deleteRequests += 1 }
+                .onDeleteCommand { clipboardRequests.take(.delete) }
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
             }
             .onAppear { focused = true }
@@ -521,9 +542,24 @@ struct ServiceContinuousView: View {
             cardHeader(item, glyph: .presentations) {
 
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
+
+                PresentationSettingsButton(
+                    model: model, render: render, controls: controls, presentation: presentation,
+                    isPresented: Binding(
+                        get: { settingsPopoverItemID == item.id },
+                        set: { settingsPopoverItemID = $0 ? item.id : nil }))
+
+                .inputRegion("card settings: \(displayName(item))", notesClicks: true)
+
+                if controls != nil {
+                    PresentationTimelineButton(
+                        itemID: item.id,
+                        hasTimeline: PresentationTimelines.timeline(for: item.arrangementId, in: presentation) != nil)
+                    .inputRegion("card timeline: \(displayName(item))", notesClicks: true)
+                }
             } leading: {
 
-                if presentation.sections?.isEmpty == false {
+                if SlideSceneBuilder.showsArrangements(for: presentation) {
                     if runOnly {
                         if let name = activeArrangementName(item, presentation) {
                             Text(name)
@@ -545,12 +581,12 @@ struct ServiceContinuousView: View {
                     }
                 }
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
-                SlideShowChip(model: model, controls: controls, presentation: presentation)
             } accessory: {
 
-                if presentation.sections?.isEmpty == false {
+                if SlideSceneBuilder.showsArrangements(for: presentation) {
                     ArrangementStrip(
                         model: model, presentation: presentation,
+                        render: render,
                         selection: Binding(
                             get: { item.arrangementId },
                             set: { arrangementID in
@@ -565,10 +601,18 @@ struct ServiceContinuousView: View {
                         }
                     )
                 }
+
+                if let context = timelineContext(item, presentation) {
+                    PresentationTimelineStrip(context: context)
+                }
             }
 
             .contextMenu {
-                if !runOnly { arrangementMenu(item, presentation) }
+                if !runOnly {
+                    arrangementMenu(item, presentation)
+                    Button("Presentation Settings…") { settingsPopoverItemID = item.id }
+                    Button("Edit…") { openInEditor(presentation.id) }
+                }
             }
         } else {
 
@@ -606,6 +650,12 @@ struct ServiceContinuousView: View {
         )
         .background(Color.basePlane)
         .id(item.id)
+    }
+
+    private func timelineContext(_ item: ServiceItem, _ presentation: Presentation) -> PresentationTimelineContext? {
+        guard let controls, PresentationTimelineCards.shared.open.contains(item.id) else { return nil }
+        return PresentationTimelineContext(
+            model: model, controls: controls, serviceID: serviceID, item: item, presentation: presentation, render: render)
     }
 
     private func activeArrangementName(
@@ -672,6 +722,11 @@ struct ServiceContinuousView: View {
         let theme = model.theme(presentation.themeId)
 
         return VStack(alignment: .leading, spacing: 10) {
+
+            if let context = timelineContext(item, presentation),
+               PresentationTimelineCards.shared.expanded.contains(item.id) {
+                PresentationTimelineLanes(context: context)
+            }
             SlideGridBody(
                     model: model, render: render, controls: controls,
                     presentation: presentation, theme: theme,
@@ -680,15 +735,15 @@ struct ServiceContinuousView: View {
                     contextID: item.id,
                     roundedCorners: roundedCorners,
                     hideScopedBackgrounds: hideScopedBackgrounds,
-                    legibleText: legibleText,
                     slidesAcross: slidesAcross,
-                    deleteRequests: deleteRequests,
                     clipboardRequests: clipboardRequests,
                     pastesAtEnd: focusItemID == item.id,
                     newSlideContexts: ((try? model.service(serviceID))?.items ?? [])
                         .filter { $0.itemKind == .presentation }.map(\.id),
                     buildsRowsNearView: true,
-                    marqueeMargin: 12
+                    marqueeMargin: 12,
+                    sweep: sweep,
+                    deleteEverySelection: { clipboardRequests.take(.delete) }
                 )
         }
         .padding(12)
@@ -711,7 +766,10 @@ struct ServiceContinuousView: View {
                 MediaCueMenuItems(
                     model: model, actionRouter: controls?.actionRouter,
                     mediaID: item.refId, state: mediaMenuState,
-                    fallbackName: item.name
+                    fallbackName: item.name,
+                    replace: SpotReplace(label: "Replace in This Service…") { _, newID in
+                        model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)
+                    }
                 )
             }
         }
@@ -1007,17 +1065,22 @@ extension ServiceContinuousView {
             ? anchor(unlinked: itemID) : itemID
     }
 
+    @discardableResult
     private func scrollToFocus(
         _ itemID: String?, reason: String, proxy: ScrollViewProxy, service: Service
-    ) {
+    ) -> Bool {
         if let target = focusScroll.request(itemID) {
             DiagnosticsStore.shared.note("present.focus", detail: "scroll \(target) (\(reason))")
             InputTrailRecorder.shared.noteFocusScroll()
             proxy.scrollTo(Self.anchor(for: target, in: service), anchor: .top)
             PresentCardFrames.shared.holdCard(target)
             PresentCardFrames.shared.reportLanding(target: target, rows: presentRows(service))
-        } else if let itemID {
-            DiagnosticsStore.shared.note("present.focus", detail: "hold \(itemID) (\(reason), already there)")
+            return true
+        } else {
+            if let itemID {
+                DiagnosticsStore.shared.note("present.focus", detail: "hold \(itemID) (\(reason), already there)")
+            }
+            return false
         }
     }
 
@@ -1026,6 +1089,11 @@ extension ServiceContinuousView {
            presentRows(service).contains(where: { $0.id == itemID }) {
             PresentCardFrames.shared.reveal(itemID, slide: occurrence, headerHeight: headerHeights[itemID] ?? 44)
         }
+    }
+
+    func openInEditor(_ id: String) {
+        model.openInEditor(entryID: id)
+        appModeRaw = AppMode.edit.rawValue
     }
 }
 
@@ -1093,6 +1161,8 @@ struct ArrangementStrip: View {
     let model: AppModel
     let presentation: Presentation
 
+    var render: RenderContext? = nil
+
     @Binding var selection: String?
 
     var showsPicker = true
@@ -1102,6 +1172,7 @@ struct ArrangementStrip: View {
     @Environment(\.runOnly) private var runOnly
 
     @State private var dropIndex: Int?
+    @State private var addingSection = false
 
     @State private var pillWidths: [Int: CGFloat] = [:]
 
@@ -1236,25 +1307,25 @@ struct ArrangementStrip: View {
     }
 
     private func addBlockMenu(_ arrangement: Arrangement) -> some View {
-        Menu {
-            ForEach(sections) { section in
-                let slideCount = presentation.slides.count { $0.sectionId == section.id }
-                Button(
-                    "\(section.name)  —  \(slideCount == 1 ? "1 slide" : "\(slideCount) slides")"
-                ) {
-                    model.updateArrangement(
-                        presentation.id, arrangementID: arrangement.id
-                    ) { $0.sectionIds.append(section.id) }
-                }
-            }
+        Button {
+            addingSection = true
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .buttonStyle(.plain)
         .help("Add a section")
+        .popover(isPresented: $addingSection, arrowEdge: .bottom) {
+            SectionPreviewPicker(model: model, render: render, presentation: presentation) { section in
+                model.updateArrangement(
+                    presentation.id, arrangementID: arrangement.id
+                ) { $0.sectionIds.append(section.id) }
+            }
+        }
     }
 
     private func dropBlock(
@@ -1352,11 +1423,14 @@ struct ArrangementPicker: View {
                     ))
                 }
             }
-            Divider()
-            Button("New Arrangement") {
 
-                model.addArrangement(presentation.id) { created in
-                    selection = created.id
+            if !SlideSceneBuilder.arrangementBlockStarts(for: presentation).isEmpty {
+                Divider()
+                Button("New Arrangement") {
+
+                    model.addArrangement(presentation.id) { created in
+                        selection = created.id
+                    }
                 }
             }
             if let arrangement = activeArrangement {

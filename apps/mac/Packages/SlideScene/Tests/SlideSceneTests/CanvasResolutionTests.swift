@@ -25,6 +25,14 @@ private func presentation(width: Int?, height: Int?, slides: [Slide] = []) -> Pr
             == CGSize(width: 1920, height: 1080))
 }
 
+@Test func defaultCanvasStoresAbsent() {
+    #expect(SlideSceneBuilder.storedCanvas(width: 1920, height: 1080) == (nil, nil))
+    #expect(SlideSceneBuilder.storedCanvas(width: 1024, height: 768) == (1024, 768))
+
+    #expect(SlideSceneBuilder.canvasPresets.allSatisfy { $0.width > 0 && $0.height > 0 })
+    #expect(SlideSceneBuilder.canvasPresets.contains { $0.width == 1920 && $0.height == 1080 })
+}
+
 @Test func sceneAdoptsThePresentationCanvas() {
     let slide = Slide(id: "s", name: "", objects: [
         SlideObject(id: "m", objectKind: .media, name: "Full", text: "", mediaId: "clip")

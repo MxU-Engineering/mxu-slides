@@ -200,6 +200,30 @@ public enum OpenAPIDocument {
                 ], required: ["id", "name", "enabled", "folderEnabled"]),
             ]),
         ], required: ["enabled", "triggers"]),
+        "TimecodeStatus": obj([
+            "hasInput": .object(["type": "boolean"]),
+            "source": .object(["type": "string", "enum": ["ltc", "mtc"]]),
+            "follows": .object(["type": "boolean"]),
+            "state": .object(["type": "string", "enum": ["noInput", "locking", "locked", "freewheel", "stopped"]]),
+            "label": str,
+            "rate": .object(["type": "string", "enum": ["24", "25", "29.97", "29.97df", "30"]]),
+            "reverse": .object(["type": "boolean"]),
+            "offsetFrames": int,
+            "serviceItemId": str,
+            "anchor": obj([
+                "seconds": num,
+                "anchoredAt": .object(["type": "string", "format": "date-time"]),
+                "running": .object(["type": "boolean"]),
+                "reverse": .object(["type": "boolean"]),
+            ], required: ["seconds", "anchoredAt", "running", "reverse"]),
+            "timeline": obj([
+                "serviceItemId": str,
+                "position": num,
+                "anchoredAt": .object(["type": "string", "format": "date-time"]),
+                "running": .object(["type": "boolean"]),
+                "length": num,
+            ], required: ["serviceItemId", "position", "anchoredAt", "running", "length"]),
+        ], required: ["hasInput", "source", "follows", "state", "reverse", "offsetFrames"]),
         "SchedulerEnableCommand": obj([
             "enabled": .object(["type": "boolean"])
         ], required: ["enabled"]),
@@ -344,12 +368,15 @@ public enum AsyncAPIDocument {
         .outputs: ("OutputsStatus", false),
         .library: ("LibrarySummary", false),
         .scheduler: ("SchedulerStatus", false),
+        .timecode: ("TimecodeStatus", false),
     ]
 
     static func topicDescription(_ topic: APITopic) -> String {
         switch topic {
         case .show:
             return "Snapshot pushed when the live show changes: the live slide (with step counters — stepIndex = click groups consumed so far, stepCount = click groups on the slide; both absent when the slide has no animation steps), next-slide text, media layers, overlays. Same shape as GET /v1/status. POST /v1/show/advance consumes one click group per call and pushes a new snapshot; past the last click one more call plays the exit group (the cue stays live, stepIndex reaches stepCount), and the call after that moves slides."
+        case .timecode:
+            return "Snapshot pushed when timecode locks or loses lock, changes song or rate, starts, stops or jumps — never per frame. Count frames from anchor (and the timeline playhead from timeline) yourself. Same shape as GET /v1/timecode."
         default:
             return "Snapshot pushed when \(topic.rawValue) state changes; same shape as its REST endpoint."
         }

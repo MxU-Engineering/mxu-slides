@@ -150,3 +150,32 @@ struct InspectorTextField: View {
         }
     }
 }
+
+struct ThemePickButton: View {
+    let title: String
+    let detail: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(title)
+                        .lineLimit(1)
+                    if let detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Choose from the theme browser")
+    }
+}

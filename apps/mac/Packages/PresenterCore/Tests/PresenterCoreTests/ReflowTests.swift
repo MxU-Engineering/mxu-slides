@@ -205,6 +205,15 @@ import Testing
     #expect(opened.order == [0, 1])
 }
 
+@Test func aChordOnlyIntroIsTheOpeningBlank() {
+
+    let parsed = Reflow.parse("Intro\n[G] [D] [Em] [C]\n\nVerse 1\n[G]Amazing grace", linesPerSlide: 2)
+    let opened = parsed.openingOnBlank()
+    #expect(opened.sections.map(\.name) == ["Intro", "Verse 1"])
+    #expect(opened.sections[0].slides == parsed.sections[0].slides, "its chords stay for the confidence monitor")
+    #expect(opened.order == parsed.order)
+}
+
 @Test func openingOnBlankLeavesEmptyTextEmpty() {
     #expect(Reflow.parse("", linesPerSlide: 2).openingOnBlank() == Reflow.ParseResult())
 }

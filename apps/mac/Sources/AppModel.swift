@@ -40,17 +40,12 @@ enum LibrarySection: String, CaseIterable, Identifiable {
     }
 
     var playlistKind: PlaylistKind? {
-        switch self {
-        case .media: .media
-        case .audio: .audio
-        default: nil
-        }
+        self == .audio ? .audio : nil
     }
 
     var displayName: String {
         switch self {
         case .presentations: "Slides"
-        case .audio: "Music"
         default: rawValue
         }
     }
@@ -125,6 +120,10 @@ final class AppModel {
 
     private var stashedEditorEntryID: String?
 
+    var editorJumpPending = false
+
+    var editorReturnMode: AppMode?
+
     var pendingEditorSlideID: String?
 
     var libraryFindPending = false
@@ -171,7 +170,10 @@ final class AppModel {
     func openInEditor(entryID: String, slideID: String? = nil) {
         guard let entry = libraryEntry(entryID) else { return }
 
-        if !protectEditorSelection { stashPresentSelection() }
+        if !protectEditorSelection {
+            stashPresentSelection()
+            editorJumpPending = true
+        }
         if let section = LibrarySection.allCases.first(where: { $0.kind == entry.kind }) {
             selectedSection = section
         }
@@ -304,6 +306,7 @@ final class AppModel {
         importer = try? MediaImporter(client: client)
         transcodeQueue = try? TranscodeQueue(client: client)
         blobs = try? BlobStore(libraryRoot: root)
+        if let blobs { Task.detached(priority: .utility) { blobs.lockAll() } }
 
         FontActivator.activateStored(libraryRoot: root)
         posterStore = try? MediaPosterStore(libraryRoot: root)
@@ -588,7 +591,13 @@ final class AppModel {
     }
 
     func entries(in section: LibrarySection) -> [LibraryIndex.Entry] {
-        Self.inSectionOrder(listedSnapshot.entries(of: section.kind), section)
+        Self.inSectionOrder(withoutStems(listedSnapshot.entries(of: section.kind), section), section)
+    }
+
+    private func withoutStems(_ entries: [LibraryIndex.Entry], _ section: LibrarySection) -> [LibraryIndex.Entry] {
+        guard section == .audio else { return entries }
+        let stems = TrackSets.stemIDs(resident.trackSets.values)
+        return stems.isEmpty ? entries : entries.filter { !stems.contains($0.id) }
     }
 
     func entries(of kind: DocumentKind) -> [LibraryIndex.Entry] {
@@ -696,8 +705,13 @@ final class AppModel {
     }
 
     func browserEntries(in section: LibrarySection) -> [LibraryIndex.Entry] {
-        let all = (librarySorts[section] ?? .name).ordered(Self.inSectionOrder(listedSnapshot.entries(of: section.kind), section))
+        let all = (librarySorts[section] ?? .name).ordered(
+            Self.inSectionOrder(withoutStems(listedSnapshot.entries(of: section.kind), section), section), addedAt: mediaAddedAt)
         return !isFiltered(section) ? all : all.filter { showFiltersAdmit(id: $0.id, kind: $0.kind) }
+    }
+
+    func mediaAddedAt(_ id: String) -> Date? {
+        media(id)?.importedAt.map(Date.init(timeIntervalSince1970:))
     }
 
     func showFiltersAdmit(id: String, kind: DocumentKind) -> Bool {
@@ -975,12 +989,12 @@ final class AppModel {
     }
 
     @discardableResult
-    func createPresentation(named name: String) -> String? {
+    func createPresentation(named name: String, themeId: String = "") -> String? {
         let id = UUID().uuidString
 
         createInDrive(Presentation(
             id: id, name: name,
-            presentationKind: .deck, themeId: "",
+            presentationKind: .deck, themeId: themeId,
             slides: [Slide(id: UUID().uuidString, name: "", objects: [])],
             origin: PresentationOrigin(.madeHere)
         ))
@@ -1127,10 +1141,12 @@ final class AppModel {
     @ObservationIgnored private var arrangedCache: [String: [Slide]] = [:]
 
     func arrangedSlides(_ presentation: Presentation, arrangementId: String?) -> [Slide] {
-        let key = "\(presentation.id)|\(kindVersions[.presentation])|\(arrangementId ?? "")"
+
+        let once = SlideSceneBuilder.emptyRepeatsOnce
+        let key = "\(presentation.id)|\(kindVersions[.presentation])|\(arrangementId ?? "")|\(once)"
         if let hit = arrangedCache[key] { return hit }
         let slides = SlideSceneBuilder.arrangedSlides(
-            for: presentation, arrangementId: arrangementId
+            for: presentation, arrangementId: arrangementId, emptyRepeatsOnce: once
         )
         if decks.currentValue(presentation.id) != nil {
             if arrangedCache.count > 64 { arrangedCache.removeAll() }
@@ -1277,6 +1293,14 @@ final class AppModel {
         }
     }
 
+    func replaceServiceItemMedia(_ serviceID: String, itemID: String, mediaID: String) {
+        let name = libraryEntry(mediaID)?.name
+        updateService(serviceID) {
+            ServiceRunOrder.replaceMedia(in: &$0.items, itemID: itemID, mediaID: mediaID, name: name)
+        }
+        markUsed(mediaID)
+    }
+
     func addServiceHeader(_ serviceID: String, name: String) {
         let header = ServiceItem(id: UUID().uuidString, itemKind: .header, name: name, refId: "")
         updateService(serviceID) { $0.items.append(header) }
@@ -1346,6 +1370,15 @@ final class AppModel {
         updateService(serviceID) {
             guard let index = $0.items.firstIndex(where: { $0.id == itemID }) else { return }
             $0.items[index].outputPresetId = presetID
+        }
+    }
+
+    func setServiceItemTransition(_ serviceID: String, itemIDs: [String]?, transition: SongTransition?) {
+        updateService(serviceID) { service in
+            for index in service.items.indices where service.items[index].itemKind == .presentation {
+                if let itemIDs, !itemIDs.contains(service.items[index].id) { continue }
+                service.items[index].transition = transition
+            }
         }
     }
 
@@ -1487,12 +1520,13 @@ final class AppModel {
 
     func updatePresentationField<Field: Codable & Equatable & Sendable>(
         _ presentationID: String, _ keyPath: WritableKeyPath<Presentation, Field?> & Sendable, key: String,
-        to value: Field?, undoLabel: String?
+        to value: Field?, undoLabel: String?, undoingTo: Field?? = nil
     ) {
 
         withDeck(presentationID) { [weak self] deck in
             if let self {
-                let before = deck.map { $0[keyPath: keyPath] }
+
+                let before = undoingTo ?? deck.map { $0[keyPath: keyPath] }
                 updatePresentation(presentationID, scope: "field", value: { $0[keyPath: keyPath] = value }) {
                     try $0.updateField(keyPath, key: key, to: value)
                 }
@@ -1513,6 +1547,51 @@ final class AppModel {
                     )
                 }
             }
+        }
+    }
+
+    func setCanvasSize(of presentationIDs: [String], width: Int, height: Int) {
+        let stored = SlideSceneBuilder.storedCanvas(width: width, height: height)
+        let befores = CanvasBefores()
+        for id in presentationIDs {
+            withDeck(id) { [weak self] deck in
+                if let self, let deck, (deck.canvasWidth, deck.canvasHeight) != stored {
+                    befores.sizes[id] = (deck.canvasWidth, deck.canvasHeight)
+                    writeCanvas(id, width: stored.width, height: stored.height)
+                }
+            }
+        }
+        moveUndo.registerMove(
+            label: "Resolution",
+            undo: { [weak self] in
+                let ids = befores.sizes.keys.filter { self?.presentationExists($0) == true }
+                for id in ids {
+                    let size = befores.sizes[id]!
+                    self?.writeCanvas(id, width: size.width, height: size.height)
+                }
+                return !ids.isEmpty
+            },
+            redo: { [weak self] in
+                let ids = befores.sizes.keys.filter { self?.presentationExists($0) == true }
+                for id in ids { self?.writeCanvas(id, width: stored.width, height: stored.height) }
+                return !ids.isEmpty
+            }
+        )
+    }
+
+    private final class CanvasBefores {
+        var sizes: [String: (width: Int?, height: Int?)] = [:]
+    }
+
+    private func writeCanvas(_ id: String, width: Int?, height: Int?) {
+        updatePresentation(id, scope: "field", value: {
+            $0.canvasWidth = width
+            $0.canvasHeight = height
+        }) {
+            try $0.updateFields([
+                .init(\.canvasWidth, key: "canvasWidth", to: width),
+                .init(\.canvasHeight, key: "canvasHeight", to: height),
+            ])
         }
     }
 
@@ -1779,8 +1858,8 @@ final class AppModel {
         case .confidenceLayout: modify(ConfidenceLayout.self, id: entry.id) { $0.name = trimmed }
         case .midiDevice: modify(MIDIDevice.self, id: entry.id) { $0.name = trimmed }
         case .streamDestination: modify(StreamDestination.self, id: entry.id) { $0.name = trimmed }
-        case .note: return 
-        case .schedulerBoard, .controlBoard, .groupPalette, .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break 
+        case .note: return
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: break
         }
 
         let oldName = entry.name
@@ -1873,22 +1952,36 @@ final class AppModel {
     nonisolated private static func mediaReferenceSets(
         reader: LibraryReader, priority: TaskPriority
     ) async -> [Set<String>] {
+        await mediaReferenceDocuments(reader: reader, priority: priority)
+            .map(\.mediaIDs)
+            .filter { !$0.isEmpty }
+    }
+
+    @concurrent
+    nonisolated private static func mediaReferenceDocuments(
+        reader: LibraryReader, priority: TaskPriority
+    ) async -> [MediaUsage.Document] {
         func walk<E: DocumentEntity>(
-            _ type: E.Type, _ collect: @escaping @Sendable (E) -> Set<String>
-        ) async -> [Set<String>] {
+            _ type: E.Type, themes: @escaping @Sendable (E) -> Set<String> = { _ in [] },
+            _ collect: @escaping @Sendable (E) -> Set<String>
+        ) async -> [MediaUsage.Document] {
             let ids = (try? await reader.ids(of: E.documentKind)) ?? []
-            return await reader.loadValues(type, ids: ids, priority: priority, project: collect).values.values
-                .filter { !$0.isEmpty }
+            return await reader.loadValues(type, ids: ids, priority: priority, project: { value in
+                MediaUsage.Document(
+                    use: MediaUsage.Use(kind: E.documentKind, id: value.id, name: value.name),
+                    mediaIDs: collect(value), themeIDs: themes(value))
+            }).values.values
+                .filter { !$0.mediaIDs.isEmpty || !$0.themeIDs.isEmpty }
         }
-        var sets = await walk(Presentation.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Overlay.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Theme.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(ConfidenceLayout.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Playlist.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(Service.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(ActionCombo.self) { MediaReferences.ids(in: $0) }
-        sets += await walk(ScheduleTrigger.self) { MediaReferences.ids(in: $0) }
-        return sets
+        var documents = await walk(Presentation.self, themes: { MediaUsage.themeIDs(in: $0) }) { MediaReferences.ids(in: $0) }
+        documents += await walk(Overlay.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(Theme.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(ConfidenceLayout.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(Playlist.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(Service.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(ActionCombo.self) { MediaReferences.ids(in: $0) }
+        documents += await walk(ScheduleTrigger.self) { MediaReferences.ids(in: $0) }
+        return documents
     }
 
     func mediaReferenceDocumentCount(of ids: Set<String>) async -> Int {
@@ -1898,6 +1991,20 @@ final class AppModel {
         } else {
             return 0
         }
+    }
+
+    func mediaUses(of id: String) async -> [MediaUsage.Use] {
+        if let reader = try? await client.reader() {
+            MediaUsage.uses(of: id, in: await Self.mediaReferenceDocuments(reader: reader, priority: .userInitiated))
+        } else {
+            []
+        }
+    }
+
+    func mediaHolding(file hash: String, except id: String) -> MediaItem? {
+        resident.media.values
+            .filter { $0.fileHash == hash && $0.id != id }
+            .min { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     func replaceMediaFile(_ id: String, with url: URL) async -> [String]? {
@@ -2055,7 +2162,11 @@ final class AppModel {
         }
         case .service: copy(Service.self) { $0.id = newID; $0.name += " Copy" }
         case .theme: copy(Theme.self) { $0.id = newID; $0.name += " Copy" }
-        case .media: copy(MediaItem.self) { $0.id = newID; $0.name += " Copy" }
+        case .media: copy(MediaItem.self) {
+            $0.id = newID
+            $0.name += " Copy"
+            $0.importedAt = Date().timeIntervalSince1970
+        }
         case .audio: copy(AudioItem.self) { $0.id = newID; $0.name += " Copy" }
         case .playlist: copy(Playlist.self) { $0.id = newID; $0.name += " Copy" }
         case .overlay: copy(Overlay.self) { $0.id = newID; $0.name += " Copy" }
@@ -2071,7 +2182,7 @@ final class AppModel {
         case .note: break 
 
         case .streamDestination: copy(StreamDestination.self) { $0.id = newID; $0.name += " Copy" }
-        case .schedulerBoard, .controlBoard, .groupPalette, .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: break 
+        case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: break
         }
     }
 
@@ -2322,7 +2433,7 @@ final class AppModel {
         let id = UUID().uuidString
         createInDrive(Playlist(
             id: id,
-            name: "Untitled \(kind == .media ? "Media" : "Music") Playlist",
+            name: "Untitled Music Playlist",
             playlistKind: kind, entries: [],
             playbackMode: .playAll
         ))
@@ -2723,6 +2834,119 @@ final class AppModel {
             orMake: { GroupPalette.defaults }, mutate)
     }
 
+    var trackChannels: [TrackChannel] {
+        resident.trackChannelLists.value(TrackChannelList.wellKnownID)?.channels ?? []
+    }
+
+    @discardableResult
+    func updateTrackChannels(
+        _ mutate: @escaping @Sendable (inout TrackChannelList) -> Void
+    ) -> Task<LibraryBatch, any Error> {
+        updateWellKnown(
+            TrackChannelList.self, id: TrackChannelList.wellKnownID, failure: "trackChannels.saveFailed",
+            orMake: { TrackChannelList(id: TrackChannelList.wellKnownID, channels: []) }, mutate)
+    }
+
+    @discardableResult
+    func moveTrackChannel(_ id: String, before: String?, next: [TrackChannel]) -> Task<LibraryBatch, any Error> {
+        let written = client.edit(
+            TrackChannelList.self, id: TrackChannelList.wellKnownID, value: { $0.channels = next },
+            op: { try TrackChannelList.move(id, before: before, on: $0) })
+        Task {
+            if case .failure(let error) = await written.result {
+                DiagnosticsStore.shared.note("trackChannels.moveFailed", detail: "\(error)")
+            }
+        }
+        return written
+    }
+
+    func songsUsing(trackChannel id: String) async -> Int {
+        guard let reader = try? await client.reader() else { return 0 }
+        return await Self.trackChannelUses(reader: reader).filter { $0.contains(id) }.count
+    }
+
+    @concurrent
+    nonisolated private static func trackChannelUses(reader: LibraryReader) async -> [Set<String>] {
+        let ids = (try? await reader.ids(of: .presentation)) ?? []
+        return await reader.loadValues(Presentation.self, ids: ids, priority: .userInitiated, project: { presentation in
+            TimelineTracks.channelIDs(in: presentation)
+        }).values.values.filter { !$0.isEmpty }
+    }
+
+    var trackSets: [TrackSet] {
+        resident.trackSets.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func trackSet(_ id: String) -> TrackSet? {
+        resident.trackSets.value(id)
+    }
+
+    @discardableResult
+    func updateTrackSet(_ id: String, _ mutate: @escaping @Sendable (inout TrackSet) -> Void) -> Task<LibraryBatch, any Error> {
+        let written = client.modify(TrackSet.self, id: id, mutate)
+        Task {
+            if case .failure(let error) = await written.result {
+                DiagnosticsStore.shared.note("trackSet.saveFailed", detail: "\(error)")
+            }
+        }
+        return written
+    }
+
+    func deleteTrackSet(_ set: TrackSet) {
+        client.delete([SyncLedger.Key(kind: .trackSet, id: set.id)]
+            + set.stems.map { SyncLedger.Key(kind: .audio, id: $0.audioId) })
+        DiagnosticsStore.shared.note("trackSet.delete", detail: "\(set.name), \(set.stems.count) stems")
+    }
+
+    func importTrackSet(_ urls: [URL], song: String, joining: String? = nil) async -> (set: TrackSet, stems: [TimelineStemImport])? {
+        let stems = await importStems(urls, song: song)
+        guard !stems.isEmpty else { return nil }
+        if let existing = TrackSets.existing(withStems: stems.map(\.audioID), in: resident.trackSets.values) {
+            let known = Dictionary(existing.stems.map { ($0.audioId, $0.channelId) }, uniquingKeysWith: { first, _ in first })
+            return (existing, stems.map { var stem = $0; stem.channelId = known[$0.audioID] ?? nil; return stem })
+        }
+        if let joining, let set = trackSet(joining) {
+            let added = stems.map { TrackSetStem(audioId: $0.audioID, name: ($0.fileName as NSString).deletingPathExtension) }
+            updateTrackSet(joining) { $0 = TrackSets.joining(added, to: $0) }
+            DiagnosticsStore.shared.note("trackSet.join", detail: "\(set.name), \(added.count) stems")
+            return (TrackSets.joining(added, to: set), stems)
+        }
+        let download = TrackSets.download(forFiles: urls.map(\.path))
+        let set = TrackSet(
+            id: UUID().uuidString, name: TrackSets.name(song: song, key: download.key, tempo: download.tempo),
+            stems: stems.map { TrackSetStem(audioId: $0.audioID, name: ($0.fileName as NSString).deletingPathExtension) },
+            key: download.key, tempo: download.tempo, source: download.key == nil ? nil : "MultiTracks")
+        client.create(set, area: .team)
+        DiagnosticsStore.shared.note("trackSet.make", detail: "\(set.name), \(set.stems.count) stems")
+        return (set, stems)
+    }
+
+    func importStems(_ urls: [URL], song: String) async -> [TimelineStemImport] {
+        isImporting = true
+        defer { isImporting = false }
+        var dedupe = MediaImportDedupe(media: [], audio: Array(resident.audio.values))
+        var stems: [TimelineStemImport] = []
+        for url in MediaImporter.files(in: urls) where MediaImporter.libraryKind(of: url) == .audio {
+            let name = "\(song) · \(url.deletingPathExtension().lastPathComponent)"
+            let (hash, seconds, channels) = await Task.detached(priority: .userInitiated) {
+                let file = try? AVAudioFile(forReading: url)
+                return (try? BlobStore.sha256(of: url),
+                        file.map { Double($0.length) / $0.processingFormat.sampleRate },
+                        file.map { Int($0.processingFormat.channelCount) })
+            }.value
+            if let hash, case .sameFile(let id) = dedupe.match(hash: hash, name: name, kind: .audio) {
+                stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds, channels: channels))
+                continue
+            }
+            let result = await importer?.importFiles(at: [url], placement: newPlacement, names: [url: name]).first
+            guard case .audio(let id)? = result?.outcome else { continue }
+            if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+            stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds, channels: channels))
+        }
+        noteMutation(.audio)
+        return stems
+    }
+
     var effectPresetBoard: EffectPresetBoard {
         resident.effectPresetBoards.value(EffectPresetBoard.wellKnownID)
             ?? EffectPresetBoard(id: EffectPresetBoard.wellKnownID, presets: [])
@@ -2820,17 +3044,6 @@ final class AppModel {
             groupColorsCache = (epoch, fill, colors)
             return colors
         }
-    }
-
-    var signageBoard: SignageBoard {
-        resident.signageBoards.value(SignageBoard.wellKnownID)
-            ?? SignageBoard(id: SignageBoard.wellKnownID, signages: [])
-    }
-
-    func updateSignageBoard(_ mutate: @escaping @Sendable (inout SignageBoard) -> Void) {
-        updateWellKnown(
-            SignageBoard.self, id: SignageBoard.wellKnownID, failure: "signageBoard.saveFailed",
-            orMake: { SignageBoard(id: SignageBoard.wellKnownID, signages: []) }, mutate)
     }
 
     var comboBoard: ControlBoard {
@@ -2952,6 +3165,8 @@ final class AppModel {
     private func land(_ change: DocumentChange) {
         let held = currentValue(change.kind, id: change.id)
         if change.value == nil || held == nil || !Self.same(held, change.value) {
+            let fileMoved = change.kind == .media
+                && MediaUsage.fileChanged(from: held as? MediaItem, to: change.value as? MediaItem)
 
             if upcomingOnly, [.service, .presentation, .playlist].contains(change.kind) {
                 refreshUpcoming()
@@ -2962,6 +3177,27 @@ final class AppModel {
             if change.kind == .service, change.id == currentServiceID {
                 warmLiveSet()
             }
+            if fileMoved {
+                noteMediaFileChanged(change.id)
+            }
+        }
+    }
+
+    @ObservationIgnored private var mediaFileListeners: [ObjectIdentifier: (String) -> Void] = [:]
+
+    func observeMediaFileChanges(_ owner: AnyObject, _ handler: @escaping (String) -> Void) {
+        mediaFileListeners[ObjectIdentifier(owner)] = handler
+    }
+
+    func stopObservingMediaFileChanges(_ owner: AnyObject) {
+        mediaFileListeners[ObjectIdentifier(owner)] = nil
+    }
+
+    private func noteMediaFileChanged(_ id: String) {
+        DiagnosticsStore.shared.note("media.file.changed", detail: id)
+        ThumbnailStore.shared.mediaFileChanged()
+        for handler in mediaFileListeners.values {
+            handler(id)
         }
     }
 
@@ -3030,9 +3266,9 @@ final class AppModel {
         defer { isImporting = false }
         let files = MediaImporter.files(in: urls)
         var dedupe = MediaImportDedupe(media: Array(resident.media.values), audio: Array(resident.audio.values))
-        var replaceRest: Bool?
+        var useExistingForRest: Bool?
         var mediaIDs: [String] = []
-        var added = 0, reused = 0, replaced = 0, flagged = 0, skipped = 0
+        var added = 0, reused = 0, flagged = 0, skipped = 0
         for (index, url) in files.enumerated() {
             let kind = MediaImporter.libraryKind(of: url)
             let name = url.deletingPathExtension().lastPathComponent
@@ -3040,49 +3276,54 @@ final class AppModel {
                 try? BlobStore.sha256(of: url)
             }.value
             let match = if let kind, let hash { dedupe.match(hash: hash, name: name, kind: kind) } else { MediaImportDedupe.Match.new }
-            var replacing: String?
-            if case .sameName(let id, let existing) = match {
-                let replace: Bool
-                if let replaceRest {
-                    replace = replaceRest
-                } else {
-                    let answer = await askMediaNameConflict(name: existing, othersLeft: files.count - index - 1)
-                    replace = answer.replace
-                    if answer.forRest { replaceRest = answer.replace }
-                }
-                replacing = replace ? id : nil
+            let conflict: (id: String, name: String, kind: MediaImportPrompt.Conflict)? = switch match {
+            case .sameFile(let id): (id, media(id)?.name ?? audio(id)?.name ?? name, .sameFile)
+            case .sameName(let id, let existing): (id, existing, .sameName)
+            case .new: nil
             }
-            if case .sameFile(let id) = match {
+            var existingID: String?
+            var copyName: String?
+            if let conflict, let kind {
+
+                let numbered = dedupe.availableName(conflict.name, kind: kind)
+                let useExisting: Bool
+                if let useExistingForRest {
+                    useExisting = useExistingForRest
+                } else {
+                    let answer = await MediaImportPrompt.ask(
+                        model: self, conflict: conflict.kind, kind: kind, existingID: conflict.id,
+                        existingName: conflict.name, incoming: url, copyName: numbered,
+                        othersLeft: files.count - index - 1)
+                    useExisting = answer.useExisting
+                    if answer.forRest { useExistingForRest = answer.useExisting }
+                }
+                existingID = useExisting ? conflict.id : nil
+                copyName = useExisting ? nil : numbered
+            }
+            if let existingID {
                 reused += 1
-                if kind == .media { mediaIDs.append(id) }
-            } else if let id = replacing, kind == .media, await replaceMediaFile(id, with: url) != nil {
-                replaced += 1
-                mediaIDs.append(id)
-                if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .media) }
-            } else if let id = replacing, kind == .audio {
-                replaceAudioFile(id, with: url)
-                replaced += 1
-                if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+                if kind == .media { mediaIDs.append(existingID) }
             } else {
-                let result = await importer?.importFiles(at: [url], placement: placement ?? newPlacement).first
+                let result = await importer?.importFiles(
+                    at: [url], placement: placement ?? newPlacement, names: copyName.map { [url: $0] } ?? [:]
+                ).first
                 switch result?.outcome {
                 case .media(let id, let status)?:
                     added += 1
                     if status == .needsTranscode { flagged += 1 }
                     mediaIDs.append(id)
-                    if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .media) }
+                    if let hash { dedupe.note(id: id, hash: hash, name: copyName ?? name, kind: .media) }
                 case .audio(let id)?:
                     added += 1
-                    if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+                    if let hash { dedupe.note(id: id, hash: hash, name: copyName ?? name, kind: .audio) }
                 case .skipped?, nil:
                     skipped += 1
                 }
             }
         }
         lastImportSummary = [
-            added > 0 || reused + replaced == 0 ? "Imported \(added) of \(files.count) files" : nil,
+            added > 0 || reused == 0 ? "Imported \(added) of \(files.count) files" : nil,
             reused > 0 ? "\(reused) already in the library" : nil,
-            replaced > 0 ? "\(replaced) replaced" : nil,
             flagged > 0 ? "\(flagged) flagged for transcode" : nil,
             skipped > 0 ? "\(skipped) skipped" : nil,
         ].compactMap { $0 }.joined(separator: " — ")
@@ -3090,22 +3331,10 @@ final class AppModel {
         return mediaIDs
     }
 
-    private func askMediaNameConflict(name: String, othersLeft: Int) async -> (replace: Bool, forRest: Bool) {
-        let alert = NSAlert()
-        alert.messageText = "“\(name)” is already in your library"
-        alert.informativeText = "Replace it with the new file everywhere it’s used, or keep both?"
-        alert.addButton(withTitle: "Keep Both")
-        alert.addButton(withTitle: "Replace")
-        alert.showsSuppressionButton = othersLeft > 0
-        alert.suppressionButton?.title = "Do the same for the rest of this import"
-        let response: NSApplication.ModalResponse = if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
-            }
-        } else {
-            alert.runModal()
-        }
-        return (response == .alertSecondButtonReturn, alert.suppressionButton?.state == .on)
+    func importMediaForPick(_ urls: [URL], placement: LibraryHome.Placement) async -> LibraryIndex.Entry? {
+        let ids = await importFiles(urls, placement: placement)
+        await client.settled()
+        return ids.first.flatMap { indexEntry($0) }
     }
 
     @discardableResult

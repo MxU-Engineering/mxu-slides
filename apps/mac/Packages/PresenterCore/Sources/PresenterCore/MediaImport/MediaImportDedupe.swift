@@ -38,6 +38,21 @@ public struct MediaImportDedupe: Sendable {
         }
     }
 
+    public func availableName(_ name: String, kind: DocumentKind) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        var base = trimmed
+        var number = 2
+        if let space = trimmed.lastIndex(of: " "),
+           let n = Int(trimmed[trimmed.index(after: space)...]), n >= 1 {
+            base = String(trimmed[..<space])
+            number = n + 1
+        }
+        while byName[kind]?[Self.key("\(base) \(number)")] != nil {
+            number += 1
+        }
+        return "\(base) \(number)"
+    }
+
     private static func key(_ name: String) -> String {
         name.trimmingCharacters(in: .whitespaces).lowercased()
     }

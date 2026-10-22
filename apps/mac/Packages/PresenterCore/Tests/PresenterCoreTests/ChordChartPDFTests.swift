@@ -26,6 +26,94 @@ struct ChordChartPDFTests {
         """)
     }
 
+    @Test func theTitleWrappedAtopLaterPagesStaysOutOfTheWords() throws {
+        func bold(_ text: String, y: CGFloat, size: CGFloat) -> [PDFGlyph] {
+            Self.glyphs(text, y: y).map { PDFGlyph(text: $0.text, x: $0.x, y: $0.y, width: $0.width, size: size, bold: true) }
+        }
+        let header = bold("A Thousand Hallelujahs [Live From Passion", y: 726, size: 14.75) + bold("2022]", y: 712, size: 14.75)
+        let pages = [
+            bold("A Thousand Hallelujahs [Live From", y: 724, size: 18.7) + bold("Passion 2022]", y: 708, size: 18.7)
+                + bold("CHORUS", y: 650, size: 14.75) + Self.glyphs("With a thousand hallelujahs", y: 620)
+                + Self.glyphs("We magnify Your name", y: 605) + Self.glyphs("A thousand hallelujahs", y: 590),
+            header + bold("A", y: 692, size: 13) + Self.glyphs("And a thousand more", y: 680)
+                + bold("BRIDGE", y: 640, size: 14.75) + Self.glyphs("Praise for He rose", y: 610) + Self.glyphs("Now He reigns", y: 595),
+            header + Self.glyphs("We will sing forever", y: 680),
+        ].map { PDFPageText(glyphs: $0, bounds: CGRect(x: 0, y: 0, width: 612, height: 792)) }
+
+        #expect(ChordChartPDF.chordPro(from: pages) == """
+        {title: A Thousand Hallelujahs [Live From Passion 2022]}
+
+        Chorus
+        With a thousand hallelujahs
+        We magnify Your name
+        A thousand hallelujahs
+        [A]And a thousand more
+
+        Bridge
+        Praise for He rose
+        Now He reigns
+        We will sing forever
+        """)
+    }
+
+    @Test func aTitleAcrossTheGutterStillLeavesTwoColumns() {
+        let title = Self.glyphs("The Lord Will Provide (Live From Passion 2025)", y: 726)
+            .map { PDFGlyph(text: $0.text, x: $0.x, y: $0.y, width: $0.width, size: 14.75, bold: true) }
+        let page = PDFPageText(glyphs: title
+            + Self.glyphs("Seek first the kingdom", y: 600) + Self.glyphs("Everything I need", x: 330, y: 600)
+            + Self.glyphs("And its treasures", y: 570) + Self.glyphs("My Father has it", x: 330, y: 570),
+            bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+        let read = ChordChartPDF.rows(of: page, index: 0, body: 13)
+        #expect(read.rows.map(\.text) == [
+            "The Lord Will Provide (Live From Passion 2025)",
+            "Seek first the kingdom", "And its treasures", "Everything I need", "My Father has it",
+        ])
+
+        let ending = PDFPageText(glyphs: Self.glyphs("Every single time", y: 600) + Self.glyphs("The Lord will provide", y: 570)
+            + Self.glyphs("My Father has it", y: 540) + Self.glyphs("B", x: 330, y: 650),
+            bounds: page.bounds)
+        #expect(ChordChartPDF.rows(of: ending, index: 1, body: 13).split == nil)
+        #expect(ChordChartPDF.rows(of: ending, index: 1, body: 13, previousSplit: read.split).rows.map(\.text)
+            == ["Every single time", "The Lord will provide", "My Father has it", "B"])
+    }
+
+    @Test func aWordSpreadForItsChordReadsWhole() {
+        let spread = Self.glyphs("of Hea", y: 600) + Self.glyphs("ven", x: 70 + 6 * 6 + 8, y: 600)
+        #expect(ChordChartPDF.text(of: spread).text == "of Heaven")
+
+        let unspaced = Self.glyphs("Lord", y: 600) + Self.glyphs("will", x: 70 + 4 * 6 + 8, y: 600)
+        #expect(ChordChartPDF.text(of: unspaced).text == "Lord will")
+    }
+
+    @Test func aChordOnlySectionRepeatsOnlyWithTheSameChords() {
+
+        let sections: [ChordChartPDF.Section] = [
+            .init(name: "Interlude", lines: ["[D][Aadd4][G2]"]),
+            .init(name: "Interlude", lines: ["[D][Aadd4][G2]"]),
+            .init(name: "Interlude", lines: ["[Bm][G]"]),
+            .init(name: "Interlude", lines: ["[Bm][G]"]),
+            .init(name: "Chorus", lines: ["[D]Hallelujah"]),
+            .init(name: "Chorus", lines: ["[G]Hallelujah"]),
+
+            .init(name: "Chorus", lines: ["Hallelu[G]jah"]),
+            .init(name: "Chorus", lines: ["[D]Hallelujah"]),
+        ]
+
+        #expect(ChordChartPDF.written(sections: sections, leading: []) == [
+            "Interlude", "[D][Aadd4][G2]", "", "Interlude",
+            "", "Interlude", "[Bm][G]", "", "Interlude", "[Bm][G]",
+            "", "Chorus", "[D]Hallelujah", "", "Chorus", "[G]Hallelujah", "", "Chorus", "[G]Hallelujah", "", "Chorus",
+        ])
+        let parsed = Reflow.parse(ChordChartPDF.written(sections: sections, leading: []).joined(separator: "\n"), linesPerSlide: 2)
+        #expect(parsed.sections.map(\.name) == ["Interlude", "Interlude", "Chorus", "Chorus"])
+        #expect(parsed.order == [0, 0, 1, 1, 2, 3, 3, 2])
+
+        #expect(ChordChartPDF.written(sections: [
+            .init(name: "Vamp", lines: ["[D]Oh oh"]), .init(name: "Vamp", lines: ["[G]Hey hey"]),
+            .init(name: "Chorus", lines: ["Way maker"]), .init(name: "Chorus", lines: ["Promise keeper"]),
+        ], leading: []) == ["Vamp", "[D]Oh oh", "", "Vamp", "[G]Hey hey", "", "Chorus", "Way maker", "", "Chorus", "Promise keeper"])
+    }
+
     @Test func theChartImportsAsADeckInItsKey() throws {
         let text = try #require(ChordChartPDF.importText(from: Self.chartPDF(), filename: "Chord Chart.pdf"))
         let presentation = LyricTextImporter.makePresentation(text, linesPerSlide: 2)
@@ -71,6 +159,30 @@ struct ChordChartPDFTests {
         let row = ChordChartPDF.Row(page: 0, column: 0, baseline: 100, glyphs: Self.glyphs(lyric))
 
         #expect(ChordChartPDF.inline([(x: 70 + CGFloat(column) * 6, symbol: "D")], into: row) == expected)
+    }
+
+    @Test(arguments: [
+        ("This song is fore-ver Yours", "This song is forever Yours"),
+        ("This song is fore - [D]ver Yours", "This song is fore[D]ver Yours"),
+        ("Hal-le-lu-jah", "Hallelujah"),
+        ("Glo-ri-ous", "Glorious"),
+        ("Our God is an all-consuming fire", "Our God is an all-consuming fire"),
+        ("Never-ending love", "Never-ending love"),
+        ("Oh-oh-oh", "Oh-oh-oh"),
+        ("Receive joy -", "Receive joy -"),
+    ])
+    func syllablesJoinIntoTheirWord(lyric: String, expected: String) {
+        #expect(ChordChartPDF.joinedSyllables(lyric) == expected)
+    }
+
+    @Test(arguments: [
+        ("Than [F2]able- - [Am7][G]", "Than [F2]able [Am7][G]"),
+        ("Can [Fm6]do-[Edim7][Fm6]", "Can [Fm6]do[Edim7][Fm6]"),
+        ("Receive joy -", "Receive joy"),
+        ("Our God is an all-consuming fire", "Our God is an all-consuming fire"),
+    ])
+    func heldWordsLoseTheirDash(lyric: String, expected: String) {
+        #expect(ChordChartPDF.withoutLoneDashes(lyric) == expected)
     }
 
     private static func glyphs(_ text: String, x: CGFloat = 70, y: CGFloat = 100) -> [PDFGlyph] {

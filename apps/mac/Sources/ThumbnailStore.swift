@@ -2,9 +2,9 @@ import AppKit
 import AVFoundation
 import ImageIO
 import PresenterCore
-import UniformTypeIdentifiers
 import RenderEngine
 import SlideScene
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -15,15 +15,27 @@ final class ThumbnailStore {
 
     func markPlaceholdersReady() { placeholdersReady = true }
 
-    static let contentSize = (width: 480, height: 270)
+    static let contentSize = (width: ThumbnailResolution.base, height: 270)
 
     private final class Box {
         let image: CGImage
         init(_ image: CGImage) { self.image = image }
     }
 
-    private let posters = NSCache<NSString, Box>()
-    private let contents = NSCache<NSString, Box>()
+    private static let largeImageLimit = 384 * 1024 * 1024
+
+    private static func cost(of image: CGImage, large: Bool) -> Int {
+        large ? image.bytesPerRow * image.height : 0
+    }
+
+    private static func boundedCache() -> NSCache<NSString, Box> {
+        let cache = NSCache<NSString, Box>()
+        cache.totalCostLimit = largeImageLimit
+        return cache
+    }
+
+    private let posters = boundedCache()
+    private let contents = boundedCache()
     private var postersInFlight: [String: Task<CGImage?, Never>] = [:]
     private let faceValues = NSCache<NSString, AnyObject>()
 
@@ -56,17 +68,26 @@ final class ThumbnailStore {
         theme: Theme?,
         render: RenderContext?,
         model: AppModel?,
-        legibleText: Bool,
         canvas: CGSize = SlideSceneBuilder.canvasSize,
-        cacheKey: String,
+        cacheKey baseKey: String,
         identity: String? = nil,
+        pixelWidth: Int = ThumbnailResolution.base,
+        shown: ShownFrame? = nil,
         mediaEffects: (String) -> [SceneEffect] = { _ in [] }
     ) -> CGImage? {
+        let large = pixelWidth > ThumbnailResolution.base
+        let cacheKey = large ? "\(baseKey)|w\(pixelWidth)" : baseKey
+        let shownKey = "\(cacheKey)|\(mediaFilesGeneration)"
 
         _ = thumbStillsVersion
         _ = contentsVersion
         _ = placeholdersReady
-        if let hit = contents.object(forKey: cacheKey as NSString) { return hit.image }
+        if let hit = contents.object(forKey: cacheKey as NSString) {
+            shown?.hold(hit.image, key: shownKey)
+            return hit.image
+        }
+
+        if let image = shown?.image(for: shownKey) { return image }
         guard let compositor = render?.compositor else { return nil }
 
         let provisional = provisionalContents[cacheKey]
@@ -74,26 +95,18 @@ final class ThumbnailStore {
             $0.stillsVersion != thumbStillsVersion || $0.placeholdersReady != placeholdersReady
         } ?? true
         guard provisionalStale, !contentsInFlight.contains(cacheKey) else {
-            return provisional?.image ?? lastFrame(identity)
-        }
-        var rendered = slide
-        if legibleText {
-
-            for index in rendered.objects.indices where rendered.objects[index].objectKind == .text {
-                var style = rendered.objects[index].textStyle ?? TextStyle()
-                style.shadow = ObjectShadow(
-                    colorHex: "#000000DD", blurRadius: 10, offsetX: 0, offsetY: 2
-                )
-                rendered.objects[index].textStyle = style
-            }
+            return provisional?.image ?? lastFrame(identity) ?? shown?.image
         }
 
         var usedPlaceholder = false
         var pendingStill = false
 
-        let built = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
-            for: rendered, theme: theme, canvasSize: canvas, animationContext: .settled
-        ))
+        let built = SlideSceneBuilder.withoutLayerMedia(
+            SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
+                for: slide, theme: theme, canvasSize: canvas, animationContext: .settled
+            )),
+            keep: { LiveInputPlaceholder.remap($0) != nil }
+        )
 
             .applyingMediaEffects(mediaEffects)
 
@@ -105,21 +118,27 @@ final class ThumbnailStore {
             }
             guard slideLayerMedia.contains(id) else { return id }
 
-            if render?.media.hasStill(id: Self.thumbMediaPrefix + id) == true {
-                return Self.thumbMediaPrefix + id
-            }
+            let stillID = Self.thumbStillID(id, pixelWidth: pixelWidth)
+            if thumbStillIsCurrent(stillID, mediaID: id, pixelWidth: pixelWidth, render: render, model: model) {
+                return stillID
+            } else {
 
-            pendingStill = true
-            registerThumbStill(id: id, render: render, model: model)
-            return id
+                pendingStill = true
+                registerThumbStill(id: id, pixelWidth: pixelWidth, render: render, model: model)
+                let smallID = Self.thumbStillID(id, pixelWidth: ThumbnailResolution.base)
+                return large && thumbStillIsCurrent(
+                    smallID, mediaID: id, pixelWidth: ThumbnailResolution.base, render: render, model: model
+                ) ? smallID : id
+            }
         }
 
-        let height = max(1, Int((CGFloat(Self.contentSize.width) * canvas.height
+        let height = max(1, Int((CGFloat(pixelWidth) * canvas.height
             / max(1, canvas.width)).rounded()))
         contentsInFlight.insert(cacheKey)
+        let mediaFilesAtBuild = mediaFilesGeneration
         let stillsVersionAtBuild = thumbStillsVersion
         let readyAtBuild = placeholdersReady
-        let width = Self.contentSize.width
+        let width = pixelWidth
 
         let usedPlaceholderAtBuild = usedPlaceholder
         let pendingStillAtBuild = pendingStill
@@ -130,16 +149,32 @@ final class ThumbnailStore {
             )
             Task { @MainActor in
                 ThumbnailStore.shared.landContent(
-                    key: cacheKey, identity: identity, frame: frame,
+                    key: cacheKey, identity: identity, frame: frame, large: large,
                     usedPlaceholder: usedPlaceholderAtBuild, pendingStill: pendingStillAtBuild,
-                    stillsVersionAtBuild: stillsVersionAtBuild, readyAtBuild: readyAtBuild
+                    stillsVersionAtBuild: stillsVersionAtBuild, readyAtBuild: readyAtBuild,
+                    mediaFilesAtBuild: mediaFilesAtBuild
                 )
             }
         }
-        return provisional?.image ?? lastFrame(identity)
+        return provisional?.image ?? lastFrame(identity) ?? shown?.image
     }
 
-    private let lastFrames = NSCache<NSString, Box>()
+    @MainActor
+    final class ShownFrame {
+        private var key: String?
+        private(set) var image: CGImage?
+
+        func hold(_ image: CGImage, key: String) {
+            self.key = key
+            self.image = image
+        }
+
+        func image(for key: String) -> CGImage? {
+            self.key == key ? image : nil
+        }
+    }
+
+    private let lastFrames = boundedCache()
 
     private func lastFrame(_ identity: String?) -> CGImage? {
         identity.flatMap { lastFrames.object(forKey: $0 as NSString)?.image }
@@ -174,19 +209,20 @@ final class ThumbnailStore {
     }
 
     private func landContent(
-        key: String, identity: String?, frame: RenderedFrame?,
+        key: String, identity: String?, frame: RenderedFrame?, large: Bool,
         usedPlaceholder: Bool, pendingStill: Bool,
-        stillsVersionAtBuild: Int, readyAtBuild: Bool
+        stillsVersionAtBuild: Int, readyAtBuild: Bool, mediaFilesAtBuild: Int
     ) {
         contentsInFlight.remove(key)
-        guard let image = frame?.cgImage else { return }
+
+        guard let image = frame?.cgImage, mediaFilesAtBuild == mediaFilesGeneration else { return }
 
         if (!usedPlaceholder || readyAtBuild), !pendingStill {
-            contents.setObject(Box(image), forKey: key as NSString)
+            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
             provisionalContents.removeValue(forKey: key)
 
             if let identity {
-                lastFrames.setObject(Box(image), forKey: identity as NSString)
+                lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image, large: large))
             }
         } else {
 
@@ -235,7 +271,35 @@ final class ThumbnailStore {
 
     static let thumbMediaPrefix = "thumb::"
 
+    static func thumbStillID(_ id: String, pixelWidth: Int) -> String {
+        pixelWidth > ThumbnailResolution.base
+            ? "\(thumbMediaPrefix)w\(pixelWidth)::\(id)" : thumbMediaPrefix + id
+    }
+
     private var thumbStillsInFlight = Set<String>()
+
+    @ObservationIgnored private var thumbStillKeys: [String: String] = [:]
+
+    @ObservationIgnored private var mediaFilesGeneration = 0
+
+    func mediaFileChanged() {
+        mediaFilesGeneration += 1
+        contents.removeAllObjects()
+        provisionalContents.removeAll()
+        contentsVersion += 1
+    }
+
+    private func thumbStillIsCurrent(
+        _ stillID: String, mediaID: String, pixelWidth: Int, render: RenderContext?, model: AppModel?
+    ) -> Bool {
+        let resident = render?.media.hasStill(id: stillID) == true
+        if resident, let item = model?.media(mediaID) {
+            return thumbStillKeys[stillID] == posterKey(
+                item, maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
+        } else {
+            return resident
+        }
+    }
 
     private(set) var thumbStillsVersion = 0
 
@@ -251,36 +315,100 @@ final class ThumbnailStore {
         return ids
     }
 
-    private func registerThumbStill(id: String, render: RenderContext?, model: AppModel?) {
+    private func registerThumbStill(id: String, pixelWidth: Int, render: RenderContext?, model: AppModel?) {
+        let stillID = Self.thumbStillID(id, pixelWidth: pixelWidth)
+        let maxPixels = ThumbnailResolution.posterPixels(forWidth: pixelWidth)
         guard let render, let model, let blobs = model.blobs,
-              !thumbStillsInFlight.contains(id)
+              !thumbStillsInFlight.contains(stillID)
         else { return }
-        thumbStillsInFlight.insert(id)
+        thumbStillsInFlight.insert(stillID)
         Task {
-            defer { thumbStillsInFlight.remove(id) }
+            defer { thumbStillsInFlight.remove(stillID) }
 
             await model.resident.ready([.media])
 
             guard let item = model.media(id),
-                  let poster = await poster(for: item, blobs: blobs)
+                  let poster = await poster(for: item, blobs: blobs, maxPixels: maxPixels)
             else { return }
+            let key = posterKey(item, maxPixels: maxPixels)
             guard (try? await render.media.showStill(
                 image: poster,
-                cacheKey: posterKey(item),
-                id: Self.thumbMediaPrefix + id
+                cacheKey: key,
+                id: stillID
             )) != nil else { return }
+            thumbStillKeys[stillID] = key
             thumbStillsVersion += 1
         }
     }
 
-    func cachedPoster(for item: MediaItem) -> CGImage? {
-        posters.object(forKey: posterKey(item) as NSString)?.image
+    @ObservationIgnored private var looksInFlight: Set<String> = []
+
+    func posterLook(
+        mediaID: String, effects: [SceneEffect], canvas: CGSize, pixelWidth: Int,
+        render: RenderContext?, model: AppModel?
+    ) -> CGImage? {
+
+        _ = thumbStillsVersion
+        _ = contentsVersion
+        let stillID = Self.thumbStillID(mediaID, pixelWidth: pixelWidth)
+        let identity = "look|\(mediaID)|\(Int(canvas.width))x\(Int(canvas.height))|w\(pixelWidth)"
+        if thumbStillIsCurrent(stillID, mediaID: mediaID, pixelWidth: pixelWidth, render: render, model: model),
+           let compositor = render?.compositor {
+            let key = "\(identity)|\(thumbStillKeys[stillID] ?? "")|\(effects.hashValue)"
+            if let hit = contents.object(forKey: key as NSString) {
+                return hit.image
+            } else {
+                if !looksInFlight.contains(key) {
+                    looksInFlight.insert(key)
+                    let scene = SlideSceneBuilder.posterLookScene(
+                        mediaID: mediaID, stillID: stillID, canvas: canvas, effects: effects)
+                    let height = max(1, Int((CGFloat(pixelWidth) * canvas.height
+                        / max(1, canvas.width)).rounded()))
+                    let large = pixelWidth > ThumbnailResolution.base
+                    let mediaFilesAtBuild = mediaFilesGeneration
+                    Self.renderQueue.async {
+                        let frame = try? compositor.renderFrame(
+                            scene: scene, width: pixelWidth, height: height,
+                            transparentBackground: true
+                        )
+                        Task { @MainActor in
+                            ThumbnailStore.shared.landLook(
+                                key: key, identity: identity, frame: frame, large: large,
+                                mediaFilesAtBuild: mediaFilesAtBuild
+                            )
+                        }
+                    }
+                }
+                return lastFrame(identity)
+            }
+        } else {
+            registerThumbStill(id: mediaID, pixelWidth: pixelWidth, render: render, model: model)
+            return nil
+        }
+    }
+
+    private func landLook(
+        key: String, identity: String, frame: RenderedFrame?, large: Bool, mediaFilesAtBuild: Int
+    ) {
+        looksInFlight.remove(key)
+
+        if let image = frame?.cgImage, mediaFilesAtBuild == mediaFilesGeneration {
+            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
+            lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image, large: large))
+            scheduleContentsBump()
+        }
+    }
+
+    func cachedPoster(for item: MediaItem, maxPixels: Int = PosterDecode.maxPixelSize) -> CGImage? {
+        posters.object(forKey: posterKey(item, maxPixels: maxPixels) as NSString)?.image
     }
 
     func poster(
-        for item: MediaItem, blobs: BlobStore, priority: TaskPriority = .userInitiated
+        for item: MediaItem, blobs: BlobStore, priority: TaskPriority = .userInitiated,
+        maxPixels: Int = PosterDecode.maxPixelSize
     ) async -> CGImage? {
-        let key = posterKey(item)
+        let large = maxPixels > PosterDecode.maxPixelSize
+        let key = posterKey(item, maxPixels: maxPixels)
         if let hit = posters.object(forKey: key as NSString) { return hit.image }
         if let inFlight = postersInFlight[key] {
             return await inFlight.value
@@ -291,7 +419,7 @@ final class ThumbnailStore {
             let image = await Task.detached(priority: priority) {
                 Self.downsampledImage(url: diskURL)
             }.value
-            if let image { posters.setObject(Box(image), forKey: key as NSString) }
+            if let image { posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large)) }
             return image
         }
         let kind = item.mediaKind
@@ -306,17 +434,17 @@ final class ThumbnailStore {
             switch kind {
             case .image:
                 await Self.imageDecodes.withPermit {
-                    PosterDecode.image(original: url, diskPoster: diskPoster)
+                    PosterDecode.image(original: url, diskPoster: diskPoster, maxPixelSize: maxPixels)
                 }
-            case .video: await Self.videoPoster(url: url, at: inPoint)
+            case .video: await Self.videoPoster(url: url, at: inPoint, maxPixels: maxPixels)
             }
         }
         postersInFlight[key] = extraction
         let image = await extraction.value
         postersInFlight[key] = nil
         if let image {
-            posters.setObject(Box(image), forKey: key as NSString)
-            persistPoster(image, for: item)
+            posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
+            if !large { persistPoster(image, for: item) }
         }
         return image
     }
@@ -359,8 +487,9 @@ final class ThumbnailStore {
         return image
     }
 
-    private func posterKey(_ item: MediaItem) -> String {
-        "\(item.id)|\(item.fileHash)|\(item.inPoint ?? 0)"
+    private func posterKey(_ item: MediaItem, maxPixels: Int = PosterDecode.maxPixelSize) -> String {
+        let key = "\(item.id)|\(item.fileHash)|\(item.inPoint ?? 0)"
+        return maxPixels > PosterDecode.maxPixelSize ? "\(key)|\(maxPixels)" : key
     }
 
     private nonisolated static let imageDecodes = AsyncLimiter(limit: 2)
@@ -369,10 +498,21 @@ final class ThumbnailStore {
         PosterDecode.downsampled(url: url)
     }
 
-    private nonisolated static func videoPoster(url: URL, at seconds: Double) async -> CGImage? {
+    nonisolated static func filePoster(url: URL) async -> CGImage? {
+        let type = UTType(filenameExtension: url.pathExtension) ?? .data
+        return if type.conforms(to: .image) {
+            await Task.detached(priority: .userInitiated) { downsampledImage(url: url) }.value
+        } else if type.conforms(to: .movie) || type.conforms(to: .video) {
+            await videoPoster(url: url, at: 0, maxPixels: PosterDecode.maxPixelSize)
+        } else {
+            nil
+        }
+    }
+
+    private nonisolated static func videoPoster(url: URL, at seconds: Double, maxPixels: Int) async -> CGImage? {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 512, height: 512)
+        generator.maximumSize = CGSize(width: maxPixels, height: maxPixels)
 
         let time = CMTime(seconds: max(seconds, 0.1), preferredTimescale: 600)
         return try? await generator.image(at: time).image

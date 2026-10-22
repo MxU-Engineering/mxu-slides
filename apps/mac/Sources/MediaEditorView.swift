@@ -344,18 +344,22 @@ final class EffectPreviewFeedback: @unchecked Sendable {
     private var entries: [Int: Entry] = [:]
     private let lock = NSLock()
 
-    func trail(at index: Int, time: Double, fade: Double, extent: CGRect) -> CIImage? {
+    func trail(at index: Int, time: Double, fade: Double, extent: CGRect) -> (image: CIImage, keep: CGFloat)? {
         lock.lock()
         defer { lock.unlock() }
         guard let entry = entries[index], entry.image.extent == extent else { return nil }
         let elapsed = time - entry.time
         guard elapsed > 0, elapsed <= Compositor.historyGap else { return nil }
-        let keep = CGFloat(pow(0.1, max(elapsed, 1.0 / 240) / max(fade, 0.01)))
-        return entry.image.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: keep, y: 0, z: 0, w: 0),
-            "inputGVector": CIVector(x: 0, y: keep, z: 0, w: 0),
-            "inputBVector": CIVector(x: 0, y: 0, z: keep, w: 0),
-            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: keep),
+        let keep = CGFloat(min(pow(0.1, max(elapsed, 1.0 / 240) / max(fade, 0.01)), 0.999))
+        return (Self.scaled(entry.image, by: keep), keep)
+    }
+
+    static func scaled(_ image: CIImage, by factor: CGFloat) -> CIImage {
+        image.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: factor, y: 0, z: 0, w: 0),
+            "inputGVector": CIVector(x: 0, y: factor, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: factor, w: 0),
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: factor),
         ])
     }
 
@@ -471,7 +475,8 @@ enum EffectPreviewRenderer {
                 case .echo(let f): fade = f
                 default: fade = 1
                 }
-                if var trail = feedback.trail(at: index, time: time, fade: fade, extent: current.extent) {
+                if let (decayed, keep) = feedback.trail(at: index, time: time, fade: fade, extent: current.extent) {
+                    var trail = decayed
                     if let driftField, driftField.pixels >= 0.5, let kernel = warpKernel {
 
                         let extent = current.extent
@@ -486,11 +491,19 @@ enum EffectPreviewRenderer {
                             image: trail.clampedToExtent(), arguments: [params, Float(0)]
                         )?.cropped(to: extent) ?? trail
                     }
+                    if driftField != nil {
 
-                    let filter = CIFilter.lightenBlendMode()
-                    filter.inputImage = current
-                    filter.backgroundImage = trail
-                    processed = filter.outputImage ?? current
+                        let filter = CIFilter.additionCompositing()
+                        filter.inputImage = EffectPreviewFeedback.scaled(current, by: 1 - keep)
+                        filter.backgroundImage = trail
+                        processed = filter.outputImage ?? current
+                    } else {
+
+                        let filter = CIFilter.lightenBlendMode()
+                        filter.inputImage = current
+                        filter.backgroundImage = trail
+                        processed = filter.outputImage ?? current
+                    }
                 } else {
                     processed = current
                 }
@@ -639,6 +652,8 @@ struct MediaEditorView: View {
     @State private var baseStill: CGImage?
     @State private var stillImage: CGImage?
     @State private var nameDraft = ""
+
+    @State private var replaceFileRequest: ReplaceMediaFileRequest?
     @FocusState private var nameFocused: Bool
 
     @State private var effectScrubbing = false
@@ -669,11 +684,12 @@ struct MediaEditorView: View {
                 previewArea
             }
             .frame(maxWidth: .infinity)
-            VStack(spacing: 0) {
 
-                Color.clear
-                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
-                settingsPanel
+            settingsPanel
+            .sheet(item: $replaceFileRequest) { request in
+                ReplaceMediaFileSheet(request: request) {
+                    ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
+                }
             }
 
             .frame(width: max(inspectorWidth, PanelWidthGrip.minPanelWidth))
@@ -733,11 +749,9 @@ struct MediaEditorView: View {
         let canvasWidth = Double(SlideSceneBuilder.canvasSize.width)
         let effects = SlideSceneBuilder.sceneEffects(cachedMedia?.effects)
         if isTimeBased {
-            let inPoint = max(trimIn ?? 0, 0)
-            let outPoint = min(trimOut ?? preview.duration, preview.duration)
-            preview.trimWindow =
-                (inPoint > 0.05 || outPoint < preview.duration - 0.05) && outPoint > inPoint
-                    ? inPoint ... outPoint : nil
+            preview.trimWindow = MediaTrimEdit.window(
+                inPoint: trimIn, outPoint: trimOut, duration: preview.duration
+            )
             preview.playRate = cachedMedia?.playRate ?? 1
             if isVideo {
                 preview.applyEffects(effects, canvasWidth: canvasWidth)
@@ -776,12 +790,8 @@ struct MediaEditorView: View {
                     onTrimChange: { range, final in
 
                         guard final, preview.duration > 0 else { return }
-                        let duration = preview.duration
-                        let inPoint: Double? = range.lowerBound * duration > 0.05
-                            ? tidy(range.lowerBound * duration) : nil
-                        let outPoint: Double? = range.upperBound * duration < duration - 0.05
-                            ? tidy(range.upperBound * duration) : nil
-                        writeTrim(inPoint: .some(inPoint), outPoint: .some(outPoint))
+                        let points = MediaTrimEdit.points(fractions: range, duration: preview.duration)
+                        writeTrim(inPoint: .some(points.inPoint), outPoint: .some(points.outPoint))
                     }
                 )
                     .padding(.horizontal, 12)
@@ -898,6 +908,11 @@ struct MediaEditorView: View {
         Section("File") {
             LabeledContent("Kind", value: item.mediaKind.rawValue.capitalized)
             LabeledContent("Original name", value: item.fileName)
+
+            if let added = item.importedAt {
+                LabeledContent("Added", value: Date(timeIntervalSince1970: added)
+                    .formatted(date: .abbreviated, time: .shortened))
+            }
             if let w = item.pixelWidth, let h = item.pixelHeight {
                 LabeledContent("Dimensions", value: "\(w) × \(h)")
             }
@@ -974,18 +989,9 @@ struct MediaEditorView: View {
 
     private func replaceFileButton(_ item: MediaItem) -> some View {
         Button("Replace Media File…") {
-            let panel = NSOpenPanel()
-            panel.allowsMultipleSelection = false
-            panel.allowedContentTypes = [.image, .movie]
-            panel.begin { response in
-                guard response == .OK, let url = panel.url else { return }
-                Task { @MainActor in
-                    if let carried = await model.replaceMediaFile(item.id, with: url) {
-                        MediaRelinkAlerts.carriedSettingsWarning(itemName: item.name, carried: carried)
-                    }
-                }
-            }
+            ReplaceMediaFileFlow.start(model: model, id: item.id, name: item.name) { replaceFileRequest = $0 }
         }
+        .help("Swaps this item's file everywhere it's used.")
     }
 
     @ViewBuilder
@@ -1157,11 +1163,7 @@ struct MediaEditorView: View {
     private var trimOut: Double? { cachedMedia?.outPoint ?? cachedAudio?.outPoint }
 
     private var editorTrimRange: ClosedRange<Double>? {
-        guard preview.duration > 0 else { return nil }
-        let inP = max(trimIn ?? 0, 0)
-        let outP = min(trimOut ?? preview.duration, preview.duration)
-        guard inP > 0.05 || outP < preview.duration - 0.05, outP > inP else { return nil }
-        return (inP / preview.duration) ... (outP / preview.duration)
+        MediaTrimEdit.fractions(inPoint: trimIn, outPoint: trimOut, duration: preview.duration)
     }
 
     private var trimSection: some View {
@@ -1170,23 +1172,36 @@ struct MediaEditorView: View {
                 trimControls(
                     value: trimIn,
                     set: {
-                        let t = tidy(preview.elapsed)
+                        let t = MediaTrimEdit.tidy(preview.elapsed)
 
                         if let out = trimOut, t >= out { writeTrim(inPoint: t, outPoint: .some(nil)) }
                         else { writeTrim(inPoint: t) }
                     },
-                    clear: { writeTrim(inPoint: .some(nil)) }
+                    clear: { writeTrim(inPoint: .some(nil)) },
+                    field: TrimPointField(label: "In", value: trimIn, placeholder: "—") { typed in
+                        let points = MediaTrimEdit.typedIn(typed, outPoint: trimOut, duration: preview.duration)
+                        writeTrim(inPoint: .some(points.inPoint), outPoint: .some(points.outPoint))
+                        return true
+                    }
                 )
             }
             LabeledContent("Out Point") {
                 trimControls(
                     value: trimOut,
                     set: {
-                        let t = tidy(preview.elapsed)
+                        let t = MediaTrimEdit.tidy(preview.elapsed)
                         guard t > (trimIn ?? 0) + 0.05 else { return }
                         writeTrim(outPoint: t)
                     },
-                    clear: { writeTrim(outPoint: .some(nil)) }
+                    clear: { writeTrim(outPoint: .some(nil)) },
+                    field: TrimPointField(label: "Out", value: trimOut, placeholder: "—") { typed in
+                        if let points = MediaTrimEdit.typedOut(typed, inPoint: trimIn, duration: preview.duration) {
+                            writeTrim(outPoint: .some(points.outPoint))
+                            return true
+                        } else {
+                            return false
+                        }
+                    }
                 )
             }
             if trimIn != nil || trimOut != nil, preview.duration > 0 {
@@ -1201,12 +1216,14 @@ struct MediaEditorView: View {
     }
 
     private func trimControls(
-        value: Double?, set: @escaping () -> Void, clear: @escaping () -> Void
+        value: Double?, set: @escaping () -> Void, clear: @escaping () -> Void,
+        field: TrimPointField
     ) -> some View {
         HStack(spacing: 6) {
-            Text(value.map(Self.preciseTimecode) ?? "—")
-                .font(.body.monospacedDigit())
-                .foregroundStyle(value == nil ? .tertiary : .primary)
+
+            field
+                .textFieldStyle(.plain)
+                .disabled(preview.duration <= 0)
             Button("Set") { set() }
                 .help("Set at the preview playhead")
             if value != nil {
@@ -1257,7 +1274,10 @@ struct MediaEditorView: View {
                 model.updateMedia(entry.id) { $0.transition = stored }
             }
         )) {
-            Text("Cut").tag("")
+
+            Text("Room Default").tag("")
+            Divider()
+            Text("Cut").tag(TransitionKind.cut.rawValue)
             Text("Dissolve").tag(TransitionKind.dissolve.rawValue)
             Text("Fade Black").tag(TransitionKind.fadeBlack.rawValue)
             Text("Fade White").tag(TransitionKind.fadeWhite.rawValue)
@@ -1269,7 +1289,7 @@ struct MediaEditorView: View {
             BoundedSliderRow(
                 label: "Duration",
                 value: Binding(
-                    get: { cachedMedia?.transition?.durationSeconds ?? 0.5 },
+                    get: { TransitionEdit.seconds(cachedMedia?.transition) },
                     set: { v in
                         cachedMedia?.transition?.durationSeconds = v
                         if !transitionScrubbing {
@@ -1277,7 +1297,8 @@ struct MediaEditorView: View {
                         }
                     }
                 ),
-                range: 0 ... 5, step: 0.05,
+                range: TransitionEdit.durationRange, step: TransitionEdit.durationStep,
+                typedRange: TransitionEdit.typedRange,
                 onScrubPhase: { began in transitionScrubbing = began }
             )
             if transition.transitionKind == .fadeColor {
@@ -1309,17 +1330,6 @@ struct MediaEditorView: View {
                 Text(rate == 1 ? "Normal" : String(format: "%g×", rate)).tag(rate)
             }
         }
-    }
-
-    private func tidy(_ seconds: Double) -> Double {
-        (seconds * 100).rounded() / 100
-    }
-
-    private static func preciseTimecode(_ seconds: Double) -> String {
-        let total = max(0, seconds)
-        let minutes = Int(total) / 60
-        let rest = total - Double(minutes * 60)
-        return String(format: "%d:%04.1f", minutes, rest)
     }
 
     private func mediaBinding<T: Equatable & Sendable>(

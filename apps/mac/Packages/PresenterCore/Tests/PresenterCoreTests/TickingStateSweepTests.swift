@@ -11,14 +11,18 @@ import Testing
     }
 
     private let clocks: [String: [Tick]] = [
-        "AudioController.swift": [.moves(["elapsed"])],  
-        "MediaEditorView.swift": [.moves(["elapsed"])],  
-        "SlideEditorModel+Animations.swift": [.moves(["animationPreviewShownTime"])],  
-        "AnimationTimelinePanel.swift": [
-            .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the panel that owns the drag"),
+        "AudioController.swift": [.moves(["elapsed"])],
+        "MediaEditorView.swift": [.moves(["elapsed"])],
+        "SlideEditorModel+Animations.swift": [.moves(["animationPreviewShownTime"])],
+        "PresentationTimelineController.swift": [.moves(["timelinePlayheadTime"])],
+        "TimecodeInput.swift": [.moves(["timecodeReading", "timecodeLevel"])],
+        "TimelineControls.swift": [
+            .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the timeline that owns the drag"),
         ],
         "MediaTransportController.swift": [.quiet("refresh() writes rows and rowsVersion only when a row moved")],
-        "VideoInputInventory.swift": [.quiet("the 1 s connectivity poll writes the connected set only when it changes")],
+        "VideoInputInventory.swift": [
+            .quiet("the 1 s connectivity poll writes the connected set only when it changes; its 10 s camera-grant read runs off main"),
+        ],
         "MenuTrackingRecorder.swift": [.quiet("diagnostics while a menu is open; writes breadcrumbs, not observed state")],
         "SheetWatchRecorder.swift": [.quiet("the 1 s sheet and modal watch writes breadcrumbs, not observed state")],
         "ServiceControls.swift": [
@@ -29,25 +33,30 @@ import Testing
             .quiet("the linked-text clock re-applies the live scene; apply() writes state only on a change"),
         ],
         "PerformanceHUD.swift": [.quiet("the debug HUD samples its own @State twice a second")],
-        "MediaPlaylistController.swift": [.quiet("the 2 Hz walk tick fires only when the item is due")],
-        "SignageController.swift": [.quiet("the 2 Hz loop tick advances only a loop that is due")],
         "MediaSoak.swift": [.quiet("the soak harness's own readout")],
         "AudioMixerModule.swift": [.moves(["displayLevels", "busLevels", "playerLevels", "outputLevels"])],  
     ]
 
     private let readers: [String: (hint: String, pattern: Regex<Substring>, views: Set<String>)] = [
         "animationPreviewShownTime": (
-            "animationPreviewShownTime", /\banimationPreviewShownTime\b/,
-            ["PlayheadReadout", "PlayheadLine", "PlayheadHandle", "AnimationPreviewStrip"]
+            "animationPreviewShownTime", /\banimationPreviewShownTime\b/, ["AnimationPreviewStrip"]
         ),
+
+        "timelinePlayheadTime": ("timelinePlayheadTime", /\btimelinePlayheadTime\b/, []),
+
+        "timecodeReading": (
+            "timecodeReading", /\.timecodeReading\b/, ["TimecodeSignalReadout", "TimecodeModuleReadout"]
+        ),
+        "timecodeLevel": ("timecodeLevel", /\.timecodeLevel\b/, ["TimecodeSignalReadout"]),
 
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
         "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
         "alertVisible": ("alertVisible", /\balertVisible\b/, []),
-        "displayLevels": ("displayLevels", /\.displayLevels\b/, ["AudioMixerModule"]),
-        "busLevels": ("busLevels", /\.busLevels\b/, ["AudioMixerModule"]),
-        "playerLevels": ("playerLevels", /\.playerLevels\b/, ["AudioMixerModule"]),
-        "outputLevels": ("outputLevels", /\.outputLevels\b/, ["AudioMixerModule"]),
+
+        "displayLevels": ("displayLevels", /\.displayLevels\b/, []),
+        "busLevels": ("busLevels", /\.busLevels\b/, []),
+        "playerLevels": ("playerLevels", /\.playerLevels\b/, []),
+        "outputLevels": ("outputLevels", /\.outputLevels\b/, []),
     ]
 
     private let actionOpeners: [Regex<Substring>] = [
@@ -146,6 +155,22 @@ import Testing
         #expect(writes >= 1)
     }
 
+    @Test func connectivityPollReadsTheCameraGrantOffMain() throws {
+        let sweep = try SourceSweep.app()
+        let file = try #require(sweep.file("VideoInputInventory.swift"))
+        let start = try #require(file.lines.firstIndex { $0.contains("private func pollConnectivity() {") })
+        let body = file.block(from: start)
+        let reads = body.filter { file.code($0).contains("authorizationStatus(for:") }
+        #expect(reads.count == 1)
+        for read in reads {
+            let detached = body.filter { $0 < read && file.code($0).contains("Task.detached") }
+            #expect(
+                detached.contains { file.block(from: $0).contains(read) },
+                "VideoInputInventory.swift:\(read + 1) reads the camera grant on the poll's tick: read it off main"
+            )
+        }
+    }
+
     @Test func slideGridHostsNeverReadTheLiveSlide() throws {
         let sweep = try SourceSweep.app()
         let hosts: Set<String> = ["SlideGridBody", "PresentGridView", "ServiceContinuousView"]
@@ -188,24 +213,55 @@ import Testing
         }
     }
 
-    @Test func timelinePanelBodyNeverReadsTheTickingTime() throws {
+    @Test func timelineBodiesNeverReadTheTickingTime() throws {
         let sweep = try SourceSweep.app()
-        let source = try #require(sweep.file("AnimationTimelinePanel.swift")).text
-        let leaves = try #require(source.range(of: "private struct PlayheadReadout: View"))
-        let panel = source[..<leaves.lowerBound]
-        let leafSection = source[leaves.lowerBound...]
+        let panel = try #require(sweep.file("AnimationTimelinePanel.swift")).text
+        let shared = try #require(sweep.file("TimelineControls.swift")).text
+        let leaves = try #require(shared.range(of: "@MainActor protocol TimelinePlayheadSource"))
+        let leavesEnd = try #require(shared.range(of: "struct TimelineBlockCard")).lowerBound
+        let leafSection = shared[leaves.upperBound..<leavesEnd]
+        let outsideLeaves = shared[..<leaves.lowerBound] + shared[leavesEnd...]
         #expect(!panel.contains("animationPreviewShownTime"), "the panel body must not read the ticking time")
         #expect(
             !panel.contains("animationPreviewTime"),
             "previewActive reads the stored animationPreviewActive: a scrub moves animationPreviewTime every drag step"
         )
+        #expect(!outsideLeaves.contains("timelinePlayheadTime"), "only the playhead leaves read the ticking time")
         #expect(
-            leafSection.contains(".frame(width: 84, alignment: .trailing)") && leafSection.contains(".frame(width: 34)"),
+            leafSection.contains(".frame(width: 84, height: 13)")
+                && leafSection.contains("var width: CGFloat = 34") && leafSection.contains("width: width, height: 12"),
             "the ticking labels keep fixed widths: new digits must not re-lay out their rows"
         )
-        for leaf in ["PlayheadReadout", "PlayheadHandle", "PlayheadLine"] {
-            #expect(leafSection.contains("private struct \(leaf): View"))
-            #expect(panel.contains("\(leaf)(model: model"), "the panel draws the playhead through \(leaf)")
+        for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine"] {
+            #expect(leafSection.contains("struct \(leaf)<Source: TimelinePlayheadSource>: View"))
+            #expect(panel.contains("\(leaf)(source: model"), "the panel draws the playhead through \(leaf)")
         }
+    }
+
+    @Test func playheadLeavesDrawWithLayers() throws {
+        let sweep = try SourceSweep.app()
+        let shared = try #require(sweep.file("TimelineControls.swift")).text
+        #expect(shared.contains("final class PlayheadLayerView: NSView"))
+        for leaf in ["TimelinePlayheadReadout", "TimelinePlayheadHandle", "TimelinePlayheadLine", "TimelinePlayheadFollow"] {
+            let start = try #require(shared.range(of: "struct \(leaf)<Source: TimelinePlayheadSource>: View {"))
+            let body = shared[start.upperBound...].prefix(600)
+            #expect(body.contains("PlayheadLayers(source: source)"), "\(leaf) draws with layers")
+        }
+    }
+
+    @Test func meterLeavesDrawWithLayers() throws {
+        let sweep = try SourceSweep.app()
+        let file = try #require(sweep.file("AudioMixerModule.swift"))
+        let module = file.text
+        #expect(module.contains("final class MeterLayerView: NSView"))
+        #expect(module.contains("func peaks(in mixer: AudioMixerController) -> [Float]?"))
+        for leaf in ["StripMeter", "StripPeakLabel", "FoldMeter"] {
+            let start = try #require(module.range(of: "private struct \(leaf): View {"))
+            let body = module[start.upperBound...].prefix(700)
+            #expect(body.contains("MeterLayers(source: source, mixer: mixer"), "\(leaf) draws with layers")
+        }
+        let update = try #require(file.lines.firstIndex { $0.contains("private struct MeterLayers: NSViewRepresentable") })
+        let reads = file.block(from: update).filter { file.code($0).contains("Levels") }
+        #expect(reads.isEmpty, "MeterLayers' update must not read the ticking maps: \(reads.map { $0 + 1 })")
     }
 }

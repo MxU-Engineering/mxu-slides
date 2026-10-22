@@ -15,6 +15,7 @@
   "animateIdle.mainBusy": 5,
   "playback.mainBusy": 20,
   "playback.timelineBodiesPerSecond": 5,
+  "timeline.mainBusy": 10,
   "render.renderBusy": 12,
   "drag.firstLongestPass": 600,
   "drag.laterLongestPass": 180,

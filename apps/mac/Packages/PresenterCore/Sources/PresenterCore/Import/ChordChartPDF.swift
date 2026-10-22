@@ -23,15 +23,23 @@ public enum ChordChartPDF {
         metadata.title = title(of: pages.first, body: body)
 
         var rows: [Row] = []
+        var split: CGFloat?
         for (pageIndex, page) in pages.enumerated() {
             let printed = Self.printedLines(of: page)
             printed.forEach { metadata.read($0.text) }
             let footerTop = printed.first { ccliSongNumber($0.text) != nil }?.baseline
-            for row in Self.rows(of: page, index: pageIndex, body: body) {
+            let fullTitle = metadata.title.map(normalized) ?? ""
+
+            var titleLeft = fullTitle
+            let read = Self.rows(of: page, index: pageIndex, body: body, previousSplit: split)
+            split = read.split
+            for row in read.rows {
                 let isFooter = footerTop.map { row.baseline <= $0 + 0.5 } ?? false
 
-                let isTitle = metadata.title.map { normalized(row.text) == normalized($0) } ?? false
-                    && row.glyphs.allSatisfy { $0.bold || $0.text == " " }
+                let text = normalized(row.text)
+                let isTitle = !text.isEmpty && titleLeft.hasPrefix(text)
+                    && row.glyphs.allSatisfy { $0.bold || $0.text == " " } && chords(of: row, body: body) == nil
+                titleLeft = isTitle && titleLeft.count > text.count ? String(titleLeft.dropFirst(text.count)) : fullTitle
                 if !isFooter, !isTitle, !row.isOversized(body: body) {
                     rows.append(row)
                 }
@@ -58,7 +66,7 @@ public enum ChordChartPDF {
                         line = chords.map { "[\($0.symbol)]" }.joined()
                     }
                 } else {
-                    line = row.text
+                    line = withoutLoneDashes(joinedSyllables(row.text))
                 }
                 if sections.isEmpty { leading.append(line) } else { sections[sections.count - 1].lines.append(line) }
             }
@@ -96,9 +104,17 @@ public enum ChordChartPDF {
 
     static func title(of page: PDFPageText?, body: CGFloat) -> String? {
         guard let page, let largest = page.glyphs.filter({ !$0.light }).map(\.size).max(), largest >= body * 1.25 else { return nil }
-        let glyphs = page.glyphs.filter { !$0.light && $0.size >= largest * 0.95 }
-        let baseline = glyphs.map(\.y).max() ?? 0
-        let text = Self.text(of: glyphs.filter { abs($0.y - baseline) < largest * 0.3 }.sorted { $0.x < $1.x }).text
+        var lines: [[PDFGlyph]] = []
+        for glyph in page.glyphs.filter({ !$0.light && $0.size >= largest * 0.95 }).sorted(by: { $0.y > $1.y }) {
+            if let baseline = lines.last?.first?.y, baseline - glyph.y < largest * 0.3 {
+                lines[lines.count - 1].append(glyph)
+            } else if let baseline = lines.last?.first?.y, baseline - glyph.y > largest * 1.3 {
+                break
+            } else {
+                lines.append([glyph])
+            }
+        }
+        let text = lines.map { Self.text(of: $0.sorted { $0.x < $1.x }).text }.joined(separator: " ")
         return text.isEmpty ? nil : text
     }
 
@@ -114,7 +130,7 @@ public enum ChordChartPDF {
         return lines.map { ($0.baseline, text(of: $0.glyphs.sorted { $0.x < $1.x }).text) }
     }
 
-    static func rows(of page: PDFPageText, index pageIndex: Int, body: CGFloat) -> [Row] {
+    static func rows(of page: PDFPageText, index pageIndex: Int, body: CGFloat, previousSplit: CGFloat? = nil) -> (rows: [Row], split: CGFloat?) {
 
         let printable = page.glyphs.filter { !$0.light && (!$0.text.trimmingCharacters(in: .whitespaces).isEmpty || $0.text == " ") }
         let main = printable.filter { $0.size >= body * 0.85 }
@@ -124,8 +140,28 @@ public enum ChordChartPDF {
                          size: body * 0.7, bold: true)
             }
         }
-        let split = gutter(of: main.filter { $0.text != " " }, in: page.bounds)
-        func column(_ glyph: PDFGlyph) -> Int { split.map { glyph.x + glyph.width / 2 < $0 ? 0 : 1 } ?? 0 }
+
+        let isHeading = { (glyph: PDFGlyph) in glyph.bold && glyph.size >= body * 1.03 && glyph.text != " " }
+        let words = main.filter { $0.text != " " && !isHeading($0) }
+        let headings = main.filter(isHeading)
+
+        let split = gutter(of: words, in: page.bounds) ?? previousSplit.flatMap { split in
+            let clear = !words.contains { $0.x < split + body / 2 && $0.maxX > split - body / 2 }
+            let sides = words.contains { $0.maxX <= split } && words.contains { $0.x >= split }
+            return clear && sides ? split : nil
+        }
+        func column(_ glyph: PDFGlyph) -> Int {
+            var start = glyph
+
+            if glyph.bold && glyph.size >= body * 1.03 {
+                while let previous = headings.filter({
+                    abs($0.y - start.y) < body * 0.2 && $0.maxX <= start.x + 0.5 && start.x - $0.maxX < body
+                }).max(by: { $0.maxX < $1.maxX }) {
+                    start = previous
+                }
+            }
+            return split.map { start.x + start.width / 2 < $0 ? 0 : 1 } ?? 0
+        }
 
         var rows: [Row] = []
         for columnIndex in 0...(split == nil ? 0 : 1) {
@@ -155,7 +191,7 @@ public enum ChordChartPDF {
             }
             rows += columnRows.filter { $0.glyphs.contains { $0.text != " " } }
         }
-        return rows
+        return (rows, split)
     }
 
     static func gutter(of glyphs: [PDFGlyph], in bounds: CGRect) -> CGFloat? {
@@ -185,13 +221,14 @@ public enum ChordChartPDF {
         var text = ""
         var ends: [CGFloat] = []
         var lastEnd: CGFloat?
+        let drawsSpaces = glyphs.contains { $0.text == " " }
         for glyph in glyphs {
             if glyph.text == " " || glyph.text.trimmingCharacters(in: .whitespaces).isEmpty {
                 if !text.isEmpty, text.last != " " { text.append(" "); ends.append(glyph.maxX) }
                 lastEnd = glyph.maxX
                 continue
             }
-            if let lastEnd, glyph.x - lastEnd > glyph.size * 0.2, !text.isEmpty, text.last != " " {
+            if let lastEnd, glyph.x - lastEnd > glyph.size * (drawsSpaces ? 2 : 0.2), !text.isEmpty, text.last != " " {
                 text.append(" ")
                 ends.append(glyph.x)
             }
@@ -278,18 +315,43 @@ public enum ChordChartPDF {
         for insert in inserts.enumerated().sorted(by: { ($0.element.index, $0.offset) > ($1.element.index, $1.offset) }) {
             characters.insert(contentsOf: "[\(insert.element.symbol)]", at: insert.element.index)
         }
-        return withoutLoneDashes(String(characters))
+        return withoutLoneDashes(joinedSyllables(String(characters)))
+    }
+
+    static func joinedSyllables(_ line: String) -> String {
+        var line = line
+        var from = line.startIndex
+        while let match = line[from...].firstMatch(of: #/(\p{L}+) ?[-–] ?((?:\[[^\]]*\])*)(\p{Ll}+)/#) {
+            let (_, head, chords, tail) = match.output
+            let syllable = (tail.count <= 3 || head.count <= 2) && head.lowercased() != tail
+                && !LyricPhrasing.interjections.contains(head.lowercased())
+            if syllable {
+                let offset = line.distance(from: line.startIndex, to: match.range.lowerBound)
+                line.replaceSubrange(match.range, with: head + chords + tail)
+                from = line.index(line.startIndex, offsetBy: offset)
+            } else {
+                from = head.endIndex
+            }
+        }
+        return line
     }
 
     static func withoutLoneDashes(_ line: String) -> String {
-        line.split(separator: " ", omittingEmptySubsequences: true)
+        let dashes = "-–—_"
+        var words = line.split(separator: " ", omittingEmptySubsequences: true)
             .map { word in
                 let bare = ChordMath.extractLine(String(word)).text
-                return bare.allSatisfy({ "-–—_".contains($0) }) && !bare.isEmpty
+                return bare.allSatisfy({ dashes.contains($0) }) && !bare.isEmpty
                     ? word.replacingOccurrences(of: bare, with: "") : String(word)
             }
             .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        if let last = words.indices.last(where: { !ChordMath.extractLine(words[$0]).text.isEmpty }) {
+            while ChordMath.extractLine(words[last]).text.last.map({ dashes.contains($0) }) == true,
+                  let dash = words[last].lastIndex(where: { dashes.contains($0) }) {
+                words[last].remove(at: dash)
+            }
+        }
+        return words.joined(separator: " ")
     }
 
     struct Section {
@@ -299,16 +361,25 @@ public enum ChordChartPDF {
 
     static func written(sections: [Section], leading: [String]) -> [String] {
         var out = leading
-        var seen: [(name: String, words: String)] = []
+
+        var seen: [(chartName: String, name: String, content: String, lines: [String])] = []
         for section in sections {
-            let words = section.lines.map { ChordMath.extractLine($0).text.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }.joined(separator: "\n")
+
+            let content = section.lines.map(ChordMath.extractLine)
+                .map { "\($0.text.trimmingCharacters(in: .whitespaces))|\($0.chords.map(\.symbol).joined(separator: " "))" }
+                .filter { $0 != "|" }.joined(separator: "\n")
+            let sameName = seen.filter { $0.chartName.caseInsensitiveCompare(section.name) == .orderedSame }
+            let earlier = sameName.first { $0.content == content }
+            let name = earlier?.name ?? section.name
             if !out.isEmpty { out.append("") }
-            out.append(Reflow.labelName(of: section.name) != nil ? section.name : "{start_of_part: \(section.name)}")
-            let repeated = seen.contains { $0.name.caseInsensitiveCompare(section.name) == .orderedSame && $0.words == words }
-            if !repeated {
+            out.append(Reflow.labelName(of: name) != nil ? name : "{start_of_part: \(name)}")
+
+            if let earlier {
+                let first = seen.first { $0.name.caseInsensitiveCompare(earlier.name) == .orderedSame }
+                if first?.content != earlier.content { out += earlier.lines }
+            } else {
                 out += section.lines
-                seen.append((section.name, words))
+                seen.append((section.name, name, content, section.lines))
             }
         }
         return out

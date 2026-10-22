@@ -9,15 +9,22 @@ public struct DeckLinkDevice: Sendable, Equatable, Codable {
     public let supportsInternalKeying: Bool
     public let supportsExternalKeying: Bool
 
+    public let supportsCapture: Bool
+
+    public let maxAudioChannels: Int
+
     public init(
         name: String, persistentID: Int64, supportsPlayback: Bool,
-        supportsInternalKeying: Bool, supportsExternalKeying: Bool
+        supportsInternalKeying: Bool, supportsExternalKeying: Bool,
+        supportsCapture: Bool = false, maxAudioChannels: Int = 0
     ) {
         self.name = name
         self.persistentID = persistentID
         self.supportsPlayback = supportsPlayback
         self.supportsInternalKeying = supportsInternalKeying
         self.supportsExternalKeying = supportsExternalKeying
+        self.supportsCapture = supportsCapture
+        self.maxAudioChannels = maxAudioChannels
     }
 }
 
@@ -148,7 +155,9 @@ public enum DeckLinkRuntime {
                 persistentID: info.persistentID,
                 supportsPlayback: info.supportsPlayback,
                 supportsInternalKeying: info.supportsInternalKeying,
-                supportsExternalKeying: info.supportsExternalKeying
+                supportsExternalKeying: info.supportsExternalKeying,
+                supportsCapture: info.supportsCapture,
+                maxAudioChannels: Int(info.maxAudioChannels)
             )
         }
     }

@@ -2,6 +2,7 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SlideEditorView: View {
     let appModel: AppModel
@@ -20,9 +21,6 @@ struct SlideEditorView: View {
 
     @State private var model: SlideEditorModel?
     @State private var showingMediaPicker = false
-    @State private var showingBackgroundFill = false
-
-    @State private var pendingThemeID: String?
 
     @Environment(\.actionRouter) private var actionRouter
 
@@ -34,15 +32,15 @@ struct SlideEditorView: View {
     @State private var newSectionName = ""
     @State private var renameSectionTarget: PresentationSection?
     @State private var renameSectionName = ""
-    @State private var showingArrangement = false
     @State private var showingReflow = false
-    @State private var showingChords = false
 
     @AppStorage("shell.sidebarVisible") private var sidebarVisible = true
 
     @State private var dropTargetID: String?
 
     @State private var backgroundDropID: String?
+
+    @State private var dropTargetAfterID: String?
 
     @State private var dropSettleUntil = Date.distantPast
 
@@ -153,12 +151,8 @@ struct SlideEditorView: View {
             }
 
             .frame(minWidth: 0, maxWidth: .infinity)
-            VStack(spacing: 0) {
 
-                Color.clear
-                    .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
-                SlideObjectInspector(model: model)
-            }
+            SlideObjectInspector(model: model)
 
             .frame(width: max(inspectorWidth, PanelWidthGrip.minPanelWidth))
             .floatingPanel()
@@ -180,10 +174,8 @@ struct SlideEditorView: View {
         .sheet(isPresented: $showingMediaPicker) {
             LibraryPickerSheet(
                 appModel: appModel,
-                onImportMedia: { placement in
-                    MediaFilePicker.choose { urls in
-                        model.importMediaObjects(urls, placement: placement)
-                    }
+                onImportMedia: { urls, placement in
+                    model.importMediaObjects(urls, placement: placement)
                 }
             ) { entry in
                 model.addMediaObject(mediaID: entry.id, name: entry.name)
@@ -205,6 +197,23 @@ struct SlideEditorView: View {
             NewSlideSheet(appModel: appModel, render: render, deckThemeId: model.presentation.themeId) { choice in
                 model.addSlide(choice)
             }
+        }
+
+        .sheet(isPresented: Binding(get: { model.choosingDeckTheme }, set: { model.choosingDeckTheme = $0 })) {
+            ApplyThemeSheet(
+                appModel: appModel, render: render, deckThemeId: model.presentation.themeId,
+                scope: "Applies to every slide"
+                    + (model.presentationHasSlideThemes ? ", slides with a theme of their own too." : "."),
+                onNone: model.presentation.themeId.isEmpty ? nil : { model.setTheme("") }
+            ) { themeId, design in
+                model.applyTheme(themeId, design: design)
+            }
+        }
+        .sheet(isPresented: Binding(get: { model.choosingSlideTheme }, set: {
+            model.choosingSlideTheme = $0
+            if !$0 { model.slideThemeTargetID = nil }
+        })) {
+            SlideThemeSheet(appModel: appModel, render: render, model: model)
         }
     }
 
@@ -326,6 +335,12 @@ struct SlideEditorView: View {
                                     .offset(y: RowInsertionLine.rowGapOffset)
                             }
                         }
+                        .overlay(alignment: .bottom) {
+                            if dropTargetAfterID == slide.id {
+                                RowInsertionLine()
+                                    .offset(y: -RowInsertionLine.rowGapOffset)
+                            }
+                        }
                         .overlay {
                             if backgroundDropID == slide.id {
 
@@ -388,6 +403,7 @@ struct SlideEditorView: View {
             case .cut: model.cutSelectedSlides()
             case .paste: model.paste()
             case .selectAll: model.selectAllSlides()
+            case .delete: model.deleteSlides(Array(model.selectedSlideIDs))
             }
         }
     }
@@ -523,6 +539,7 @@ struct SlideEditorView: View {
             dropStarted: {
                 dropSettleUntil = Date().addingTimeInterval(0.6)
                 dropTargetID = nil
+                dropTargetAfterID = nil
                 backgroundDropID = nil
             },
             setLine: { on in
@@ -547,7 +564,26 @@ struct SlideEditorView: View {
             performFiles: { urls, insertZone in
                 handleRowFiles(model, urls, slide: slide, insertZone: insertZone)
             },
-            rejectPrefixes: ["mxueditslide::", "mxuslide::", "mxuobj::"]
+            rejectPrefixes: ["mxueditslide::", "mxuslide::", "mxuobj::"],
+            rowSize: { slideRowFrames[slide.id]?.size ?? .zero },
+            setLineAfter: { on in
+                if on && Date() >= dropSettleUntil {
+                    dropTargetAfterID = slide.id
+                } else if !on && dropTargetAfterID == slide.id {
+                    dropTargetAfterID = nil
+                }
+            },
+            performTextAfter: { payload in
+                dropTargetAfterID = nil
+                return model.insertMediaSlides(mediaIDs: [payload], afterSlideID: slide.id)
+            },
+            performFilesAfter: { urls in
+                dropTargetAfterID = nil
+                Task { @MainActor in
+                    let imported = await appModel.importFiles(urls)
+                    model.insertMediaSlides(mediaIDs: imported, afterSlideID: slide.id)
+                }
+            }
         )
     }
 
@@ -556,10 +592,12 @@ struct SlideEditorView: View {
     ) -> Bool {
 
         dropTargetID = nil
+        dropTargetAfterID = nil
         backgroundDropID = nil
         defer {
             Task { @MainActor in
                 dropTargetID = nil
+                dropTargetAfterID = nil
                 backgroundDropID = nil
             }
         }
@@ -634,118 +672,85 @@ struct SlideEditorView: View {
 
             let batch = model.slideBatch(for: slide.id)
             if batch.count > 1 {
-                Button("Copy \(batch.count) Slides") { model.copySlides(batch) }
-                moveToThemeMenu(model, batch: batch)
+                Text("\(batch.count) Slides")
+                Section("Arrange") {
+                    Button("Copy \(batch.count) Slides") { model.copySlides(batch) }
+                    moveToThemeMenu(model, batch: batch)
+                    Button("Duplicate \(batch.count) Slides") { model.duplicateSlides(batch) }
+                }
                 Divider()
-                Button("Duplicate \(batch.count) Slides") { model.duplicateSlides(batch) }
                 Button("Delete \(batch.count) Slides", role: .destructive) {
                     model.deleteSlides(batch)
                 }
-                .disabled(batch.count >= model.presentation.slides.count)
+                .disabled(model.isThemeEditor && batch.count >= model.presentation.slides.count)
             } else {
-                Button("Rename Slide") { beginSlideRename(slide) }
+
                 if !model.isThemeEditor {
                     Button("Quick Edit…") { quickEditTarget = QuickEditTarget(id: slide.id) }
-                    Divider()
-                    Button("Start New Section Here…") {
-                        newSectionTarget = QuickEditTarget(id: slide.id)
-                        newSectionName = ""
-                    }
-                    if !model.sections.isEmpty {
-                        Menu("Move to Section") {
-                            ForEach(model.sections) { section in
-                                Button(section.name) {
-                                    model.moveSlide(slide.id, toSection: section.id)
-                                }
-                                .disabled(slide.sectionId == section.id)
+                }
+                Button("Rename…") { beginSlideRename(slide) }
+                if !model.isThemeEditor {
+
+                    if !model.themeSlideNames.isEmpty || !model.otherThemeChoices.isEmpty {
+                        Section("Look") {
+                            Button("Theme Slide…") {
+                                model.slideThemeTargetID = slide.id
+                                model.choosingSlideTheme = true
                             }
+                            overrideDesignMenu(model, slide: slide)
                         }
                     }
-
-                    if !model.themeSlideNames.isEmpty {
-                        let edited = model.slideHasLocalEdits(slide)
-                        Menu("Theme Slide") {
-                            Toggle(
-                                "Automatic" + (editedSuffix(model, slide: slide, name: nil, edited: edited)),
-                                isOn: themeSlideBinding(model, slide: slide, name: nil)
-                            )
-
-                            Toggle("Blank (No Theme)", isOn: Binding(
-                                get: { model.presentation.slides.first { $0.id == slide.id }?.unthemed == true },
-                                set: { _ in model.setSlideBlank(slide.id) }))
-                            Divider()
-                            ForEach(Array(model.themeSlideGroups.enumerated()), id: \.offset) { _, group in
-                                if let folder = group.folder {
-                                    Section(folder) {
-                                        ForEach(group.names, id: \.self) { name in
-                                            Toggle(
-                                                name + editedSuffix(model, slide: slide, name: name, edited: edited),
-                                                isOn: themeSlideBinding(model, slide: slide, name: name)
-                                            )
-                                        }
+                    Section("Section") {
+                        Button("Start New Section Here…") {
+                            newSectionTarget = QuickEditTarget(id: slide.id)
+                            newSectionName = ""
+                        }
+                        if !model.sections.isEmpty {
+                            Menu("Move to Section") {
+                                ForEach(model.sections) { section in
+                                    Button(section.name) {
+                                        model.moveSlide(slide.id, toSection: section.id)
                                     }
-                                } else {
-                                    ForEach(group.names, id: \.self) { name in
-                                        Toggle(
-                                            name + editedSuffix(model, slide: slide, name: name, edited: edited),
-                                            isOn: themeSlideBinding(model, slide: slide, name: name)
-                                        )
-                                    }
-                                }
-                            }
-
-                            let looks = actionRouter?.activeOverrideLooks() ?? []
-                            if !looks.isEmpty {
-                                Divider()
-                                ForEach(looks) { look in
-                                    let chosen = model.presentation.slides.first { $0.id == slide.id }?.overrideDesignName(forTheme: look.theme.id)
-                                    Menu("On \(look.theme.name)\(look.folder.map { " › \($0)" } ?? "") outputs") {
-                                        Toggle("Same as this slide", isOn: Binding(
-                                            get: { chosen == nil },
-                                            set: { _ in model.setOverrideDesign(nil, forTheme: look.theme.id, for: slide.id) }))
-                                        Divider()
-                                        ForEach(look.theme.slides ?? [], id: \.id) { design in
-                                            Toggle(design.name, isOn: Binding(
-                                                get: { chosen?.caseInsensitiveCompare(design.name) == .orderedSame },
-                                                set: { _ in model.setOverrideDesign(design.name, forTheme: look.theme.id, for: slide.id) }))
-                                        }
-                                    }
-                                }
-                            }
-
-                            let others = model.otherThemeChoices
-                            if !others.isEmpty {
-                                Divider()
-                                ForEach(others, id: \.theme.id) { choice in
-                                    Menu(choice.theme.name) {
-                                        ForEach(Array(choice.groups.enumerated()), id: \.offset) { _, group in
-                                            if let folder = group.folder {
-                                                Section(folder) {
-                                                    ForEach(group.names, id: \.self) { name in
-                                                        Toggle(name, isOn: otherThemeSlideBinding(model, slide: slide, themeId: choice.theme.id, name: name))
-                                                    }
-                                                }
-                                            } else {
-                                                ForEach(group.names, id: \.self) { name in
-                                                    Toggle(name, isOn: otherThemeSlideBinding(model, slide: slide, themeId: choice.theme.id, name: name))
-                                                }
-                                            }
-                                        }
-                                    }
+                                    .disabled(slide.sectionId == section.id)
                                 }
                             }
                         }
                     }
-                    Divider()
                 }
 
-                Button("Copy Slide") { model.copySlides([slide.id]) }
-                Button("Paste Slide After") { model.pasteSlides(after: slide.id) }
-                    .disabled(!SlidePasteboard.hasSlide)
-                moveToThemeMenu(model, batch: [slide.id])
-                Button("Duplicate") { model.duplicateSlide(slide.id) }
+                Section("Arrange") {
+                    Button("Copy") { model.copySlides([slide.id]) }
+                    Button("Paste After") { model.pasteSlides(after: slide.id) }
+                        .disabled(!SlidePasteboard.hasSlide)
+                    moveToThemeMenu(model, batch: [slide.id])
+                    Button("Duplicate") { model.duplicateSlide(slide.id) }
+                }
+                Divider()
                 Button("Delete", role: .destructive) { model.deleteSlide(slide.id) }
-                    .disabled(model.presentation.slides.count == 1)
+                    .disabled(model.isThemeEditor && model.presentation.slides.count == 1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func overrideDesignMenu(_ model: SlideEditorModel, slide: Slide) -> some View {
+        let looks = actionRouter?.activeOverrideLooks() ?? []
+        if !looks.isEmpty {
+            Menu("Other Outputs") {
+                ForEach(looks) { look in
+                    let chosen = model.presentation.slides.first { $0.id == slide.id }?.overrideDesignName(forTheme: look.theme.id)
+                    Menu("On \(look.theme.name)\(look.folder.map { " › \($0)" } ?? "") outputs") {
+                        Toggle("Same as this slide", isOn: Binding(
+                            get: { chosen == nil },
+                            set: { _ in model.setOverrideDesign(nil, forTheme: look.theme.id, for: slide.id) }))
+                        Divider()
+                        ForEach(look.theme.slides ?? [], id: \.id) { design in
+                            Toggle(design.name, isOn: Binding(
+                                get: { chosen?.caseInsensitiveCompare(design.name) == .orderedSame },
+                                set: { _ in model.setOverrideDesign(design.name, forTheme: look.theme.id, for: slide.id) }))
+                        }
+                    }
+                }
             }
         }
     }
@@ -762,46 +767,6 @@ struct SlideEditorView: View {
 
             .disabled(batch.count >= model.presentation.slides.count)
         }
-    }
-
-    private func editedSuffix(
-        _ model: SlideEditorModel, slide: Slide, name: String?, edited: Bool
-    ) -> String {
-        guard edited else { return "" }
-        let current = model.presentation.slides.first { $0.id == slide.id }?.themeSlideName
-        let isCurrent = name == nil
-            ? (current ?? "").isEmpty
-            : current?.caseInsensitiveCompare(name!) == .orderedSame
-        return isCurrent ? " (edited)" : ""
-    }
-
-    private func themeSlideBinding(
-        _ model: SlideEditorModel, slide: Slide, name: String?
-    ) -> Binding<Bool> {
-        Binding(
-            get: {
-                let held = model.presentation.slides.first { $0.id == slide.id }
-                let current = held?.themeSlideName
-                return held?.unthemed != true && (name == nil
-                    ? (current ?? "").isEmpty
-                    : current?.caseInsensitiveCompare(name!) == .orderedSame)
-            },
-
-            set: { _ in model.setThemeSlide(name, for: slide.id) }
-        )
-    }
-
-    private func otherThemeSlideBinding(
-        _ model: SlideEditorModel, slide: Slide, themeId: String, name: String
-    ) -> Binding<Bool> {
-        Binding(
-            get: {
-                let current = model.presentation.slides.first { $0.id == slide.id }
-                return current?.unthemed != true && current?.themeId == themeId
-                    && current?.themeSlideName?.caseInsensitiveCompare(name) == .orderedSame
-            },
-            set: { _ in model.setThemeSlide(name, themeId: themeId, for: slide.id) }
-        )
     }
 
     private var newSectionActive: Binding<Bool> {
@@ -972,6 +937,11 @@ struct SlideEditorView: View {
                             .reportingGlobalFrame(id: entry.object.id, into: $objectRowFrames)
 
                             .contextMenu {
+
+                                Button("Rename…") {
+                                    objectNameDraft = entry.object.name
+                                    renamingObjectID = entry.object.id
+                                }
                                 Button(entry.object.hidden == true ? "Show" : "Hide") {
                                     model.updateObject(id: entry.object.id) {
                                         $0.hidden = $0.hidden == true ? nil : true
@@ -991,10 +961,6 @@ struct SlideEditorView: View {
                                     )
                                 )
                                 Divider()
-                                Button("Rename") {
-                                    objectNameDraft = entry.object.name
-                                    renamingObjectID = entry.object.id
-                                }
                                 Button("Delete", role: .destructive) {
                                     model.setSelection([entry.object.id])
                                     model.deleteSelectedObjects()
@@ -1049,6 +1015,7 @@ struct SlideEditorView: View {
             case .cut: model.cutSelectedObjects()
             case .paste: model.paste()
             case .selectAll: model.selectAllObjects(includingHidden: true)
+            case .delete: model.deleteSelectedObjects()
             }
         }
     }
@@ -1057,19 +1024,6 @@ struct SlideEditorView: View {
         Binding(
             get: { model.selectedObjectIDs },
             set: { model.setSelection($0) }
-        )
-    }
-
-    private func themeSelection(_ model: SlideEditorModel) -> Binding<String> {
-        Binding(
-            get: { model.presentation.themeId },
-            set: { id in
-                if !id.isEmpty, model.presentationHasSlideThemes {
-                    pendingThemeID = id
-                } else {
-                    model.setTheme(id)
-                }
-            }
         )
     }
 
@@ -1103,17 +1057,7 @@ struct SlideEditorView: View {
             HStack(spacing: 12) {
                 addObjectTools(model)
                 Spacer()
-                chordsToggle(model)
-                presentationTools(model)
-                undoRedoTools(model)
-                Spacer(minLength: 8)
-                modePicker(model)
-            }
-            HStack(spacing: 12) {
-                addObjectTools(model)
-                Spacer()
-                chordsToggle(model)
-                presentationMenu(model)
+                songTools(model)
                 undoRedoTools(model)
                 Spacer(minLength: 8)
                 modePicker(model)
@@ -1127,23 +1071,6 @@ struct SlideEditorView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { toolbarWidth = $0 }
 
         .clipped()
-
-        .sheet(isPresented: $showingChords) {
-            ChordEditorSheet(model: model.appModel, render: render, presentationID: model.presentation.id)
-        }
-        .confirmationDialog(
-            "Apply \(pendingThemeID.flatMap { appModel.entry($0)?.name } ?? "this theme") to every slide?",
-            isPresented: Binding(get: { pendingThemeID != nil }, set: { if !$0 { pendingThemeID = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Apply to Every Slide") {
-                if let id = pendingThemeID { model.setTheme(id) }
-                pendingThemeID = nil
-            }
-            Button("Cancel", role: .cancel) { pendingThemeID = nil }
-        } message: {
-            Text("Slides that follow a theme of their own will follow this one instead.")
-        }
     }
 
     private func addObjectTools(_ model: SlideEditorModel) -> some View {
@@ -1176,142 +1103,41 @@ struct SlideEditorView: View {
             Toggle(isOn: pathDrawingBinding(model)) {
                 Label("Draw Path", systemImage: "pencil.tip")
             }
-            .toggleStyle(.button)
+            .toggleStyle(ToolbarCellToggleStyle())
             .help("Draw a path — click for corners, drag for curves; click the first point to close")
         }
+
+        .disabled(model.currentSlide == nil)
         .fixedSize()
     }
 
     @ViewBuilder
-    private func presentationTools(_ model: SlideEditorModel) -> some View {
+    private func songTools(_ model: SlideEditorModel) -> some View {
         if !model.isThemeEditor, !model.isSingleComposition {
-            Button {
-                showingReflow = true
-            } label: {
-                Label("Reflow", systemImage: "text.alignleft")
+            ToolbarCluster {
+                chordsToggle(model)
             }
-            .help("Reflow — paste text, get slides")
-
-            Button {
-                showingArrangement.toggle()
-            } label: {
-                Label("Arrangement", systemImage: "rectangle.grid.1x2")
-            }
-            .help("Arrangement")
-            .popover(isPresented: $showingArrangement, arrowEdge: .bottom) {
-                ArrangementPopover(model: model)
-            }
-
-            Button {
-                showingChords = true
-            } label: {
-                Label("Chord Chart", systemImage: "music.note.list")
-            }
-            .help("Chord Chart — every line's chords as ChordPro text")
-
-            Menu {
-                themeItems(model)
-            } label: {
-                Label("Theme", systemImage: "paintpalette")
-            }
-            .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Theme")
-
-            if !model.presentation.themeId.isEmpty {
+            ToolbarCluster {
                 Button {
-                    model.toggleThemeContent()
+                    showingReflow = true
                 } label: {
-                    Label(
-                        model.showsThemeContent ? "Hide Theme Content" : "Show Theme Content",
-                        systemImage: model.showsThemeContent ? "eye" : "eye.slash"
-                    )
+                    Label("Reflow", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
                 }
-                .help(model.showsThemeContent
-                    ? "Hide theme content while editing"
-                    : "Show theme content")
+                .help("Reflow — paste text, get slides")
             }
-
-            Button {
-                showingBackgroundFill = true
-            } label: {
-                Label("Background", systemImage: "rectangle.inset.filled")
-            }
-            .help("Presentation background")
-            .popover(isPresented: $showingBackgroundFill, arrowEdge: .bottom) {
-                PresentationBackgroundPopover(model: model)
-            }
-
-            Button {
-                model.appModel.exportPresentation(model.presentation, render: render)
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
-            }
-            .help("Export — an MxU Slides file, a PDF, slide images, or a song's ChordPro text")
-        }
-    }
-
-    @ViewBuilder
-    private func chordsToggle(_ model: SlideEditorModel) -> some View {
-        if !model.isThemeEditor, !model.isSingleComposition {
-            Toggle(isOn: Binding(get: { model.showsChords }, set: { _ in model.toggleChords() })) {
-                Label("Chords", systemImage: "music.note")
-            }
-            .toggleStyle(.button)
-            .help(model.showsChords
-                ? "Hide chords — back to the audience view"
-                : "Show chords on the slides to add, move, and change them")
-        }
-    }
-
-    @ViewBuilder
-    private func presentationMenu(_ model: SlideEditorModel) -> some View {
-        if !model.isThemeEditor, !model.isSingleComposition {
-            Menu {
-                Button("Reflow…") { showingReflow = true }
-                Button("Arrangement…") { showingArrangement = true }
-                Button("Chord Chart…") { showingChords = true }
-
-                Button("Export…") { model.appModel.exportPresentation(model.presentation, render: render) }
-                Divider()
-                Menu("Theme") { themeItems(model) }
-                if !model.presentation.themeId.isEmpty {
-                    Button(model.showsThemeContent ? "Hide Theme Content" : "Show Theme Content") {
-                        model.toggleThemeContent()
-                    }
-                }
-                Button("Background…") { showingBackgroundFill = true }
-            } label: {
-                Label("Presentation", systemImage: "ellipsis.circle")
-            }
-            .menuIndicator(.hidden)
             .fixedSize()
-            .help("Reflow, arrangement, chords, theme, and background")
-            .popover(isPresented: $showingArrangement, arrowEdge: .bottom) {
-                ArrangementPopover(model: model)
-            }
-            .popover(isPresented: $showingBackgroundFill, arrowEdge: .bottom) {
-                PresentationBackgroundPopover(model: model)
-            }
         }
     }
 
-    @ViewBuilder
-    private func themeItems(_ model: SlideEditorModel) -> some View {
-        Picker("Theme", selection: themeSelection(model)) {
-            Text("None").tag("")
-            ForEach(appModel.entries(in: .themes), id: \.id) { entry in
-                let isCurrent = entry.id == model.presentation.themeId
-                Text(entry.name + (isCurrent && model.presentationHasLocalEdits
-                    ? " (edited)" : ""))
-                    .tag(entry.id)
-            }
+    private func chordsToggle(_ model: SlideEditorModel) -> some View {
+        Toggle(isOn: Binding(get: { model.showsChords }, set: { _ in model.toggleChords() })) {
+            Label("Chords", systemImage: "music.note")
         }
-        .pickerStyle(.inline)
-        if !model.presentation.themeId.isEmpty, model.presentationHasLocalEdits {
-            Divider()
-            Button("Reapply Theme (Clear Slide Edits)") { model.reapplyTheme() }
-        }
+        .toggleStyle(ToolbarCellToggleStyle())
+        .help(model.showsChords
+            ? "Hide chords — back to the audience view"
+            : "Show chords on the slides to add, move, and change them")
     }
 
     private func undoRedoTools(_ model: SlideEditorModel) -> some View {
@@ -1335,17 +1161,13 @@ struct SlideEditorView: View {
     }
 
     private func modePicker(_ model: SlideEditorModel) -> some View {
-        Picker("", selection: Binding(
-            get: { model.editorMode },
-            set: { model.editorMode = $0 }
-        )) {
-            ForEach(SlideEditorModel.EditorMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        ToolbarSegments(
+            options: SlideEditorModel.EditorMode.allCases.map { ($0, $0.displayName) },
+            selection: Binding(
+                get: { model.editorMode },
+                set: { model.editorMode = $0 }
+            )
+        )
         .help("Design edits the slide; Animate edits its steps on the timeline")
     }
 
@@ -1369,6 +1191,12 @@ struct SlideEditorView: View {
                         AnimateCanvasOverlay(model: model)
                             .aspectRatio(model.canvasSize, contentMode: .fit)
                             .padding(EditorGeometry.pasteboardInset)
+                    }
+
+                    if model.presentation.slides.isEmpty, !model.isThemeEditor {
+                        EmptyDeckPrompt(onNewSlide: { model.addSlide() })
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            .frame(maxWidth: 360)
                     }
                     if canvasDropTargeted {
 
@@ -1454,6 +1282,32 @@ struct EditorCommands: Commands {
             Button("Ungroup") { editor?.perform(.ungroup) }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(editor?.canUngroup != true)
+
+            Divider()
+            Button("Reapply Theme (Clear Slide Edits)") {
+                if let editor, !editor.presentation.themeId.isEmpty {
+                    editor.reapplyTheme()
+                }
+            }
+            .disabled(editor?.hasPresentationSettings != true)
+        }
+        CommandGroup(after: .sidebar) {
+            Divider()
+
+            Toggle("Show Theme Content", isOn: Binding(
+                get: { editor?.showsThemeContent ?? true },
+                set: { _ in editor?.toggleThemeContent() }
+            ))
+            .disabled(editor?.hasPresentationSettings != true)
+        }
+
+        CommandGroup(after: .importExport) {
+            Button("Export Presentation\u{2026}") {
+                if let editor {
+                    editor.appModel.exportPresentation(editor.presentation, render: editor.render)
+                }
+            }
+            .disabled(editor?.hasPresentationSettings != true)
         }
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") { undo() }
@@ -1506,24 +1360,21 @@ struct EditorCommands: Commands {
     }
 }
 
-private struct PresentationBackgroundPopover: View {
+struct PresentationBackgroundRows: View {
     let model: SlideEditorModel
 
     var body: some View {
-        Form {
-            Toggle("Background Fill", isOn: enabledBinding)
-            if let fill = model.presentation.backgroundFill {
-                if fill.fillKind == .linearGradient {
-                    LabeledContent("Fill", value: "Gradient (imported)")
-                } else {
+        Toggle("Background Fill", isOn: enabledBinding)
+        if let fill = model.presentation.backgroundFill {
+            if fill.fillKind == .linearGradient {
+                LabeledContent("Fill", value: "Gradient (imported)")
+            } else {
+                LabeledContent("Color") {
                     ColorPicker("Color", selection: colorBinding, supportsOpacity: true)
+                        .labelsHidden()
                 }
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .frame(width: 240)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var enabledBinding: Binding<Bool> {
@@ -1568,55 +1419,105 @@ struct LibraryPickerSheet: View {
     let appModel: AppModel
     var kind: DocumentKind = .media
 
-    var kinds: [DocumentKind]? = nil
-
-    var onImportMedia: ((LibraryHome.Placement) -> Void)? = nil
+    var onImportMedia: (([URL], LibraryHome.Placement) -> Void)? = nil
 
     var render: RenderContext? = nil
     let onPick: (LibraryIndex.Entry) -> Void
 
+    enum Tab: Hashable {
+        case search, importFile
+    }
+
     @Environment(\.dismiss) private var dismiss
+    @State private var tab: Tab = .search
+
+    @AppStorage(MediaPickerSort.defaultsKey) private var sort: MediaPickerSort = .bestMatch
 
     @State private var importFolder: String?
     @State private var query = ""
-    @State private var scope: DocumentKind?
 
     @State private var queryHits: [LibraryIndex.Entry] = []
 
     @State private var proPresenterIDs: Set<String> = []
+    @State private var choosingFiles = false
+    @State private var dropTargeted = false
+
+    @State private var skippedNote: String?
     @FocusState private var searchFocused: Bool
 
-    private var activeKind: DocumentKind { scope ?? kinds?.first ?? kind }
-
     var body: some View {
+        VStack(spacing: 0) {
+            if kind == .media {
+                Picker("Source", selection: $tab) {
+                    Label("Search Media", systemImage: "magnifyingglass").tag(Tab.search)
+                    Label("Import from Disk", systemImage: "square.and.arrow.down").tag(Tab.importFile)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(10)
+                Divider()
+            }
+            if tab == .importFile {
+                importPane
+                Divider()
+                importDestination
+            } else {
+                searchPane
+                Divider()
+            }
+            HStack {
+                if tab == .importFile {
+                    Button("Choose Files…") { choosingFiles = true }
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(10)
+        }
+        .frame(width: 560, height: 460)
+        .onAppear { searchFocused = true }
+        .task {
+            if kind == .presentation {
+                proPresenterIDs = await appModel.proPresenterImportIDs()
+            }
+        }
+        .task(id: query) {
+            queryHits = await appModel.search(query).map(\.entry)
+        }
+        .fileImporter(
+            isPresented: $choosingFiles, allowedContentTypes: [.image, .movie, .video],
+            allowsMultipleSelection: onImportMedia != nil
+        ) { result in
+            if case .success(let urls) = result { importUsable(urls) }
+        }
+    }
+
+    private var searchPane: some View {
         VStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .imageScale(.small)
-                TextField("Search", text: $query)
+                TextField(kind == .media ? "Search media" : "Search", text: $query)
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
+                if kind == .media {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(MediaPickerSort.allCases, id: \.self) { choice in
+                            Text(choice.title).tag(choice)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Sort by")
+                }
             }
             .padding(10)
-            if let kinds, kinds.count > 1 {
-                Picker("Scope", selection: Binding(
-                    get: { activeKind },
-                    set: { scope = $0 }
-                )) {
-                    ForEach(kinds, id: \.self) { candidate in
-                        Text(Self.scopeTitle(candidate)).tag(candidate)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
-            }
             Divider()
             let entries = results
             if entries.isEmpty {
-                if activeKind == .audio {
+                if kind == .audio {
                     ContentUnavailableView(
                         "No Music", systemImage: "music.note",
                         description: Text(query.isEmpty
@@ -1628,9 +1529,7 @@ struct LibraryPickerSheet: View {
                     ContentUnavailableView(
                         "No Media", systemImage: "photo.on.rectangle.angled",
                         description: Text(query.isEmpty
-                            ? (onImportMedia == nil
-                                ? "Import images or videos in the Media section first."
-                                : "Add an image or video from disk below.")
+                            ? "Add an image or video from Import from Disk above."
                             : "Nothing matches “\(query)”.")
                     )
                     .frame(maxHeight: .infinity)
@@ -1665,6 +1564,12 @@ struct LibraryPickerSheet: View {
                             Text(entry.name)
                             Spacer()
 
+                            if kind == .media, let added = appModel.mediaAddedAt(entry.id) {
+                                Text("Added \(added.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+
                             if let used = entry.lastUsedAt {
                                 Text("Used \(used, format: .relative(presentation: .named))")
                                     .font(.caption2)
@@ -1677,33 +1582,68 @@ struct LibraryPickerSheet: View {
                     }
                 }
             }
-            Divider()
-            if onImportMedia != nil, activeKind == .media {
-                importDestination
+        }
+    }
+
+    private var importPane: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text(onImportMedia == nil ? "Drop a file here, or choose one" : "Drop files here, or choose them")
+                .font(.headline)
+            Text("Images and video")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(onImportMedia == nil
+                ? "It becomes a new library item, used here."
+                : "Each file becomes a media object on this slide.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            if let skippedNote {
+                Label(skippedNote, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
-            HStack {
-                if let onImportMedia, activeKind == .media {
-                    Button("Add Media from Disk…") {
-                        let placement = importPlacement
-                        dismiss()
-                        onImportMedia(placement)
-                    }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle.standard(CornerStandard.element)
+                .strokeBorder(dropTargeted ? Color.accentColor : Color.secondary.opacity(0.4),
+                              style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+        )
+        .padding(16)
+        .contentShape(Rectangle())
+        .dropDestination(for: URL.self) { urls, _ in
+            importUsable(urls)
+        } isTargeted: { dropTargeted = $0 }
+    }
+
+    @discardableResult
+    private func importUsable(_ urls: [URL]) -> Bool {
+        let media = urls.filter { MediaImporter.libraryKind(of: $0) == .media }
+        if media.isEmpty {
+            skippedNote = "Only images and video can be used here."
+            return false
+        } else {
+            importNow(onImportMedia == nil ? Array(media.prefix(1)) : media)
+            return true
+        }
+    }
+
+    private func importNow(_ urls: [URL]) {
+        let placement = importPlacement
+        let appModel = appModel
+        let onPick = onPick
+        dismiss()
+        if let onImportMedia {
+            onImportMedia(urls, placement)
+        } else {
+            Task { @MainActor in
+                if let entry = await appModel.importMediaForPick(urls, placement: placement) {
+                    onPick(entry)
                 }
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
             }
-            .padding(10)
-        }
-        .frame(width: 560, height: 460)
-        .onAppear { searchFocused = true }
-        .task {
-            if kinds?.contains(.presentation) == true || kind == .presentation {
-                proPresenterIDs = await appModel.proPresenterImportIDs()
-            }
-        }
-        .task(id: query) {
-            queryHits = await appModel.search(query).map(\.entry)
         }
     }
 
@@ -1743,36 +1683,18 @@ struct LibraryPickerSheet: View {
         .drive(viewing: .init(kind: .media, area: .team, path: currentImportFolder))
     }
 
-    static func scopeTitle(_ kind: DocumentKind) -> String {
-        switch kind {
-        case .presentation: "Slides"
-        case .media: "Media"
-        case .audio: "Music"
-        default: kind.rawValue.capitalized
-        }
-    }
-
-
     private var results: [LibraryIndex.Entry] {
-        let kind = activeKind
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            return queryHits.filter { $0.kind == kind }
-        }
-        let entries = appModel.entries(of: kind)
-        return entries.sorted { a, b in
-            switch (a.lastUsedAt, b.lastUsedAt) {
-            case let (usedA?, usedB?): usedA > usedB
-            case (.some, nil): true
-            case (nil, .some): false
-            case (nil, nil): a.name.localizedStandardCompare(b.name) == .orderedAscending
-            }
-        }
+        let typed = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        let entries = typed
+            ? queryHits.filter { $0.kind == kind }
+            : appModel.entries(of: kind).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let order = kind == .media ? sort : .bestMatch
+        return order.ordered(entries, typed: typed, addedAt: appModel.mediaAddedAt)
     }
 
     private func symbol(_ entry: LibraryIndex.Entry) -> String {
         if entry.kind == .presentation { return "rectangle.on.rectangle" }
-        if activeKind == .audio { return "music.note" }
+        if kind == .audio { return "music.note" }
 
         guard let item = appModel.media(entry.id) else { return "photo" }
         return item.mediaKind == .video ? "film" : "photo"

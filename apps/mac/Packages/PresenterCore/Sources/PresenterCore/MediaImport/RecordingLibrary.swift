@@ -29,8 +29,7 @@ public enum RecordingLibrary {
             if let exportFolder, let blob = blobs.url(forHash: hash) {
                 try? FileManager.default.createDirectory(
                     at: exportFolder, withIntermediateDirectories: true)
-                try? FileManager.default.copyItem(
-                    at: blob, to: exportFolder.appendingPathComponent(fileName))
+                try? exportCopy(of: blob, to: exportFolder.appendingPathComponent(fileName))
             }
             return hash
         }.value
@@ -50,10 +49,21 @@ public enum RecordingLibrary {
             pixelHeight: probe.height,
             folder: folder.isEmpty ? nil : folder,
             recordedAt: recordedAt.timeIntervalSince1970,
+            importedAt: Date().timeIntervalSince1970,
             recordedByPresetId: presetId
         )
         _ = try await client.create(item).value
         return item
+    }
+
+    public static func isRecording(_ item: MediaItem) -> Bool {
+        item.recordedAt != nil || inSubtree(item.folder, of: defaultFolder)
+    }
+
+    public static func exportCopy(of blob: URL, to destination: URL) throws {
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.copyItem(at: blob, to: destination)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destination.path)
     }
 
     public static func latestRecording(

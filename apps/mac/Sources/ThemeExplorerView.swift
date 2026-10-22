@@ -12,6 +12,10 @@ struct ThemeLook: Identifiable {
     static func load(_ appModel: AppModel, firstThemeId: String) async -> [ThemeLook] {
         let entries = appModel.entries(in: .themes)
         await appModel.themesFilled(entries.map(\.id))
+        #if DEBUG || MXU_PERF_HOOKS
+        let started = ContinuousClock.now
+        defer { DiagnosticsStore.shared.note("perf.themeLooks", detail: "\(entries.count) themes, built in \(ContinuousClock.now - started) on main") }
+        #endif
         let ordered = entries.filter { $0.id == firstThemeId } + entries.filter { $0.id != firstThemeId }
         return ordered.compactMap { entry in
             appModel.theme(entry.id).map { theme in
@@ -273,7 +277,7 @@ struct ThemeExplorerView: View {
             SlideThumbnailView(
                 model: appModel, render: render,
                 slide: slide, presentation: look.deck, theme: look.theme,
-                arrangementId: nil, hideScopedBackgrounds: false, legibleText: false,
+                arrangementId: nil, hideScopedBackgrounds: false,
                 contentStamp: look.stamp
             )
         } else {

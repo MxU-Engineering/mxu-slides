@@ -6,11 +6,6 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 
-struct SignageFrame: Sendable, Equatable {
-    var engineID: String
-    var canvasSize: CGSize
-}
-
 @MainActor
 @Observable
 final class RenderContext {
@@ -31,8 +26,6 @@ final class RenderContext {
     let confidenceLayoutsBox: Locked<[UUID: ConfidenceLayout]>
 
     let previewLayoutsBox: Locked<[String: ConfidenceLayout]>
-
-    let signageBox: Locked<[UUID: SignageFrame]>
 
     @ObservationIgnored weak var canvasView: MetalSceneView?
 
@@ -156,7 +149,6 @@ final class RenderContext {
         self.confidenceBox = Locked(ConfidenceInfo())
         self.confidenceLayoutsBox = Locked([:])
         self.previewLayoutsBox = Locked([:])
-        self.signageBox = Locked([:])
         compositor.mediaSource = media
 
         outputs.sceneProvider = { [transitions, confidenceBox] in
@@ -172,11 +164,6 @@ final class RenderContext {
             return VisibilityRules.filteredScene(
                 engine.scene(at: now), info: confidenceBox.value, at: now
             )
-        }
-        outputs.signageSceneProvider = { [signageBox] screenID in
-            signageBox.value[screenID].map {
-                SignageSceneBuilder.scene(mediaID: $0.engineID, canvasSize: $0.canvasSize)
-            }
         }
 
         SyncTestPlayback.install(outputs: outputs, media: media)
@@ -211,6 +198,8 @@ final class RenderContext {
         var deviceDisplayName: String?
 
         var role: String?
+
+        var scaleMode: String?
 
         var adjustments: OutputAdjustments?
 
@@ -250,6 +239,7 @@ final class RenderContext {
                 deviceDisplayUUID: outputs.placeholderDevices[screen.id],
                 deviceDisplayName: outputs.placeholderDeviceNames[screen.id],
                 role: outputs.screenRoles[screen.id]?.rawValue,
+                scaleMode: outputs.scaleModes[screen.id]?.rawValue,
                 adjustments: outputs.outputAdjustments[screen.id],
                 videoDelayFrames: outputs.videoDelays[screen.id],
                 masks: outputs.screenMasks[screen.id],
@@ -292,6 +282,9 @@ final class RenderContext {
             )
             if let role = config.role.flatMap(ScreenRole.init(rawValue:)) {
                 outputs.setRole(role, forScreen: config.id)
+            }
+            if let mode = config.scaleMode.flatMap(OutputScaleMode.init(rawValue:)) {
+                outputs.setScaleMode(mode, forScreen: config.id)
             }
             if let adjustments = config.adjustments {
                 outputs.setAdjustments(adjustments, forScreen: config.id)

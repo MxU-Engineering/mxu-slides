@@ -17,6 +17,7 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     private var muted = true
     private var desiredChannelOffset = 0
     private var deviceChannelCount = 2
+    private var monoOut = false
 
     private var appliedDeviceID: AudioDeviceID?
 
@@ -25,6 +26,8 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     private var scheduleGeneration = 0
 
     private static let maxPendingFrames: AVAudioFramePosition = 24_000
+
+    static let restartLeadFrames: AVAudioFrameCount = 1_440
     private var configObserver: (any NSObjectProtocol)?
 
     public init() {
@@ -97,25 +100,59 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
             guard running else { return false }
             let frames = AVAudioFramePosition(buffer.frameLength)
             guard pendingFrames < Self.maxPendingFrames else { return false }
-            pendingFrames += frames
             let generation = scheduleGeneration
+            let lead = Self.leadFrames(pending: pendingFrames)
+            if lead > 0, let silence = Self.silence(frames: lead, format: buffer.format) {
+                schedule(silence, frames: AVAudioFramePosition(lead), generation: generation)
+            }
+            pendingFrames += frames
 
             let scheduled = Self.panned(buffer, pan: storedPan) ?? buffer
             player.scheduleBuffer(scheduled, completionCallbackType: .dataPlayedBack) {
                 [weak self] _ in
+                self?.played(frames: frames, generation: generation)
+            }
+            return true
+        } ?? false
+    }
 
-                RealtimeAudioCallback.scope {
-                    DispatchQueue.global(qos: .utility).async {
-                        guard let self else { return }
-                        self.lock.withLock {
-                            guard self.scheduleGeneration == generation else { return }
+    static func leadFrames(pending: AVAudioFramePosition) -> AVAudioFrameCount {
+        pending == 0 ? restartLeadFrames : 0
+    }
+
+    static func silence(frames: AVAudioFrameCount, format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        if let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
+           let channels = buffer.floatChannelData {
+            buffer.frameLength = frames
+            for channel in 0 ..< Int(format.channelCount) {
+                vDSP_vclr(channels[channel], 1, vDSP_Length(frames))
+            }
+            return buffer
+        } else {
+            return nil
+        }
+    }
+
+    private func schedule(_ buffer: AVAudioPCMBuffer, frames: AVAudioFramePosition, generation: Int) {
+        pendingFrames += frames
+        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            self?.played(frames: frames, generation: generation)
+        }
+    }
+
+    private func played(frames: AVAudioFramePosition, generation: Int) {
+
+        RealtimeAudioCallback.scope {
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                if let self {
+                    self.lock.withLock {
+                        if self.scheduleGeneration == generation {
                             self.pendingFrames = max(0, self.pendingFrames - frames)
                         }
                     }
                 }
             }
-            return true
-        } ?? false
+        }
     }
 
     public var gain: Float {
@@ -139,7 +176,7 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     }
 
     private func applyGainLocked() {
-        engine.mainMixerNode.outputVolume = muted ? 0 : storedGain
+        engine.mainMixerNode.outputVolume = muted ? 0 : storedGain * (monoOut ? AudioEngine.monoFold : 1)
     }
 
     public var pan: Float {
@@ -178,12 +215,12 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     }
 
     public func setOutputDevice(
-        _ device: AudioOutputDevice?, channelOffset: Int = 0
+        _ device: AudioOutputDevice?, channelOffset: Int = 0, mono: Bool = false
     ) throws {
         try lock.withLock {
             let target = device ?? AudioDeviceList.defaultOutputDevice()
 
-            if appliedDeviceID == target?.id, desiredChannelOffset == channelOffset,
+            if appliedDeviceID == target?.id, desiredChannelOffset == channelOffset, monoOut == mono,
                deviceChannelCount == (target?.channelCount ?? 2),
                engine.isRunning == running {
                 return
@@ -197,6 +234,14 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
                 try engine.outputNode.auAudioUnit.setDeviceID(id)
             }
             appliedDeviceID = target?.id
+            if mono != monoOut {
+                monoOut = mono
+                engine.disconnectNodeOutput(engine.mainMixerNode)
+                engine.connect(
+                    engine.mainMixerNode, to: engine.outputNode,
+                    format: mono ? AVAudioFormat(standardFormatWithSampleRate: format.sampleRate, channels: 1)! : format)
+                applyGainLocked()
+            }
             desiredChannelOffset = channelOffset
             deviceChannelCount = target?.channelCount ?? 2
             applyChannelMap()
@@ -211,11 +256,11 @@ public final class AudioInputPlaythrough: @unchecked Sendable {
     private func applyChannelMap() {
         guard let unit = engine.outputNode.audioUnit else { return }
         let channels = max(2, deviceChannelCount)
-        let offset = (desiredChannelOffset + 1 < channels && desiredChannelOffset >= 0)
+        let offset = (desiredChannelOffset + (monoOut ? 0 : 1) < channels && desiredChannelOffset >= 0)
             ? desiredChannelOffset : 0
         var map = [Int32](repeating: -1, count: channels)
         map[offset] = 0
-        map[offset + 1] = 1
+        if !monoOut { map[offset + 1] = 1 }
         let size = UInt32(MemoryLayout<Int32>.size * channels)
         let status = AudioUnitSetProperty(
             unit, kAudioOutputUnitProperty_ChannelMap,

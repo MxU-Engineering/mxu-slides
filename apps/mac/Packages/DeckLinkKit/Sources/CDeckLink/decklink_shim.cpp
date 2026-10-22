@@ -1,5 +1,8 @@
 #include "decklink_shim.h"
 
+#include <mach/mach_time.h>
+
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -25,6 +28,16 @@ struct COMRef {
         return result;
     }
 };
+
+double hostSeconds() {
+    static const mach_timebase_info_data_t timebase = [] {
+        mach_timebase_info_data_t info;
+        mach_timebase_info(&info);
+        return info;
+    }();
+    return (double)mach_absolute_time() * timebase.numer / timebase.denom /
+           1e9;
+}
 
 void writeError(char *error, size_t errorLength, const std::string &message) {
     if (!error || errorLength == 0) return;
@@ -111,8 +124,15 @@ int32_t dlk_copy_devices(DLKDeviceInfo *out, int32_t capacity) {
 
         int64_t ioSupport = 0;
         if (attributes &&
-            attributes->GetInt(BMDDeckLinkVideoIOSupport, &ioSupport) == S_OK)
+            attributes->GetInt(BMDDeckLinkVideoIOSupport, &ioSupport) == S_OK) {
             info.supportsPlayback = (ioSupport & bmdDeviceSupportsPlayback) != 0;
+            info.supportsCapture = (ioSupport & bmdDeviceSupportsCapture) != 0;
+        }
+        int64_t audioChannels = 0;
+        if (attributes &&
+            attributes->GetInt(BMDDeckLinkMaximumAudioChannels, &audioChannels) ==
+                S_OK)
+            info.maxAudioChannels = (int32_t)audioChannels;
         bool flag = false;
         if (attributes &&
             attributes->GetFlag(BMDDeckLinkSupportsInternalKeying, &flag) == S_OK)
@@ -270,7 +290,8 @@ struct DLKOutput {
     IDeckLinkVideoBuffer *frameBuffers[kFrameCount] = {};
     DLKScheduleCallback *callback = nullptr;
 
-    uint8_t *latest = nullptr;
+    static const int kSlotCount = 3;
+    uint8_t *slots[kSlotCount] = {};
     std::mutex mutex;
     BMDTimeValue streamTime = 0;
     BMDTimeValue frameDuration = 0;
@@ -281,6 +302,8 @@ struct DLKOutput {
 
     std::chrono::steady_clock::time_point lastCompletion =
         std::chrono::steady_clock::now();
+
+    DLKOutputTiming timing = {};
     int32_t width = 0;
     int32_t height = 0;
 
@@ -320,15 +343,25 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
         std::lock_guard<std::mutex> guard(output->mutex);
         if (!output->playing) return S_OK;
         output->lastCompletion = std::chrono::steady_clock::now();
-        if (haveHardwareTime &&
-            output->streamTime < hardwareTime + output->frameDuration) {
+        bool jumped = haveHardwareTime &&
+                      output->streamTime < hardwareTime + output->frameDuration;
+        if (jumped) {
             output->streamTime = hardwareTime + 2 * output->frameDuration;
         }
+        DLKCompletionResult tallied = DLKCompletionOnTime;
+        switch (result) {
+            case bmdOutputFrameDisplayedLate: tallied = DLKCompletionLate; break;
+            case bmdOutputFrameDropped: tallied = DLKCompletionDropped; break;
+            case bmdOutputFrameFlushed: tallied = DLKCompletionFlushed; break;
+            default: break;
+        }
+        int32_t slot = dlk_tally_completion(
+            &output->timing, hostSeconds(), tallied, jumped);
         IDeckLinkVideoBuffer *buffer = output->bufferFor(frame);
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, output->latest,
+                memcpy(destination, output->slots[slot],
                        (size_t)output->width * 4 * output->height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
@@ -347,7 +380,6 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
             output->timeScale);
         output->streamTime += output->frameDuration;
     }
-    (void)result;
     return S_OK;
 }
 
@@ -473,10 +505,12 @@ DLKOutput *dlk_output_open(
     handle->height = height;
     handle->frameDuration = frameDuration;
     handle->timeScale = timeScale;
-    handle->latest =
-        (uint8_t *)calloc((size_t)width * 4 * height, 1);
-
-    bool framesReady = handle->latest != nullptr;
+    bool framesReady = true;
+    for (int index = 0; index < DLKOutput::kSlotCount; index += 1) {
+        handle->slots[index] =
+            (uint8_t *)calloc((size_t)width * 4 * height, 1);
+        framesReady = framesReady && handle->slots[index] != nullptr;
+    }
     for (int index = 0; framesReady && index < DLKOutput::kFrameCount;
          index += 1) {
         if (output->CreateVideoFrame(
@@ -496,7 +530,7 @@ DLKOutput *dlk_output_open(
             if (handle->frameBuffers[index]) handle->frameBuffers[index]->Release();
             if (handle->frames[index]) handle->frames[index]->Release();
         }
-        free(handle->latest);
+        for (uint8_t *slot : handle->slots) free(slot);
         delete handle;
         writeError(error, errorLength, "video frame allocation failed");
         return nullptr;
@@ -511,7 +545,7 @@ DLKOutput *dlk_output_open(
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, handle->latest,
+                memcpy(destination, handle->slots[0],
                        (size_t)width * 4 * height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
@@ -530,7 +564,7 @@ DLKOutput *dlk_output_open(
             handle->frames[index]->Release();
         }
         handle->callback->Release();
-        free(handle->latest);
+        for (uint8_t *slot : handle->slots) free(slot);
         delete handle;
         writeError(error, errorLength, "scheduled playback failed to start");
         return nullptr;
@@ -553,11 +587,56 @@ bool dlk_output_display(
     const size_t destinationRow = (size_t)output->width * 4;
     const size_t copyRow =
         bytesPerRow < destinationRow ? bytesPerRow : destinationRow;
+    uint8_t *slot = output->slots[dlk_latch_slot(&output->timing)];
     for (int32_t row = 0; row < output->height; row += 1) {
-        memcpy(output->latest + (size_t)row * destinationRow,
+        memcpy(slot + (size_t)row * destinationRow,
                bgra + (size_t)row * bytesPerRow, copyRow);
     }
     return true;
+}
+
+int32_t dlk_latch_slot(DLKOutputTiming *timing) {
+    if (!timing) return 0;
+    if (timing->waitingCount == 2) {
+        timing->waiting[0] = timing->waiting[1];
+        timing->waitingCount = 1;
+        timing->skips += 1;
+    }
+
+    int32_t slot = 0;
+    while (slot == timing->shownSlot ||
+           (timing->waitingCount > 0 && slot == timing->waiting[0]))
+        slot += 1;
+    timing->waiting[timing->waitingCount] = slot;
+    timing->waitingCount += 1;
+    timing->latched += 1;
+    return slot;
+}
+
+int32_t dlk_tally_completion(
+    DLKOutputTiming *timing, double hostTime, DLKCompletionResult result,
+    bool jumped) {
+    if (!timing) return 0;
+    timing->completions += 1;
+    timing->lastCompletionHostTime = hostTime;
+    if (timing->waitingCount > 0) {
+        timing->shownSlot = timing->waiting[0];
+        timing->waiting[0] = timing->waiting[1];
+        timing->waitingCount -= 1;
+    } else if (timing->latched > 0) {
+
+        timing->repeats += 1;
+    }
+    if (result == DLKCompletionLate) timing->late += 1;
+    if (result == DLKCompletionDropped) timing->dropped += 1;
+    if (jumped) timing->jumps += 1;
+    return timing->shownSlot;
+}
+
+DLKOutputTiming dlk_output_timing(DLKOutput *output) {
+    if (!output) return DLKOutputTiming{};
+    std::lock_guard<std::mutex> guard(output->mutex);
+    return output->timing;
 }
 
 void dlk_output_close(DLKOutput *output) {
@@ -580,8 +659,329 @@ void dlk_output_close(DLKOutput *output) {
     output->callback->Release();
     output->output->Release();
     output->device->Release();
-    free(output->latest);
+    for (uint8_t *slot : output->slots) free(slot);
     delete output;
+}
+
+}
+
+struct DLKInput;
+
+namespace {
+
+bool isInterlaced(BMDFieldDominance dominance) {
+    return dominance == bmdLowerFieldFirst || dominance == bmdUpperFieldFirst;
+}
+
+}
+
+class DLKInputCallback : public IDeckLinkInputCallback {
+public:
+    explicit DLKInputCallback(DLKInput *owner) : owner_(owner) {}
+    HRESULT QueryInterface(REFIID, LPVOID *object) override {
+        *object = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG AddRef() override { return ++refs_; }
+    ULONG Release() override {
+        ULONG remaining = --refs_;
+        if (remaining == 0) delete this;
+        return remaining;
+    }
+    HRESULT VideoInputFormatChanged(
+        BMDVideoInputFormatChangedEvents events, IDeckLinkDisplayMode *mode,
+        BMDDetectedVideoInputFormatFlags flags) override;
+    HRESULT VideoInputFrameArrived(
+        IDeckLinkVideoInputFrame *video,
+        IDeckLinkAudioInputPacket *audio) override;
+
+private:
+    DLKInput *owner_;
+    std::atomic<ULONG> refs_{1};
+};
+
+struct DLKInput {
+    IDeckLink *device = nullptr;
+    IDeckLinkInput *input = nullptr;
+    DLKInputCallback *callback = nullptr;
+    DLKInputFrameHandler onFrame = nullptr;
+    DLKInputFormatHandler onFormat = nullptr;
+    void *context = nullptr;
+    int32_t audioChannels = 2;
+    bool formatDetection = false;
+    std::atomic<bool> interlaced{false};
+
+    std::atomic<uint32_t> currentMode{0};
+
+    std::atomic<bool> closing{false};
+
+    void reportMode(IDeckLinkDisplayMode *mode) {
+        char name[64] = "";
+        CFStringRef modeName = nullptr;
+        if (mode->GetName(&modeName) == S_OK && modeName != nullptr) {
+            CFStringGetCString(modeName, name, (CFIndex)sizeof(name),
+                               kCFStringEncodingUTF8);
+            CFRelease(modeName);
+        }
+        BMDTimeValue duration = 0;
+        BMDTimeScale scale = 0;
+        mode->GetFrameRate(&duration, &scale);
+        bool fields = isInterlaced(mode->GetFieldDominance());
+        interlaced.store(fields);
+        if (onFormat) {
+            onFormat(context, name, (int32_t)mode->GetWidth(),
+                     (int32_t)mode->GetHeight(), duration, scale, fields);
+        }
+    }
+};
+
+HRESULT DLKInputCallback::VideoInputFormatChanged(
+    BMDVideoInputFormatChangedEvents, IDeckLinkDisplayMode *mode,
+    BMDDetectedVideoInputFormatFlags) {
+    DLKInput *owner = owner_;
+    if (!owner || !mode || owner->closing.load()) return S_OK;
+
+    if (!dlk_input_format_needs_restart(
+            owner->currentMode.load(), mode->GetDisplayMode()))
+        return S_OK;
+    owner->currentMode.store(mode->GetDisplayMode());
+
+    owner->input->PauseStreams();
+    owner->input->EnableVideoInput(
+        mode->GetDisplayMode(), bmdFormat8BitYUV,
+        bmdVideoInputEnableFormatDetection);
+    owner->input->FlushStreams();
+    owner->input->StartStreams();
+    owner->reportMode(mode);
+    return S_OK;
+}
+
+HRESULT DLKInputCallback::VideoInputFrameArrived(
+    IDeckLinkVideoInputFrame *video, IDeckLinkAudioInputPacket *audio) {
+    DLKInput *owner = owner_;
+    if (!owner || owner->closing.load() || !owner->onFrame) return S_OK;
+    DLKInputFrame frame = {};
+    frame.hostTime = hostSeconds();
+    frame.captureHostTime = frame.hostTime;
+    frame.interlaced = owner->interlaced.load();
+
+    if (video) {
+        BMDTimeValue frameTime = 0;
+        BMDTimeValue frameDuration = 0;
+        BMDTimeValue hardwareNow = 0;
+        BMDTimeValue timeInFrame = 0;
+        BMDTimeValue ticksPerFrame = 0;
+        if (video->GetHardwareReferenceTimestamp(
+                1000000, &frameTime, &frameDuration) == S_OK &&
+            owner->input->GetHardwareReferenceClock(
+                1000000, &hardwareNow, &timeInFrame, &ticksPerFrame) == S_OK &&
+            hardwareNow >= frameTime && hardwareNow - frameTime < 1000000) {
+            frame.captureHostTime =
+                frame.hostTime - (double)(hardwareNow - frameTime) / 1e6;
+        }
+    }
+    IDeckLinkVideoBuffer *buffer = nullptr;
+    bool accessing = false;
+    if (video) {
+        frame.hasSignal = (video->GetFlags() & bmdFrameHasNoInputSource) == 0;
+        frame.width = (int32_t)video->GetWidth();
+        frame.height = (int32_t)video->GetHeight();
+        frame.rowBytes = (size_t)video->GetRowBytes();
+
+        if (frame.hasSignal && video->GetPixelFormat() == bmdFormat8BitYUV &&
+            video->QueryInterface(IID_IDeckLinkVideoBuffer, (void **)&buffer) ==
+                S_OK &&
+            buffer) {
+            if (buffer->StartAccess(bmdBufferAccessRead) == S_OK) {
+                accessing = true;
+                void *bytes = nullptr;
+                if (buffer->GetBytes(&bytes) == S_OK) {
+                    frame.bytes = (const uint8_t *)bytes;
+                }
+            }
+        }
+    }
+    if (audio) {
+        void *bytes = nullptr;
+        if (audio->GetBytes(&bytes) == S_OK && bytes) {
+            frame.audio = (const int32_t *)bytes;
+            frame.audioFrames = (int32_t)audio->GetSampleFrameCount();
+            frame.audioChannels = owner->audioChannels;
+        }
+    }
+    owner->onFrame(owner->context, &frame);
+    if (buffer) {
+        if (accessing) buffer->EndAccess(bmdBufferAccessRead);
+        buffer->Release();
+    }
+    return S_OK;
+}
+
+extern "C" {
+
+DLKInput *dlk_input_open(
+    int64_t persistentID, int32_t audioChannels,
+    DLKInputFrameHandler onFrame, DLKInputFormatHandler onFormat,
+    void *context, char *error, size_t errorLength) {
+    COMRef<IDeckLink> device;
+    device.pointer = findDevice(persistentID);
+    if (!device) {
+        writeError(error, errorLength,
+                   "DeckLink device not found (unplugged, or Desktop Video "
+                   "not installed)");
+        return nullptr;
+    }
+    COMRef<IDeckLinkInput> input;
+    if (device->QueryInterface(IID_IDeckLinkInput, (void **)input.out()) !=
+            S_OK ||
+        !input) {
+        writeError(error, errorLength,
+                   "device cannot capture (this connector may be mapped as an "
+                   "output in Desktop Video Setup)");
+        return nullptr;
+    }
+
+    COMRef<IDeckLinkProfileAttributes> attributes;
+    device->QueryInterface(
+        IID_IDeckLinkProfileAttributes, (void **)attributes.out());
+    bool formatDetection = false;
+    if (attributes) {
+        attributes->GetFlag(
+            BMDDeckLinkSupportsInputFormatDetection, &formatDetection);
+    }
+
+    int64_t audioConnections = 0;
+    if (attributes &&
+        attributes->GetInt(BMDDeckLinkAudioInputConnections, &audioConnections) ==
+            S_OK &&
+        (audioConnections & bmdAudioConnectionEmbedded) != 0) {
+        COMRef<IDeckLinkConfiguration> configuration;
+        if (device->QueryInterface(IID_IDeckLinkConfiguration,
+                                   (void **)configuration.out()) == S_OK &&
+            configuration) {
+            configuration->SetInt(
+                bmdDeckLinkConfigAudioInputConnection, bmdAudioConnectionEmbedded);
+        }
+    }
+
+    BMDDisplayMode startMode = 0;
+    {
+        bool supported = false;
+        BMDDisplayMode actual = 0;
+        if (input->DoesSupportVideoMode(
+                bmdVideoConnectionUnspecified, bmdModeHD1080p2997,
+                bmdFormat8BitYUV, bmdNoVideoInputConversion,
+                bmdSupportedVideoModeDefault, &actual, &supported) == S_OK &&
+            supported) {
+            startMode = bmdModeHD1080p2997;
+        }
+    }
+    if (!startMode) {
+        COMRef<IDeckLinkDisplayModeIterator> modes;
+        if (input->GetDisplayModeIterator(modes.out()) == S_OK && modes) {
+            IDeckLinkDisplayMode *candidate = nullptr;
+            while (!startMode && modes->Next(&candidate) == S_OK) {
+                COMRef<IDeckLinkDisplayMode> candidateRef;
+                candidateRef.pointer = candidate;
+                bool supported = false;
+                BMDDisplayMode actual = 0;
+                if (input->DoesSupportVideoMode(
+                        bmdVideoConnectionUnspecified,
+                        candidateRef->GetDisplayMode(), bmdFormat8BitYUV,
+                        bmdNoVideoInputConversion, bmdSupportedVideoModeDefault,
+                        &actual, &supported) == S_OK &&
+                    supported) {
+                    startMode = candidateRef->GetDisplayMode();
+                }
+            }
+        }
+    }
+    if (!startMode) {
+        writeError(error, errorLength, "no capture modes on this device");
+        return nullptr;
+    }
+
+    if (input->EnableVideoInput(
+            startMode, bmdFormat8BitYUV,
+            formatDetection ? bmdVideoInputEnableFormatDetection
+                            : bmdVideoInputFlagDefault) != S_OK) {
+        writeError(error, errorLength,
+                   "video input enable failed (input may be in use by another "
+                   "app)");
+        return nullptr;
+    }
+    if (input->EnableAudioInput(
+            bmdAudioSampleRate48kHz, bmdAudioSampleType32bitInteger,
+            (uint32_t)audioChannels) != S_OK) {
+        input->DisableVideoInput();
+        writeError(error, errorLength, "audio input enable failed");
+        return nullptr;
+    }
+
+    DLKInput *handle = new DLKInput();
+    handle->onFrame = onFrame;
+    handle->onFormat = onFormat;
+    handle->context = context;
+    handle->audioChannels = audioChannels;
+    handle->formatDetection = formatDetection;
+    handle->input = input.pointer;
+    handle->currentMode.store(startMode);
+    {
+        COMRef<IDeckLinkDisplayMode> mode;
+        if (input->GetDisplayMode(startMode, mode.out()) == S_OK && mode) {
+            handle->reportMode(mode.pointer);
+        }
+    }
+    handle->callback = new DLKInputCallback(handle);
+    input->SetCallback(handle->callback);
+    if (input->StartStreams() != S_OK) {
+        input->SetCallback(nullptr);
+        input->DisableAudioInput();
+        input->DisableVideoInput();
+        handle->callback->Release();
+        delete handle;
+        writeError(error, errorLength,
+                   "capture failed to start (input may be in use by another "
+                   "app)");
+        return nullptr;
+    }
+    handle->device = device.take();
+    handle->input = input.take();
+    return handle;
+}
+
+void dlk_input_close(DLKInput *input) {
+    if (!input) return;
+    input->closing.store(true);
+    input->input->StopStreams();
+    input->input->SetCallback(nullptr);
+    input->input->DisableAudioInput();
+    input->input->DisableVideoInput();
+    input->callback->Release();
+    input->input->Release();
+    input->device->Release();
+    delete input;
+}
+
+bool dlk_input_format_needs_restart(uint32_t currentMode, uint32_t detectedMode) {
+    return detectedMode != 0 && detectedMode != currentMode;
+}
+
+void dlk_deinterlace_blend(
+    const uint8_t *source, size_t sourceRowBytes,
+    uint8_t *destination, size_t destinationRowBytes,
+    size_t rowLength, int32_t height) {
+    if (!source || !destination || height <= 0) return;
+    for (int32_t row = 0; row + 1 < height; row += 1) {
+        const uint8_t *upper = source + (size_t)row * sourceRowBytes;
+        const uint8_t *lower = upper + sourceRowBytes;
+        uint8_t *out = destination + (size_t)row * destinationRowBytes;
+        for (size_t index = 0; index < rowLength; index += 1) {
+            out[index] = (uint8_t)((upper[index] + lower[index] + 1) >> 1);
+        }
+    }
+    memcpy(destination + (size_t)(height - 1) * destinationRowBytes,
+           source + (size_t)(height - 1) * sourceRowBytes, rowLength);
 }
 
 }

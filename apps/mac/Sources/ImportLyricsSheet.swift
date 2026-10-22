@@ -344,7 +344,7 @@ private struct ImportSlideThumbnail: View {
             TransparencyGrid()
             if let image = ThumbnailStore.shared.slideContent(
                 slide: shown, theme: theme, render: render, model: model,
-                legibleText: false, canvas: canvas, cacheKey: cacheKey
+                canvas: canvas, cacheKey: cacheKey
             ) {
                 Image(decorative: image, scale: 1)
                     .resizable()

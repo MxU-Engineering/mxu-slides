@@ -1,5 +1,6 @@
 import MediaEngine
 import PresenterCore
+import SlideScene
 import SwiftUI
 
 struct PerformanceHUD: View {
@@ -152,12 +153,19 @@ struct TransitionChip: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("\(kindName)\(kindRaw.isEmpty ? "" : String(format: " %.2gs", duration)) — this layer's default; items with their own always win")
+            .help("\(kindName)\(kindRaw.isEmpty ? "" : " " + TransitionEdit.label(seconds: duration)) — this layer's default; items with their own always win")
             if showSlider, !kindRaw.isEmpty {
-                Slider(value: storedDuration, in: 0 ... 5)
-                    .controlSize(.mini)
-                    .tint(Color.primary.opacity(0.2))
-                    .frame(width: 56)
+
+                Slider(value: $duration, in: TransitionEdit.durationRange) { editing in
+                    if !editing { storedDuration.wrappedValue = (duration / TransitionEdit.durationStep).rounded() * TransitionEdit.durationStep }
+                }
+                .controlSize(.mini)
+                .tint(Color.primary.opacity(0.2))
+                .frame(width: 56)
+                Text(TransitionEdit.label(seconds: duration))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .leading)
             }
         }
         .onAppear(perform: reload)
@@ -175,7 +183,9 @@ struct TransitionChip: View {
                 .labelsHidden()
                 if !kindRaw.isEmpty {
                     BoundedSliderRow(
-                        label: "Duration", value: storedDuration, range: 0 ... 5, step: 0.05
+                        label: "Duration", value: storedDuration,
+                        range: TransitionEdit.durationRange, step: TransitionEdit.durationStep,
+                        typedRange: TransitionEdit.typedRange
                     )
                 }
             }
@@ -206,7 +216,7 @@ struct TransitionChip: View {
 
     private func reload() {
         kindRaw = UserDefaults.standard.string(forKey: kindKey) ?? fallbackKind
-        let stored = UserDefaults.standard.double(forKey: durationKey)
-        duration = stored > 0 ? stored : fallbackDuration
+
+        duration = UserDefaults.standard.object(forKey: durationKey) as? Double ?? fallbackDuration
     }
 }

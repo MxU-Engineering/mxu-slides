@@ -908,18 +908,15 @@ public struct RenderScene: Equatable, Sendable {
         layers[index].isHidden = hidden
     }
 
-    public var isTimeVarying: Bool {
+    public var animatesOnHostTime: Bool {
         layers.contains { layer in
             !layer.isHidden && layer.items.contains { item in
 
                 if item.animationContext != nil, !item.animationSteps.isEmpty { return true }
-                return switch item.content {
-                case .media: true
-                case .text(let text): text.tickerSpeed != 0 || (text.scroll?.speed ?? 0) > 0
-
-                case .shape: item.content.mediaID != nil
-                case .solid: false
+                if case .text(let text) = item.content {
+                    return text.tickerSpeed != 0 || (text.scroll?.speed ?? 0) > 0
                 }
+                return false
             }
         }
     }

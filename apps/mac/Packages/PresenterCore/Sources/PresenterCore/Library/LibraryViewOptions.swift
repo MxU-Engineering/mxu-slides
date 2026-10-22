@@ -1,21 +1,28 @@
 import Foundation
 
 public enum LibrarySort: String, CaseIterable, Sendable {
-    case name, dateModified, recentlyUsed
+    case name, dateModified, recentlyUsed, dateAdded
 
     public var title: String {
         switch self {
         case .name: "Name"
         case .dateModified: "Date Modified"
         case .recentlyUsed: "Recently Used"
+        case .dateAdded: "Date Added"
         }
+    }
+
+    public static func choices(for kind: DocumentKind) -> [LibrarySort] {
+        kind == .media ? allCases : allCases.filter { $0 != .dateAdded }
     }
 
     public static func defaultsKey(section: String) -> String {
         "library.sort." + section
     }
 
-    public func ordered(_ entries: [LibraryIndex.Entry]) -> [LibraryIndex.Entry] {
+    public func ordered(
+        _ entries: [LibraryIndex.Entry], addedAt: (String) -> Date? = { _ in nil }
+    ) -> [LibraryIndex.Entry] {
         switch self {
         case .name:
             entries
@@ -26,6 +33,11 @@ public enum LibrarySort: String, CaseIterable, Sendable {
                 let (a, b) = ($0.element.lastUsedAt ?? .distantPast, $1.element.lastUsedAt ?? .distantPast)
                 return a == b ? $0.offset < $1.offset : a > b
             }.map(\.element)
+        case .dateAdded:
+            entries.map { ($0, addedAt($0.id) ?? .distantPast) }.enumerated().sorted {
+                let (a, b) = ($0.element.1, $1.element.1)
+                return a == b ? $0.offset < $1.offset : a > b
+            }.map(\.element.0)
         }
     }
 }
@@ -44,8 +56,12 @@ public enum LibraryBrowserRow: Equatable, Sendable, Identifiable {
 
 extension LibrarySort {
 
-    public func merged(_ held: [LibraryIndex.Entry], cloud: [TeamCloudItem]) -> [LibraryBrowserRow] {
-        let cloudKeys = cloud.map { RowKey(name: $0.name, updated: $0.updatedAt ?? .distantPast, used: .distantPast) }
+    public func merged(
+        _ held: [LibraryIndex.Entry], cloud: [TeamCloudItem], addedAt: (String) -> Date? = { _ in nil }
+    ) -> [LibraryBrowserRow] {
+        let cloudKeys = cloud.map {
+            RowKey(name: $0.name, updated: $0.updatedAt ?? .distantPast, used: .distantPast, added: .distantPast)
+        }
         let sortedCloud = zip(cloud, cloudKeys).enumerated()
             .sorted { precedes($0.element.1, $1.element.1) || (!precedes($1.element.1, $0.element.1) && $0.offset < $1.offset) }
             .map(\.element)
@@ -53,7 +69,9 @@ extension LibrarySort {
         rows.reserveCapacity(held.count + cloud.count)
         var next = 0
         for entry in held {
-            let key = RowKey(name: entry.name, updated: entry.updatedAt, used: entry.lastUsedAt ?? .distantPast)
+            let key = RowKey(
+                name: entry.name, updated: entry.updatedAt, used: entry.lastUsedAt ?? .distantPast,
+                added: addedAt(entry.id) ?? .distantPast)
             while next < sortedCloud.count, precedes(sortedCloud[next].1, key) {
                 rows.append(.cloud(sortedCloud[next].0))
                 next += 1
@@ -68,6 +86,7 @@ extension LibrarySort {
         var name: String
         var updated: Date
         var used: Date
+        var added: Date
     }
 
     private func precedes(_ a: RowKey, _ b: RowKey) -> Bool {
@@ -76,6 +95,7 @@ extension LibrarySort {
         case .name: byName
         case .dateModified: a.updated == b.updated ? byName : a.updated > b.updated
         case .recentlyUsed: a.used == b.used ? byName : a.used > b.used
+        case .dateAdded: a.added == b.added ? byName : a.added > b.added
         }
     }
 }
@@ -93,5 +113,29 @@ public enum UpcomingUse {
 
     public static func references(of service: Service) -> Set<String> {
         Set(ServiceVersions.allItems(service).flatMap { [$0.refId, $0.mxuMessageNotesDeckDocId].compactMap(\.self) }).subtracting([""])
+    }
+}
+
+public enum MediaPickerSort: String, CaseIterable, Sendable {
+    case bestMatch, lastUsed, dateAdded
+
+    public static let defaultsKey = "mediaPicker.sort"
+
+    public var title: String {
+        switch self {
+        case .lastUsed: "Last Used"
+        case .bestMatch: "Best Match"
+        case .dateAdded: "Date Added"
+        }
+    }
+
+    public func ordered(
+        _ entries: [LibraryIndex.Entry], typed: Bool, addedAt: (String) -> Date?
+    ) -> [LibraryIndex.Entry] {
+        switch self {
+        case .bestMatch where typed: entries
+        case .lastUsed, .bestMatch: LibrarySort.recentlyUsed.ordered(entries)
+        case .dateAdded: LibrarySort.dateAdded.ordered(entries, addedAt: addedAt)
+        }
     }
 }

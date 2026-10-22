@@ -879,6 +879,120 @@ public enum PresentationKind: String, Codable, Sendable, CaseIterable, Equatable
     case deck
 }
 
+public struct TimelineCue: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var lane: String
+    public var at: Double
+    public var duration: Double?
+    public var sectionId: String?
+    public var sectionOccurrence: Int?
+    public var slideId: String?
+    public var mediaId: String?
+    public var overlayId: String?
+    public var alertId: String?
+    public var liveInputId: String?
+    public var actions: [SlideAction]?
+    public var inPoint: Double?
+    public var fadeIn: ClipFade?
+    public var fadeOut: ClipFade?
+    public var edgeFades: Bool?
+
+    public init(id: String, lane: String, at: Double, duration: Double? = nil, sectionId: String? = nil, sectionOccurrence: Int? = nil, slideId: String? = nil, mediaId: String? = nil, overlayId: String? = nil, alertId: String? = nil, liveInputId: String? = nil, actions: [SlideAction]? = nil, inPoint: Double? = nil, fadeIn: ClipFade? = nil, fadeOut: ClipFade? = nil, edgeFades: Bool? = nil) {
+        self.id = id
+        self.lane = lane
+        self.at = at
+        self.duration = duration
+        self.sectionId = sectionId
+        self.sectionOccurrence = sectionOccurrence
+        self.slideId = slideId
+        self.mediaId = mediaId
+        self.overlayId = overlayId
+        self.alertId = alertId
+        self.liveInputId = liveInputId
+        self.actions = actions
+        self.inPoint = inPoint
+        self.fadeIn = fadeIn
+        self.fadeOut = fadeOut
+        self.edgeFades = edgeFades
+    }
+}
+
+public struct ClipFade: Codable, Sendable, Equatable {
+    public var seconds: Double
+    public var shape: String?
+    public var midpoint: Double?
+    public var placement: String?
+
+    public init(seconds: Double, shape: String? = nil, midpoint: Double? = nil, placement: String? = nil) {
+        self.seconds = seconds
+        self.shape = shape
+        self.midpoint = midpoint
+        self.placement = placement
+    }
+}
+
+public struct PresentationTimeline: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var arrangementId: String?
+    public var timecodeEnabled: Bool
+    public var timecodeStart: Int
+    public var length: Double?
+    public var cues: [TimelineCue]
+    public var mapLayout: [SongMapBlock]?
+
+    public init(id: String, arrangementId: String? = nil, timecodeEnabled: Bool, timecodeStart: Int, length: Double? = nil, cues: [TimelineCue], mapLayout: [SongMapBlock]? = nil) {
+        self.id = id
+        self.arrangementId = arrangementId
+        self.timecodeEnabled = timecodeEnabled
+        self.timecodeStart = timecodeStart
+        self.length = length
+        self.cues = cues
+        self.mapLayout = mapLayout
+    }
+}
+
+public struct SongMap: Codable, Sendable, Equatable {
+    public var recording: [TimelineCue]
+    public var sections: [AudioSection]
+    public var source: String?
+
+    public init(recording: [TimelineCue], sections: [AudioSection], source: String? = nil) {
+        self.recording = recording
+        self.sections = sections
+        self.source = source
+    }
+}
+
+public struct AudioSection: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var start: Double
+    public var sectionId: String?
+
+    public init(id: String, name: String, start: Double, sectionId: String? = nil) {
+        self.id = id
+        self.name = name
+        self.start = start
+        self.sectionId = sectionId
+    }
+}
+
+public struct SongMapBlock: Codable, Sendable, Equatable {
+    public var sectionId: String?
+    public var occurrence: Int
+    public var start: Double
+    public var length: Double
+    public var audioSectionIds: [String]
+
+    public init(sectionId: String? = nil, occurrence: Int, start: Double, length: Double, audioSectionIds: [String]) {
+        self.sectionId = sectionId
+        self.occurrence = occurrence
+        self.start = start
+        self.length = length
+        self.audioSectionIds = audioSectionIds
+    }
+}
+
 public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
@@ -899,10 +1013,13 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var chordProSource: String?
     public var musicKey: String?
     public var autoAdvance: AutoAdvance?
+    public var transition: Transition?
     public var displayKey: String?
     public var origin: PresentationOrigin?
+    public var timelines: [PresentationTimeline]?
+    public var songMap: SongMap?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, displayKey: String? = nil, origin: PresentationOrigin? = nil, timelines: [PresentationTimeline]? = nil, songMap: SongMap? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -922,8 +1039,11 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.chordProSource = chordProSource
         self.musicKey = musicKey
         self.autoAdvance = autoAdvance
+        self.transition = transition
         self.displayKey = displayKey
         self.origin = origin
+        self.timelines = timelines
+        self.songMap = songMap
     }
 }
 
@@ -968,11 +1088,12 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var folder: String?
     public var folderId: String?
     public var recordedAt: Double?
+    public var importedAt: Double?
     public var recordedByPresetId: String?
     public var actions: [SlideAction]?
     public var autoAdvance: AutoAdvance?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -996,6 +1117,7 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.folder = folder
         self.folderId = folderId
         self.recordedAt = recordedAt
+        self.importedAt = importedAt
         self.recordedByPresetId = recordedByPresetId
         self.actions = actions
         self.autoAdvance = autoAdvance
@@ -1039,13 +1161,11 @@ public struct PlaylistEntry: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var refKind: PlaylistRefKind
     public var refId: String
-    public var autoAdvanceDelaySeconds: Double?
 
-    public init(id: String, refKind: PlaylistRefKind, refId: String, autoAdvanceDelaySeconds: Double? = nil) {
+    public init(id: String, refKind: PlaylistRefKind, refId: String) {
         self.id = id
         self.refKind = refKind
         self.refId = refId
-        self.autoAdvanceDelaySeconds = autoAdvanceDelaySeconds
     }
 }
 
@@ -1083,10 +1203,8 @@ public struct Playlist: Codable, Sendable, Equatable, Identifiable {
     public var playbackMode: PlaybackMode
     public var shuffle: Bool?
     public var crossfadeSeconds: Double?
-    public var autoAdvance: Bool?
-    public var autoAdvanceDelaySeconds: Double?
 
-    public init(id: String, name: String, playlistKind: PlaylistKind? = nil, entries: [PlaylistEntry], playbackMode: PlaybackMode, shuffle: Bool? = nil, crossfadeSeconds: Double? = nil, autoAdvance: Bool? = nil, autoAdvanceDelaySeconds: Double? = nil) {
+    public init(id: String, name: String, playlistKind: PlaylistKind? = nil, entries: [PlaylistEntry], playbackMode: PlaybackMode, shuffle: Bool? = nil, crossfadeSeconds: Double? = nil) {
         self.id = id
         self.name = name
         self.playlistKind = playlistKind
@@ -1094,8 +1212,6 @@ public struct Playlist: Codable, Sendable, Equatable, Identifiable {
         self.playbackMode = playbackMode
         self.shuffle = shuffle
         self.crossfadeSeconds = crossfadeSeconds
-        self.autoAdvance = autoAdvance
-        self.autoAdvanceDelaySeconds = autoAdvanceDelaySeconds
     }
 }
 
@@ -1141,8 +1257,9 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var mxuBpm: Double?
     public var mxuTimeSignature: String?
     public var mxuSongKeyApplied: String?
+    public var transition: SongTransition?
 
-    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuPcoItemId: String? = nil, mxuPcoSongId: String? = nil, mxuPcoArrangementId: String? = nil, mxuPcoKeyId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil) {
+    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuPcoItemId: String? = nil, mxuPcoSongId: String? = nil, mxuPcoArrangementId: String? = nil, mxuPcoKeyId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, transition: SongTransition? = nil) {
         self.id = id
         self.itemKind = itemKind
         self.name = name
@@ -1175,6 +1292,17 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         self.mxuBpm = mxuBpm
         self.mxuTimeSignature = mxuTimeSignature
         self.mxuSongKeyApplied = mxuSongKeyApplied
+        self.transition = transition
+    }
+}
+
+public struct SongTransition: Codable, Sendable, Equatable {
+    public var kind: String
+    public var seconds: Double?
+
+    public init(kind: String, seconds: Double? = nil) {
+        self.kind = kind
+        self.seconds = seconds
     }
 }
 
@@ -1305,8 +1433,9 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
     public var mxuDerivedName: String?
     public var mxuSyncPaused: Bool?
     public var versions: [ServiceVersion]?
+    public var timecodeByOrder: Bool?
 
-    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil) {
+    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, timecodeByOrder: Bool? = nil) {
         self.id = id
         self.name = name
         self.serviceDate = serviceDate
@@ -1321,6 +1450,7 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
         self.mxuDerivedName = mxuDerivedName
         self.mxuSyncPaused = mxuSyncPaused
         self.versions = versions
+        self.timecodeByOrder = timecodeByOrder
     }
 }
 
@@ -1635,6 +1765,7 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
 public enum CaptureSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case camera
     case ndi
+    case decklink
 }
 
 public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable {
@@ -1711,11 +1842,9 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var audioItemId: String?
     public var audioEntryId: String?
     public var audioRepeat: Bool?
-    public var signageId: String?
-    public var screenId: String?
     public var delaySeconds: Double?
 
-    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil) {
+    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, delaySeconds: Double? = nil) {
         self.id = id
         self.kind = kind
         self.layer = layer
@@ -1748,8 +1877,6 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
         self.audioItemId = audioItemId
         self.audioEntryId = audioEntryId
         self.audioRepeat = audioRepeat
-        self.signageId = signageId
-        self.screenId = screenId
         self.delaySeconds = delaySeconds
     }
 }
@@ -2040,6 +2167,7 @@ public enum TextSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case currentGroup
     case currentPresentation
     case nextServiceTitle
+    case timecode
 }
 
 public enum TimerTextFormat: String, Codable, Sendable, CaseIterable, Equatable {
@@ -2161,28 +2289,6 @@ public struct ConfidenceLayout: Codable, Sendable, Equatable, Identifiable {
         self.animationOrder = animationOrder
         self.buildOrder = buildOrder
         self.multiView = multiView
-    }
-}
-
-public struct SignageChannel: Codable, Sendable, Equatable, Identifiable {
-    public var id: String
-    public var name: String
-    public var playlistId: String?
-
-    public init(id: String, name: String, playlistId: String? = nil) {
-        self.id = id
-        self.name = name
-        self.playlistId = playlistId
-    }
-}
-
-public struct SignageBoard: Codable, Sendable, Equatable, Identifiable {
-    public var id: String
-    public var signages: [SignageChannel]
-
-    public init(id: String, signages: [SignageChannel]) {
-        self.id = id
-        self.signages = signages
     }
 }
 
@@ -2528,11 +2634,10 @@ public struct WorkspaceSettings: Codable, Sendable, Equatable, Identifiable {
     public var controlMappings: String?
     public var audio: String?
     public var confidence: String?
-    public var signage: String?
     public var inputs: String?
     public var behavior: String?
 
-    public init(id: String, screens: String? = nil, timers: String? = nil, transitions: String? = nil, controlMappings: String? = nil, audio: String? = nil, confidence: String? = nil, signage: String? = nil, inputs: String? = nil, behavior: String? = nil) {
+    public init(id: String, screens: String? = nil, timers: String? = nil, transitions: String? = nil, controlMappings: String? = nil, audio: String? = nil, confidence: String? = nil, inputs: String? = nil, behavior: String? = nil) {
         self.id = id
         self.screens = screens
         self.timers = timers
@@ -2540,8 +2645,65 @@ public struct WorkspaceSettings: Codable, Sendable, Equatable, Identifiable {
         self.controlMappings = controlMappings
         self.audio = audio
         self.confidence = confidence
-        self.signage = signage
         self.inputs = inputs
         self.behavior = behavior
+    }
+}
+
+public struct TrackChannel: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var role: String?
+    public var colorHex: String?
+    public var matchNames: [String]?
+    public var mono: Bool?
+
+    public init(id: String, name: String, role: String? = nil, colorHex: String? = nil, matchNames: [String]? = nil, mono: Bool? = nil) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.colorHex = colorHex
+        self.matchNames = matchNames
+        self.mono = mono
+    }
+}
+
+public struct TrackChannelList: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var channels: [TrackChannel]
+
+    public init(id: String, channels: [TrackChannel]) {
+        self.id = id
+        self.channels = channels
+    }
+}
+
+public struct TrackSetStem: Codable, Sendable, Equatable {
+    public var audioId: String
+    public var name: String
+    public var channelId: String?
+
+    public init(audioId: String, name: String, channelId: String? = nil) {
+        self.audioId = audioId
+        self.name = name
+        self.channelId = channelId
+    }
+}
+
+public struct TrackSet: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var stems: [TrackSetStem]
+    public var key: String?
+    public var tempo: Double?
+    public var source: String?
+
+    public init(id: String, name: String, stems: [TrackSetStem], key: String? = nil, tempo: Double? = nil, source: String? = nil) {
+        self.id = id
+        self.name = name
+        self.stems = stems
+        self.key = key
+        self.tempo = tempo
+        self.source = source
     }
 }

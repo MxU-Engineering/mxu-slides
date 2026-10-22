@@ -30,7 +30,7 @@ final class SlideEditorModel {
     }
 
     let appModel: AppModel
-    private let render: RenderContext?
+    let render: RenderContext?
     @ObservationIgnored private var host: Host
 
     @ObservationIgnored private var token: EditorToken
@@ -247,6 +247,7 @@ final class SlideEditorModel {
     var stepAddArmed = false
 
     @ObservationIgnored private var liveMediaIDs: Set<String> = []
+    @ObservationIgnored private var observingMediaFiles = false
     @ObservationIgnored private var themeCache: (id: String, fill: Int, theme: Theme?)?
 
     @ObservationIgnored private var lastCommitted: [String] = []
@@ -390,6 +391,8 @@ final class SlideEditorModel {
         endSession()
         render?.media.stopAll(withPrefix: Self.editorMediaPrefix)
         liveMediaIDs = []
+        appModel.stopObservingMediaFileChanges(self)
+        observingMediaFiles = false
     }
 
     func endSession() {
@@ -545,6 +548,46 @@ final class SlideEditorModel {
                 presentation.themeId = id
             }
         }
+    }
+
+    func applyTheme(_ themeId: String, design: String?) {
+        if case .presentation = host, let design, let theme = appModel.theme(themeId) {
+            let every = Set(presentation.slides.map(\.id))
+            if presentation.slides(every, allFollow: themeId, design: design) {
+                reapplyTheme()
+            } else {
+                let appModel = appModel
+                updateDocument { presentation in
+                    let followed = Set(presentation.slides.map { presentation.themeId(for: $0) } + [themeId])
+                    let themes = Dictionary(uniqueKeysWithValues: followed.compactMap { id in
+                        appModel.theme(id).map { (id, $0) }
+                    })
+                    presentation.applyTheme(theme, toSlides: every, design: design, themes: themes)
+                    presentation.clearSlideThemes()
+                    presentation.themeId = themeId
+                }
+            }
+        } else {
+            setTheme(themeId)
+        }
+    }
+
+    func pickThemeSlide(_ name: String?, themeId: String, for slideID: String) {
+        let followsDeck = presentation.slides.first { $0.id == slideID }?.themeId?.isEmpty != false
+        if themeId == presentation.themeId, followsDeck {
+            setThemeSlide(name, for: slideID)
+        } else {
+            setThemeSlide(name, themeId: themeId, for: slideID)
+        }
+    }
+
+    var choosingDeckTheme = false
+    var choosingSlideTheme = false
+
+    var slideThemeTargetID: String?
+
+    var hasPresentationSettings: Bool {
+        if case .presentation = host { true } else { false }
     }
 
     var presentationHasSlideThemes: Bool {
@@ -781,7 +824,9 @@ final class SlideEditorModel {
         }
     }
 
-    func beginCanvasTextEdit(objectID: String) {
+    private(set) var canvasTextEditStartCaret: Int?
+
+    func beginCanvasTextEdit(objectID: String, caretUTF16: Int? = nil) {
         guard let objects = currentSlide?.objects,
               let object = objects.first(where: { $0.id == objectID }),
 
@@ -789,6 +834,7 @@ final class SlideEditorModel {
         else { return }
         selectedObjectIDs = EditorGeometry.expandSelectionToGroups([objectID], in: objects)
         canvasTextEditStyle = resolvedStyledText(objectID: objectID)
+        canvasTextEditStartCaret = caretUTF16
         canvasTextEditID = objectID
         refreshScene()
     }
@@ -891,6 +937,28 @@ final class SlideEditorModel {
         }
     }
 
+    func canvasTextChordClip(utf16Range: NSRange) -> ChordClipboard.Payload? {
+        if let object = canvasEditedObject, let chords = object.chords, !chords.isEmpty {
+            let selection = TextStyleRuns.characterRange(
+                fromUTF16: utf16Range.location, length: utf16Range.length, in: object.text
+            )
+            return ChordClipboard.copying(selection, of: object.text, chords: chords)
+        } else {
+            return nil
+        }
+    }
+
+    func applyPastedChords(_ payload: ChordClipboard.Payload, atUTF16 location: Int) {
+        if let id = canvasTextEditID {
+            updateObject(id: id) { object in
+                let position = TextStyleRuns.characterRange(fromUTF16: location, length: 0, in: object.text).lowerBound
+                object.chords = ChordClipboard.pasting(
+                    payload, at: position, into: object.text, chords: object.chords ?? []
+                )
+            }
+        }
+    }
+
     func canvasTextWillReplace(utf16Range: NSRange, replacement: String) {
         guard let id = canvasTextEditID, let object = canvasEditedObject,
               object.styleRuns?.isEmpty == false || object.chords?.isEmpty == false
@@ -899,25 +967,29 @@ final class SlideEditorModel {
         let replaced = TextStyleRuns.characterRange(
             fromUTF16: utf16Range.location, length: utf16Range.length, in: object.text
         )
-        updateObject(id: id) { object in
-            let old = object.text
-            let runs = TextStyleRuns.replacing(
-                object.styleRuns ?? [], range: replaced, with: replacement, in: old
-            )
-            object.styleRuns = runs.isEmpty ? nil : runs
-            if let chords = object.chords, !chords.isEmpty {
-                let moved = TextStyleRuns.replacing(chords, range: replaced, with: replacement, in: old)
-                object.chords = moved.isEmpty ? nil : moved
-            }
+        updateObject(id: id) { $0.replaceText(replaced, with: replacement) }
+    }
 
-            if let animationSteps = object.animationSteps, animationSteps.contains(where: { !($0.ranges ?? []).isEmpty }) {
-                let moved = AnimationRanges.reanchor(animationSteps, range: replaced, with: replacement, in: old)
-                object.animationSteps = moved.isEmpty ? nil : moved
+    var canSplitSlideAtCanvasCaret: Bool {
+        !isThemeEditor && canvasEditedObject != nil
+    }
+
+    @discardableResult
+    func splitSlideAtCanvasCaret(_ caret: Int) -> Bool {
+        var split = false
+        if canSplitSlideAtCanvasCaret, let id = canvasTextEditID, let slideID = selectedSlideID,
+           let object = canvasEditedObject {
+            let position = TextStyleRuns.characterRange(fromUTF16: caret, length: 0, in: object.text).lowerBound
+            var made: (slideID: String, objectID: String)?
+            updateDocument { made = SlideBulkEdit.splitSlide(slideID, objectID: id, at: position, in: &$0) }
+            if let made {
+                endCanvasTextEdit()
+                selectSlide(made.slideID)
+                beginCanvasTextEdit(objectID: made.objectID, caretUTF16: 0)
+                split = true
             }
-            let start = old.index(old.startIndex, offsetBy: min(replaced.lowerBound, old.count))
-            let end = old.index(old.startIndex, offsetBy: min(replaced.upperBound, old.count))
-            object.text = old.replacingCharacters(in: start..<end, with: replacement)
         }
+        return split
     }
 
     private func resolvedStyledText(objectID: String) -> StyledText? {
@@ -1206,7 +1278,7 @@ final class SlideEditorModel {
     func deleteSlides(_ ids: [String]) {
         let targets = Set(ids)
         let survivors = presentation.slides.filter { !targets.contains($0.id) }
-        if !survivors.isEmpty, survivors.count < presentation.slides.count {
+        if !(isThemeEditor && survivors.isEmpty), survivors.count < presentation.slides.count {
             let firstIndex = presentation.slides.firstIndex { targets.contains($0.id) } ?? 0
             updateDocument { SlideBulkEdit.deleteSlides(ids, in: &$0) }
             reselectAfterRemoval(of: targets, firstIndex: firstIndex)
@@ -1215,9 +1287,13 @@ final class SlideEditorModel {
 
     private func reselectAfterRemoval(of targets: Set<String>, firstIndex: Int) {
         if let current = selectedSlideID, targets.contains(current) {
-            let fallback = presentation.slides[min(firstIndex, presentation.slides.count - 1)].id
             selectedSlideID = nil
-            selectSlide(fallback)
+            if presentation.slides.isEmpty {
+                selectedSlideIDs = []
+                selectedObjectIDs = []
+            } else {
+                selectSlide(presentation.slides[min(firstIndex, presentation.slides.count - 1)].id)
+            }
         }
     }
 
@@ -1261,6 +1337,10 @@ final class SlideEditorModel {
 
     @discardableResult
     func dropMediaObject(mediaID: String, at scenePoint: CGPoint) -> Bool {
+
+        if presentation.slides.isEmpty {
+            return insertMediaSlide(mediaID: mediaID, beforeSlideID: nil)
+        }
         guard let item = appModel.media(mediaID)
         else { return false }
         let canvas = canvasSize
@@ -1991,15 +2071,10 @@ final class SlideEditorModel {
 
     func setCanvasSize(width: Int, height: Int) {
         guard width > 0, height > 0 else { return }
+        let stored = SlideSceneBuilder.storedCanvas(width: width, height: height)
         updateDocument { presentation in
-            if width == Int(SlideSceneBuilder.canvasSize.width),
-                height == Int(SlideSceneBuilder.canvasSize.height) {
-                presentation.canvasWidth = nil
-                presentation.canvasHeight = nil
-            } else {
-                presentation.canvasWidth = width
-                presentation.canvasHeight = height
-            }
+            presentation.canvasWidth = stored.width
+            presentation.canvasHeight = stored.height
         }
     }
 
@@ -2047,6 +2122,29 @@ final class SlideEditorModel {
                 presentation.slides.insert(
                     contentsOf: items.map { Slide.droppedMedia($0, sectionId: neighbor?.sectionId) },
                     at: index)
+            }
+
+            if selectedSlideID == nil, let first = presentation.slides.first {
+                selectSlide(first.id)
+            }
+            return true
+        }
+    }
+
+    @discardableResult
+    func insertMediaSlides(mediaIDs: [String], afterSlideID: String) -> Bool {
+        let items = isThemeEditor ? [] : mediaIDs.compactMap { appModel.media($0) }
+        if items.isEmpty {
+            return false
+        } else {
+            updateDocument { presentation in
+                if let index = presentation.slides.firstIndex(where: { $0.id == afterSlideID }) {
+                    presentation.slides.insert(
+                        contentsOf: items.map {
+                            Slide.droppedMedia($0, sectionId: presentation.slides[index].sectionId)
+                        },
+                        at: index + 1)
+                }
             }
             return true
         }
@@ -3090,6 +3188,16 @@ final class SlideEditorModel {
 
     private func syncMedia(for slide: Slide) {
         guard let render else { return }
+
+        if !observingMediaFiles {
+            observingMediaFiles = true
+            appModel.observeMediaFileChanges(self) { [weak self] id in
+                if let self, self.liveMediaIDs.contains(id) {
+                    self.liveMediaIDs.remove(id)
+                    self.refreshScene()
+                }
+            }
+        }
 
         var wanted = Set(slide.objects.compactMap(SlideSceneBuilder.fillMediaID))
 

@@ -8,7 +8,6 @@ extension SlideActionKind {
         case .clearLayer: "Clear Layer"
         case .clearAll: "Clear All"
         case .clearAudio: "Clear Music"
-        case .clearSignage: "Clear Signage"
         case .switchOutputPreset: "Switch Output Preset"
         case .fireMedia: "Fire Media"
         case .fireAlert: "Fire Alert"
@@ -26,8 +25,8 @@ extension SlideActionKind {
         case .fireOverlay: "Fire Overlay"
         case .dismissOverlay: "Take Down Overlay"
         case .fireLiveInput: "Fire Live Input"
-        case .setSignage: "Set Signage Content"
-        case .setScreenSource: "Set Screen Source"
+
+        case .setSignage, .setScreenSource, .clearSignage: "Signage (removed)"
         case .enableAudioInput: "Audio Input On"
         case .disableAudioInput: "Audio Input Off"
         case .fireAudio: "Music File"
@@ -162,7 +161,6 @@ struct ActionParameterFields: View {
 
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @Environment(\.signage) private var signage
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
@@ -200,7 +198,7 @@ struct ActionParameterFields: View {
                 HStack(spacing: 4) {
                     Button(mediaName(action.mediaId)) { pickMedia() }
                     if let id = action.mediaId, !id.isEmpty {
-                        openInEditorButton(id, help: "Edit Media")
+                        openInEditorButton(id, help: "Open this media item: trim, effects and its file. Changes there apply everywhere it's used.")
                     }
                 }
             }
@@ -389,34 +387,10 @@ struct ActionParameterFields: View {
                     }
                 }
             }
-        case .setSignage:
-            Picker("Signage", selection: stringBinding(action, \.signageId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Text(channel.name).tag(channel.id)
-                }
-            }
-            Picker("Playlist", selection: stringBinding(action, \.playlistId)) {
-
-                Text("Choose\u{2026}").tag("")
-                ForEach(model.playlists(in: .media), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-        case .setScreenSource:
-            Picker("Screen", selection: stringBinding(action, \.screenId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(signage?.screens ?? [], id: \.id) { screen in
-                    Text(screen.name).tag(screen.id.uuidString)
-                }
-            }
-            Picker("Source", selection: stringBinding(action, \.signageId)) {
-
-                Text("Program").tag("")
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Text("Signage — \(channel.name)").tag(channel.id)
-                }
-            }
+        case .setSignage, .setScreenSource, .clearSignage:
+            Text("Digital Signage was removed. This step does nothing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .enableAudioInput, .disableAudioInput:
             Picker("Input", selection: stringBinding(action, \.audioInputId)) {
                 Text("Choose\u{2026}").tag("")
@@ -431,7 +405,7 @@ struct ActionParameterFields: View {
                         pickAudio()
                     }
                     if let id = action.audioItemId, !id.isEmpty {
-                        openInEditorButton(id, help: "Edit Music")
+                        openInEditorButton(id, help: "Open this music item. Changes there apply everywhere it's used.")
                     }
                 }
             }
@@ -448,7 +422,7 @@ struct ActionParameterFields: View {
                 }
             }
             repeatPicker(action)
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .clearAudio, .dismissAlert:
             EmptyView()
         }
     }
@@ -513,15 +487,11 @@ struct ActionParameterFields: View {
     }
 
     private func openInEditorButton(_ entryID: String, help: String) -> some View {
-        Button {
+        Button("Edit…") {
             model.openInEditor(entryID: entryID)
             appModeRaw = AppMode.edit.rawValue
-        } label: {
-            Image(systemName: "pencil")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .controlSize(.small)
         .help(help)
     }
 
@@ -558,12 +528,14 @@ struct SlideActionsSheet: View {
     let slideName: String
     @Binding var actions: [SlideAction]
 
+    var title: String? = nil
+
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(slideName.isEmpty ? "Slide Actions" : "Slide Actions — \(slideName)")
+                Text(title ?? (slideName.isEmpty ? "Slide Actions" : "Slide Actions — \(slideName)"))
                     .font(.headline)
                 Spacer()
             }
@@ -590,6 +562,8 @@ struct SlideActionsSheet: View {
 struct ActionPlacementSheet: View {
     let model: AppModel
     var editingComboID: String? = nil
+
+    var editing = false
     @State private var draft: SlideAction
     let commit: (SlideAction) -> Void
 
@@ -599,11 +573,12 @@ struct ActionPlacementSheet: View {
     @State private var pickingAudio = false
 
     init(
-        model: AppModel, editingComboID: String? = nil,
+        model: AppModel, editingComboID: String? = nil, editing: Bool = false,
         draft: SlideAction, commit: @escaping (SlideAction) -> Void
     ) {
         self.model = model
         self.editingComboID = editingComboID
+        self.editing = editing
         self.commit = commit
         _draft = State(initialValue: draft)
     }
@@ -611,7 +586,7 @@ struct ActionPlacementSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Add Action")
+                Text(editing ? "Edit Action" : "Add Action")
                     .font(.headline)
                 Spacer()
             }
@@ -647,7 +622,7 @@ struct ActionPlacementSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Add") {
+                Button(editing ? "Save" : "Add") {
                     commit(draft)
                     dismiss()
                 }
@@ -671,6 +646,50 @@ struct ActionPlacementSheet: View {
     }
 }
 
+struct ActionsMenu: View {
+    let model: AppModel
+    let actionRouter: ActionRouter?
+    let actions: [SlideAction]
+    let add: (SlideAction) -> Void
+    let edit: (SlideAction) -> Void
+    let remove: (SlideAction) -> Void
+
+    let editAll: () -> Void
+    let removeAll: () -> Void
+
+    var body: some View {
+        let timers = actionRouter?.timerChoices ?? []
+        let screens = actionRouter?.confidenceScreenChoices ?? []
+        Menu(actions.isEmpty ? "Actions: None" : "Actions: \(actions.count)") {
+            Menu("Add Action") {
+                AddActionMenuItems(model: model, timers: timers, add: add)
+            }
+            if !actions.isEmpty {
+
+                Section("On This Slide") {
+                    ForEach(actions) { action in
+                        Menu {
+                            Button("Edit…") { edit(action) }
+                            Button("Remove", role: .destructive) { remove(action) }
+                        } label: {
+                            Label {
+                                Text(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens))
+                            } icon: {
+                                Image(nsImage: GlyphKind(action: action, model: model).menuImage)
+                            }
+                        }
+                    }
+                }
+            }
+            if actions.count > 1 {
+                Divider()
+                Button("Edit All…") { editAll() }
+                Button("Remove All", role: .destructive) { removeAll() }
+            }
+        }
+    }
+}
+
 struct AddActionMenuItems: View {
     let model: AppModel
 
@@ -679,8 +698,6 @@ struct AddActionMenuItems: View {
     var excludeComboID: String? = nil
 
     let add: (SlideAction) -> Void
-
-    @Environment(\.signage) private var signage
 
     var body: some View {
         let presets = entries(of: .outputPreset)
@@ -705,7 +722,6 @@ struct AddActionMenuItems: View {
             Divider()
 
             Button("Clear Music") { add(make(.clearAudio)) }
-            Button("Clear Signage") { add(make(.clearSignage)) }
         }
         Button("Fire Media\u{2026}") { add(make(.fireMedia)) }
         Button("Fire Presentation") { add(make(.firePresentation)) }
@@ -773,51 +789,6 @@ struct AddActionMenuItems: View {
             ForEach(layouts, id: \.id) { layout in
                 Button(layout.name) {
                     add(make(.setConfidenceLayout) { $0.confidenceLayoutId = layout.id })
-                }
-            }
-        }
-
-        let channels = signage?.channels ?? []
-        if !channels.isEmpty {
-            let signagePlaylists = model.playlists(in: .media)
-            Menu("Signage") {
-                if !signagePlaylists.isEmpty {
-                    Menu("Set Content") {
-                        ForEach(channels, id: \.id) { channel in
-                            Menu(channel.name) {
-                                ForEach(signagePlaylists, id: \.id) { playlist in
-                                    Button(playlist.name) {
-                                        add(make(.setSignage) {
-                                            $0.signageId = channel.id
-                                            $0.playlistId = playlist.id
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                let screens = signage?.screens ?? []
-                if !screens.isEmpty {
-                    Menu("Screen Source") {
-                        ForEach(screens, id: \.id) { screen in
-                            Menu(screen.name) {
-                                Button("Program") {
-                                    add(make(.setScreenSource) {
-                                        $0.screenId = screen.id.uuidString
-                                    })
-                                }
-                                ForEach(channels, id: \.id) { channel in
-                                    Button("Signage — \(channel.name)") {
-                                        add(make(.setScreenSource) {
-                                            $0.screenId = screen.id.uuidString
-                                            $0.signageId = channel.id
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

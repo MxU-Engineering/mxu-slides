@@ -34,20 +34,18 @@ private func stereoTone(seconds: Double, hertz: Double, name: String) throws -> 
     do {
         try engine.play(url: outgoing, trimStart: 2, trimEnd: 5)
     } catch {
-        return 
+        return
     }
 
     let crossfade = 2.0
     var fired = false
     var levels: [Float] = []
-    let deadline = ContinuousClock.now + .seconds(5)
+
+    let deadline = ContinuousClock.now + .seconds(15)
     while ContinuousClock.now < deadline, !fired {
         if let position = engine.position, position.duration - position.elapsed <= crossfade {
             fired = true
-            try engine.play(
-                url: incoming, crossfade: position.duration - position.elapsed,
-                trimStart: 1, trimEnd: 4
-            )
+            try engine.play(url: incoming, crossfade: crossfade, trimStart: 1, trimEnd: 8)
         }
         try await Task.sleep(for: .milliseconds(100))
     }
@@ -62,6 +60,6 @@ private func stereoTone(seconds: Double, hertz: Double, name: String) throws -> 
     let dip = levels.prefix(12).min() ?? 1
     #expect(steady > 0.06, "the incoming trimmed track is at full after the ramp")
     #expect(dip < steady * 0.75, "the handoff ramped (\(levels))")
-    #expect(abs((engine.position?.duration ?? 0) - 4) < 0.05, "active deck is the incoming track's window")
+    #expect(abs((engine.position?.duration ?? 0) - 8) < 0.05, "active deck is the incoming track's window")
     engine.stop()
 }

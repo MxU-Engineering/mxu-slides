@@ -40,8 +40,6 @@ public final class OutputManager {
 
     public var confidenceSceneProvider: (@Sendable (UUID) -> RenderScene)?
 
-    public var signageSceneProvider: (@Sendable (UUID) -> RenderScene?)?
-
     public private(set) var screenRoles: [UUID: ScreenRole] = [:]
     private let roleBox = Locked<[UUID: ScreenRole]>([:])
 
@@ -58,6 +56,25 @@ public final class OutputManager {
         }
         roleBox.value = screenRoles
         placeholderConfigurationChanged?()
+    }
+
+    public private(set) var scaleModes: [UUID: OutputScaleMode] = [:]
+    private let scaleModeBox = Locked<[UUID: OutputScaleMode]>([:])
+
+    public func scaleMode(forScreen id: UUID) -> OutputScaleMode {
+        scaleModes[id] ?? .fit
+    }
+
+    public func setScaleMode(_ mode: OutputScaleMode, forScreen id: UUID) {
+        if scaleMode(forScreen: id) != mode {
+            if mode == .fit {
+                scaleModes.removeValue(forKey: id)
+            } else {
+                scaleModes[id] = mode
+            }
+            scaleModeBox.value = scaleModes
+            placeholderConfigurationChanged?()
+        }
     }
 
     public private(set) var outputAdjustments: [UUID: OutputAdjustments] = [:]
@@ -88,7 +105,15 @@ public final class OutputManager {
         }
     }
 
-    public private(set) var screenSlices: [UUID: [OutputSliceState]] = [:]
+    public private(set) var screenSlices: [UUID: [OutputSliceState]] = [:] {
+        didSet {
+            spanBox.value = Set(screenSlices.compactMap { screenID, slices in
+                slices.contains { $0.sourceRect != Compositor.fullSourceRect } ? screenID : nil
+            })
+        }
+    }
+
+    private let spanBox = Locked<Set<UUID>>([])
 
     public func slices(forScreen id: UUID) -> [OutputSliceState] {
         guard placeholderScreens.contains(where: { $0.id == id }) else { return [] }
@@ -531,11 +556,12 @@ public final class OutputManager {
     private func provider(for targetID: String) -> @Sendable () -> RenderScene {
         let base = sceneProvider ?? { .empty }
         let confidence = confidenceSceneProvider
-        let signage = signageSceneProvider
         let variants = variantSceneProvider
         let routing = layerRouting
         let themeRouting = slideThemeRouting
         let roles = roleBox
+        let scaling = scaleModeBox
+        let spans = spanBox
 
         let screenID = UUID(uuidString: targetID).map { sliceInfo(for: $0)?.screenID ?? $0 }
         let routingKey = screenID?.uuidString ?? targetID
@@ -554,10 +580,6 @@ public final class OutputManager {
             if let screenID, let syncTest, syncTests.value.contains(screenID) {
                 return syncTest
             }
-
-            if let screenID, let signage, let scene = signage(screenID) {
-                return scene
-            }
             if let screenID, let confidence, roles.value[screenID] == .confidence {
                 return confidence(screenID)
             }
@@ -568,6 +590,10 @@ public final class OutputManager {
                 scene = variant
             } else {
                 scene = base()
+            }
+
+            if let screenID, let canvasSize, !spans.value.contains(screenID) {
+                scene = scene.scaled(toScreen: canvasSize, mode: scaling.value[screenID] ?? .fit)
             }
             guard let enabled = routing.value[routingKey] else { return scene }
             for index in scene.layers.indices
@@ -664,9 +690,10 @@ public final class OutputManager {
             height: height,
             framesPerSecond: framesPerSecond
         ) else { return nil }
+
+        placeholderScreens.append(screen)
         screen.sceneProvider = provider(for: screen.id.uuidString)
         screen.start()
-        placeholderScreens.append(screen)
         pushAdjustments(forScreen: screen.id)
         pushMasks(forScreen: screen.id)
         updateSleepProofing()
@@ -803,6 +830,8 @@ public final class OutputManager {
         placeholderDeviceNames.removeValue(forKey: id)
         screenRoles.removeValue(forKey: id)
         roleBox.value = screenRoles
+        scaleModes.removeValue(forKey: id)
+        scaleModeBox.value = scaleModes
         videoDelays.removeValue(forKey: id)
         videoDelayBox.value = videoDelays
         outputAdjustments.removeValue(forKey: id)

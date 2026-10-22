@@ -61,6 +61,8 @@ public final class OutputMirror: @unchecked Sendable {
 
     private let composite: [CompositeLayer]
 
+    private let pacing: (@Sendable () -> LiveCadence?)?
+
     private let held = Locked<[CVPixelBuffer]>([])
     private let slots: [RingSlot]
     private let nextSlot = Locked(0)
@@ -79,7 +81,7 @@ public final class OutputMirror: @unchecked Sendable {
 
     private let lastConverted = Locked<
         (
-            scene: RenderScene, adjustments: OutputAdjustments?,
+            scene: RenderScene, stillKey: [UInt64]?, adjustments: OutputAdjustments?,
             maskID: ObjectIdentifier?, buffer: CVPixelBuffer
         )?>(nil)
 
@@ -107,6 +109,7 @@ public final class OutputMirror: @unchecked Sendable {
         mask: (@Sendable () -> MTLTexture?)? = nil,
         composite: [CompositeLayer] = [],
         consumerHeldFrames: Int = 0,
+        pacing: (@Sendable () -> LiveCadence?)? = nil,
         sink: @escaping @Sendable (CVPixelBuffer, Double) -> Void
     ) {
         guard width > 0, height > 0, framesPerSecond > 0,
@@ -129,6 +132,7 @@ public final class OutputMirror: @unchecked Sendable {
         self.placement = placement
         self.mask = mask
         self.composite = composite
+        self.pacing = pacing
         self.sink = sink
         self.converter = converter
 
@@ -174,12 +178,8 @@ public final class OutputMirror: @unchecked Sendable {
             let now = CACurrentMediaTime()
             self.tick(at: now)
 
-            let step = MirrorCadence.next(
-                nominal: interval, now: now, reference: self.liveCadence.value)
-            if let step {
+            if let step = self.steeringStep(nominal: interval, at: now) {
                 let steered = step.interval
-                RenderPulse.shared.mirrorSteered(
-                    edgeDistanceMS: step.edgeDistance * 1000, periodMS: step.period * 1000)
 
                 let armed = self.steeredDeadline.value ?? fired
                 let next = max(armed + steered, fired + steered / 2)
@@ -194,6 +194,19 @@ public final class OutputMirror: @unchecked Sendable {
         source.resume()
         tickSource.value = source
         Self.debugNote.value?("mirror \(identity): timer resumed")
+    }
+
+    func steeringStep(nominal: Double, at now: CFTimeInterval) -> MirrorCadence.Step? {
+        if let step = MirrorCadence.next(nominal: nominal, now: now, reference: liveCadence.value) {
+            RenderPulse.shared.mirrorSteered(
+                edgeDistanceMS: step.edgeDistance * 1000, periodMS: step.period * 1000)
+            return step
+        } else if let pacing {
+            return MirrorCadence.next(
+                nominal: nominal, now: now, reference: pacing(), target: MirrorCadence.cardTarget)
+        } else {
+            return nil
+        }
     }
 
     func startWithoutTimerForTesting() {
@@ -232,8 +245,10 @@ public final class OutputMirror: @unchecked Sendable {
         let currentMask = mask?()
         let currentMaskID = currentMask.map(ObjectIdentifier.init)
 
-        if !scene.isTimeVarying,
+        let stillKey = compositor.staticFrameKey(for: scene)
+        if let stillKey,
            let last = lastConverted.value, last.scene == scene,
+           last.stillKey == stillKey,
            last.adjustments == currentAdjustments,
            last.maskID == currentMaskID {
             convertQueue.async { [weak self] in
@@ -289,7 +304,7 @@ public final class OutputMirror: @unchecked Sendable {
                     return
                 }
                 self.lastConverted.value = (
-                    scene, currentAdjustments, currentMaskID, pixelBuffer
+                    scene, stillKey, currentAdjustments, currentMaskID, pixelBuffer
                 )
                 self.counters.withLock { $0.delivered += 1 }
                 self.deliver(pixelBuffer, at: hostTime)
@@ -603,7 +618,7 @@ public final class PixelBufferConverter: @unchecked Sendable {
                 var minusKnee: Float = -1.0 / 12.0 * 1e6
                 vDSP_vsmsa(values, 1, &kneeScale, &minusKnee, values, 1, vDSP_Length(count))
                 vDSP_vclip(values, 1, &floor, &ceil, values, 1, vDSP_Length(count))
-                vDSP_vsub(low, 1, high, 1, &high, 1, vDSP_Length(count))  
+                vDSP_vsub(low, 1, high, 1, &high, 1, vDSP_Length(count))
                 vDSP_vma(values, 1, high, 1, low, 1, values, 1, vDSP_Length(count))
 
                 var wideBuffer = vImage_Buffer(

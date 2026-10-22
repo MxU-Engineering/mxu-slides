@@ -25,15 +25,23 @@ public enum Reflow {
         public func openingOnBlank() -> ParseResult {
             guard !sections.isEmpty else { return self }
             var result = self
-            if result.sections[0].slides.isEmpty, Reflow.isIntro(result.sections[0].name) {
-                result.sections[0].slides = [""]
-                return result
+            if Reflow.isIntro(result.sections[0].name) {
+                if result.sections[0].slides.isEmpty {
+                    result.sections[0].slides = [""]
+                    return result
+                } else if result.sections[0].slides.allSatisfy(Reflow.isWordless) {
+                    return result
+                }
             }
             let name = result.sections.contains { Reflow.isIntro($0.name) } ? "Blank" : "Intro"
             result.sections.insert(ParsedSection(name: name, slides: [""]), at: 0)
             result.order = [0] + result.order.map { $0 + 1 }
             return result
         }
+    }
+
+    static func isWordless(_ slide: String) -> Bool {
+        ChordMath.extract(slide).text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func isIntro(_ name: String) -> Bool {
@@ -60,8 +68,9 @@ public enum Reflow {
 
     public static let stanzaOnly = 10_000
 
-    public static func materialize(_ text: String, linesPerSlide: Int, mergeStanzas: Bool = false, extraLabels: [String] = []) -> String {
+    public static func materialize(_ text: String, linesPerSlide: Int, mergeStanzas: Bool = false, extraLabels: [String] = [], phrased: Bool = false) -> String {
         let perSlide = max(1, linesPerSlide)
+        let casing = LyricPhrasing.Casing(text)
         var blocks: [String] = []
         var stanzas: [[String]] = []
         var pending: [String] = []
@@ -73,11 +82,7 @@ public enum Reflow {
         func flushSection() {
             flushStanza()
             let groups = mergeStanzas ? [stanzas.flatMap { $0 }].filter { !$0.isEmpty } : stanzas
-            for group in groups {
-                for start in stride(from: 0, to: group.count, by: perSlide) {
-                    blocks.append(group[start..<min(start + perSlide, group.count)].joined(separator: "\n"))
-                }
-            }
+            blocks += chunk(stanzas: groups, perSlide: perSlide, phrased: phrased, casing: casing)
             stanzas = []
         }
 
@@ -127,8 +132,9 @@ public enum Reflow {
         return "\(name) \(trimmed[numberRange])"
     }
 
-    public static func parse(_ text: String, linesPerSlide: Int, extraLabels: [String] = []) -> ParseResult {
+    public static func parse(_ text: String, linesPerSlide: Int, extraLabels: [String] = [], phrased: Bool = false) -> ParseResult {
         let perSlide = max(1, linesPerSlide)
+        let casing = LyricPhrasing.Casing(text)
 
         var result = ParseResult()
         let hasAnyLabel = text
@@ -151,7 +157,7 @@ public enum Reflow {
                 currentStanzas = []
                 return
             }
-            let slides = chunk(stanzas: currentStanzas, perSlide: perSlide)
+            let slides = chunk(stanzas: currentStanzas, perSlide: perSlide, phrased: phrased, casing: casing)
             defer {
                 currentName = nil
                 currentStanzas = []
@@ -200,10 +206,15 @@ public enum Reflow {
         return result
     }
 
-    private static func chunk(stanzas: [[String]], perSlide: Int) -> [String] {
+    private static func chunk(stanzas: [[String]], perSlide: Int, phrased: Bool, casing: LyricPhrasing.Casing) -> [String] {
         stanzas.flatMap { stanza in
-            stride(from: 0, to: stanza.count, by: perSlide).map { start in
-                stanza[start..<min(start + perSlide, stanza.count)].joined(separator: "\n")
+            if phrased {
+                LyricPhrasing.slides(LyricPhrasing.rejoined(stanza, casing: casing), perSlide: perSlide)
+                    .map { $0.joined(separator: "\n") }
+            } else {
+                stride(from: 0, to: stanza.count, by: perSlide).map { start in
+                    stanza[start..<min(start + perSlide, stanza.count)].joined(separator: "\n")
+                }
             }
         }
     }
@@ -219,10 +230,11 @@ public enum Reflow {
         from text: String,
         linesPerSlide: Int,
         themeSlideName: String = "Lyrics",
-        extraLabels: [String] = []
+        extraLabels: [String] = [],
+        phrased: Bool = false
     ) -> Built {
         build(
-            parse(text, linesPerSlide: linesPerSlide, extraLabels: extraLabels),
+            parse(text, linesPerSlide: linesPerSlide, extraLabels: extraLabels, phrased: phrased),
             themeSlideName: themeSlideName
         )
     }

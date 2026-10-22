@@ -44,7 +44,7 @@ struct AudioModule: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(audio.isMuted ? "Unmute (all buses)" : "Mute (all buses)")
+                .help(audio.isMuted ? "Unmute all music" : "Mute all music")
                 if !runOnly {
                     Button {
                         if let id = model.createPlaylist(in: .audio) {
@@ -352,43 +352,44 @@ struct AudioModule: View {
             EmptyView()
         } else if let playlist = try? model.playlist(entry.id) {
             let syncIfLive = { audio.playlistDocumentChanged() }
-            Picker("Repeat", selection: Binding(
-                get: { (try? model.playlist(entry.id))?.playbackMode ?? .playAll },
-                set: { mode in
-                    model.updatePlaylist(entry.id) { $0.playbackMode = mode }
-                    syncIfLive()
-                }
-            )) {
-                Text("Off").tag(PlaybackMode.playAll)
-                Text("Loop Playlist").tag(PlaybackMode.loopPlaylist)
-                Text("Loop Single").tag(PlaybackMode.loopSingle)
-            }
-            Picker("Shuffle", selection: Binding(
-                get: { (try? model.playlist(entry.id))?.shuffle ?? false },
-                set: { on in
-                    model.updatePlaylist(entry.id) { $0.shuffle = on }
-                    syncIfLive()
-                }
-            )) {
-                Text("On").tag(true)
-                Text("Off").tag(false)
-            }
-            crossfadeOverridePicker("Crossfade", playlistID: entry.id, audio: audio)
-            Divider()
 
-            Picker("Mix", selection: Binding(
-                get: { audio.playlistMixId(entry.id) ?? AudioMixInventory.mainID },
-                set: { audio.setPlaylistMix(entry.id, mixId: $0) }
-            )) {
-                ForEach(audio.mixes.entries) { mix in
-                    Text(mix.name).tag(mix.id)
-                }
-            }
-            Divider()
+            Button("Add to Service") { model.addToCurrentService(entry) }
             Button("Edit Playlist…") {
                 editingPlaylist = EditingPlaylist(id: entry.id)
             }
-            Button("Add to Service") { model.addToCurrentService(entry) }
+            Section("Playback") {
+                Picker("Repeat", selection: Binding(
+                    get: { (try? model.playlist(entry.id))?.playbackMode ?? .playAll },
+                    set: { mode in
+                        model.updatePlaylist(entry.id) { $0.playbackMode = mode }
+                        syncIfLive()
+                    }
+                )) {
+                    Text("Off").tag(PlaybackMode.playAll)
+                    Text("Loop Playlist").tag(PlaybackMode.loopPlaylist)
+                    Text("Loop Single").tag(PlaybackMode.loopSingle)
+                }
+                Picker("Shuffle", selection: Binding(
+                    get: { (try? model.playlist(entry.id))?.shuffle ?? false },
+                    set: { on in
+                        model.updatePlaylist(entry.id) { $0.shuffle = on }
+                        syncIfLive()
+                    }
+                )) {
+                    Text("On").tag(true)
+                    Text("Off").tag(false)
+                }
+                crossfadeOverridePicker("Crossfade", playlistID: entry.id, audio: audio)
+
+                Picker("Mix", selection: Binding(
+                    get: { audio.playlistMixId(entry.id) ?? AudioMixInventory.mainID },
+                    set: { audio.setPlaylistMix(entry.id, mixId: $0) }
+                )) {
+                    ForEach(audio.mixes.entries) { mix in
+                        Text(mix.name).tag(mix.id)
+                    }
+                }
+            }
             Divider()
             Button("Delete", role: .destructive) {
                 if isLive { controls.stopAudio(playlistID: entry.id) }
@@ -446,7 +447,7 @@ struct AudioModule: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Fade on play, pause, and stop")
                     .font(.caption.weight(.semibold))
-                Toggle("Fade in/out", isOn: Binding(
+                Toggle("Fade in and out", isOn: Binding(
                     get: { audio.fadeEnabled },
                     set: { audio.fadeEnabled = $0 }
                 ))

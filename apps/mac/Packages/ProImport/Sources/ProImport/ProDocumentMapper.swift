@@ -76,6 +76,11 @@ public enum ProDocumentMapper {
             else { continue }
             slides.append(slide)
         }
+        if let canvas {
+            for (size, count) in state.offCanvasSlides.sorted(by: { $0.key < $1.key }) {
+                state.warn("\(count) slide(s) are \(size), not the deck's \(canvas.width)×\(canvas.height) — they keep Pro's coordinates")
+            }
+        }
         if slides.isEmpty {
             slides = [Slide(id: UUID().uuidString, name: "", objects: [])]
         }
@@ -161,9 +166,84 @@ public enum ProDocumentMapper {
                 break
             }
         }
+        if doc.hasTimeline {
+            presentation.timelines = timelines(
+                doc.timeline, in: presentation, timerIDsByProUUID: timerIDsByProUUID,
+                timerIDsByName: timerIDsByName, state: &state)
+        }
         return ProMappedDocument(
             presentation: presentation, mediaWants: state.wants,
             warnings: state.warnings, groupHotKeys: groupHotKeys)
+    }
+
+    static func timelines(
+        _ source: RVData_Presentation.Timeline, in presentation: Presentation,
+        timerIDsByProUUID: [String: String], timerIDsByName: [String: String], state: inout MapState
+    ) -> [PresentationTimeline]? {
+        var fires: [(at: Double, slideId: String)] = []
+        var others: [TimelineCue] = []
+        for (index, cue) in (source.cuesV2.isEmpty ? source.cues : source.cuesV2).enumerated()
+        where cue.triggerTime.isFinite && cue.triggerTime >= 0 {
+            switch cue.triggerInfo {
+            case .cueID(let uuid)?:
+                fires.append((cue.triggerTime, uuid.string.lowercased()))
+            case .action(let action)?:
+                let steps = ProWorkspaceMapper.mapActionSteps(
+                    action, context: "timeline cue \"\(cue.name)\"", timerIDsByProUUID: timerIDsByProUUID,
+                    timerIDsByName: timerIDsByName, state: &state) ?? []
+                if steps.isEmpty {
+                    state.warn("timeline: action cue \"\(cue.name.isEmpty ? describeActionKind(action) : cue.name)\" has no MxU action and was left out")
+                } else {
+                    others.append(TimelineCue(
+                        id: "pro-action-\(index)", lane: TimelineLane.actions.rawValue,
+                        at: PresentationTimelines.snappedToFrame(cue.triggerTime), actions: steps))
+                }
+            case nil:
+                continue
+            }
+        }
+
+        if source.hasAudioAction, case .media(let media)? = source.audioAction.actionTypeData,
+           case .audio? = media.element.typeProperties {
+            others.append(TimelineCue(
+                id: "pro-audio", lane: TimelineLane.audio.rawValue, at: 0, mediaId: state.want(for: media.element)))
+        }
+        guard !fires.isEmpty || !others.isEmpty || source.timecodeEnable else { return nil }
+        if source.loop { state.warn("timeline: it loops in ProPresenter; MxU plays it once") }
+        let orders: [Arrangement?] = [nil] + (presentation.arrangements ?? []).map(Optional.some)
+        return orders.map { arrangement in
+            let placed = PresentationTimelines.slideCues(
+                fires, in: playedBlocks(arrangement, in: presentation), idPrefix: "pro-slide-")
+            if placed.missing > 0 {
+                state.warn(arrangement.map {
+                    "timeline: \(placed.missing) cue(s) name slides the arrangement \"\($0.name)\" doesn't play; its timeline leaves them out"
+                } ?? "timeline: \(placed.missing) cue(s) name slides that aren't in the presentation")
+            }
+            return PresentationTimeline(
+                id: "pro-timeline-" + (arrangement?.id ?? "base"), arrangementId: arrangement?.id,
+                timecodeEnabled: source.timecodeEnable,
+                timecodeStart: Int((max(source.timecodeOffset.isFinite ? source.timecodeOffset : 0, 0)
+                    * Double(PresentationTimelines.framesPerSecond)).rounded()),
+                length: source.duration.isFinite && source.duration > 0 ? source.duration : nil,
+                cues: (placed.cues + others).sorted { $0.at < $1.at })
+        }
+    }
+
+    static func playedBlocks(_ arrangement: Arrangement?, in presentation: Presentation) -> [TimelinePlayedBlock] {
+        if let arrangement {
+            return arrangement.sectionIds.map { id in
+                TimelinePlayedBlock(sectionId: id, slideIds: presentation.slides.filter { $0.sectionId == id }.map(\.id))
+            }
+        }
+        var blocks: [TimelinePlayedBlock] = []
+        for slide in presentation.slides {
+            if let last = blocks.indices.last, blocks[last].sectionId == slide.sectionId {
+                blocks[last].slideIds.append(slide.id)
+            } else {
+                blocks.append(TimelinePlayedBlock(sectionId: slide.sectionId, slideIds: [slide.id]))
+            }
+        }
+        return blocks
     }
 
     public static func replacingMediaIDs(_ presentation: Presentation, with map: [String: String]) -> Presentation {
@@ -186,6 +266,37 @@ public enum ProDocumentMapper {
             return fill
         }
 
+        func remap(_ actions: [SlideAction]?) -> [SlideAction]? {
+            let mapped = actions?.compactMap { action -> SlideAction? in
+                var action = action
+                if let id = action.audioItemId, id.hasPrefix(placeholderPrefix) {
+                    guard let mapped = map[id] else { return nil }
+                    action.audioItemId = mapped
+                }
+                if let id = action.mediaId, id.hasPrefix(placeholderPrefix) {
+                    guard let mapped = map[id] else { return nil }
+                    action.mediaId = mapped
+                }
+                return action
+            }
+            return mapped?.isEmpty == true ? nil : mapped
+        }
+
+        result.timelines = result.timelines?.map { timeline in
+            var timeline = timeline
+            timeline.cues = timeline.cues.compactMap { cue in
+                var cue = cue
+                if let id = cue.mediaId, id.hasPrefix(placeholderPrefix) {
+                    guard let mapped = map[id] else { return nil }
+                    cue.mediaId = mapped
+                }
+                guard cue.actions != nil else { return cue }
+                cue.actions = remap(cue.actions)
+                return cue.actions == nil ? nil : cue
+            }
+            return timeline
+        }
+
         result.background = remap(result.background)
         result.sections = result.sections.map { sections in
             sections.map { section in
@@ -197,22 +308,7 @@ public enum ProDocumentMapper {
         result.slides = result.slides.map { slide in
             var slide = slide
             slide.background = remap(slide.background)
-
-            slide.actions = slide.actions.map { actions in
-                actions.compactMap { action in
-                    var action = action
-                    if let id = action.audioItemId, id.hasPrefix(placeholderPrefix) {
-                        guard let mapped = map[id] else { return nil }
-                        action.audioItemId = mapped
-                    }
-                    if let id = action.mediaId, id.hasPrefix(placeholderPrefix) {
-                        guard let mapped = map[id] else { return nil }
-                        action.mediaId = mapped
-                    }
-                    return action
-                }
-            }
-            if slide.actions?.isEmpty == true { slide.actions = nil }
+            slide.actions = remap(slide.actions)
             slide.objects = slide.objects.compactMap { object in
                 var object = object
                 let fillLostItsMedia = object.fill?.fillKind == .media
@@ -243,6 +339,8 @@ public enum ProDocumentMapper {
         var wantByUUID: [String: String] = [:]
 
         var inputBook = ProInputPlanBook()
+
+        var offCanvasSlides: [String: Int] = [:]
 
         mutating func warn(_ message: String) {
             if !warnings.contains(message) { warnings.append(message) }
@@ -406,8 +504,13 @@ public enum ProDocumentMapper {
                 : docTransition)
 
         let base = slideType.presentation.baseSlide
-        if canvas == nil, base.hasSize, base.size.width > 0 {
-            canvas = (Int(base.size.width), Int(base.size.height))
+        if base.hasSize, base.size.width > 0 {
+            let size = (width: Int(base.size.width), height: Int(base.size.height))
+            if let canvas {
+                if canvas != size { state.offCanvasSlides["\(size.width)×\(size.height)", default: 0] += 1 }
+            } else {
+                canvas = size
+            }
         }
 
         var objects: [SlideObject] = []
@@ -540,9 +643,9 @@ public enum ProDocumentMapper {
         state: inout MapState
     ) -> [PresentationSection] {
         var result = mapped
-        var completedRuns = Set<String>()  
-        var runOriginal: String?           
-        var runAssigned: String?           
+        var completedRuns = Set<String>()
+        var runOriginal: String?
+        var runAssigned: String?
 
         for index in slides.indices {
             guard let original = slides[index].sectionId else {
@@ -822,7 +925,7 @@ public enum ProDocumentMapper {
         var running = 0
         for line in lines {
             lineStartUTF16.append(running)
-            running += line.utf16.count + 1  
+            running += line.utf16.count + 1
         }
         return runs.map { run in
             let lineIndex = (lineStartUTF16.lastIndex { $0 <= run.offset }) ?? 0
@@ -838,7 +941,7 @@ public enum ProDocumentMapper {
 
     static func chordNotation(_ notation: RVData_Graphics.Text.ChordPro.Notation) -> ChordNotation? {
         switch notation {
-        case .chords: return nil  
+        case .chords: return nil
         case .numbers: return .numbers
         case .numerals: return .numerals
         case .doReMi: return .doReMi
@@ -956,7 +1059,7 @@ public enum ProDocumentMapper {
            let fill = objectFill(element, state: &state),
            fill.fillKind == .solid || fill.fillKind == .linearGradient {
             let widthMode: TextLineFillWidthMode? = switch mask.maskStyle {
-            case .fullWidth, .UNRECOGNIZED: nil  
+            case .fullWidth, .UNRECOGNIZED: nil
             case .lineWidth: .lineWidth
             case .maxLineWidth: .maxLineWidth
             }
@@ -1172,7 +1275,7 @@ public enum ProDocumentMapper {
         switch behavior {
         case .fit: return .fit
         case .stretch: return .stretch
-        case .fill: return nil  
+        case .fill: return nil
         default: return nil
         }
     }

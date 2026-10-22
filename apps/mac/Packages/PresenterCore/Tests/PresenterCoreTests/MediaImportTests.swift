@@ -97,23 +97,26 @@ struct MediaImportTests {
         let client = LibraryClient(rootURL: libraryRoot)
         try await client.start().value
         let importer = try MediaImporter(client: client)
-        let results = await importer.importFiles(at: [dir])  
+        let results = await importer.importFiles(at: [dir])
         #expect(results.count == 50)
 
         let (media, audio) = try await onLibraryActor(reading: libraryRoot) { library in
             (try library.index.entries(of: .media), try library.index.entries(of: .audio))
         }
-        #expect(media.count == 39)  
+        #expect(media.count == 39)
         #expect(audio.count == 10)
         #expect(results.filter {
             if case .skipped = $0.outcome { return true } else { return false }
-        }.count == 1)  
+        }.count == 1)
 
-        let flagged = try await onLibraryActor(reading: libraryRoot) { library in
+        let items = try await onLibraryActor(reading: libraryRoot) { library in
             try media.map { try library.open(MediaItem.self, id: $0.id).value }
-                .filter { $0.fileStatus == .needsTranscode }
         }
-        #expect(flagged.count == 4)  
+
+        #expect(items.allSatisfy { $0.classification == .foreground })
+
+        let flagged = items.filter { $0.fileStatus == .needsTranscode }
+        #expect(flagged.count == 4)
         #expect(flagged.allSatisfy { !$0.statusDetail.isEmpty })
 
         let clips = try await onLibraryActor(reading: libraryRoot) { library in
@@ -124,7 +127,7 @@ struct MediaImportTests {
         #expect(clips.allSatisfy { $0.pixelWidth == 64 && $0.durationSeconds ?? 0 > 0 })
 
         let blobs = try BlobStore(libraryRoot: libraryRoot)
-        #expect(blobs.allHashes().count < 49)  
+        #expect(blobs.allHashes().count < 49)
 
         let queue = try TranscodeQueue(client: client)
         let outcomes = await queue.drain()
@@ -156,7 +159,53 @@ struct MediaImportTests {
 
         let blobs = try BlobStore(libraryRoot: libraryRoot)
         #expect(blobs.allHashes().count == 1)
-        #expect(try await onLibraryActor(reading: libraryRoot) { try $0.index.entries(of: .media).count } == 2)  
+        #expect(try await onLibraryActor(reading: libraryRoot) { try $0.index.entries(of: .media).count } == 2)
+    }
+
+    @Test func blobsAreReadOnlyAndTheOriginalIsNot() throws {
+        let dir = try makeDir()
+        let libraryRoot = try makeDir()
+        defer {
+            try? FileManager.default.removeItem(at: dir)
+            try? FileManager.default.removeItem(at: libraryRoot)
+        }
+        let original = dir.appendingPathComponent("a.png")
+        try writePNG(to: original)
+        let blobs = try BlobStore(libraryRoot: libraryRoot)
+        let stored = try #require(blobs.url(forHash: try blobs.store(fileURL: original)))
+        #expect(!FileManager.default.isWritableFile(atPath: stored.path))
+        #expect(FileManager.default.isWritableFile(atPath: original.path))
+
+        let older = blobs.directory.appendingPathComponent("older.mov")
+        try Data("bytes".utf8).write(to: older)
+        blobs.lockAll()
+        #expect(!FileManager.default.isWritableFile(atPath: older.path))
+
+        #expect(try blobs.remove(hash: "older"))
+    }
+
+    @MainActor @Test func anImportTakesTheGivenNameAndRecordsWhenItCameIn() async throws {
+        let dir = try makeDir()
+        let libraryRoot = try makeDir()
+        defer {
+            try? FileManager.default.removeItem(at: dir)
+            try? FileManager.default.removeItem(at: libraryRoot)
+        }
+        let file = dir.appendingPathComponent("Background.png")
+        try writePNG(to: file)
+
+        let client = LibraryClient(rootURL: libraryRoot)
+        try await client.start().value
+        let importer = try MediaImporter(client: client)
+        let before = Date().timeIntervalSince1970
+        _ = await importer.importFiles(at: [file], names: [file: "Background 2"])
+
+        let snapshot = try await client.settledSnapshot()
+        let entry = try #require(snapshot.entries(of: .media).first)
+        let item = try await client.loadValue(MediaItem.self, id: entry.id)
+        #expect(item.name == "Background 2")
+        #expect(item.fileName == "Background.png")
+        #expect((item.importedAt ?? 0) >= before.rounded(.down))
     }
 
     @MainActor @Test func importsLandInTheDriveInTheirLibrarysFolder() async throws {

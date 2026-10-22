@@ -10,7 +10,9 @@
       Adds N copies (default 300) of fixtures/bulk-deck.json (the Welcome
       deck as the Local API returns it) and "Path Text Perf": the 24-slide
       deck made from fixtures/path-text-deck.json's first slide (a card with
-      three path-text tickers over it, the 2026-09-24 editor-drag case).
+      three path-text tickers over it, the 2026-09-24 editor-drag case),
+      and the service "Timeline Perf" (perf.service): twelve of the copies,
+      the first with a ten-minute timeline.
 
 Python 3 standard library only.
 """
@@ -74,8 +76,22 @@ def build(port, token, fixtures, count):
         deck = json.loads(json.dumps(bulk).replace(source_id, f"bulk{index:03d}"))
         deck["id"] = f"bulk{index:03d}"
         deck["name"] = f"Bulk Deck {index:03d}"
+        if index == 0:
+            deck["timelines"] = [{"id": "perf.timeline", "timecodeEnabled": False, "timecodeStart": 0, "length": 600, "cues": []}]
         request(port, token, "POST", "/v1/documents/presentations", deck)
-    print(f"created {count + 1} decks")
+    request(port, token, "POST", "/v1/documents/services", timeline_service())
+    print(f"created {count + 1} decks and the timeline service")
+
+
+def timeline_service(songs=12):
+    """The service the timeline scenario plays: its first song
+    has a ten-minute timeline with no cues, so its clock ticks the whole
+    run while the Present grid shows every song's slides."""
+    items = []
+    for index in range(songs):
+        deck_id = f"bulk{index:03d}"
+        items.append({"id": f"perf.item{index:02d}", "itemKind": "presentation", "name": f"Bulk Deck {index:03d}", "refId": deck_id})
+    return {"id": "perf.service", "name": "Timeline Perf", "serviceDate": "2026-10-18", "items": items}
 
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

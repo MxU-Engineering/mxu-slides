@@ -37,4 +37,11 @@ public protocol MediaTextureSource: AnyObject, Sendable {
     func surface(for mediaID: String, hostTime: CFTimeInterval) -> MediaSurface?
 
     func liveCadence(for mediaID: String) -> LiveCadence?
+
+    func stillGeneration(for mediaID: String) -> UInt64?
+}
+
+extension MediaTextureSource {
+
+    public func stillGeneration(for mediaID: String) -> UInt64? { nil }
 }

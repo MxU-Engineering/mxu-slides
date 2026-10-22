@@ -31,3 +31,38 @@ public enum SlideGridDrop {
         }
     }
 }
+
+public enum SlideDropZone: Equatable, Sendable {
+    case before
+    case on
+    case after
+
+    public static let gutter: CGFloat = 26
+
+    public static func tile(at point: CGPoint, width: CGFloat, reorder: Bool, insertOnly: Bool) -> SlideDropZone {
+        if reorder {
+            width > 0 && point.x > width / 2 ? .after : .before
+        } else if point.x < gutter {
+            .before
+        } else if width > gutter * 3 && point.x > width - gutter {
+            .after
+        } else if insertOnly {
+            .before
+        } else {
+            .on
+        }
+    }
+
+    public static func row(at point: CGPoint, size: CGSize, insertOnly: Bool) -> SlideDropZone {
+        let band = min(10, size.height / 4)
+        return if point.x < gutter || point.y < band {
+            .before
+        } else if size.height > 0 && point.y > size.height - band {
+            .after
+        } else if insertOnly {
+            .before
+        } else {
+            .on
+        }
+    }
+}

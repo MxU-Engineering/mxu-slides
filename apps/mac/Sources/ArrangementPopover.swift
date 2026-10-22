@@ -6,6 +6,7 @@ struct ArrangementPopover: View {
     let model: SlideEditorModel
 
     @State private var selectedArrangementID: String?
+    @State private var addingBlock = false
 
     private var selectedArrangement: Arrangement? {
         guard let selectedArrangementID else { return model.arrangements.first }
@@ -98,23 +99,36 @@ struct ArrangementPopover: View {
             .listStyle(.plain)
             .frame(height: 180)
             HStack {
-                Menu {
-                    ForEach(model.sections) { section in
-                        Button(section.name) {
-                            model.updateArrangement(arrangement.id) {
-                                $0.sectionIds.append(section.id)
-                            }
-                        }
-                    }
+
+                Button {
+                    addingBlock = true
                 } label: {
                     Label("Add Block", systemImage: "plus")
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
+                .buttonStyle(.borderless)
+                .popover(isPresented: $addingBlock, arrowEdge: .bottom) {
+                    SectionPreviewPicker(model: model.appModel, render: model.render, presentation: model.presentation) { section in
+                        model.updateArrangement(arrangement.id) {
+                            $0.sectionIds.append(section.id)
+                        }
+                    }
+                }
                 Spacer()
                 Text("\(model.arrangedSlideCount(arrangement.id)) slides")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if let map = model.presentation.songMap {
+                let missing = SongMaps.missing(
+                    map, blocks: SlideSceneBuilder.timelineBlocks(for: model.presentation, arrangementId: arrangement.id),
+                    names: Dictionary(model.sections.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }))
+                if !missing.isEmpty {
+                    Label("\(missing.joined(separator: ", ")) \(missing.count == 1 ? "has" : "have") no audio in this song's tracks", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

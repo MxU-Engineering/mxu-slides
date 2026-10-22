@@ -56,8 +56,8 @@ public final class AudioMixFeed: @unchecked Sendable {
         }
     }
 
-    private static let maxRingFrames = 24_000  
-    private static let tickFrames = 480  
+    private static let maxRingFrames = 24_000
+    private static let tickFrames = 480
     private static let tickSeconds = 0.010
 
     static let maxCatchUpTicks = 25
@@ -105,6 +105,12 @@ public final class AudioMixFeed: @unchecked Sendable {
         lock.withLock { _ = rings.removeValue(forKey: member) }
     }
 
+    private var partial: (member: String, consumer: Consumer)?
+
+    public func setPartialConsumer(excluding member: String, _ consumer: Consumer?) {
+        lock.withLock { partial = consumer.map { (member, $0) } }
+    }
+
     private var clockStart: Double?
     private var pulls = 0
     private var ticksSinceTrim = 0
@@ -136,26 +142,40 @@ public final class AudioMixFeed: @unchecked Sendable {
         ticksSinceTrim += 1
         let trimDue = ticksSinceTrim >= Self.trimWindowTicks
         if trimDue { ticksSinceTrim = 0 }
-        lock.withLock {
-            for key in rings.keys {
+        var dry: (left: [Float], right: [Float])?
+        let partial = lock.withLock { () -> (member: String, consumer: Consumer)? in
+            let excluded = self.partial?.member
+
+            let last = excluded.flatMap { rings[$0] == nil ? nil : $0 }
+            for key in rings.keys.filter({ $0 != excluded }) + (last.map { [$0] } ?? []) {
+                if key == excluded { dry = (left, right) }
                 rings[key]?.drain(into: &left, &right, frames: frames)
                 if trimDue {
                     trimmedFrames.add(rings[key]?.trimExcess(
                         threshold: Self.trimThresholdFrames, target: Self.trimTargetFrames) ?? 0)
                 }
             }
+            return self.partial
         }
-        guard let output = AVAudioPCMBuffer(
-            pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))
-        else { return }
-        output.frameLength = AVAudioFrameCount(frames)
-        guard let data = output.floatChannelData else { return }
-        for frame in 0 ..< frames {
+        let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: hostSeconds))
+        guard let output = buffer(left, right) else { return }
+        consumer(output, when, hostSeconds)
+        if let partial {
+            guard let without = dry.map({ buffer($0.left, $0.right) }) ?? output else { return }
+            partial.consumer(without, when, hostSeconds)
+        }
+    }
+
+    private func buffer(_ left: [Float], _ right: [Float]) -> AVAudioPCMBuffer? {
+        guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(left.count)),
+              let data = output.floatChannelData
+        else { return nil }
+        output.frameLength = AVAudioFrameCount(left.count)
+        for frame in 0 ..< left.count {
             data[0][frame] = min(max(left[frame], -1), 1)
             data[1][frame] = min(max(right[frame], -1), 1)
         }
-        let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: hostSeconds))
-        consumer(output, when, hostSeconds)
+        return output
     }
 }
 

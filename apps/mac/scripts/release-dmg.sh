@@ -29,6 +29,7 @@ echo "==> Generating the Xcode project"
 xcodegen generate --spec "$MAC_DIR/project.yml" --project "$MAC_DIR" | tail -1
 
 echo "==> Building Release (arm64)"
+mkdir -p "$MAC_DIR/build"
 xcodebuild -project "$MAC_DIR/MxUSlides.xcodeproj" \
   -scheme MxUSlides -configuration Release \
   -derivedDataPath "$DERIVED" -destination 'generic/platform=macOS' \
@@ -36,7 +37,12 @@ xcodebuild -project "$MAC_DIR/MxUSlides.xcodeproj" \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
   PROVISIONING_PROFILE_SPECIFIER= \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" MXU_GIT_COMMIT="$GIT_COMMIT" \
-  build | tail -5
+  build > "$MAC_DIR/build/xcodebuild.log" 2>&1 || {
+  grep -E -A4 ': (error|fatal error):' "$MAC_DIR/build/xcodebuild.log" | head -80
+  tail -5 "$MAC_DIR/build/xcodebuild.log"
+  exit 1
+}
+tail -5 "$MAC_DIR/build/xcodebuild.log"
 
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")
 DMG="$DIST/MxU-Slides-$VERSION.dmg"
@@ -59,6 +65,9 @@ for HELPER in "$APP"/Contents/XPCServices/*.xpc; do
     --entitlements "$MAC_DIR/Signing/Helper.entitlements" \
     --sign "$IDENTITY" "$HELPER"
 done
+codesign --force --options runtime --timestamp \
+  --identifier com.example.mxuslides.TracksPlayer \
+  --sign "$IDENTITY" "$APP/Contents/MacOS/MxU Tracks Player"
 codesign --force --options runtime --timestamp \
   --entitlements "$MAC_DIR/Signing/MxUSlides.entitlements" \
   --sign "$IDENTITY" "$APP"

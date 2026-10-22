@@ -88,6 +88,16 @@ public enum APIRouteTable {
         })
 
         routes.append(APIRoute(
+            "GET", "/v1/timecode", scope: .view,
+            operationId: "getTimecodeStatus",
+            summary: "Timecode in on this computer: input, lock, frame, rate, the song it drives, anchors to count from.",
+            tag: "Timecode",
+            responseSchema: .ref("TimecodeStatus")
+        ) { _ in
+            .json(await bridge.timecodeStatus())
+        })
+
+        routes.append(APIRoute(
             "POST", "/v1/scheduler/enabled", scope: .control,
             operationId: "setSchedulerEnabled",
             summary: "Turn the Scheduler on or off on THIS machine.", tag: "Scheduler",

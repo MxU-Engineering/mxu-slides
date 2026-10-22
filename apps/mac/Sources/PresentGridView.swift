@@ -16,16 +16,15 @@ struct PresentGridView: View {
     var serviceItem: ServiceItem? = nil
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @FocusState private var focused: Bool
-
-    @State private var deleteRequests = 0
 
     @State private var clipboardRequests = SlideClipboardRequests()
 
     @State private var previewArrangementID: String?
+
+    @State private var scrollHeight: CGFloat = 0
 
     private var fireContext: String { contextID ?? presentationID }
 
@@ -61,6 +60,7 @@ struct PresentGridView: View {
                 if presentation.sections?.isEmpty == false {
                     ArrangementStrip(
                         model: model, presentation: presentation,
+                        render: render,
                         selection: stripSelection,
                         onJump: { pill in
                             let starts = SlideSceneBuilder.arrangementBlockStarts(
@@ -90,15 +90,15 @@ struct PresentGridView: View {
                         contextID: fireContext,
                         roundedCorners: roundedCorners,
                         hideScopedBackgrounds: hideScopedBackgrounds,
-                        legibleText: legibleText,
                         slidesAcross: slidesAcross,
-                        deleteRequests: deleteRequests,
                         clipboardRequests: clipboardRequests,
                         pastesAtEnd: true,
-                        marqueeMargin: 12
+                        marqueeMargin: 12,
+                        minimumHeight: scrollHeight - 24
                     )
                     .padding(12)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
                 .focusable()
                 .focused($focused)
                 .focusEffectDisabled()
@@ -110,7 +110,7 @@ struct PresentGridView: View {
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(proxy) })
 
-                .onDeleteCommand { deleteRequests += 1 }
+                .onDeleteCommand { clipboardRequests.take(.delete) }
 
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
             }
@@ -137,9 +137,9 @@ struct PresentGridView: View {
                     .background(.quaternary, in: Capsule())
             }
             SongKeyChip(model: model, controls: controls, presentation: presentation)
-            SlideShowChip(model: model, controls: controls, presentation: presentation)
             Spacer()
 
+            PresentationSettingsButton(model: model, render: render, controls: controls, presentation: presentation)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -175,14 +175,29 @@ enum SlideGridMetrics {
     static var lastWidths: [String: CGFloat] = [:]
 
     static var continuousWidth: CGFloat {
-        get { CGFloat(UserDefaults.standard.double(forKey: continuousWidthKey)) }
+        get { liveContinuousWidth }
         set {
-            if abs(newValue - continuousWidth) >= 1 {
-                UserDefaults.standard.set(Double(newValue), forKey: continuousWidthKey)
+            if abs(newValue - liveContinuousWidth) >= 1 {
+                liveContinuousWidth = newValue
+                savesContinuousWidthAtQuit()
             }
         }
     }
     static let continuousWidthKey = "slideGrid.continuousWidth"
+    private static var liveContinuousWidth = CGFloat(UserDefaults.standard.double(forKey: continuousWidthKey))
+    private static var quitSave: (any NSObjectProtocol)?
+
+    private static func savesContinuousWidthAtQuit() {
+        if quitSave == nil {
+            quitSave = NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+            ) { _ in
+                MainActor.assumeIsolated {
+                    UserDefaults.standard.set(Double(liveContinuousWidth), forKey: continuousWidthKey)
+                }
+            }
+        }
+    }
 
     static let labelHeight: CGFloat = 14
 
@@ -256,12 +271,13 @@ final class SlidePasteboardChanges {
 }
 
 struct SlideClipboardRequests: Equatable {
-    enum Verb { case copy, cut, paste, selectAll }
+    enum Verb { case copy, cut, paste, selectAll, delete }
 
     var copies = 0
     var cuts = 0
     var pastes = 0
     var selectAlls = 0
+    var deletes = 0
 
     mutating func take(_ verb: Verb) {
         switch verb {
@@ -269,6 +285,7 @@ struct SlideClipboardRequests: Equatable {
         case .cut: cuts += 1
         case .paste: pastes += 1
         case .selectAll: selectAlls += 1
+        case .delete: deletes += 1
         }
     }
 }
@@ -338,14 +355,16 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
 
         private func verb(for event: NSEvent) -> SlideClipboardRequests.Verb? {
             let typing = event.window?.firstResponder is NSText
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function)
+            let backspace = event.keyCode == 51 || event.keyCode == 117
             if let window = view?.window, event.window === window, window.isKeyWindow,
-               window.attachedSheet == nil, !typing,
-               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
-                switch event.charactersIgnoringModifiers?.lowercased() {
-                case "c": return .copy
-                case "x": return .cut
-                case "v": return .paste
-                case "a": return .selectAll
+               window.attachedSheet == nil, !typing {
+                switch (flags, event.charactersIgnoringModifiers?.lowercased()) {
+                case (.command, "c"): return .copy
+                case (.command, "x"): return .cut
+                case (.command, "v"): return .paste
+                case (.command, "a"): return .selectAll
+                case ([], _) where backspace: return .delete
                 default: return nil
                 }
             } else {
@@ -378,6 +397,93 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
     }
 }
 
+@MainActor @Observable final class GridSweep {
+    let space: String
+    var rect: CGRect?
+
+    private(set) var clears = 0
+
+    private var selectedCounts: [String: Int] = [:]
+
+    init(space: String) { self.space = space }
+
+    func move(to rect: CGRect?) {
+        if self.rect != rect { self.rect = rect }
+    }
+
+    func clearAll() { clears += 1 }
+
+    func note(_ contextID: String, selected count: Int) {
+        if selectedCounts[contextID, default: 0] != count {
+            selectedCounts[contextID] = count == 0 ? nil : count
+        }
+    }
+
+    func selected(besides contextID: String) -> Int {
+        selectedCounts.filter { $0.key != contextID }.values.reduce(0, +)
+    }
+}
+
+struct GridSweepBand: View {
+    let sweep: GridSweep
+
+    var body: some View {
+        if let rect = sweep.rect {
+            MarqueeBand(rect: rect)
+        }
+    }
+}
+
+struct GridSweepFollow: View {
+    let sweep: GridSweep
+    let pick: (CGRect) -> Void
+    let clear: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onChange(of: sweep.rect) { _, rect in
+                if let rect { pick(rect) }
+            }
+            .onChange(of: sweep.clears) { _, _ in clear() }
+    }
+}
+
+struct MarqueeBand: View {
+    let rect: CGRect
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.accentColor.opacity(0.12))
+            .overlay {
+                Rectangle()
+                    .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
+            }
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+            .allowsHitTesting(false)
+    }
+}
+
+struct EmptyDeckPrompt: View {
+    static let height: CGFloat = 150
+
+    let onNewSlide: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("No Slides")
+                .font(.headline)
+            if let onNewSlide {
+                Text("Add a slide, or drop pictures and videos here.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("New Slide…", action: onNewSlide)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: Self.height)
+    }
+}
+
 struct SlideGridBody: View {
 
     static func tileAnchor(contextID: String, index: Int) -> String {
@@ -394,11 +500,8 @@ struct SlideGridBody: View {
     let contextID: String
     let roundedCorners: Bool
     let hideScopedBackgrounds: Bool
-    let legibleText: Bool
 
     let slidesAcross: Int
-
-    var deleteRequests = 0
 
     var clipboardRequests = SlideClipboardRequests()
 
@@ -410,9 +513,17 @@ struct SlideGridBody: View {
 
     var marqueeMargin: CGFloat = 0
 
+    var sweep: GridSweep? = nil
+
+    var deleteEverySelection: (() -> Void)? = nil
+
+    var minimumHeight: CGFloat = 0
+
     @State private var gridWidth: CGFloat = 0
 
     @State private var builtRows: Set<Int> = []
+
+    @Environment(\.displayScale) private var displayScale
 
     private var cell: CGSize? {
         SlideGridMetrics.cell(
@@ -526,6 +637,8 @@ struct SlideGridBody: View {
     @State private var tileFrames: [Int: CGRect] = [:]
 
     @State private var marqueeRect: CGRect?
+
+    @State private var sweepOrigin: CGPoint = .zero
     @Environment(\.actionRouter) private var actionRouter
 
     private struct MediaActionTarget: Identifiable {
@@ -544,10 +657,9 @@ struct SlideGridBody: View {
     private struct ActionPlacement: Identifiable {
         let slideIDs: [String]
         let draft: SlideAction
+        var editing = false
         var id: String { draft.id }
     }
-
-    @State private var slideShowPresented = false
 
     @State private var newSlideTarget: NewSlideTarget?
 
@@ -555,35 +667,30 @@ struct SlideGridBody: View {
 
     @State private var mediaMenuState = MediaCueMenuState()
 
-    private func presentationAutoAdvanceBinding() -> Binding<AutoAdvance?> {
-        Binding(
-            get: { model.presentation(presentation.id)?.autoAdvance },
-            set: { advance in
-                model.updatePresentationField(
-                    presentation.id, \.autoAdvance, key: "autoAdvance", to: advance, undoLabel: "Slide Show")
-                controls?.presentationEdited(presentation.id)
-            }
-        )
-    }
-
     private var effectiveArrangement: Arrangement? {
         guard let arrangementId, !arrangementId.isEmpty else { return nil }
         return presentation.arrangements?.first { $0.id == arrangementId }
     }
 
-    var body: some View {
+    @ViewBuilder private var grid: some View {
+
+        let _ = (dropTargetIndex, dropTargetAfterIndex, backgroundDropIndex)
         ZStack(alignment: .topLeading) {
 
             Color.clear
+                .frame(minHeight: max(
+                    0, minimumHeight + marqueeMargin * 2,
+                    presentation.slides.isEmpty ? EmptyDeckPrompt.height + marqueeMargin * 2 : 0))
                 .contentShape(Rectangle())
+
+                .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
                 .padding(-marqueeMargin)
                 .onTapGesture {
                     clearSelection()
+                    sweep?.clearAll()
                     NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
                 }
                 .gesture(marqueeGesture)
-
-                .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
             let aspect = SlideGridMetrics.tileAspect(for: presentation)
             let cell = self.cell
             if buildsRowsNearView {
@@ -596,19 +703,32 @@ struct SlideGridBody: View {
                     }
                 }
             }
-            if let rect = marqueeRect {
-                Rectangle()
-                    .fill(Color.accentColor.opacity(0.12))
+            if presentation.slides.isEmpty {
+
+                EmptyDeckPrompt(onNewSlide: runOnly ? nil : { newSlideTarget = NewSlideTarget(after: nil) })
                     .overlay {
-                        Rectangle()
-                            .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
+                        if dropTargetIndex != nil {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color(nsColor: .controlAccentColor).opacity(0.9), lineWidth: 2)
+                                .allowsHitTesting(false)
+                        }
                     }
-                    .frame(width: rect.width, height: rect.height)
-                    .offset(x: rect.minX, y: rect.minY)
-                    .allowsHitTesting(false)
+            }
+            if let rect = marqueeRect {
+                MarqueeBand(rect: rect)
             }
         }
         .coordinateSpace(name: "slideGrid")
+        .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named(sweep?.space ?? "slideGrid")).origin } action: { sweepOrigin = $0 }
+        .background {
+            if let sweep {
+                GridSweepFollow(sweep: sweep, pick: pickTiles(under:), clear: clearSelection)
+            }
+        }
+        .onChange(of: selectedOccurrences) { _, occurrences in
+            sweep?.note(contextID, selected: SlideBulkEdit.slideIDs(occurrences: occurrences, slides: slides).count)
+        }
+        .onDisappear { sweep?.note(contextID, selected: 0) }
 
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
         .background {
@@ -647,7 +767,7 @@ struct SlideGridBody: View {
             DropLatency.relaid(count: slides.count)
         }
         .onChange(of: arrangementId) { _, _ in clearSelection() }
-        .onChange(of: deleteRequests) { _, _ in deleteSelectedSlides() }
+        .onChange(of: clipboardRequests.deletes) { _, _ in deleteSelectedSlides() }
         .onChange(of: clipboardRequests.copies) { _, _ in copySelectedSlides() }
         .onChange(of: clipboardRequests.cuts) { _, _ in
             if copySelectedSlides() { deleteSelectedSlides() }
@@ -687,6 +807,10 @@ struct SlideGridBody: View {
                 }
             )
         }
+    }
+
+    var body: some View {
+        grid
         .sheet(item: $mediaActionTarget) { target in
             LibraryPickerSheet(appModel: model, kind: target.kind) { entry in
                 model.updateSlides(presentationID: presentation.id, undoLabel: "Choose Media") { presentation in
@@ -715,21 +839,20 @@ struct SlideGridBody: View {
             )
         }
         .sheet(item: $actionPlacement) { placement in
-            ActionPlacementSheet(model: model, draft: placement.draft) { action in
-                addAction(action, to: placement.slideIDs)
+            ActionPlacementSheet(model: model, editing: placement.editing, draft: placement.draft) { action in
+                if placement.editing, let slideID = placement.slideIDs.first {
+                    model.updateSlide(presentationID: presentation.id, slideID: slideID, undoLabel: "Edit Action") {
+                        $0.actions = SlideBulkEdit.replacing(action, in: $0.actions)
+                    }
+                } else {
+                    addAction(action, to: placement.slideIDs)
+                }
             }
         }
         .sheet(item: $autoAdvanceTarget) { target in
             AutoAdvanceSheet(
                 slideName: target.name,
                 advance: autoAdvanceBinding(target.slideIDs)
-            )
-        }
-        .sheet(isPresented: $slideShowPresented) {
-            AutoAdvanceSheet(
-                slideName: presentation.name,
-                advance: presentationAutoAdvanceBinding(),
-                presentationScope: true
             )
         }
         .mediaCueSheets(model: model, state: mediaMenuState)
@@ -777,7 +900,7 @@ struct SlideGridBody: View {
     }
 
     private var marqueeGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named("slideGrid"))
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(sweep?.space ?? "slideGrid"))
             .onChanged { value in
                 guard !runOnly else { return }
                 let rect = CGRect(
@@ -786,12 +909,26 @@ struct SlideGridBody: View {
                     width: abs(value.location.x - value.startLocation.x),
                     height: abs(value.location.y - value.startLocation.y)
                 )
-                marqueeRect = rect
                 NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
-                selectedOccurrences = Set(
-                    tileFrames.filter { $0.value.intersects(rect) }.map(\.key))
+                if let sweep {
+                    sweep.move(to: rect)
+                } else {
+                    marqueeRect = rect
+                    selectedOccurrences = Set(
+                        tileFrames.filter { $0.value.intersects(rect) }.map(\.key))
+                }
             }
-            .onEnded { _ in marqueeRect = nil }
+            .onEnded { _ in
+                marqueeRect = nil
+                sweep?.move(to: nil)
+            }
+    }
+
+    private func pickTiles(under rect: CGRect) {
+        let picked = Set(tileFrames.filter {
+            $0.value.offsetBy(dx: sweepOrigin.x, dy: sweepOrigin.y).intersects(rect)
+        }.map(\.key))
+        if picked != selectedOccurrences { selectedOccurrences = picked }
     }
 
     private func handleTap(index: Int, slide: Slide) {
@@ -810,6 +947,7 @@ struct SlideGridBody: View {
             selectedOccurrences.formUnion(min(anchor, index)...max(anchor, index))
         } else {
             clearSelection()
+            sweep?.clearAll()
 
             let isLiveTile = controls?.liveContextID == contextID && controls?.liveOccurrence == index
             if isLiveTile, let controls, controls.slideAnimationStep.map({ $0.consumed < $0.total }) == true {
@@ -843,64 +981,68 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func bulkMenu(slideIDs: [String]) -> some View {
         Text("\(slideIDs.count) Slides")
-        Menu("Add Action") {
-            AddActionMenuItems(
-                model: model,
-                timers: actionRouter?.timerChoices ?? []
-            ) { action in
-
-                actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
+        Section("Slides") {
+            Button("Auto Advance: \(SlideBulkEdit.autoAdvanceValue(autoAdvances(slideIDs)))…") {
+                autoAdvanceTarget = AutoAdvanceTarget(
+                    slideIDs: slideIDs, name: "\(slideIDs.count) Slides")
             }
-        }
-        let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
-        if !kinds.isEmpty {
-            Menu("Remove Action") {
-                ForEach(kinds, id: \.rawValue) { kind in
-                    Button(kind.displayName, role: .destructive) {
-                        model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Action") {
-                            SlideBulkEdit.removeActions(
-                                ofKind: kind, from: slideIDs, in: &$0)
+            let transitions = presentation.slides.filter { slideIDs.contains($0.id) }.map(\.transition)
+            let first = transitions.first ?? nil
+            TransitionMenu(current: first, mixed: transitions.contains { $0 != first }, inherited: presentation.transition) { transform in
+                setTransition(transform, on: slideIDs)
+            }
+
+            Menu("Actions") {
+                Menu("Add Action") {
+                    AddActionMenuItems(
+                        model: model,
+                        timers: actionRouter?.timerChoices ?? []
+                    ) { action in
+
+                        actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
+                    }
+                }
+                let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
+                if !kinds.isEmpty {
+                    Section("Remove") {
+                        ForEach(kinds, id: \.rawValue) { kind in
+                            Button(kind.displayName, role: .destructive) {
+                                model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Action") {
+                                    SlideBulkEdit.removeActions(
+                                        ofKind: kind, from: slideIDs, in: &$0)
+                                }
+                            }
+                        }
+                        Button("All Actions", role: .destructive) {
+                            removeAllActions(from: slideIDs)
                         }
                     }
                 }
-                Divider()
-                Button("All Actions", role: .destructive) {
-                    model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Actions") {
-                        SlideBulkEdit.removeActions(
-                            ofKind: nil, from: slideIDs, in: &$0)
-                    }
-                }
             }
         }
-        Button(anyHasAutoAdvance(slideIDs) ? "Auto Advance… ✓" : "Auto Advance…") {
-            autoAdvanceTarget = AutoAdvanceTarget(
-                slideIDs: slideIDs, name: "\(slideIDs.count) Slides")
+        Section("Look") {
+            Button("Apply Theme…") {
+                applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
+            }
         }
-        Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
-            slideShowPresented = true
-        }
-        Button("Apply Theme…") {
-            applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
+        Section("Arrange") {
+            Button("Duplicate \(slideIDs.count) Slides") {
+                confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
+
+                    var copied = presentation.slides
+                    SlideBulkEdit.duplicateSlides(slideIDs, in: &copied)
+                    if let insertion = ListInsertion(before: presentation.slides, after: copied, id: { $0.id }) {
+                        model.updatePresentation(presentation.id, value: { insertion.restore(into: &$0.slides) }, op: { document in
+                            try document.updateSlideList { insertion.restore(into: &$0) }
+                        })
+                    }
+                    clearSelection()
+                }
+            }
+            Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
         }
         Divider()
-        Button("Duplicate \(slideIDs.count) Slides") {
-            confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
-
-                var copied = presentation.slides
-                SlideBulkEdit.duplicateSlides(slideIDs, in: &copied)
-                if let insertion = ListInsertion(before: presentation.slides, after: copied, id: { $0.id }) {
-                    model.updatePresentation(presentation.id, value: { insertion.restore(into: &$0.slides) }, op: { document in
-                        try document.updateSlideList { insertion.restore(into: &$0) }
-                    })
-                }
-                clearSelection()
-            }
-        }
-        Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
-        Button("Delete \(slideIDs.count) Slides", role: .destructive) {
-            deleteSlides(slideIDs)
-        }
-        .disabled(slideIDs.count >= presentation.slides.count)
+        deleteButton(slideIDs, inSelection: true)
     }
 
     private func copySlides(_ slideIDs: [String]) {
@@ -963,10 +1105,22 @@ struct SlideGridBody: View {
         }
     }
 
+    @ViewBuilder
+    private func deleteButton(_ slideIDs: [String], inSelection: Bool) -> some View {
+        let elsewhere = inSelection ? sweep?.selected(besides: contextID) ?? 0 : 0
+        if elsewhere > 0, let deleteEverySelection {
+            Button("Delete \(slideIDs.count + elsewhere) Slides", role: .destructive) { deleteEverySelection() }
+        } else {
+            Button(slideIDs.count > 1 ? "Delete \(slideIDs.count) Slides" : "Delete", role: .destructive) {
+                deleteSlides(slideIDs)
+            }
+        }
+    }
+
     private func deleteSelectedSlides() {
         guard !runOnly, !selectedOccurrences.isEmpty else { return }
         let slideIDs = SlideBulkEdit.slideIDs(occurrences: selectedOccurrences, slides: slides)
-        guard !slideIDs.isEmpty, slideIDs.count < presentation.slides.count else { return }
+        guard !slideIDs.isEmpty else { return }
         deleteSlides(slideIDs)
     }
 
@@ -980,8 +1134,10 @@ struct SlideGridBody: View {
         }
     }
 
-    private func anyHasAutoAdvance(_ slideIDs: [String]) -> Bool {
-        presentation.slides.contains { slideIDs.contains($0.id) && $0.autoAdvance != nil }
+    private func setTransition(_ transform: @escaping @Sendable (MediaTransition?) -> MediaTransition?, on slideIDs: [String]) {
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Set Transition") {
+            SlideBulkEdit.setTransition(transform, on: slideIDs, in: &$0)
+        }
     }
 
     private func cueMediaIDs(of slide: Slide) -> [String] {
@@ -1024,93 +1180,110 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func singleMenu(slide: Slide) -> some View {
 
+        Button("Quick Edit…") { quickEditSlide = slide }
         Button("Edit…") {
             model.openInEditor(
                 entryID: presentation.id, slideID: slide.id
             )
             appModeRaw = AppMode.edit.rawValue
         }
-        Button("Quick Edit…") { quickEditSlide = slide }
-        Button("Rename Slide…") {
+        Button("Rename…") {
             renameText = slide.name
             renamingSlide = slide
         }
 
-        ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
-            Menu(model.media(mediaID)?.name ?? "Media") {
+        Section("Slide") {
+
+            Button("Auto Advance: \(SlideBulkEdit.autoAdvanceValue([slide.autoAdvance]))…") {
+                autoAdvanceTarget = AutoAdvanceTarget(slideIDs: [slide.id], name: slide.name)
+            }
+
+            TransitionMenu(current: slide.transition, inherited: presentation.transition) { transform in
+                setTransition(transform, on: [slide.id])
+            }
+            slideActionsMenu(slide)
+        }
+        let mediaIDs = cueMediaIDs(of: slide)
+        if !mediaIDs.isEmpty {
+            Section("Media") {
+                mediaRows(slide, mediaIDs: mediaIDs)
+            }
+        }
+        Section("Look") {
+            Button("Apply Theme…") {
+                applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
+            }
+        }
+        Section("Arrange") {
+            Button("New Slide After…") { newSlideTarget = NewSlideTarget(after: slide) }
+            Button("Duplicate") {
+                confirmingRepeatedSectionEdit(sections: [slide.sectionId]) {
+                    model.insertSlide(
+                        presentation.id, slide: slide.freshIDCopy(),
+                        afterSlideID: slide.id
+                    )
+                }
+            }
+            Button("Copy") { SlidePasteboard.copy(slide) }
+
+            let _ = SlidePasteboardChanges.shared.count
+            Button("Paste After") { pasteSlides(after: slide) }
+                .disabled(!SlidePasteboard.hasSlide)
+        }
+        Divider()
+
+        deleteButton(
+            [slide.id],
+            inSelection: SlideBulkEdit.slideIDs(occurrences: selectedOccurrences, slides: slides).contains(slide.id))
+    }
+
+    @ViewBuilder
+    private func mediaRows(_ slide: Slide, mediaIDs: [String]) -> some View {
+
+        ForEach(mediaIDs, id: \.self) { mediaID in
+            Menu(model.media(mediaID)?.name ?? "Missing Media") {
 
                 MediaCueMenuItems(
                     model: model, actionRouter: actionRouter,
                     mediaID: mediaID, state: mediaMenuState,
-                    includesCueGrammar: false
+                    includesCueGrammar: false,
+
+                    replace: SpotReplace(label: "Replace on This Slide…") {
+                        [presentationID = presentation.id, slideID = slide.id] oldID, newID in
+                        model.updateSlides(presentationID: presentationID, undoLabel: "Replace Media") {
+                            SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
+                        }
+                    },
+                    inheritedTransition: presentation.transition
                 )
             }
         }
+    }
 
-        Menu("Add Action") {
-            AddActionMenuItems(
-                model: model,
-                timers: actionRouter?.timerChoices ?? []
-            ) { action in
-                actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: action)
-            }
-        }
-
-        let slideActions = slide.actions ?? []
-        if !slideActions.isEmpty {
-
-            let timers = actionRouter?.timerChoices ?? []
-            Menu("Edit Action") {
-                ForEach(slideActions) { action in
-                    Button(slideActionLabel(
-                        action, model: model, timers: timers,
-                        confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])) {
-                        actionEditorSlide = slide
-                    }
+    private func slideActionsMenu(_ slide: Slide) -> some View {
+        ActionsMenu(
+            model: model, actionRouter: actionRouter,
+            actions: slide.actions ?? [],
+            add: { actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: $0) },
+            edit: { actionPlacement = ActionPlacement(slideIDs: [slide.id], draft: $0, editing: true) },
+            remove: { action in
+                model.updateSlide(presentationID: presentation.id, slideID: slide.id, undoLabel: "Remove Action") {
+                    $0.actions = SlideBulkEdit.removing(actionID: action.id, from: $0.actions)
                 }
-            }
-            Menu("Remove Action") {
-                ForEach(slideActions) { action in
-                    Button(slideActionLabel(
-                        action, model: model, timers: timers,
-                        confidenceScreens: actionRouter?.confidenceScreenChoices ?? []), role: .destructive) {
-                        removeSlideAction(action.id, from: slide)
-                    }
-                }
-            }
-        }
+            },
+            editAll: { actionEditorSlide = slide },
+            removeAll: { removeAllActions(from: [slide.id]) }
+        )
+    }
 
-        Button(slide.autoAdvance == nil
-            ? "Auto Advance…" : "Auto Advance… ✓"
-        ) {
-            autoAdvanceTarget = AutoAdvanceTarget(slideIDs: [slide.id], name: slide.name)
+    private func removeAllActions(from slideIDs: [String]) {
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Remove Actions") {
+            SlideBulkEdit.removeActions(ofKind: nil, from: slideIDs, in: &$0)
         }
-        Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
-            slideShowPresented = true
-        }
-        Button("Apply Theme…") {
-            applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
-        }
-        Divider()
-        Button("New Slide After…") { newSlideTarget = NewSlideTarget(after: slide) }
-        Button("Duplicate Slide") {
-            confirmingRepeatedSectionEdit(sections: [slide.sectionId]) {
-                model.insertSlide(
-                    presentation.id, slide: slide.freshIDCopy(),
-                    afterSlideID: slide.id
-                )
-            }
-        }
-        Button("Copy Slide") { SlidePasteboard.copy(slide) }
+    }
 
-        let _ = SlidePasteboardChanges.shared.count
-        Button("Paste Slide After") { pasteSlides(after: slide) }
-            .disabled(!SlidePasteboard.hasSlide)
-
-        Button("Delete Slide", role: .destructive) {
-            deleteSlides([slide.id])
-        }
-        .disabled(presentation.slides.count == 1)
+    private func autoAdvances(_ slideIDs: [String]) -> [AutoAdvance?] {
+        presentation.slides.filter { slideIDs.contains($0.id) }.map(\.autoAdvance)
     }
 
     private func applyThemeScope(_ slideIDs: [String]) -> String {
@@ -1150,9 +1323,9 @@ struct SlideGridBody: View {
             isSelected: selectedOccurrences.contains(index),
             roundedCorners: roundedCorners,
             hideScopedBackgrounds: hideScopedBackgrounds,
-            legibleText: legibleText,
             contextID: contextID,
-            mediaMissing: !missingMedia(of: slide).isEmpty
+            mediaMissing: !missingMedia(of: slide).isEmpty,
+            pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale)
         ) {
             handleTap(index: index, slide: slide)
         }
@@ -1216,7 +1389,23 @@ struct SlideGridBody: View {
                 dropTargetIndex = nil
                 dropTargetAfterIndex = nil
                 backgroundDropIndex = nil
-                return !runOnly && dropSlide(payload, after: slide)
+
+                return if runOnly {
+                    false
+                } else if GutterDropDelegate.forcesInsert(payload: payload) {
+                    dropSlide(payload, after: slide)
+                } else {
+                    insertMediaSlides(mediaIDs: [payload], afterIndex: index)
+                }
+            },
+            performFilesAfter: { urls in
+                dropTargetAfterIndex = nil
+                if !runOnly {
+                    Task { @MainActor in
+                        let imported = await model.importFiles(urls)
+                        _ = insertMediaSlides(mediaIDs: imported, afterIndex: index)
+                    }
+                }
             }
         ))
         .overlay(alignment: .leading) {
@@ -1224,7 +1413,7 @@ struct SlideGridBody: View {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(width: 3)
-                    .padding(.vertical, 14)
+
                     .offset(x: -7.5)
             }
         }
@@ -1233,7 +1422,6 @@ struct SlideGridBody: View {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(width: 3)
-                    .padding(.vertical, 14)
                     .offset(x: 7.5)
             }
         }
@@ -1340,15 +1528,6 @@ struct SlideGridBody: View {
         )
     }
 
-    private func removeSlideAction(_ actionID: String, from slide: Slide) {
-        model.updateSlide(presentationID: presentation.id, slideID: slide.id, undoLabel: "Remove Action") { target in
-            var actions = target.actions ?? []
-            actions.removeAll { $0.id == actionID }
-
-            target.actions = actions.isEmpty ? nil : actions
-        }
-    }
-
     private func slideActionsBinding(_ slideID: String) -> Binding<[SlideAction]> {
         Binding(
             get: {
@@ -1437,6 +1616,19 @@ struct SlideGridBody: View {
                 presentation.id,
                 slides: items.map { Slide.droppedMedia($0, sectionId: anchorSection) },
                 afterSlideID: afterID)
+            return true
+        }
+    }
+
+    private func insertMediaSlides(mediaIDs: [String], afterIndex index: Int) -> Bool {
+        let items = mediaIDs.compactMap { model.media($0) }
+        if items.isEmpty || !slides.indices.contains(index) {
+            return false
+        } else {
+            model.insertSlides(
+                presentation.id,
+                slides: items.map { Slide.droppedMedia($0, sectionId: slides[index].sectionId) },
+                afterSlideID: slides[index].id)
             return true
         }
     }
@@ -1531,11 +1723,12 @@ struct SlideTile: View {
     var isSelected = false
     let roundedCorners: Bool
     let hideScopedBackgrounds: Bool
-    let legibleText: Bool
 
     var contextID: String? = nil
 
     var mediaMissing = false
+
+    var pixelWidth = ThumbnailResolution.base
     let fire: () -> Void
 
     private var isLive: Bool {
@@ -1574,7 +1767,7 @@ struct SlideTile: View {
                 slide: slide, presentation: presentation, theme: theme,
                 arrangementId: arrangementId,
                 hideScopedBackgrounds: hideScopedBackgrounds,
-                legibleText: legibleText
+                pixelWidth: pixelWidth
             )
             .aspectRatio(aspect, contentMode: .fit)
             .clipShape(tileShape)
@@ -1652,12 +1845,12 @@ struct SlideTile: View {
 
                 if stepCount > 0 {
                     Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
-                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(isLive ? Color.white : Color.secondary)
-                        .padding(.horizontal, 4)
+                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(isLive ? Color.white : Color.primary)
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 1)
                         .background(
-                            (isLive ? Color.green : Color(.sRGB, white: 0.5).opacity(0.25)),
+                            (isLive ? Color.green : Color(.sRGB, white: 0.5).opacity(0.45)),
                             in: Capsule()
                         )
                         .tileHelp(isLive
@@ -1666,34 +1859,34 @@ struct SlideTile: View {
                 } else if hasAnySteps {
 
                     Image(systemName: "sparkles")
-                        .font(.system(size: 8))
+                        .font(.system(size: 11))
                         .foregroundStyle(isLive ? Color.green : Color.secondary)
                         .tileHelp("Animation plays on this slide when it fires, with no extra clicks. This includes steps an output's routed theme adds.")
                 }
                 Spacer(minLength: 4)
 
                 if let advance = slide.autoAdvance {
-                    Glyph(kind: .timers, size: 9)
-                        .foregroundStyle(.tertiary)
+                    Glyph(kind: .timers, size: 12)
+                        .foregroundStyle(.secondary)
                         .tileHelp(autoAdvanceSummary(advance))
                 }
 
                 if !actionBadges.isEmpty {
                     let actions = slide.actions ?? []
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
 
-                        ForEach(Array(actions.prefix(4)), id: \.id) { action in
-                            Glyph(kind: badgeGlyph(action.kind), size: 9)
-                                .foregroundStyle(.tertiary)
+                        ForEach(Array(actions.prefix(3)), id: \.id) { action in
+                            Glyph(kind: GlyphKind(action: action, model: model), size: 12)
+                                .foregroundStyle(.secondary)
                                 .tileHelp(slideActionLabel(
                                     action, model: model,
                                     timers: actionRouter?.timerChoices ?? [],
                                     confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
                         }
-                        if actionBadges.count > 4 {
-                            Text("+\(actionBadges.count - 4)")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(.tertiary)
+                        if actionBadges.count > 3 {
+                            Text("+\(actionBadges.count - 3)")
+                                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                                .foregroundStyle(.secondary)
                                 .tileHelp(actionSummary)
                         }
                     }
@@ -1755,9 +1948,9 @@ struct SlideTile: View {
                             SlideThumbnailView(
                                 model: model, render: render,
                                 slide: page, presentation: presentation, theme: look.theme,
-                                arrangementId: nil, hideScopedBackgrounds: false, legibleText: false,
+                                arrangementId: nil, hideScopedBackgrounds: false,
                                 contentStamp: "pages|\(slide.id)|\(look.id)|\(index)")
-                            .frame(width: 160, height: 90)
+                            .frame(width: 90 * SlideGridMetrics.tileAspect(for: presentation), height: 90)
                             .clipShape(RoundedRectangle.standard(CornerStandard.element))
                             Text("Page \(index + 1)").font(.caption2).foregroundStyle(.secondary)
                         }
@@ -1799,28 +1992,7 @@ struct SlideTile: View {
     }
 
     private var actionBadges: [GlyphKind] {
-        (slide.actions ?? []).map { badgeGlyph($0.kind) }
-    }
-
-    private func badgeGlyph(_ kind: SlideActionKind) -> GlyphKind {
-        switch kind {
-        case .switchOutputPreset: .screens
-        case .clearLayer, .clearAll, .clearAudio, .clearSignage: .clear
-        case .fireMedia: .media
-        case .fireAlert, .dismissAlert: .alerts
-        case .timerStart, .timerPause, .timerReset, .timerConfigure: .timers
-        case .midiOut: .midi
-        case .fireCombo: .combos
-        case .captureStart, .captureStop: .broadcast
-        case .firePresentation: .presentations
-        case .setConfidenceLayout: .confidence
-        case .fireOverlay, .dismissOverlay: .overlays
-        case .fireLiveInput: .screens
-        case .setSignage: .media
-        case .setScreenSource: .screens
-        case .enableAudioInput, .disableAudioInput: .audio
-        case .fireAudio, .fireAudioPlaylist: .audio
-        }
+        (slide.actions ?? []).map { GlyphKind(action: $0, model: model) }
     }
 
     private func autoAdvanceSummary(_ advance: AutoAdvance) -> String {
@@ -1901,7 +2073,6 @@ func slideActionLabel(
         "Clear \(action.layer.flatMap(LayerKind.init(rawValue:))?.displayName ?? "Layer")"
     case .clearAll: "Clear All"
     case .clearAudio: "Clear Music"
-    case .clearSignage: "Clear Signage"
     case .fireMedia: "Fire Media: \(entryName(action.mediaId))"
     case .fireAlert: "Fire Alert: \(entryName(action.alertId))"
     case .dismissAlert: "Dismiss Alert"
@@ -1939,14 +2110,7 @@ func slideActionLabel(
             : "Take Down Overlay: \(entryName(action.overlayId))"
     case .fireLiveInput:
         "Fire Live Input: \(liveInputName(action) ?? "not set")"
-    case .setSignage:
-        (action.playlistId?.isEmpty ?? true)
-            ? "Clear Signage"
-            : "Signage: \(entryName(action.playlistId))"
-    case .setScreenSource:
-        (action.signageId?.isEmpty ?? true)
-            ? "Screen Source : Program"
-            : "Screen Source : Signage"
+    case .setSignage, .setScreenSource, .clearSignage: action.kind.displayName
     case .enableAudioInput:
         "Audio Input On: \(audioInputName(action) ?? "not set")"
     case .disableAudioInput:
@@ -1964,11 +2128,14 @@ struct SlideThumbnailView: View {
     let theme: Theme?
     let arrangementId: String?
     let hideScopedBackgrounds: Bool
-    let legibleText: Bool
 
     var contentStamp: String? = nil
 
+    var pixelWidth = ThumbnailResolution.base
+
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
+
+    @State private var shown = ThumbnailStore.ShownFrame()
 
     private var updatedStamp: String {
         contentStamp
@@ -1986,7 +2153,7 @@ struct SlideThumbnailView: View {
             slideID: slide.id, presentation: presentation,
             arrangementId: arrangementId, stamp: updatedStamp, model: model
         )
-        let shown = hideScopedBackgrounds ? carried.filter { declaredMediaIDs.contains($0.value) } : carried
+        let shown = hideScopedBackgrounds ? SlideSceneBuilder.declaredOnly(carried, slide: slide) : carried
 
         let missing = SlideSceneBuilder.fireMediaPosterIDs(slide: slide) { model.media($0).map { ($0.mediaKind, $0.classification) } }
             .below.filter { model.media($0) == nil }
@@ -2010,6 +2177,8 @@ struct SlideThumbnailView: View {
                 posterLayer(mediaId: id)
             }
         }
+
+        .aspectRatio(SlideGridMetrics.tileAspect(for: presentation), contentMode: .fit)
         .overlay(alignment: .bottomLeading) {
 
             if source?.source == .slide(slide.id) {
@@ -2020,12 +2189,6 @@ struct SlideThumbnailView: View {
                     .tileHelp("This slide sets the background")
             }
         }
-    }
-
-    private var declaredMediaIDs: Set<String> {
-        var ids = Set((slide.actions ?? []).filter { $0.kind == .fireMedia }.compactMap(\.mediaId))
-        if let own = slide.background?.mediaId, !own.isEmpty { ids.insert(own) }
-        return ids
     }
 
     private var themeBackground: Color {
@@ -2039,20 +2202,26 @@ struct SlideThumbnailView: View {
 
     private func posterLayer(mediaId: String) -> some View {
         Color.clear
-            .overlay { PosterImage(model: model, mediaId: mediaId) }
+            .overlay {
+                PosterLookImage(
+                    model: model, render: render, mediaId: mediaId,
+                    canvas: SlideSceneBuilder.canvasSize(for: presentation),
+                    pixelWidth: pixelWidth)
+            }
             .clipped()
     }
 
     private func contentImage() -> CGImage? {
 
-        let identity = "\(presentation.id)|\(slide.id)|\(SlideSceneBuilder.lookKey(for: slide, theme: theme))|\(legibleText)"
+        let identity = "\(presentation.id)|\(slide.id)|\(SlideSceneBuilder.lookKey(for: slide, theme: theme))"
         let image = ThumbnailStore.shared.slideContent(
             slide: slide, theme: theme,
             render: render, model: model,
-            legibleText: legibleText,
             canvas: SlideSceneBuilder.canvasSize(for: presentation),
             cacheKey: "\(identity)|\(updatedStamp)",
             identity: identity,
+            pixelWidth: pixelWidth,
+            shown: shown,
             mediaEffects: { model.mediaSceneEffects(id: $0) }
         )
         if let image {
@@ -2066,8 +2235,12 @@ struct PosterImage: View {
     let model: AppModel
     let mediaId: String
 
+    var maxPixels = PosterDecode.maxPixelSize
+
     @State private var image: CGImage?
     @State private var missing = false
+
+    @State private var loadedStamp: String?
 
     var body: some View {
 
@@ -2087,7 +2260,7 @@ struct PosterImage: View {
                     .help("Media file missing")
             }
         }
-        .task(id: stamp) {
+        .task(id: "\(stamp)|\(maxPixels)") {
             guard let item = model.media(mediaId) else {
 
                 missing = true
@@ -2096,13 +2269,45 @@ struct PosterImage: View {
             }
             guard let blobs = model.blobs else { return }
             missing = model.isMediaFileMissing(item)
-            if !missing, let cached = ThumbnailStore.shared.cachedPoster(for: item) {
+            if !missing, let cached = ThumbnailStore.shared.cachedPoster(for: item, maxPixels: maxPixels) {
                 image = cached
+                loadedStamp = stamp
                 return
             }
 
-            image = nil
-            image = await ThumbnailStore.shared.poster(for: item, blobs: blobs)
+            if loadedStamp != stamp { image = nil }
+            image = await ThumbnailStore.shared.poster(for: item, blobs: blobs, maxPixels: maxPixels)
+            loadedStamp = stamp
+        }
+    }
+}
+
+struct PosterLookImage: View {
+    let model: AppModel
+    let render: RenderContext?
+    let mediaId: String
+    var canvas = SlideSceneBuilder.canvasSize
+    var pixelWidth = ThumbnailResolution.base
+
+    var body: some View {
+
+        let effects = model.mediaSceneEffects(id: mediaId)
+        let item = model.media(mediaId)
+        let look = item.flatMap { item in
+            !effects.isEmpty && !model.isMediaFileMissing(item)
+                ? ThumbnailStore.shared.posterLook(
+                    mediaID: mediaId, effects: effects, canvas: canvas, pixelWidth: pixelWidth,
+                    render: render, model: model)
+                : nil
+        }
+        if let look {
+            Image(decorative: look, scale: 1)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            PosterImage(
+                model: model, mediaId: mediaId,
+                maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
         }
     }
 }
@@ -2257,6 +2462,8 @@ struct MediaFireView: View {
 
     var serviceItemID: String? = nil
 
+    var serviceID: String? = nil
+
     @State private var mediaMenuState = MediaCueMenuState()
 
     @Environment(\.runOnly) private var runOnly
@@ -2269,7 +2476,7 @@ struct MediaFireView: View {
 
                 Color.clear
                     .aspectRatio(16 / 9, contentMode: .fit)
-                    .overlay { PosterImage(model: model, mediaId: mediaID) }
+                    .overlay { PosterLookImage(model: model, render: controls?.render, mediaId: mediaID) }
                     .frame(maxWidth: 640)
                     .clipShape(RoundedRectangle.standard(CornerStandard.element))
                     .overlay {
@@ -2282,7 +2489,8 @@ struct MediaFireView: View {
                         if !runOnly {
                             MediaCueMenuItems(
                                 model: model, actionRouter: controls?.actionRouter,
-                                mediaID: mediaID, state: mediaMenuState
+                                mediaID: mediaID, state: mediaMenuState,
+                                replace: replaceInRow
                             )
                         }
                     }
@@ -2325,7 +2533,7 @@ struct MediaFireView: View {
                 "Deleted from the library",
                 systemImage: "questionmark.square.dashed",
                 description: Text(runOnly
-                    ? "Unlock run-only to restore a file for it."
+                    ? "Leave Volunteer Mode to restore a file for it."
                     : "Right-click to restore a file for it — every slide and service using it heals.")
             )
             .contextMenu {
@@ -2337,6 +2545,16 @@ struct MediaFireView: View {
                 }
             }
             .mediaCueSheets(model: model, state: mediaMenuState)
+        }
+    }
+
+    private var replaceInRow: SpotReplace? {
+        if let serviceID, let serviceItemID {
+            SpotReplace(label: "Replace in This Service…") { _, newID in
+                model.replaceServiceItemMedia(serviceID, itemID: serviceItemID, mediaID: newID)
+            }
+        } else {
+            nil
         }
     }
 }
@@ -2406,61 +2624,6 @@ struct SongKeyChip: View {
     private func setKey(_ name: String) {
         model.updatePresentationField(presentation.id, \.musicKey, key: "musicKey", to: name, undoLabel: "Set Key")
         controls?.presentationEdited(presentation.id)
-    }
-
-    private func chipLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(.quaternary, in: Capsule())
-    }
-}
-
-struct SlideShowChip: View {
-    let model: AppModel
-    let controls: ServiceControls?
-    let presentation: Presentation
-
-    @Environment(\.runOnly) private var runOnly
-    @State private var sheetPresented = false
-
-    var body: some View {
-        if let slideShow = presentation.autoAdvance {
-            if runOnly {
-                chipLabel(text(slideShow))
-            } else {
-                Button {
-                    sheetPresented = true
-                } label: {
-                    chipLabel(text(slideShow))
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
-                .sheet(isPresented: $sheetPresented) {
-                    AutoAdvanceSheet(
-                        slideName: presentation.name,
-                        advance: Binding(
-                            get: { model.presentation(presentation.id)?.autoAdvance },
-                            set: { advance in
-                                model.updatePresentationField(
-                                    presentation.id, \.autoAdvance, key: "autoAdvance", to: advance,
-                                    undoLabel: "Slide Show")
-                                controls?.presentationEdited(presentation.id)
-                            }
-                        ),
-                        presentationScope: true
-                    )
-                }
-            }
-        }
-    }
-
-    private func text(_ slideShow: AutoAdvance) -> String {
-        let seconds = slideShow.delaySeconds
-        let interval = seconds == seconds.rounded()
-            ? "\(Int(seconds))s" : String(format: "%.1fs", seconds)
-        return "Slide Show: \(interval)\((slideShow.loopToStart ?? false) ? " · Loop" : "")"
     }
 
     private func chipLabel(_ text: String) -> some View {

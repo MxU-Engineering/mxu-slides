@@ -8,12 +8,15 @@ public enum ServiceTrackingTimers {
     public enum Subject: String, CaseIterable, Sendable {
         case item, section, service, video
 
+        case timeline
+
         public var title: String {
             switch self {
             case .item: "Item"
             case .section: "Section"
             case .service: "Service"
             case .video: "Video"
+            case .timeline: "Timeline"
             }
         }
     }
@@ -74,6 +77,8 @@ public enum ServiceTrackingTimers {
         case (.service, .elapsed): "Counts up from the moment the first item was fired."
         case (.video, .remaining): "Counts down the video playing for the current item."
         case (.video, .elapsed): "Counts up from the start of the video playing for the current item."
+        case (.timeline, .remaining): "Counts down to the end of the presentation timeline playing, on its own clock or from timecode."
+        case (.timeline, .elapsed): "Counts up from the start of the presentation timeline playing, on its own clock or from timecode."
         }
     }
 

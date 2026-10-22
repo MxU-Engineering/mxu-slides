@@ -47,6 +47,8 @@ public enum LinkedText {
         case .currentPresentation: return nonEmpty(info.currentPresentationName)
 
         case .nextServiceTitle: return nonEmpty(info.nextServiceTitle)
+
+        case .timecode: return info.timecode?.text(at: date)
         case .stageMessage:
 
             guard let alert = info.alert, alert.showsOnConfidence, info.alertVisible else { return nil }
@@ -124,7 +126,7 @@ public enum LinkedText {
 
     public static func isTimeVarying(_ link: TextLink) -> Bool {
         switch link.source {
-        case .clock, .timer, .videoCountdown:
+        case .clock, .timer, .videoCountdown, .timecode:
             return true
         case .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
@@ -137,6 +139,9 @@ public enum LinkedText {
         switch link.source {
         case .timer, .videoCountdown:
             return link.timerPattern.map(TimerPattern.hasFraction) == true
+
+        case .timecode:
+            return true
         case .clock, .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
              .currentPresentation, .nextServiceTitle:
@@ -203,7 +208,9 @@ public enum LinkedText {
         currentGroupName: "Verse 1",
         nextItemName: "Welcome & Announcements",
         currentPresentationName: "Amazing Grace",
-        nextServiceTitle: "Sunday Gathering"
+        nextServiceTitle: "Sunday Gathering",
+        timecode: TimecodeDisplay(
+            seconds: 3662.5, rate: .fps30, anchoredAt: Date(timeIntervalSince1970: 1_784_800_000), isRunning: false)
     )
 
     public static func previewObjects(_ objects: [SlideObject]) -> [SlideObject] {

@@ -17,20 +17,31 @@ final class AudioOutputInventory {
 
         var channelOffset: Int
 
+        var monoChannel: Int?
+
         var delayMs: Int?
 
         var isDeviceless: Bool { deviceUID == AudioOutputInventory.noDeviceUID }
 
+        var shortName: String {
+            if let mono = monoChannel, name.hasSuffix(" \(mono + 1)") { return "Out \(mono + 1)" }
+            if monoChannel == nil, name.hasSuffix(" \(channelOffset + 1)-\(channelOffset + 2)") {
+                return "Out \(channelOffset + 1)\u{2013}\(channelOffset + 2)"
+            }
+            return name
+        }
+
         init(
             id: String = UUID().uuidString, name: String,
             deviceUID: String? = nil, channelOffset: Int = 0,
-            delayMs: Int? = nil
+            delayMs: Int? = nil, monoChannel: Int? = nil
         ) {
             self.id = id
             self.name = name
             self.deviceUID = deviceUID
             self.channelOffset = channelOffset
             self.delayMs = delayMs
+            self.monoChannel = monoChannel
         }
 
         init(from decoder: Decoder) throws {
@@ -40,6 +51,7 @@ final class AudioOutputInventory {
             deviceUID = try container.decodeIfPresent(String.self, forKey: .deviceUID)
             channelOffset = try container.decodeIfPresent(Int.self, forKey: .channelOffset) ?? 0
             delayMs = try container.decodeIfPresent(Int.self, forKey: .delayMs)
+            monoChannel = try container.decodeIfPresent(Int.self, forKey: .monoChannel)
         }
     }
 
@@ -108,11 +120,45 @@ final class AudioOutputInventory {
         persist()
     }
 
-    func assignDevice(id: String, deviceUID: String?, channelOffset: Int) {
+    func assignDevice(id: String, deviceUID: String?, channelOffset: Int, monoChannel: Int? = nil) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].deviceUID = deviceUID
         entries[index].channelOffset = max(0, channelOffset)
+        entries[index].monoChannel = monoChannel.map { max(0, $0) }
         persist()
+    }
+
+    func addOutputPerChannel(of device: AudioOutputDevice) {
+        let taken = Set(entries.filter { $0.deviceUID == device.uid }.compactMap(\.monoChannel))
+        for channel in 0 ..< device.channelCount where !taken.contains(channel) {
+            entries.append(Entry(
+                name: "\(device.name) \(channel + 1)", deviceUID: device.uid, channelOffset: 0, monoChannel: channel))
+        }
+        persist()
+    }
+
+    @discardableResult
+    func ensureMono(device: AudioOutputDevice, channel: Int) -> Entry {
+        if let found = entries.first(where: { $0.deviceUID == device.uid && $0.monoChannel == channel }) { return found }
+        let made = Entry(name: "\(device.name) \(channel + 1)", deviceUID: device.uid, channelOffset: 0, monoChannel: channel)
+        entries.append(made)
+        persist()
+        return made
+    }
+
+    @discardableResult
+    func ensurePair(device: AudioOutputDevice, offset: Int) -> Entry {
+        if let found = entries.first(where: { $0.deviceUID == device.uid && $0.monoChannel == nil && $0.channelOffset == offset }) {
+            return found
+        }
+        let made = Entry(name: "\(device.name) \(offset + 1)-\(offset + 2)", deviceUID: device.uid, channelOffset: offset)
+        entries.append(made)
+        persist()
+        return made
+    }
+
+    func channelWords(_ entry: Entry) -> String {
+        entry.monoChannel.map { "\($0 + 1)" } ?? "\(entry.channelOffset + 1)-\(entry.channelOffset + 2)"
     }
 
     func setDelay(id: String, milliseconds: Int) {
@@ -123,7 +169,7 @@ final class AudioOutputInventory {
     }
 
     func remove(_ entry: Entry) {
-        guard entries.count > 1 else { return }  
+        guard entries.count > 1 else { return }
         entries.removeAll { $0.id == entry.id }
         persist()
     }

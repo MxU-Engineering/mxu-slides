@@ -11,6 +11,12 @@ public enum MixerStripLayout {
         return max(minimumFaderHeight, viewportHeight - fixedChrome - scrollerHeight)
     }
 
+    public static let stripChrome: Double = 133
+
+    public static func stripHeight(viewportHeight: Double, scrollerHeight: Double) -> Double {
+        faderHeight(viewportHeight: viewportHeight, scrollerHeight: scrollerHeight) + stripChrome
+    }
+
     public static let grabBarReach: Double = 4
 
     public static func grabBarY(_ y: Double, barMinY: Double, barMaxY: Double) -> Double {

@@ -14,6 +14,12 @@ struct AudioMixerModule: View {
     @State private var groupStore = MixerGroupStore.shared
 
     @AppStorage("mixer.scope") private var scope = 3
+    @State private var consoleContentHeight: CGFloat = 0
+    @State private var consoleFrameHeight: CGFloat = 0
+
+    private var grabBarRow: CGFloat {
+        max(0, consoleContentHeight - consoleFrameHeight + ConsoleScrolling.scrollerHeight)
+    }
 
     var body: some View {
         let audio = controls.audio
@@ -31,7 +37,8 @@ struct AudioMixerModule: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(audio.isMuted ? "Unmute playback buses" : "Mute playback buses")
+                .help(audio.isMuted ? "Unmute music" : "Mute music")
+                TracksMixerButton(model: model, tracks: controls.tracks)
                 if !runOnly {
 
                     Button {
@@ -55,6 +62,10 @@ struct AudioMixerModule: View {
                 selection: $scope
             )
 
+            .onChange(of: TimelineTracks.hasTracks(model.trackChannels)) { _, has in
+                if has { controls.tracks.queueRefresh() }
+            }
+
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 4) {
 
@@ -62,6 +73,15 @@ struct AudioMixerModule: View {
                         videoAudioStrip(audio)
                         ForEach(audio.players) { player in
                             busStrip(player, audio: audio, mixer: mixer)
+                        }
+
+                        let trackChannels = model.trackChannels
+                        if TimelineTracks.hasTracks(trackChannels) {
+                            if trackChannels.count == 1, let only = trackChannels.first {
+                                trackStrip(only, mixer: mixer)
+                            } else {
+                                tracksGroup(trackChannels, mixer: mixer)
+                            }
                         }
 
                         ForEach(inputRows) { row in
@@ -78,22 +98,37 @@ struct AudioMixerModule: View {
                     if scope == 3 { consoleDivider() }
 
                     if scope == 1 || scope == 3 {
-                        ForEach(mixInventory.entries) { mix in
-                            mixStrip(mix, audio: audio, mixer: mixer)
+
+                        ForEach(mixRows) { row in
+                            switch row {
+                            case .mix(let mix):
+                                mixStrip(mix, audio: audio, mixer: mixer)
+                            case .folder(let folder, let members):
+                                mixFolder(folder, members: members, audio: audio, mixer: mixer)
+                            }
                         }
                     }
                     if scope == 3 { consoleDivider() }
 
                     if scope == 2 || scope == 3 {
-                        ForEach(outputInventory.entries) { output in
-                            outputStrip(output, mixer: mixer)
+
+                        ForEach(outputRows) { row in
+                            switch row {
+                            case .single(let output):
+                                outputStrip(output, mixer: mixer)
+                            case .group(let uid, let name, let members):
+                                outputGroup(uid: uid, name: name, members: members, mixer: mixer)
+                            }
                         }
                     }
                 }
                 .padding(.horizontal, 2)
+                .padding(.bottom, grabBarRow)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { consoleContentHeight = $0 }
 
                 .consoleScrolling()
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { consoleFrameHeight = $0 }
         }
         .onAppear { mixer.setMetering(true) }
         .onDisappear { mixer.setMetering(false) }
@@ -157,11 +192,12 @@ struct AudioMixerModule: View {
             }
         }
 
-        .padding(2)
-        .background(
-            expanded ? Color.primary.opacity(0.04) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.primary.opacity(0.04) : .clear)
+                .padding(.vertical, -2)
+        }
     }
 
     private func compactedName(_ name: String, deviceName: String) -> String? {
@@ -191,7 +227,7 @@ struct AudioMixerModule: View {
                 set: { mixer.setDeviceMuted($0, uid: uid) }
             ),
 
-            meter: mixer.displayLevels["device:\(uid)"],
+            meter: .display("device:\(uid)"), mixer: mixer,
             colorKey: "device:\(uid)",
             defaultColorName: "Teal",
             extraMenu: {
@@ -229,6 +265,143 @@ struct AudioMixerModule: View {
         }
     }
 
+    private func tracksGroup(_ channels: [TrackChannel], mixer: AudioMixerController) -> some View {
+        let expanded = groupStore.isExpanded(Self.tracksGroupKey)
+        return HStack(alignment: .top, spacing: 4) {
+            ConsoleStrip(
+                name: "Tracks",
+                live: controls.tracks.isPlaying,
+                tint: .purple,
+
+                topSlot: tracksMainSlot(channels),
+                bottomSlot: .static(channels.isEmpty ? "No tracks yet" : "\(channels.count) channels"),
+                gain: Binding(get: { TracksController.trim }, set: { TracksController.setTrim($0) }),
+                muted: Binding(get: { TracksController.trimMuted }, set: { TracksController.setTrimMuted($0) }),
+
+                meter: .display(AudioMixerController.tracksMeterKey), mixer: mixer,
+                meterAppliesGain: false,
+                colorKey: "tracks",
+                defaultColorName: "Purple",
+                extraMenu: { AnyView(EmptyView()) }
+            ) {
+                Button {
+                    groupStore.toggle(Self.tracksGroupKey)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(expanded ? "Fold" : "\(channels.count)")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 15)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+                    .overlay(
+                        RoundedRectangle.standard(CornerStandard.element)
+                            .strokeBorder(Color.separator.opacity(0.4), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(expanded ? "Fold the track channels into one strip" : "Show every track channel (\(channels.count))")
+            }
+            if expanded {
+                ForEach(channels) { channel in
+                    trackStrip(channel, mixer: mixer)
+                }
+            }
+        }
+
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.primary.opacity(0.04) : .clear)
+                .padding(.vertical, -2)
+        }
+    }
+
+    static let tracksGroupKey = "tracks"
+
+    private func tracksMainSlot(_ channels: [TrackChannel]) -> ConsoleSlot {
+        let onMain = TracksController.musicOnMain(channels)
+        return .menu(onMain ? "On Main" : "Off Main", accent: !onMain, content: {
+            AnyView(Group {
+                Toggle("Tracks Play on Main", isOn: Binding(
+                    get: { onMain },
+                    set: { TracksController.setMusicOnMain($0, channels) }
+                ))
+                Text("Each track also feeds its instrument family's mix in the Tracks folder. Patch those mixes to outputs, then take tracks off Main so it doesn't carry them twice.")
+            })
+        })
+    }
+
+    private func trackStrip(_ channel: TrackChannel, mixer: AudioMixerController) -> some View {
+        let route = TracksController.mixId(channel)
+        return ConsoleStrip(
+            name: channel.name,
+            live: false,
+            topSlot: sendsSlot(channel: "track:\(channel.id)", routedMix: route ?? "", mixer: mixer),
+            bottomSlot: trackRouteSlot(channel, current: route),
+            gain: Binding(get: { TracksController.gain(channel.id) }, set: { TracksController.setGain($0, for: channel.id) }),
+            muted: Binding(get: { TracksController.muted(channel.id) }, set: { TracksController.setMuted($0, for: channel.id) }),
+            pan: Binding(get: { TracksController.pan(channel.id) }, set: { TracksController.setPan($0, for: channel.id) }),
+            meter: .display("track:\(channel.id)"), mixer: mixer,
+            meterAppliesGain: true,
+            colorKey: "track:\(channel.id)",
+            defaultColorName: TimelineTracks.family(of: channel).colorName,
+            extraMenu: {
+                AnyView(Group {
+
+                    Toggle("Mono", isOn: Binding(
+                        get: { channel.mono == true },
+                        set: { self.setMono(channel, $0) }))
+                        .disabled(self.runOnly)
+                })
+            }
+        ) {
+
+            let cue = channel.trackRole == .music ? ""
+                : " \(channel.trackRole == .click ? "Click" : "Guide") starts on no mix, so it never reaches the house unasked; its Main send waits at zero."
+            Button(channel.mono == true ? "MONO" : "STEREO") { setMono(channel, channel.mono != true) }
+                .buttonStyle(.plain)
+                .foregroundStyle(channel.trackRole != .music ? Color.orange
+                    : channel.mono == true ? Color.accentColor : Color.secondary)
+                .disabled(runOnly)
+                .help((channel.mono == true
+                    ? "Mono: the stem folds to one channel before the pan. Click for stereo."
+                    : "Stereo. Click to fold this channel to mono.") + cue)
+                .accessibilityLabel(channel.mono == true ? "Mono" : "Stereo")
+            .font(.system(size: 8, weight: .semibold))
+            .frame(maxWidth: .infinity)
+            .frame(height: 15)
+        }
+    }
+
+    private func setMono(_ channel: TrackChannel, _ on: Bool) {
+        model.updateTrackChannels { list in
+            guard let index = list.channels.firstIndex(where: { $0.id == channel.id }) else { return }
+            list.channels[index].mono = on ? true : nil
+        }
+    }
+
+    private func trackRouteSlot(_ channel: TrackChannel, current: String?) -> ConsoleSlot {
+        .menu(current.flatMap { mixInventory.entry(id: $0)?.name } ?? (channel.trackRole == .music ? "Off Main" : "No Mix"), accent: current == nil && channel.trackRole != .music, content: {
+            AnyView(Group {
+                Toggle("No Mix", isOn: Binding(
+                    get: { current == nil },
+                    set: { _ in TracksController.setMix(nil, for: channel.id) }
+                ))
+                ForEach(self.mixInventory.entries) { mix in
+                    Toggle(mix.name, isOn: Binding(
+                        get: { current == mix.id },
+                        set: { _ in TracksController.setMix(mix.id, for: channel.id) }
+                    ))
+                }
+            })
+        })
+    }
+
     private func inputStrip(
         _ entry: AudioInputInventory.Entry, audio: AudioController,
         mixer: AudioMixerController, displayName: String? = nil
@@ -255,7 +428,7 @@ struct AudioMixerModule: View {
                 get: { mixer.pan(forInput: entry.id) },
                 set: { mixer.setPan($0, forInput: entry.id) }
             ),
-            meter: mixer.displayLevels[entry.id],
+            meter: .display(entry.id), mixer: mixer,
             meterAppliesGain: true,
 
             onRename: { audioInventory.rename(id: entry.id, to: $0) },
@@ -323,7 +496,7 @@ struct AudioMixerModule: View {
                 set: { audio.setMuted($0, for: player) }
             ),
 
-            meter: mixer.playerLevels[player.targetKey],
+            meter: .player(player.targetKey), mixer: mixer,
             meterAppliesGain: true,
             colorKey: playlistID.map { "playlist:\($0)" } ?? "single-item",
             defaultColorName: "Teal"
@@ -345,7 +518,7 @@ struct AudioMixerModule: View {
                 get: { audio.mediaAudioMuted },
                 set: { audio.mediaAudioMuted = $0 }
             ),
-            meter: controls.mixer.displayLevels[AudioMixerController.videoMeterKey],
+            meter: .display(AudioMixerController.videoMeterKey), mixer: controls.mixer,
             colorKey: "video",
             defaultColorName: "Teal"
         ) { EmptyView() }
@@ -355,7 +528,10 @@ struct AudioMixerModule: View {
         _ mix: AudioMixInventory.Entry, audio: AudioController,
         mixer: AudioMixerController
     ) -> some View {
-        ConsoleStrip(
+
+        let idle = TracksController.busIDs.contains(mix.id)
+            && !TracksController.fedMixIDs(model.trackChannels, mixer: mixer).contains(mix.id)
+        return ConsoleStrip(
             name: mix.name,
             live: false,
             tint: .blue,
@@ -369,18 +545,171 @@ struct AudioMixerModule: View {
                 get: { audio.mixMuted(mix.id) },
                 set: { audio.setMixMuted($0, mixID: mix.id) }
             ),
-            meter: mixer.busLevels[mix.id],
+            meter: .bus(mix.id), mixer: mixer,
             onRename: (mix.isMain || runOnly) ? nil : { newName in
                 mixInventory.rename(id: mix.id, to: newName)
             },
             colorKey: "mix:\(mix.id)",
-            defaultColorName: "Blue",
+
+            defaultColorName: TimelineTracks.Family.allCases.first { TracksController.existingBus($0)?.id == mix.id }?.colorName ?? "Blue",
             extraMenu: {
-                (mix.isMain || self.runOnly)
+                self.runOnly
                     ? AnyView(EmptyView())
-                    : AnyView(Button("Remove Mix") { self.mixInventory.remove(mix) })
+                    : AnyView(Group {
+                        Menu("Move to Folder") {
+                            ForEach(self.mixInventory.folders) { folder in
+                                Button(folder.name) { self.mixInventory.move(mix.id, toFolder: folder.id) }
+                                    .disabled(mix.folderId == folder.id)
+                            }
+                            if !self.mixInventory.folders.isEmpty { Divider() }
+                            Button("New Folder") {
+                                let folder = self.mixInventory.folder(named: self.newFolderName())
+                                self.mixInventory.move(mix.id, toFolder: folder.id)
+                                self.groupStore.toggle("folder:\(folder.id)")
+                            }
+                            if mix.folderId != nil {
+                                Button("Out of the Folder") { self.mixInventory.move(mix.id, toFolder: nil) }
+                            }
+                        }
+                        if !mix.isMain {
+                            Button("Remove Mix") { self.mixInventory.remove(mix) }
+                        }
+                    })
             }
         ) { EmptyView() }
+        .opacity(idle ? 0.5 : 1)
+    }
+
+    private enum OutputRow: Identifiable {
+        case single(AudioOutputInventory.Entry)
+        case group(uid: String, name: String, members: [AudioOutputInventory.Entry])
+
+        var id: String {
+            switch self {
+            case .single(let output): "output:\(output.id)"
+            case .group(let uid, _, _): "outdevice:\(uid)"
+            }
+        }
+    }
+
+    private var outputRows: [OutputRow] {
+        let entries = outputInventory.entries
+        let real = { (entry: AudioOutputInventory.Entry) -> String? in
+            guard let uid = entry.deviceUID, !entry.isDeviceless else { return nil }
+            return uid
+        }
+        var counts: [String: Int] = [:]
+        for entry in entries { if let uid = real(entry) { counts[uid, default: 0] += 1 } }
+        var rows: [OutputRow] = []
+        var grouped: Set<String> = []
+        for entry in entries {
+            guard let uid = real(entry), counts[uid, default: 0] >= 2 else {
+                rows.append(.single(entry))
+                continue
+            }
+            guard grouped.insert(uid).inserted else { continue }
+            let name = AudioDeviceList.outputDevices().first { $0.uid == uid }?.name ?? "Missing Device"
+            rows.append(.group(uid: uid, name: name, members: entries.filter { real($0) == uid }))
+        }
+        return rows
+    }
+
+    private func outputGroup(
+        uid: String, name: String, members: [AudioOutputInventory.Entry], mixer: AudioMixerController
+    ) -> some View {
+        let key = "outdevice:\(uid)"
+        let expanded = groupStore.isExpanded(key)
+        return HStack(alignment: .top, spacing: 4) {
+            FoldCard(
+                name: name, symbol: "hifispeaker.2", count: members.count, expanded: expanded,
+
+                meter: .output("device:\(uid)"), mixer: mixer,
+                toggle: { groupStore.toggle(key) }, rename: nil, remove: nil,
+                colorKey: key, colorName: "Orange")
+            if expanded {
+                ForEach(members) { output in
+                    outputStrip(output, mixer: mixer)
+                }
+            }
+        }
+
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.orange.opacity(0.05) : .clear)
+                .padding(.vertical, -2)
+        }
+    }
+
+    private enum MixRow: Identifiable {
+        case mix(AudioMixInventory.Entry)
+        case folder(AudioMixInventory.Folder, members: [AudioMixInventory.Entry])
+
+        var id: String {
+            switch self {
+            case .mix(let mix): "mix:\(mix.id)"
+            case .folder(let folder, _): "folder:\(folder.id)"
+            }
+        }
+    }
+
+    private var mixRows: [MixRow] {
+
+        let shown = TimelineTracks.shownMixes(
+            mixInventory.entries.map { ($0.id, $0.folderId) }, folders: mixInventory.folders.map(\.id),
+            buses: TracksController.busIDs, hasTracks: TimelineTracks.hasTracks(model.trackChannels))
+        let entries = mixInventory.entries.filter { shown.mixes.contains($0.id) }
+        let folders = mixInventory.folders.filter { shown.folders.contains($0.id) }
+        var rows: [MixRow] = []
+        var placed: Set<String> = []
+        for mix in entries {
+            guard let id = mix.folderId, let folder = folders.first(where: { $0.id == id }) else {
+                rows.append(.mix(mix))
+                continue
+            }
+            guard placed.insert(id).inserted else { continue }
+            rows.append(.folder(folder, members: entries.filter { $0.folderId == id }))
+        }
+        for folder in folders where !placed.contains(folder.id) {
+            rows.append(.folder(folder, members: []))
+        }
+        return rows
+    }
+
+    private func newFolderName() -> String {
+        let names = Set(mixInventory.folders.map(\.name))
+        var number = 1
+        while names.contains("Folder \(number)") { number += 1 }
+        return "Folder \(number)"
+    }
+
+    private func mixFolder(
+        _ folder: AudioMixInventory.Folder, members: [AudioMixInventory.Entry],
+        audio: AudioController, mixer: AudioMixerController
+    ) -> some View {
+        let key = "folder:\(folder.id)"
+        let expanded = groupStore.isExpanded(key)
+        return HStack(alignment: .top, spacing: 4) {
+            FoldCard(
+                name: folder.name, symbol: expanded ? "folder" : "folder.fill", count: members.count, expanded: expanded,
+                meter: .loudestMix(members.map(\.id)), mixer: mixer,
+                toggle: { groupStore.toggle(key) },
+                rename: runOnly ? nil : { mixInventory.renameFolder(id: folder.id, to: $0) },
+                remove: runOnly ? nil : { mixInventory.removeFolder(id: folder.id) },
+                colorKey: key, colorName: "Blue")
+            if expanded {
+                ForEach(members) { mix in
+                    mixStrip(mix, audio: audio, mixer: mixer)
+                }
+            }
+        }
+
+        .padding(.horizontal, 2)
+        .background {
+            RoundedRectangle.standard(CornerStandard.element)
+                .fill(expanded ? Color.blue.opacity(0.05) : .clear)
+                .padding(.vertical, -2)
+        }
     }
 
     private func mixRouteSlot(_ mix: AudioMixInventory.Entry) -> ConsoleSlot {
@@ -424,7 +753,7 @@ struct AudioMixerModule: View {
         let token = mixInventory.primaryToken(mixId: mix.id)
         if token == AudioMixInventory.noOutputID { return "Virtual" }
         if token == AudioMixInventory.defaultOutputID { return "Default" }
-        return outputInventory.entry(id: token)?.name ?? "Missing"
+        return outputInventory.entry(id: token)?.shortName ?? "Missing"
     }
 
     private func mixSendsSlot(
@@ -437,7 +766,7 @@ struct AudioMixerModule: View {
         let virtual = AudioMixInventory.isVirtual(mix.outputIds)
         let title = sends.isEmpty ? "+ send"
             : (sends.count == 1
-                ? (outputInventory.entry(id: sends[0])?.name ?? "1 send")
+                ? (outputInventory.entry(id: sends[0])?.shortName ?? "1 send")
                 : "\(sends.count) sends")
         return .popover(title, accent: !sends.isEmpty, quiet: sends.isEmpty, content: {
             AnyView(VStack(alignment: .leading, spacing: 8) {
@@ -522,7 +851,7 @@ struct AudioMixerModule: View {
                 get: { mixer.outputMuted(output.id) },
                 set: { mixer.setOutputMuted($0, outputId: output.id) }
             ),
-            meter: mixer.outputLevels[output.id],
+            meter: .output(output.id), mixer: mixer,
             colorKey: "output:\(output.id)",
             defaultColorName: "Orange",
             extraMenu: {
@@ -555,6 +884,16 @@ struct AudioMixerModule: View {
                                 id: output.id, deviceUID: device.uid, channelOffset: offset)
                         }
                     }
+                    Divider()
+
+                    Menu("One Channel (mono)") {
+                        ForEach(0 ..< device.channelCount, id: \.self) { channel in
+                            Button("Channel \(channel + 1)") {
+                                outputInventory.assignDevice(
+                                    id: output.id, deviceUID: device.uid, channelOffset: 0, monoChannel: channel)
+                            }
+                        }
+                    }
                 }
             } else {
                 Button(device.name) {
@@ -570,8 +909,8 @@ struct AudioMixerModule: View {
         guard let uid = output.deviceUID else { return "Default" }
         guard let device = AudioDeviceList.outputDevices().first(where: { $0.uid == uid })
         else { return "Missing" }
-        return device.channelCount > 2
-            ? "\(device.name) \(output.channelOffset + 1)-\(output.channelOffset + 2)"
+        return device.channelCount > 2 || output.monoChannel != nil
+            ? "\(device.name) \(outputInventory.channelWords(output))"
             : device.name
     }
 
@@ -585,10 +924,10 @@ struct AudioMixerModule: View {
         let addable = mixInventory.entries.filter {
             $0.id != routedMix && sends[$0.id] == nil
         }
-        let title = sends.isEmpty ? "+ send"
-            : (sends.count == 1
-                ? (mixInventory.entry(id: sends.keys.first ?? "")?.name ?? "1 send")
-                : "\(sends.count) sends")
+
+        let loudest = sends.max { ($0.value, $1.key) < ($1.value, $0.key) }
+        let name = loudest.flatMap { mixInventory.entry(id: $0.key)?.name } ?? "\(sends.count) sends"
+        let title = sends.isEmpty ? "+ send" : sends.count == 1 ? name : "\(name) +\(sends.count - 1)"
         _ = addable
         return .popover(title, accent: !sends.isEmpty, quiet: sends.isEmpty, content: {
             AnyView(self.sendsPopover(channel: channel, routedMix: routedMix, mixer: mixer))
@@ -751,7 +1090,8 @@ private struct ConsoleStrip<Footer: View>: View {
 
     let pan: Binding<Float>?
 
-    let meter: MeterBallistics?
+    let meter: MeterSource
+    let mixer: AudioMixerController
 
     let meterAppliesGain: Bool
 
@@ -766,23 +1106,15 @@ private struct ConsoleStrip<Footer: View>: View {
     @ViewBuilder let footer: () -> Footer
     @State private var editingName = false
     @State private var draftName = ""
-
-    @State private var peakHold = PeakHold()
-    @State private var tickHold = PeakHold(holdSeconds: 1)
     @State private var editingGain = false
     @State private var gainDraft = ""
     @State private var colorStore = StripColorStore.shared
     @Environment(\.moduleViewportHeight) private var viewportHeight
     @Environment(\.runOnly) private var runOnly
 
-    private var displayedPeak: Float {
-        let raw = meter?.peak ?? 0
-        guard meterAppliesGain else { return raw }
-        return muted.wrappedValue ? 0 : min(raw * gain.wrappedValue, 1)
-    }
-
-    private var signalPresent: Bool {
-        meter != nil && (meter?.peak ?? 0) > 0.001
+    private var meterScale: Float {
+        guard meterAppliesGain else { return 1 }
+        return muted.wrappedValue ? 0 : gain.wrappedValue
     }
 
     private var faderHeight: CGFloat {
@@ -795,7 +1127,7 @@ private struct ConsoleStrip<Footer: View>: View {
         name: String, live: Bool, tint: Color = .green,
         topSlot: ConsoleSlot = .blank, bottomSlot: ConsoleSlot = .blank,
         gain: Binding<Float>, muted: Binding<Bool>,
-        pan: Binding<Float>? = nil, meter: MeterBallistics?,
+        pan: Binding<Float>? = nil, meter: MeterSource, mixer: AudioMixerController,
         meterAppliesGain: Bool = false,
         onRename: ((String) -> Void)? = nil,
         renameValue: String? = nil,
@@ -813,6 +1145,7 @@ private struct ConsoleStrip<Footer: View>: View {
         self.muted = muted
         self.pan = pan
         self.meter = meter
+        self.mixer = mixer
         self.meterAppliesGain = meterAppliesGain
         self.onRename = onRename
         self.renameValue = renameValue
@@ -855,27 +1188,15 @@ private struct ConsoleStrip<Footer: View>: View {
                             editingGain = false
                         }
                     }
-                if meter != nil {
-                    LevelLabel(decibels: peakHold.decibels, style: .peak)
-                        .contentShape(Rectangle())
-                        .onTapGesture { peakHold.reset() }
-                        .help("Highest peak since reset — click to reset")
-                }
+                StripPeakLabel(source: meter, mixer: mixer, scale: meterScale)
             }
             .frame(height: 10)
             HStack(spacing: 2) {
                 VerticalFader(value: gain)
                 MeterScale()
-                VerticalMeter(
-                    peak: displayedPeak, heldPeakDecibels: tickHold.decibels,
-                    signalPresent: signalPresent)
+                StripMeter(source: meter, mixer: mixer, scale: meterScale)
             }
             .frame(height: faderHeight)
-            .onChange(of: displayedPeak, initial: true) {
-                peakHold.update(displayedPeak)
-                tickHold.update(
-                    displayedPeak, at: Date().timeIntervalSinceReferenceDate)
-            }
             Button {
                 muted.wrappedValue.toggle()
             } label: {
@@ -1123,42 +1444,254 @@ private struct MeterScale: View {
     }
 }
 
-private struct VerticalMeter: View {
+private enum MeterSource: Equatable {
+    case display(String), player(String), bus(String), output(String)
 
-    let peak: Float
-    let heldPeakDecibels: Float
+    case loudestMix([String])
 
-    var signalPresent: Bool = false
+    @MainActor func peaks(in mixer: AudioMixerController) -> [Float]? {
+        switch self {
+        case .display(let key): mixer.displayLevels[key]?.map(\.peak)
+        case .player(let key): mixer.playerLevels[key]?.map(\.peak)
+        case .bus(let key): mixer.busLevels[key]?.map(\.peak)
+        case .output(let key): mixer.outputLevels[key]?.map(\.peak)
+        case .loudestMix(let ids): [ids.flatMap { mixer.busLevels[$0] ?? [] }.map(\.peak).max() ?? 0]
+        }
+    }
+}
+
+private struct MeterLayers: NSViewRepresentable {
+    let source: MeterSource
+    let mixer: AudioMixerController
+    let style: MeterLayerView.Style
+
+    var scale: Float = 1
+
+    func makeNSView(context: Context) -> MeterLayerView { MeterLayerView(style: style) }
+
+    func updateNSView(_ view: MeterLayerView, context: Context) {
+        view.scale = scale
+        view.source = source
+        view.mixer = mixer
+        view.paint()
+    }
+}
+
+final class MeterLayerView: NSView {
+    enum Style {
+
+        case strip
+
+        case fold
+
+        case peakLabel
+    }
+
+    let style: Style
+    fileprivate var scale: Float = 1
+
+    fileprivate var source: MeterSource? { didSet { if source != oldValue { refollow() } } }
+    fileprivate var mixer: AudioMixerController? { didSet { if mixer !== oldValue { refollow() } } }
+
+    private var peaks: [Float]?
+
+    private var ticks: [PeakHold] = []
+    private var hold = PeakHold()
+    private var generation = 0
+    private var layers: [String: CALayer] = [:]
+    private var barCount = 0
+
+    init(style: Style) {
+        self.style = style
+        super.init(frame: .zero)
+        wantsLayer = true
+        if style == .peakLabel { toolTip = "Highest peak since reset — click to reset" }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { style == .peakLabel ? super.hitTest(point) : nil }
+
+    override func mouseDown(with event: NSEvent) {
+        hold.reset()
+        paint()
+    }
+
+    override func layout() {
+        super.layout()
+        paint()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paint()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        paint()
+    }
+
+    private func refollow() {
+        generation += 1
+        let generation = generation
+        Task { @MainActor [weak self] in self?.follow(generation) }
+    }
+
+    private func follow(_ generation: Int) {
+        guard let source, let mixer, generation == self.generation else { return }
+        withObservationTracking {
+            peaks = source.peaks(in: mixer)
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in self?.follow(generation) }
+        }
+        paint()
+    }
+
+    fileprivate func paint() {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.07)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            switch style {
+            case .strip: paintBars(ticks: true)
+            case .fold: paintBars(ticks: false)
+            case .peakLabel: paintPeakLabel()
+            }
+        }
+        CATransaction.commit()
+    }
+
+    private func paintBars(ticks hasTicks: Bool) {
+        let raw = hasTicks ? peaks ?? [] : peaks.flatMap { $0.isEmpty ? nil : $0 } ?? [0]
+        let count = CGFloat(raw.count)
+        let gap: CGFloat = hasTicks || raw.count <= 12 ? 1 : 0.5
+        let total = hasTicks ? count * 5 - 1 : min(38, count * 4 + (count - 1) * gap)
+        let width = (total - (count - 1) * gap) / max(count, 1)
+        let x0 = hasTicks ? 0 : (bounds.width - total) / 2
+        let height = bounds.height
+        let shown = raw.map { min($0 * scale, 1) }
+        if hasTicks {
+            let now = Date().timeIntervalSinceReferenceDate
+            if ticks.count != shown.count { ticks = shown.map { _ in PeakHold(holdSeconds: 1) } }
+            for bar in shown.indices { ticks[bar].update(shown[bar], at: now) }
+        }
+        if shown.count != barCount {
+            layers.values.forEach { $0.removeFromSuperlayer() }
+            layers = [:]
+            barCount = shown.count
+        }
+        for bar in shown.indices {
+            let x = x0 + CGFloat(bar) * (width + gap)
+            let hot = hasTicks && ticks[bar].decibels > -1
+            let color: NSColor = hot ? .systemOrange : .systemGreen
+            let track = sublayer("track\(bar)") { CALayer() }
+            track.set(color: NSColor.labelColor.withAlphaComponent(0.08))
+            track.set(frame: CGRect(x: x, y: 0, width: width, height: height), cornerRadius: width / 2)
+            let fillHeight = max(0, height * CGFloat(AudioLevel.meterFraction(shown[bar])))
+            let fill = sublayer("fill\(bar)") { CALayer() }
+            fill.set(color: color)
+            fill.set(
+                frame: CGRect(x: x, y: height - fillHeight, width: width, height: fillHeight),
+                cornerRadius: min(width, fillHeight) / 2)
+            guard hasTicks else { continue }
+            let held = CGFloat(AudioLevel.meterFraction(decibels: ticks[bar].decibels))
+            let tick = sublayer("tick\(bar)") { CALayer() }
+            tick.set(hidden: held <= 0.01)
+            tick.set(color: hot ? color : color.withAlphaComponent(0.8))
+            tick.set(frame: CGRect(x: x, y: height - height * held - 0.5, width: width, height: 1.5))
+            let dot = sublayer("dot\(bar)") { CALayer() }
+            dot.set(hidden: raw[bar] <= 0.001)
+            dot.set(color: NSColor.systemGreen.withAlphaComponent(0.6))
+            dot.set(frame: CGRect(x: x + (width - 3) / 2, y: height + 2, width: 3, height: 3), cornerRadius: 1.5)
+        }
+    }
+
+    private func paintPeakLabel() {
+        let text = sublayer("peak") { () -> CATextLayer in
+            let made = CATextLayer()
+            let font = NSFont.monospacedDigitSystemFont(ofSize: 7.5, weight: .medium)
+            made.font = font
+            made.fontSize = font.pointSize
+            made.alignmentMode = .center
+            return made
+        }
+        guard let peaks else {
+            text.set(hidden: true)
+            return
+        }
+        hold.update(min((peaks.max() ?? 0) * scale, 1))
+        let decibels = hold.decibels
+        let string = decibels <= -90 ? "-∞" : String(format: "%.1f", decibels)
+        let lineHeight = ceil(text.fontSize * 1.2)
+        text.set(hidden: false)
+        if text.contentsScale != (window?.backingScaleFactor ?? 2) { text.contentsScale = window?.backingScaleFactor ?? 2 }
+        text.set(frame: CGRect(x: 0, y: (bounds.height - lineHeight) / 2, width: bounds.width, height: lineHeight))
+
+        let color = (decibels > -1 ? NSColor.systemOrange : .secondaryLabelColor).cgColor
+        if text.foregroundColor.map({ $0 == color }) != true { text.foregroundColor = color }
+        if text.string as? String != string { text.string = string }
+    }
+
+    private func sublayer<L: CALayer>(_ name: String, _ make: () -> L) -> L {
+        if let made = layers[name] as? L { return made }
+        let made = make()
+        layer?.addSublayer(made)
+        layers[name] = made
+        return made
+    }
+}
+
+private extension CALayer {
+    func set(color: NSColor) {
+        let cg = color.cgColor
+        if backgroundColor.map({ $0 == cg }) != true { backgroundColor = cg }
+    }
+
+    func set(frame rect: CGRect, cornerRadius radius: CGFloat? = nil) {
+        if frame != rect { frame = rect }
+        if let radius, cornerRadius != radius { cornerRadius = radius }
+    }
+
+    func set(hidden: Bool) {
+        if isHidden != hidden { isHidden = hidden }
+    }
+}
+
+private struct StripMeter: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+
+    let scale: Float
+
+    static let width: CGFloat = 9
 
     var body: some View {
-        GeometryReader { geometry in
-            let height = geometry.size.height
-            let fill = CGFloat(AudioLevel.meterFraction(peak))
-            let held = CGFloat(AudioLevel.meterFraction(decibels: heldPeakDecibels))
-            let hot = heldPeakDecibels > -1
-            ZStack(alignment: .bottom) {
-                Capsule()
-                    .fill(Color.primary.opacity(0.08))
-                Capsule()
-                    .fill(hot ? Color.orange : Color.green)
-                    .frame(height: max(0, height * fill))
-                if held > 0.01 {
-                    Rectangle()
-                        .fill(hot ? Color.orange : Color.green.opacity(0.8))
-                        .frame(height: 1.5)
-                        .offset(y: -(height * held - 1))
-                }
-                if signalPresent {
-                    Circle()
-                        .fill(Color.green.opacity(0.6))
-                        .frame(width: 3, height: 3)
-                        .offset(y: 5)
-                }
-            }
+        MeterLayers(source: source, mixer: mixer, style: .strip, scale: scale)
+            .frame(width: Self.width)
+    }
+}
 
-            .animation(.linear(duration: 0.07), value: fill)
-        }
-        .frame(width: 4)
+private struct StripPeakLabel: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+    let scale: Float
+
+    var body: some View {
+        MeterLayers(source: source, mixer: mixer, style: .peakLabel, scale: scale)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct FoldMeter: View {
+    let source: MeterSource
+    let mixer: AudioMixerController
+
+    var body: some View {
+        MeterLayers(source: source, mixer: mixer, style: .fold)
+            .frame(width: 38)
     }
 }
 
@@ -1194,6 +1727,94 @@ private struct StripRenamePopover: View {
             .focused($focused)
             .onAppear { focused = true }
             .onSubmit(commit)
+    }
+}
+
+private struct FoldCard: View {
+    let name: String
+    let symbol: String
+    let count: Int
+    let expanded: Bool
+    let meter: MeterSource
+    let mixer: AudioMixerController
+    let toggle: () -> Void
+    let rename: ((String) -> Void)?
+    let remove: (() -> Void)?
+
+    var colorKey = ""
+    var colorName = "Blue"
+    @Environment(\.runOnly) private var runOnly
+    @Environment(\.moduleViewportHeight) private var viewportHeight
+    @State private var renaming = false
+    @State private var draft = ""
+
+    var body: some View {
+
+        VStack(spacing: 3) {
+            SlotChip(slot: .blank)
+                .overlay {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            SlotChip(slot: .blank)
+            Color.clear.frame(height: 10)
+            Color.clear.frame(height: 10)
+            FoldMeter(source: meter, mixer: mixer)
+                .frame(height: MixerStripLayout.faderHeight(
+                    viewportHeight: viewportHeight, scrollerHeight: ConsoleScrolling.scrollerHeight))
+            Color.clear.frame(height: 14)
+            Button(action: toggle) {
+                HStack(spacing: 3) {
+                    Image(systemName: expanded ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text(expanded ? "Fold" : "\(count)")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 15)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
+                .overlay(
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(Color.separator.opacity(0.4), lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(expanded ? "Fold \(name)" : "Show \(name) (\(count))")
+            Text(name)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(height: 20, alignment: .top)
+                .help(name)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(StripColorStore.shared.color(for: colorKey, defaultName: colorName))
+                .frame(height: 4)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(4)
+        .frame(width: 58)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
+        .contextMenu {
+            if !runOnly, let rename {
+                Button("Rename\u{2026}") {
+                    draft = name
+                    renaming = true
+                }
+            }
+            if !runOnly, let remove {
+                Button("Remove Folder (keeps its mixes)", action: remove)
+            }
+        }
+        .popover(isPresented: $renaming) {
+            StripRenamePopover(draft: $draft) {
+                rename?(draft)
+                renaming = false
+            }
+        }
     }
 }
 

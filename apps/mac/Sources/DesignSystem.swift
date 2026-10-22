@@ -173,13 +173,159 @@ struct ToolbarCluster<Content: View>: View {
         HStack(spacing: 2) {
             content
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 3)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+        .buttonStyle(ToolbarCellStyle())
+        .toggleStyle(ToolbarCellToggleStyle())
+        .padding(HeaderMetrics.clusterInset)
+        .frame(height: HeaderMetrics.controlHeight)
+        .background(
+            Color.primary.opacity(0.06),
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle.standard(CornerStandard.element)
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
         )
+    }
+}
+
+enum HeaderMetrics {
+    static let controlHeight: CGFloat = 26
+
+    static let clusterInset: CGFloat = 2
+    static let cellHeight = controlHeight - 2 * clusterInset
+    static let cellMinWidth: CGFloat = 30
+}
+
+struct ToolbarCell<Label: View>: View {
+    var isOn = false
+    var isPressed = false
+    var horizontalPadding: CGFloat = 6
+    @ViewBuilder let label: Label
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    private var shape: RoundedRectangle {
+        .standard(CornerStandard.nested(inset: HeaderMetrics.clusterInset, within: CornerStandard.element))
+    }
+
+    var body: some View {
+        label
+            .padding(.horizontal, horizontalPadding)
+            .frame(minWidth: HeaderMetrics.cellMinWidth, minHeight: HeaderMetrics.cellHeight, maxHeight: HeaderMetrics.cellHeight)
+            .background(Color.primary.opacity(wash), in: shape)
+            .overlay {
+                if isOn {
+                    shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                }
+            }
+            .opacity(isEnabled ? 1 : 0.35)
+            .contentShape(shape)
+            .onHover { hovering = $0 }
+    }
+
+    private var wash: Double {
+        if isOn { 0.14 } else if isPressed { 0.1 } else if hovering && isEnabled { 0.06 } else { 0 }
+    }
+}
+
+struct ToolbarCellStyle: ButtonStyle {
+    var isOn = false
+    var horizontalPadding: CGFloat = 6
+
+    func makeBody(configuration: Configuration) -> some View {
+        ToolbarCell(isOn: isOn, isPressed: configuration.isPressed, horizontalPadding: horizontalPadding) {
+            configuration.label
+        }
+    }
+}
+
+struct ToolbarCellToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            configuration.label
+        }
+        .buttonStyle(ToolbarCellStyle(isOn: configuration.isOn))
+        .accessibilityAddTraits(configuration.isOn ? .isSelected : [])
+    }
+}
+
+struct ToolbarCellMenu<Content: View, Label: View>: View {
+    @ViewBuilder let content: Content
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        Menu {
+            content
+        } label: {
+            ToolbarCell { label }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+}
+
+struct ToolbarSegments<Option: Hashable>: View {
+    let options: [(Option, String)]
+    @Binding var selection: Option
+
+    var fillsWidth = false
+
+    var body: some View {
+        if fillsWidth {
+            segments
+        } else {
+            segments.fixedSize()
+        }
+    }
+
+    private var segments: some View {
+        ToolbarCluster {
+            ForEach(options, id: \.0) { option, title in
+                let selected = selection == option
+                Button {
+                    selection = option
+                } label: {
+                    Text(title)
+                        .lineLimit(1)
+                        .frame(maxWidth: fillsWidth ? .infinity : nil)
+                }
+                .buttonStyle(ToolbarCellStyle(isOn: selected, horizontalPadding: fillsWidth ? 4 : 12))
+                .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+    }
+}
+
+struct HeaderItemBackground: ViewModifier {
+    let tint: Color?
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(fill, in: RoundedRectangle.standard(CornerStandard.element))
+            .onHover { hovering = $0 }
+    }
+
+    private var fill: Color {
+        if let tint { tint.opacity(0.12) } else if hovering { Color.primary.opacity(0.06) } else { .clear }
+    }
+}
+
+extension View {
+    func headerItemBackground(tint: Color? = nil) -> some View {
+        modifier(HeaderItemBackground(tint: tint))
+    }
+
+    func headerItemLabel() -> some View {
+        padding(.horizontal, 7)
+            .frame(height: HeaderMetrics.controlHeight)
+            .contentShape(Rectangle())
     }
 }
 
@@ -320,6 +466,8 @@ struct BoundedSliderRow: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     var step: Double = 0
+
+    var typedRange: ClosedRange<Double>?
     var onScrubPhase: ((Bool) -> Void)?
 
     var stacked = false
@@ -377,7 +525,8 @@ struct BoundedSliderRow: View {
                     get: { live ?? value },
                     set: { raw in
                         let snapped = step > 0 ? (raw / step).rounded() * step : raw
-                        value = min(max(snapped, range.lowerBound), range.upperBound)
+                        let bounds = typedRange ?? range
+                        value = min(max(snapped, bounds.lowerBound), bounds.upperBound)
                     }
                 ),
                 format: .number.grouping(.never)

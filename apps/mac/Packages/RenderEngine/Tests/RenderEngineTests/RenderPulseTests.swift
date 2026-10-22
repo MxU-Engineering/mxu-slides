@@ -24,4 +24,16 @@ final class RenderPulseTests: XCTestCase {
         XCTAssertEqual(snapshot.mirrorNearEdgeTicks, 1)
         XCTAssertEqual(pulse.drain().mirrorSteeredTicks, 0)
     }
+
+    func testCardTimingsAddUpPerDeviceAndRegisterCleanCards() {
+        let pulse = RenderPulse()
+        pulse.cardTiming(device: "DeckLink Duo (2)", .init(repeats: 1, skips: 1))
+        pulse.cardTiming(device: "DeckLink Duo (2)", .init(skips: 2, held: 1))
+        pulse.cardTiming(device: "DeckLink Duo (3)", .init())
+        XCTAssertEqual(pulse.drain().cardTimings, [
+            "DeckLink Duo (2)": .init(repeats: 1, skips: 3, held: 1),
+            "DeckLink Duo (3)": .init(),
+        ])
+        XCTAssertTrue(pulse.drain().cardTimings.isEmpty)
+    }
 }

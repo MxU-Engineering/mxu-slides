@@ -34,13 +34,13 @@ import Testing
         #expect(clusters >= 4, "the editor toolbar's four runs use ToolbarCluster (\(clusters))")
     }
 
-    @Test func toolbarTogglesUseButtonStyle() throws {
+    @Test func toolbarTogglesUseTheCellStyle() throws {
         let editor = try String(contentsOf: appSources.appendingPathComponent("SlideEditorView.swift"), encoding: .utf8)
         let start = try #require(editor.range(of: "private func addObjectTools("))
-        let end = try #require(editor.range(of: "private func presentationTools(", range: start.upperBound..<editor.endIndex))
+        let end = try #require(editor.range(of: "private func undoRedoTools(", range: start.upperBound..<editor.endIndex))
         let tools = editor[start.lowerBound..<end.lowerBound]
-        let toggles = tools.components(separatedBy: "Toggle(").count - 1
-        #expect(toggles >= 1, "Draw Path is a Toggle")
-        #expect(tools.components(separatedBy: ".toggleStyle(.button)").count - 1 == toggles)
+        let toggles = tools.components(separatedBy: "Toggle(isOn:").count - 1
+        #expect(toggles >= 2, "Draw Path and Chords are Toggles")
+        #expect(tools.components(separatedBy: ".toggleStyle(ToolbarCellToggleStyle())").count - 1 == toggles)
     }
 }

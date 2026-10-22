@@ -9,9 +9,10 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
         switch kind {
         case .presentation, .service, .theme, .media, .audio, .playlist, .overlay,
              .alertPreset, .actionCombo, .scheduleTrigger, .confidenceLayout, .groupPalette,
-             .effectPresetBoard, .animationPresetBoard, .serviceLinkRules, .note, .slideBuildingSettings, .font:
+             .effectPresetBoard, .animationPresetBoard, .serviceLinkRules, .note, .slideBuildingSettings, .font,
+             .trackChannelList, .trackSet:
             .team
-        case .outputPreset, .controlBoard, .schedulerBoard, .signageBoard, .midiDevice,
+        case .outputPreset, .controlBoard, .schedulerBoard, .midiDevice,
              .streamDestination, .streamRecordPreset, .stationSettings, .workspaceSettings:
             .station
         case .importLedger:
@@ -20,7 +21,7 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
     }
 
     public static func everyComputerHolds(_ kind: DocumentKind) -> Bool {
-        kind == .slideBuildingSettings || kind == .font
+        kind == .slideBuildingSettings || kind == .font || kind == .trackChannelList || kind == .trackSet
     }
 
     public static func kinds(in scope: SyncScope) -> [DocumentKind] {
@@ -46,7 +47,6 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
         case .controlBoard: ControlBoard.self
         case .confidenceLayout: ConfidenceLayout.self
         case .groupPalette: GroupPalette.self
-        case .signageBoard: SignageBoard.self
         case .effectPresetBoard: EffectPresetBoard.self
         case .animationPresetBoard: AnimationPresetBoard.self
         case .midiDevice: MIDIDevice.self
@@ -57,6 +57,8 @@ public enum SyncScope: String, Codable, CaseIterable, Sendable {
         case .slideBuildingSettings: SlideBuildingSettings.self
         case .font: FontFile.self
         case .workspaceSettings: WorkspaceSettings.self
+        case .trackChannelList: TrackChannelList.self
+        case .trackSet: TrackSet.self
         }
     }
 }
@@ -117,6 +119,31 @@ public enum LibraryHome {
             self.kind = kind
             self.area = area
             self.path = path
+        }
+    }
+
+    public struct Location: Equatable, Sendable {
+        public private(set) var section: String
+        private var path: [String]?
+
+        public init(section: String, path: [String]? = []) {
+            self.section = section
+            self.path = path
+        }
+
+        public func path(on section: String) -> [String]? {
+            self.section == section ? path : []
+        }
+
+        public mutating func set(_ path: [String]?, on section: String) {
+            self.section = section
+            self.path = path
+        }
+
+        public mutating func switched(to section: String) {
+            if self.section != section {
+                set([], on: section)
+            }
         }
     }
 

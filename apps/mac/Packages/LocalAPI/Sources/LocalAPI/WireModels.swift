@@ -222,6 +222,79 @@ public struct APIShowStatus: Codable, Sendable {
     }
 }
 
+public struct APITimecodeStatus: Codable, Sendable, Equatable {
+
+    public struct Anchor: Codable, Sendable, Equatable {
+        public var seconds: Double
+        public var anchoredAt: Date
+        public var running: Bool
+        public var reverse: Bool
+
+        public init(seconds: Double, anchoredAt: Date, running: Bool, reverse: Bool = false) {
+            self.seconds = seconds
+            self.anchoredAt = anchoredAt
+            self.running = running
+            self.reverse = reverse
+        }
+    }
+
+    public struct Timeline: Codable, Sendable, Equatable {
+        public var serviceItemId: String
+
+        public var position: Double
+        public var anchoredAt: Date
+        public var running: Bool
+
+        public var length: Double
+
+        public init(serviceItemId: String, position: Double, anchoredAt: Date, running: Bool, length: Double) {
+            self.serviceItemId = serviceItemId
+            self.position = position
+            self.anchoredAt = anchoredAt
+            self.running = running
+            self.length = length
+        }
+    }
+
+    public var hasInput: Bool
+
+    public var source: String
+
+    public var follows: Bool
+
+    public var state: String
+
+    public var label: String?
+
+    public var rate: String?
+    public var reverse: Bool
+
+    public var offsetFrames: Int
+
+    public var serviceItemId: String?
+
+    public var anchor: Anchor?
+    public var timeline: Timeline?
+
+    public init(
+        hasInput: Bool, source: String, follows: Bool, state: String, label: String? = nil, rate: String? = nil,
+        reverse: Bool = false, offsetFrames: Int = 0, serviceItemId: String? = nil, anchor: Anchor? = nil,
+        timeline: Timeline? = nil
+    ) {
+        self.hasInput = hasInput
+        self.source = source
+        self.follows = follows
+        self.state = state
+        self.label = label
+        self.rate = rate
+        self.reverse = reverse
+        self.offsetFrames = offsetFrames
+        self.serviceItemId = serviceItemId
+        self.anchor = anchor
+        self.timeline = timeline
+    }
+}
+
 public struct APISchedulerStatus: Codable, Sendable {
 
     public var enabled: Bool

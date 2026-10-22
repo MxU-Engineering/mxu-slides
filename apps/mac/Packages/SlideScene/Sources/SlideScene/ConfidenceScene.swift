@@ -257,6 +257,34 @@ public struct VideoCountdown: Sendable, Equatable {
     }
 }
 
+public struct TimecodeDisplay: Sendable, Equatable {
+
+    public var seconds: Double
+    public var rate: TimecodeRate
+    public var anchoredAt: Date
+
+    public var isRunning: Bool
+
+    public var reverse: Bool
+
+    public init(seconds: Double, rate: TimecodeRate, anchoredAt: Date, isRunning: Bool, reverse: Bool = false) {
+        self.seconds = seconds
+        self.rate = rate
+        self.anchoredAt = anchoredAt
+        self.isRunning = isRunning
+        self.reverse = reverse
+    }
+
+    public func seconds(at date: Date) -> Double {
+        guard isRunning else { return seconds }
+        return seconds + date.timeIntervalSince(anchoredAt) * (reverse ? -1 : 1)
+    }
+
+    public func text(at date: Date) -> String {
+        rate.label(seconds: seconds(at: date)).text(dropFrame: rate == .fps2997DropFrame)
+    }
+}
+
 public struct ConfidenceInfo: Sendable, Equatable {
 
     public struct SlideText: Sendable, Equatable {
@@ -345,6 +373,8 @@ public struct ConfidenceInfo: Sendable, Equatable {
 
     public var audioCountdown: VideoCountdown?
 
+    public var timecode: TimecodeDisplay?
+
     public var activeLiveInputIds: [String]
 
     public var connectedLiveInputIds: [String]
@@ -367,6 +397,7 @@ public struct ConfidenceInfo: Sendable, Equatable {
         currentPresentationName: String? = nil,
         nextServiceTitle: String? = nil,
         audioCountdown: VideoCountdown? = nil,
+        timecode: TimecodeDisplay? = nil,
         activeLiveInputIds: [String] = [],
         connectedLiveInputIds: [String] = [],
         captureActive: Bool = false
@@ -386,6 +417,7 @@ public struct ConfidenceInfo: Sendable, Equatable {
         self.currentPresentationName = currentPresentationName
         self.nextServiceTitle = nextServiceTitle
         self.audioCountdown = audioCountdown
+        self.timecode = timecode
         self.activeLiveInputIds = activeLiveInputIds
         self.connectedLiveInputIds = connectedLiveInputIds
         self.captureActive = captureActive

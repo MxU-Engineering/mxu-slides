@@ -11,6 +11,8 @@ enum MirrorCadence {
 
     static let staleAfterPeriods = 3.0
 
+    static let cardTarget = 0.15
+
     struct Step: Equatable {
 
         var interval: Double
@@ -20,7 +22,9 @@ enum MirrorCadence {
         var period: Double
     }
 
-    static func next(nominal: Double, now: CFTimeInterval, reference: LiveCadence?) -> Step? {
+    static func next(
+        nominal: Double, now: CFTimeInterval, reference: LiveCadence?, target: Double = 0.5
+    ) -> Step? {
         reference.flatMap { reference -> Step? in
             let age = now - reference.lastArrival
             let multiple = reference.period > 0 ? (nominal / reference.period).rounded() : 0
@@ -31,7 +35,9 @@ enum MirrorCadence {
             if followable {
 
                 let phase = age.truncatingRemainder(dividingBy: reference.period)
-                let error = phase - reference.period / 2
+                var error = phase - reference.period * target
+                if error >= reference.period / 2 { error -= reference.period }
+                if error < -reference.period / 2 { error += reference.period }
                 let steered = followed - gain * error
                 return Step(
                     interval: min(max(steered, nominal - maxSteer), nominal + maxSteer),

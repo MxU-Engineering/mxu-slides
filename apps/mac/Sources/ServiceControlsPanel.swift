@@ -15,7 +15,6 @@ struct ServiceControlsPanel: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.runOnly) private var runOnly
-    @Environment(\.signage) private var signage
 
     private var orderedModules: [ServiceControlsModule] {
         TabRowLogic.mergedOrder(
@@ -122,7 +121,6 @@ struct ServiceControlsPanel: View {
         switch module {
         case .audio: AudioModule(model: model, controls: controls)
         case .mixer: AudioMixerModule(model: model, controls: controls)
-        case .media: MediaPlaylistsModule(model: model, controls: controls)
         case .timers: TimersModule(model: model, controls: controls)
         case .tracking: ServiceTrackingModule(model: model, controls: controls)
         case .alerts: AlertsModule(model: model, controls: controls)
@@ -130,6 +128,7 @@ struct ServiceControlsPanel: View {
         case .combos: ActionCombosModule(model: model, controls: controls)
         case .confidence: ConfidenceModule(model: model, controls: controls)
         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
+        case .timecode: TimecodeModule(model: model, controls: controls)
         }
     }
 
@@ -231,9 +230,6 @@ struct ServiceControlsPanel: View {
         case .mixer:
 
             return controls.mixer.anyInputLive ? .green : nil
-        case .media:
-
-            return signage?.isAnyScreenLive == true ? .green : nil
         case .timers:
             return controls.timers.timers.contains(where: \.isLive) ? .green : nil
         case .tracking:
@@ -252,6 +248,9 @@ struct ServiceControlsPanel: View {
 
             let outputs = controls.render.outputs
             return outputs.displays.contains { outputs.isLive($0.uuid) } ? .green : nil
+        case .timecode:
+
+            return controls.timecode.isLocked && controls.timecode.follows ? .green : nil
         }
     }
 }

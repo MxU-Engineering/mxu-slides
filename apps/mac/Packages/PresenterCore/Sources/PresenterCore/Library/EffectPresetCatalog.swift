@@ -32,9 +32,10 @@ public extension EffectPreset {
                 Effect(effectKind: .warp, amount: 40, scale: 240, speed: 0.5),
             ]),
         ]),
+
         EffectPresetGroup(name: "Long Trails", presets: [
             EffectPreset(id: "builtin.longTrails", name: "Long Trails", effects: [
-                Effect(effectKind: .echo, amount: 6.9),
+                Effect(effectKind: .ghostTrails, amount: 3, scale: 240, speed: 0, fade: 2),
             ]),
         ]),
 

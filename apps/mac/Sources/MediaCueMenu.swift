@@ -1,10 +1,12 @@
 import AppKit
 import PresenterCore
+import SlideScene
 import SwiftUI
 
 @MainActor @Observable
 final class MediaCueMenuState {
-    var settingsTargetID: String?
+
+    var replacing: Replacing?
     var autoAdvanceTargetID: String?
     var actionsEditorTargetID: String?
     var actionPicker: ActionPicker?
@@ -19,9 +21,15 @@ final class MediaCueMenuState {
         var kind: DocumentKind
     }
 
+    struct Replacing: Identifiable {
+        let id: String
+        let swap: (_ newID: String) -> Void
+    }
+
     struct ActionPlacement: Identifiable {
         var mediaItemID: String
         var draft: SlideAction
+        var editing = false
         var id: String { draft.id }
     }
 }
@@ -35,6 +43,10 @@ struct MediaCueMenuItems: View {
     var fallbackName: String? = nil
 
     var includesCueGrammar = true
+
+    var replace: SpotReplace? = nil
+
+    var inheritedTransition: MediaTransition? = nil
 
     var body: some View {
         if model.media(mediaID) == nil {
@@ -60,60 +72,88 @@ struct MediaCueMenuItems: View {
             }
         }
         if let item = model.media(mediaID) {
-
-            Button("Media Settings…") { state.settingsTargetID = mediaID }
-            Button("Rename…") {
-                state.renameText = item.name
-                state.renameTargetID = mediaID
-            }
-            Divider()
             if includesCueGrammar {
+
+                MediaEditorDoors(model: model, mediaID: mediaID, item: item)
+                Button("Rename…") {
+                    state.renameText = item.name
+                    state.renameTargetID = mediaID
+                }
+                Divider()
                 MediaCueGrammarItems(
                     model: model, actionRouter: actionRouter, mediaID: mediaID, state: state
                 )
                 Divider()
-            }
+                playbackRows(item)
+            } else {
 
-            Picker("Classification", selection: Binding(
-                get: { model.media(mediaID)?.classification ?? .foreground },
-                set: { value in model.updateMedia(mediaID) { $0.classification = value } }
-            )) {
-                Text("Foreground").tag(MediaClassification.foreground)
-                Text("Background").tag(MediaClassification.background)
-            }
-            if item.mediaKind == .video {
-
-                Picker("Loop", selection: Binding(
-                    get: { model.media(mediaID)?.loops ?? false },
-                    set: { value in model.updateMedia(mediaID) { $0.loops = value } }
-                )) {
-                    Text("On").tag(true)
-                    Text("Off").tag(false)
+                playbackRows(item)
+                Divider()
+                Button("Edit Media…") {
+                    model.openInEditor(entryID: mediaID)
+                    UserDefaults.standard.set(AppMode.edit.rawValue, forKey: "appMode")
                 }
             }
-            Picker("Favorite", selection: Binding(
-                get: { model.media(mediaID)?.favorite ?? false },
-                set: { value in model.updateMedia(mediaID) { $0.favorite = value } }
-            )) {
-                Text("Yes").tag(true)
-                Text("No").tag(false)
-            }
-            Divider()
 
-            Button("Replace Media File…") {
-                let panel = NSOpenPanel()
-                panel.allowsMultipleSelection = false
-                panel.allowedContentTypes = [.image, .movie]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    Task { @MainActor in
-                        if let carried = await model.replaceMediaFile(mediaID, with: url) {
-                            MediaRelinkAlerts.carriedSettingsWarning(itemName: item.name, carried: carried)
-                        }
-                    }
+            if let replace {
+                Divider()
+                Button(replace.label) {
+                    state.replacing = .init(id: mediaID) { newID in replace.swap(mediaID, newID) }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func playbackRows(_ item: MediaItem) -> some View {
+
+        Picker("Classification", selection: Binding(
+            get: { model.media(mediaID)?.classification ?? .foreground },
+            set: { value in model.updateMedia(mediaID) { $0.classification = value } }
+        )) {
+            Text("Foreground").tag(MediaClassification.foreground)
+            Text("Background").tag(MediaClassification.background)
+        }
+        if item.mediaKind == .video {
+
+            Picker("Loop", selection: Binding(
+                get: { model.media(mediaID)?.loops ?? false },
+                set: { value in model.updateMedia(mediaID) { $0.loops = value } }
+            )) {
+                Text("On").tag(true)
+                Text("Off").tag(false)
+            }
+        }
+
+        TransitionMenu(current: item.transition, inherited: inheritedTransition) { transform in
+            model.updateMedia(mediaID) { $0.transition = transform($0.transition) }
+        }
+    }
+}
+
+struct SpotReplace {
+    let label: String
+    let swap: (_ oldID: String, _ newID: String) -> Void
+}
+
+struct MediaEditorDoors: View {
+    let model: AppModel
+    let mediaID: String
+    let item: MediaItem
+
+    var body: some View {
+        Button("Edit Media…") {
+            model.openInEditor(entryID: mediaID)
+            UserDefaults.standard.set(AppMode.edit.rawValue, forKey: "appMode")
+        }
+        .help("Opens this media in the editor.")
+        Button("Show in Finder") {
+            if let url = model.blobs?.url(forHash: item.fileHash) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+        .disabled(model.isMediaFileMissing(item))
+        .help(model.isMediaFileMissing(item) ? "The file isn't on this Mac." : "Reveals the file in Finder.")
     }
 }
 
@@ -125,43 +165,19 @@ struct MediaCueGrammarItems: View {
 
     var body: some View {
         if let item = model.media(mediaID) {
-            Menu("Add Action") {
-                AddActionMenuItems(
-                    model: model,
-                    timers: actionRouter?.timerChoices ?? []
-                ) { action in
-                    addAction(action, to: item)
-                }
-            }
-            let actions = item.actions ?? []
-            if !actions.isEmpty {
-
-                let timers = actionRouter?.timerChoices ?? []
-                Menu("Edit Action") {
-                    ForEach(actions) { action in
-                        Button(slideActionLabel(
-                            action, model: model, timers: timers,
-                            confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])) {
-                            state.actionsEditorTargetID = mediaID
-                        }
+            ActionsMenu(
+                model: model, actionRouter: actionRouter,
+                actions: item.actions ?? [],
+                add: { addAction($0, to: item) },
+                edit: { state.actionPlacement = .init(mediaItemID: mediaID, draft: $0, editing: true) },
+                remove: { action in
+                    model.updateMedia(mediaID) {
+                        $0.actions = SlideBulkEdit.removing(actionID: action.id, from: $0.actions)
                     }
-                }
-                Menu("Remove Action") {
-                    ForEach(actions) { action in
-                        Button(
-                            slideActionLabel(
-                                action, model: model, timers: timers,
-                                confidenceScreens: actionRouter?.confidenceScreenChoices ?? []),
-                            role: .destructive
-                        ) {
-                            model.updateMedia(mediaID) { media in
-                                let kept = (media.actions ?? []).filter { $0.id != action.id }
-                                media.actions = kept.isEmpty ? nil : kept
-                            }
-                        }
-                    }
-                }
-            }
+                },
+                editAll: { state.actionsEditorTargetID = mediaID },
+                removeAll: { model.updateMedia(mediaID) { $0.actions = nil } }
+            )
             Button(item.autoAdvance == nil ? "Auto Advance…" : "Auto Advance… ✓") {
                 state.autoAdvanceTargetID = mediaID
             }
@@ -187,8 +203,8 @@ private struct MediaCueSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: target(\.settingsTargetID)) { target in
-                MediaSettingsSheet(model: model, mediaID: target.id)
+            .sheet(item: $state.replacing) { replacing in
+                LibraryPickerSheet(appModel: model) { entry in replacing.swap(entry.id) }
             }
             .sheet(item: target(\.autoAdvanceTargetID)) { target in
                 AutoAdvanceSheet(
@@ -220,9 +236,11 @@ private struct MediaCueSheets: ViewModifier {
                 )
             }
             .sheet(item: $state.actionPlacement) { placement in
-                ActionPlacementSheet(model: model, draft: placement.draft) { action in
+                ActionPlacementSheet(model: model, editing: placement.editing, draft: placement.draft) { action in
                     model.updateMedia(placement.mediaItemID) { media in
-                        media.actions = (media.actions ?? []) + [action]
+                        media.actions = placement.editing
+                            ? SlideBulkEdit.replacing(action, in: media.actions)
+                            : (media.actions ?? []) + [action]
                     }
                 }
             }

@@ -47,7 +47,7 @@ struct BackupTransferRunner {
             if let fonts = manifest.fontCount, fonts > 0 { lines.append("\(fonts) imported fonts") }
             if let settings = manifest.settingsCount, settings > 0 { lines.append("\(settings) app settings") }
             lines.append("Saved to \(url.path)")
-            lines.append("Left out by design: sign-ins, stream keys, the Run-Only PIN, and this Mac's screens and device routing.")
+            lines.append("Left out by design: sign-ins, stream keys, and this Mac's screens and device routing.")
             activity.finish(summaryLines: lines, warnings: [])
         } catch {
             activity.finish(summaryLines: [], warnings: [error.localizedDescription])

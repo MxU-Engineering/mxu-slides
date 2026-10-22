@@ -23,14 +23,19 @@ final class AudioMixerController {
 
     static let videoMeterKey = "video"
 
+    static let tracksMeterKey = "tracks"
+
+    weak var tracks: TracksController?
+
     private var meterTokens: [String: UUID] = [:]
 
-    private(set) var displayLevels: [String: MeterBallistics] = [:]
-    private(set) var busLevels: [String: MeterBallistics] = [:]
+    private(set) var displayLevels: [String: [MeterBallistics]] = [:]
 
-    private(set) var playerLevels: [String: MeterBallistics] = [:]
+    private(set) var busLevels: [String: [MeterBallistics]] = [:]
 
-    private(set) var outputLevels: [String: MeterBallistics] = [:]
+    private(set) var playerLevels: [String: [MeterBallistics]] = [:]
+
+    private(set) var outputLevels: [String: [MeterBallistics]] = [:]
     private var meteringRefCount = 0
     private var lastMeterTick: Date?
 
@@ -236,10 +241,14 @@ final class AudioMixerController {
         let output = outputId.flatMap { AudioOutputInventory.shared.entry(id: $0) }
         let devices = AudioDeviceList.outputDevices()
         let device = output?.deviceUID.flatMap { uid in devices.first { $0.uid == uid } }
-        let offset = output?.channelOffset ?? 0
-        let clamped = (offset >= 0 && offset + 1 < max(2, device?.channelCount ?? 2))
-            ? offset : 0
-        try? playthrough.setOutputDevice(device, channelOffset: clamped)
+        if let mono = output?.monoChannel, mono >= 0, mono < max(2, device?.channelCount ?? 2) {
+            try? playthrough.setOutputDevice(device, channelOffset: mono, mono: true)
+        } else {
+            let offset = output?.channelOffset ?? 0
+            let clamped = (offset >= 0 && offset + 1 < max(2, device?.channelCount ?? 2))
+                ? offset : 0
+            try? playthrough.setOutputDevice(device, channelOffset: clamped)
+        }
         playthrough.outputDelayMilliseconds = Double(output?.delayMs ?? 0)
     }
 
@@ -248,6 +257,7 @@ final class AudioMixerController {
             applyRouting(toInput: id)
             applyLevels(toInput: id)
         }
+        for mixId in tracksReplays.keys { applyTracksReplay(mixId) }
     }
 
     private func applyLevels(toInput id: String) {
@@ -312,6 +322,7 @@ final class AudioMixerController {
             playthrough.isMuted = AudioController.outputMuted(outputId)
                 || AudioOutputInventory.shared.isDeviceless(outputId)
         }
+        for mixId in tracksReplays.keys { applyTracksReplay(mixId) }
         syncingFeeds = false
         syncMixFeeds()
     }
@@ -329,13 +340,15 @@ final class AudioMixerController {
 
     private final class FeedHub: @unchecked Sendable {
         let consumers = Locked<[UUID: AudioMixFeed.Consumer]>([:])
+
+        let dryConsumers = Locked<[UUID: AudioMixFeed.Consumer]>([:])
         var feed: AudioMixFeed?
     }
 
     private var feedHubs: [String: FeedHub] = [:]
 
     func addFeedConsumer(
-        mixId: String, consumer: @escaping AudioMixFeed.Consumer
+        mixId: String, withoutTracks: Bool = false, consumer: @escaping AudioMixFeed.Consumer
     ) -> UUID {
         let token = UUID()
         let hub = feedHubs[mixId] ?? {
@@ -349,8 +362,20 @@ final class AudioMixerController {
             feedHubs[mixId] = hub
             return hub
         }()
-        hub.consumers.withLock { $0[token] = consumer }
+        if withoutTracks {
+            hub.dryConsumers.withLock { $0[token] = consumer }
+            hub.feed?.setPartialConsumer(excluding: Self.tracksFeedMember) { [weak hub] buffer, when, host in
+                guard let hub else { return }
+                for consumer in hub.dryConsumers.withLock({ Array($0.values) }) {
+                    consumer(buffer, when, host)
+                }
+            }
+        } else {
+            hub.consumers.withLock { $0[token] = consumer }
+        }
         if !syncingFeeds { syncMixFeeds() }
+        rebuildTracksSinks()
+        tracks?.queueRefresh()
         DiagnosticsStore.shared.note("mixer", detail: "mix feed open: \(mixName(mixId))")
         return token
     }
@@ -369,15 +394,85 @@ final class AudioMixerController {
 
     func removeFeedConsumer(mixId: String, token: UUID) {
         guard let hub = feedHubs[mixId] else { return }
+        let dryLeft = hub.dryConsumers.withLock { consumers -> Bool in
+            consumers.removeValue(forKey: token)
+            return !consumers.isEmpty
+        }
+        if !dryLeft { hub.feed?.setPartialConsumer(excluding: Self.tracksFeedMember, nil) }
         let empty = hub.consumers.withLock { consumers -> Bool in
             consumers.removeValue(forKey: token)
             return consumers.isEmpty
-        }
+        } && !dryLeft
         if empty {
             feedHubs.removeValue(forKey: mixId)
             DiagnosticsStore.shared.note("mixer", detail: "mix feed closed: \(mixName(mixId))")
         }
         if !syncingFeeds { syncMixFeeds() }
+        rebuildTracksSinks()
+        tracks?.queueRefresh()
+    }
+
+    nonisolated static let tracksFeedMember = "tracks"
+
+    private var tracksDeviceUID: String?
+    private var tracksReach: Set<String> = []
+
+    private var tracksReplays: [String: (outputId: String?, playthrough: AudioInputPlaythrough)] = [:]
+    private struct TracksSink {
+        weak var feed: AudioMixFeed?
+        weak var replay: AudioInputPlaythrough?
+    }
+
+    private nonisolated let tracksSinks = Locked<[String: TracksSink]>([:])
+
+    var tracksFeedMixIDs: Set<String> {
+        Set(feedHubs.filter { !$0.value.consumers.withLock { $0.isEmpty } }.keys)
+    }
+
+    func setTracks(deviceUID: String?, reach: Set<String>, replays: [String: String?]) {
+        if deviceUID != tracksDeviceUID || reach != tracksReach {
+            tracksDeviceUID = deviceUID
+            tracksReach = reach
+            syncMixFeeds()
+        }
+        for (mixId, held) in tracksReplays where replays[mixId].map({ $0 != held.outputId }) ?? true {
+            held.playthrough.stop()
+            tracksReplays.removeValue(forKey: mixId)
+        }
+        for (mixId, outputId) in replays where tracksReplays[mixId] == nil {
+            let playthrough = AudioInputPlaythrough()
+            guard (try? playthrough.start()) != nil else { continue }
+            tracksReplays[mixId] = (outputId, playthrough)
+            applyTracksReplay(mixId)
+            DiagnosticsStore.shared.note("mixer", detail: "tracks replay: \(mixName(mixId))")
+        }
+        rebuildTracksSinks()
+    }
+
+    private func applyTracksReplay(_ mixId: String) {
+        guard let replay = tracksReplays[mixId] else { return }
+        applyOutput(replay.outputId, to: replay.playthrough)
+        replay.playthrough.gain = AudioController.outputTrim(replay.outputId)
+        replay.playthrough.isMuted = AudioController.outputMuted(replay.outputId)
+            || AudioOutputInventory.shared.isDeviceless(replay.outputId)
+    }
+
+    private func rebuildTracksSinks() {
+        var sinks: [String: TracksSink] = [:]
+        for mixId in Set(feedHubs.keys).union(tracksReplays.keys) {
+            sinks[mixId] = TracksSink(feed: feedHubs[mixId]?.feed, replay: tracksReplays[mixId]?.playthrough)
+        }
+        tracksSinks.value = sinks
+    }
+
+    nonisolated func pushTracksShare(mixId: String, buffer: AVAudioPCMBuffer) {
+        guard let sink = tracksSinks.value[mixId] else { return }
+        sink.feed?.push(member: Self.tracksFeedMember, buffer: buffer)
+        sink.replay?.push(buffer)
+    }
+
+    private func deviceUID(ofOutput outputId: String) -> String? {
+        AudioOutputInventory.shared.entry(id: outputId)?.deviceUID ?? AudioDeviceList.defaultOutputDevice()?.uid
     }
 
     func syncMixFeeds() {
@@ -589,8 +684,8 @@ final class AudioMixerController {
             let pushes = videoHubPushes
             audio.setVideoAudioConsumer { [videoLevels] buffer in
                 if metering {
-                    let level = AudioLevel.measure(buffer)
-                    videoLevels.withLock { $0.fold(level) }
+                    let sides = AudioLevel.measureSides(buffer)
+                    videoLevels.withLock { $0.fold(left: sides.left, right: sides.right) }
                 }
 
                 RealtimeAudioCallback.scope {
@@ -615,6 +710,8 @@ final class AudioMixerController {
 
     private var sendPlaythroughs: [String: AudioInputPlaythrough] = [:]
     private var sendTokens: [String: UUID] = [:]
+
+    private var sendDry: [String: Bool] = [:]
 
     nonisolated static func streamGain(mixId: String) -> Float {
         guard let stored = UserDefaults.standard.object(
@@ -656,9 +753,20 @@ final class AudioMixerController {
             if let token = sendTokens.removeValue(forKey: key) {
                 removeFeedConsumer(mixId: mixId, token: token)
             }
+            sendDry.removeValue(forKey: key)
             sendPlaythroughs.removeValue(forKey: key)?.stop()
         }
         for (key, send) in needed {
+
+            let dry = tracksDeviceUID != nil && deviceUID(ofOutput: send.outputId) == tracksDeviceUID
+            if let playthrough = sendPlaythroughs[key], sendDry[key] != dry, let token = sendTokens[key] {
+                removeFeedConsumer(mixId: send.mixId, token: token)
+                sendDry[key] = dry
+                sendTokens[key] = addFeedConsumer(mixId: send.mixId, withoutTracks: dry) {
+                    [weak playthrough] buffer, _, _ in
+                    playthrough?.push(buffer)
+                }
+            }
             if let playthrough = sendPlaythroughs[key] {
                 applyOutput(send.outputId, to: playthrough)
                 playthrough.gain = sendLevel(mixId: send.mixId, outputId: send.outputId)
@@ -679,7 +787,8 @@ final class AudioMixerController {
             playthrough.isMuted = AudioController.outputMuted(send.outputId)
                 || AudioOutputInventory.shared.isDeviceless(send.outputId)
             sendPlaythroughs[key] = playthrough
-            sendTokens[key] = addFeedConsumer(mixId: send.mixId) {
+            sendDry[key] = dry
+            sendTokens[key] = addFeedConsumer(mixId: send.mixId, withoutTracks: dry) {
                 [weak playthrough] buffer, _, _ in
                 playthrough?.push(buffer)
             }
@@ -713,7 +822,8 @@ final class AudioMixerController {
     }
 
     private func mixHasActiveMembers(_ mix: AudioMixInventory.Entry) -> Bool {
-        audio.players.contains { $0.targetKey == mix.id }
+        tracksReach.contains(mix.id)
+            || audio.players.contains { $0.targetKey == mix.id }
             || audioInputs.entries.contains {
                 mixId(forInput: $0.id) == mix.id && isLive(input: $0.id)
             }
@@ -749,8 +859,8 @@ final class AudioMixerController {
             guard let source = audioInputs.source(forId: entry.id) else { continue }
             let id = entry.id
             meterTokens[id] = source.addConsumer { [inputLevels] buffer, _, _ in
-                let level = AudioLevel.measure(buffer)
-                inputLevels.withLock { $0[id, default: LevelWindow()].fold(level) }
+                let sides = AudioLevel.measureSides(buffer)
+                inputLevels.withLock { $0[id, default: LevelWindow()].fold(left: sides.left, right: sides.right) }
             }
         }
     }
@@ -772,95 +882,107 @@ final class AudioMixerController {
         if meteringRefCount > 0 {
             for player in audio.players { player.engine.setMetering(true) }
         }
-        let raw = inputLevels.withLock { windows -> [String: (rms: Float, peak: Float)] in
-            let taken = windows.mapValues { ($0.rms, $0.peak) }
+        let silence: [AudioLevel.Reading] = [(0, 0), (0, 0)]
+        let raw = inputLevels.withLock { windows -> [String: [AudioLevel.Reading]] in
+            let taken = windows.mapValues(\.sides)
             windows = [:]
             return taken
         }
 
+        func metered(_ held: [MeterBallistics]?, _ readings: [AudioLevel.Reading]) -> [MeterBallistics] {
+            readings.enumerated().map { index, reading in
+                var meter = held?.count == readings.count ? held![index] : MeterBallistics()
+                meter.update(rms: reading.rms, peak: reading.peak, elapsed: elapsed)
+                return meter
+            }
+        }
+        let mixGain = { [audio] (id: String) in audio.mixMuted(id) ? 0 : audio.mixGain(id) }
+
         var nextDisplayLevels = displayLevels
         var nextBusLevels = busLevels
-        var nextOutputLevels = outputLevels
-        var deviceRaw: [String: (rms: Float, peak: Float)] = [:]
-        for entry in audioInputs.entries {
-            var meter = nextDisplayLevels[entry.id] ?? MeterBallistics()
-            let level = raw[entry.id] ?? (0, 0)
-            let live = isLive(input: entry.id)
-            meter.update(
-                rms: live ? level.rms : 0, peak: live ? level.peak : 0,
-                elapsed: elapsed)
-            nextDisplayLevels[entry.id] = meter
 
-            if live, let uid = entry.uid, !uid.isEmpty {
+        var nextOutputLevels: [String: [MeterBallistics]] = [:]
+        var deviceRaw: [String: AudioLevel.Reading] = [:]
+        for entry in audioInputs.entries {
+            let sides = isLive(input: entry.id) ? raw[entry.id] ?? silence : silence
+
+            nextDisplayLevels[entry.id] = metered(
+                nextDisplayLevels[entry.id], entry.monoChannel == nil ? sides : [AudioLevel.mono(sides)])
+
+            if let uid = entry.uid, !uid.isEmpty {
+                let level = AudioLevel.louder(sides)
                 let held = deviceRaw[uid] ?? (0, 0)
                 deviceRaw[uid] = (max(held.rms, level.rms), max(held.peak, level.peak))
             }
         }
         for uid in Set(audioInputs.entries.compactMap(\.uid)) where !uid.isEmpty {
-            var meter = nextDisplayLevels["device:\(uid)"] ?? MeterBallistics()
-            let level = deviceRaw[uid] ?? (0, 0)
-            meter.update(rms: level.rms, peak: level.peak, elapsed: elapsed)
-            nextDisplayLevels["device:\(uid)"] = meter
+            nextDisplayLevels["device:\(uid)"] = metered(nextDisplayLevels["device:\(uid)"], [deviceRaw[uid] ?? (0, 0)])
         }
 
-        var mixRaw: [String: (rms: Float, peak: Float)] = [:]
+        var mixRaw: [String: [AudioLevel.Reading]] = [:]
+        func land(_ landing: [String: [AudioLevel.Reading]]) {
+            for (mixId, sides) in landing {
+                mixRaw[mixId] = AudioLevel.combine(mixRaw[mixId] ?? silence, adding: sides)
+            }
+        }
 
-        var nextPlayerLevels: [String: MeterBallistics] = [:]
+        var nextPlayerLevels: [String: [MeterBallistics]] = [:]
         for player in audio.players {
             let levels = player.engine.takeMeterLevels()
-            mixRaw[player.targetKey] = AudioLevel.combine(
-                mixRaw[player.targetKey] ?? (0, 0), adding: levels.post)
-            var meter = playerLevels[player.targetKey] ?? MeterBallistics()
-            meter.update(
-                rms: levels.source.rms, peak: levels.source.peak, elapsed: elapsed)
-            nextPlayerLevels[player.targetKey] = meter
+            land([player.targetKey: levels.post.sides])
+            nextPlayerLevels[player.targetKey] = metered(playerLevels[player.targetKey], levels.source.sides)
         }
         playerLevels = nextPlayerLevels
         for entry in audioInputs.entries where isLive(input: entry.id) {
             let id = entry.id
             guard !isMuted(input: id) else { continue }
-            let level = raw[id] ?? (0, 0)
-            let channelGain = gain(forInput: id)
-            let routed = mixId(forInput: id)
-            if !audio.mixMuted(routed) {
-                mixRaw[routed] = AudioLevel.combine(
-                    mixRaw[routed] ?? (0, 0), adding: level,
-                    gain: channelGain * audio.mixGain(routed))
-            }
-            for (sendMix, sendGain) in channelSends("input:\(id)")
-            where sendMix != routed && audio.mixes.entry(id: sendMix) != nil
-                && !audio.mixMuted(sendMix) {
-                mixRaw[sendMix] = AudioLevel.combine(
-                    mixRaw[sendMix] ?? (0, 0), adding: level,
-                    gain: channelGain * sendGain * audio.mixGain(sendMix))
-            }
+            land(AudioLevel.channelLanding(
+                sides: raw[id] ?? silence, channelGain: gain(forInput: id), pan: pan(forInput: id),
+                routedMix: mixId(forInput: id),
+                sends: channelSends("input:\(id)").filter { audio.mixes.entry(id: $0.key) != nil },
+                mixGain: mixGain))
         }
 
-        let video = videoLevels.withLock { $0.take() }
-        var videoMeter = nextDisplayLevels[Self.videoMeterKey] ?? MeterBallistics()
-        videoMeter.update(rms: video.rms, peak: video.peak, elapsed: elapsed)
-        nextDisplayLevels[Self.videoMeterKey] = videoMeter
-        displayLevels = nextDisplayLevels
-        let videoLanding = AudioLevel.channelLanding(
-            level: video,
+        let video = videoLevels.withLock { window in
+            defer { window = LevelWindow() }
+            return window.sides
+        }
+        nextDisplayLevels[Self.videoMeterKey] = metered(nextDisplayLevels[Self.videoMeterKey], video)
+        land(AudioLevel.channelLanding(
+            sides: video,
             channelGain: audio.mediaAudioMuted ? 0 : audio.mediaAudioGain,
             routedMix: audio.mediaMixId,
             sends: channelSends("video").filter { audio.mixes.entry(id: $0.key) != nil },
-            mixGain: { [audio] in audio.mixMuted($0) ? 0 : audio.mixGain($0) })
-        for (mixId, level) in videoLanding {
-            mixRaw[mixId] = AudioLevel.combine(mixRaw[mixId] ?? (0, 0), adding: level)
+            mixGain: mixGain))
+
+        if let tracks, let channels = tracks.model?.trackChannels, !channels.isEmpty {
+            let levels = tracks.meters
+            let trim = TracksController.trimMuted ? 0 : TracksController.trim
+            var loudest: AudioLevel.Reading = (0, 0)
+            for channel in channels {
+                let sides = levels[channel.id] ?? silence
+                let source = channel.mono == true ? [AudioLevel.mono(sides)] : sides
+                nextDisplayLevels["track:\(channel.id)"] = metered(nextDisplayLevels["track:\(channel.id)"], source)
+                let channelGain = TracksController.muted(channel.id) ? 0 : TracksController.gain(channel.id) * trim
+                let level = AudioLevel.louder(source)
+                loudest = (max(loudest.rms, level.rms * channelGain), max(loudest.peak, level.peak * channelGain))
+                land(AudioLevel.channelLanding(
+                    sides: source, channelGain: channelGain, pan: TracksController.pan(channel.id),
+                    routedMix: TracksController.mixId(channel).flatMap { audio.mixes.entry(id: $0) != nil ? $0 : nil },
+                    sends: channelSends("track:\(channel.id)").filter { audio.mixes.entry(id: $0.key) != nil },
+                    mixGain: mixGain))
+            }
+            nextDisplayLevels[Self.tracksMeterKey] = metered(nextDisplayLevels[Self.tracksMeterKey], [loudest])
         }
+        displayLevels = nextDisplayLevels
         for key in Set(audio.mixes.entries.map(\.id)).union(mixRaw.keys) {
-            var meter = nextBusLevels[key] ?? MeterBallistics()
-            let level = mixRaw[key] ?? (0, 0)
-            meter.update(rms: level.rms, peak: level.peak, elapsed: elapsed)
-            nextBusLevels[key] = meter
+            nextBusLevels[key] = metered(nextBusLevels[key], mixRaw[key] ?? silence)
         }
         busLevels = nextBusLevels
 
         let outputs = AudioOutputInventory.shared
         let landing = audio.mixes.entries.map { mix in
-            (level: mixRaw[mix.id] ?? (0, 0),
+            (level: mixRaw[mix.id] ?? silence,
              sends: mix.outputIds.enumerated().compactMap { index, outputId in
                  outputs.entry(id: outputId) == nil
                      ? nil
@@ -870,12 +992,22 @@ final class AudioMixerController {
              })
         }
         let outputRaw = AudioLevel.outputLevels(landing)
+        var devices: [String: [(sides: [AudioLevel.Reading], channels: [Int])]] = [:]
         for output in outputs.entries {
-            var meter = nextOutputLevels[output.id] ?? MeterBallistics()
             let silent = AudioController.outputMuted(output.id) || output.isDeviceless
-            let level: (rms: Float, peak: Float) = silent ? (0, 0) : outputRaw[output.id] ?? (0, 0)
-            meter.update(rms: level.rms, peak: level.peak, elapsed: elapsed)
-            nextOutputLevels[output.id] = meter
+            let sides = silent ? silence : outputRaw[output.id] ?? silence
+
+            nextOutputLevels[output.id] = metered(
+                outputLevels[output.id], output.monoChannel == nil ? sides : [AudioLevel.mono(sides)])
+            if let uid = output.deviceUID, !output.isDeviceless {
+                let channels = output.monoChannel.map { [$0] } ?? [output.channelOffset, output.channelOffset + 1]
+                devices[uid, default: []].append((sides, channels))
+            }
+        }
+
+        for (uid, members) in devices {
+            let bridge = AudioLevel.deviceChannels(members).sorted { $0.key < $1.key }.map(\.value)
+            nextOutputLevels["device:\(uid)"] = metered(outputLevels["device:\(uid)"], bridge)
         }
         outputLevels = nextOutputLevels
     }

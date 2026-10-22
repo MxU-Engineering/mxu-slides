@@ -108,6 +108,19 @@ private func carried(_ presentation: Presentation, _ index: Int) -> [LayerKind: 
                 "a slide the arrangement omits previews its own fire alone")
     }
 
+    @Test func declaredOnlyKeepsWhatTheSlideItselfPutsUp() {
+        let deck = deck([
+            slide("a", actions: [fire("bg-video")]),
+            slide("b"),
+            slide("c", background: CueMedia(mediaId: "bg-still", mode: .untilReplaced, layer: .stillGraphics), actions: [fire("fg-video")]),
+        ])
+        #expect(SlideSceneBuilder.declaredOnly(carried(deck, 0), slide: deck.slides[0]) == [.loopingVideos: "bg-video"])
+        #expect(SlideSceneBuilder.declaredOnly(carried(deck, 1), slide: deck.slides[1]) == [:],
+                "a following slide drops the background it only carries")
+        #expect(SlideSceneBuilder.declaredOnly(carried(deck, 2), slide: deck.slides[2]) == [.stillGraphics: "bg-still", .videos: "fg-video"],
+                "its own background and fires stay; the carried one above goes")
+    }
+
     @Test func sceneCompositesCarriedMediaOnItsLayersOnce() {
         let deck = deck([slide("a", background: CueMedia(mediaId: "bg-video", layer: .loopingVideos))])
         let scene = SlideSceneBuilder.scene(

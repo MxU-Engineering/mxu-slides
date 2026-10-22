@@ -1,3 +1,5 @@
+import AppKit
+import PresenterCore
 import SwiftUI
 
 enum GlyphKind: String {
@@ -23,6 +25,46 @@ enum GlyphKind: String {
     case notes          
     case fade           
     case crossfade      
+    case light
+}
+
+extension GlyphKind {
+
+    @MainActor
+    init(action: SlideAction, model: AppModel) {
+        self = switch action.kind {
+        case .switchOutputPreset: .screens
+        case .clearLayer, .clearAll, .clearAudio: .clear
+        case .fireMedia: .media
+        case .fireAlert, .dismissAlert: .alerts
+        case .timerStart, .timerPause, .timerReset, .timerConfigure: .timers
+        case .midiOut: .midi
+        case .fireCombo:
+            action.comboId.flatMap { try? model.actionCombo($0).iconName }
+                .flatMap(GlyphKind.init(rawValue:)) ?? .combos
+        case .captureStart, .captureStop: .broadcast
+        case .firePresentation: .presentations
+        case .setConfidenceLayout: .confidence
+        case .fireOverlay, .dismissOverlay: .overlays
+        case .fireLiveInput: .screens
+        case .setSignage, .setScreenSource, .clearSignage: .clear
+        case .enableAudioInput, .disableAudioInput: .audio
+        case .fireAudio, .fireAudioPlaylist: .audio
+        }
+    }
+
+    @MainActor
+    var menuImage: NSImage {
+        if let hit = Self.menuImages[self] { return hit }
+        let renderer = ImageRenderer(content: Glyph(kind: self, size: 14))
+        renderer.scale = 2
+        let image = renderer.nsImage ?? NSImage()
+        image.isTemplate = true
+        Self.menuImages[self] = image
+        return image
+    }
+
+    @MainActor private static var menuImages: [GlyphKind: NSImage] = [:]
 }
 
 struct Glyph: View {
@@ -60,11 +102,13 @@ struct Glyph: View {
                     .strokeBorder(lineWidth: stroke)
                     .padding([.trailing, .bottom], 3.5)
                     .background(
+
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(Color.cardSurface)
                             .padding([.trailing, .bottom], 3.5)
+                            .blendMode(.destinationOut)
                     )
             }
+            .compositingGroup()
         case .overlays:
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 3.5, style: .continuous)
@@ -222,6 +266,11 @@ struct Glyph: View {
                     .rotationEffect(.degrees(45))
             }
             .padding(1)
+        case .light:
+
+            BulbShape()
+                .stroke(style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round))
+                .padding(0.5)
         case .midi:
 
             ZStack {
@@ -302,6 +351,25 @@ private struct StopwatchShape: Shape {
         p.addLine(to: CGPoint(
             x: center.x + radius * 0.55, y: center.y - radius * 0.55
         ))
+        return p
+    }
+}
+
+private struct BulbShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let r = rect.width * 0.34
+        let center = CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.04 + r)
+        let neckY = rect.minY + rect.height * 0.72
+        let neck = rect.width * 0.13
+
+        p.addArc(center: center, radius: r, startAngle: .degrees(135), endAngle: .degrees(45), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.midX + neck, y: neckY))
+        p.addLine(to: CGPoint(x: rect.midX - neck, y: neckY))
+        p.closeSubpath()
+
+        p.move(to: CGPoint(x: rect.midX - neck * 0.8, y: rect.minY + rect.height * 0.88))
+        p.addLine(to: CGPoint(x: rect.midX + neck * 0.8, y: rect.minY + rect.height * 0.88))
         return p
     }
 }

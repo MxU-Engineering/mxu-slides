@@ -18,7 +18,6 @@ public final class DocumentKindVersions {
     private var controlBoard = 0
     private var confidenceLayout = 0
     private var groupPalette = 0
-    private var signageBoard = 0
     private var effectPresetBoard = 0
     private var animationPresetBoard = 0
     private var midiDevice = 0
@@ -30,6 +29,8 @@ public final class DocumentKindVersions {
     private var slideBuildingSettings = 0
     private var font = 0
     private var workspaceSettings = 0
+    private var trackChannelList = 0
+    private var trackSet = 0
 
     @ObservationIgnored private var unobserved: [DocumentKind: Int] = [:]
 
@@ -57,7 +58,6 @@ public final class DocumentKindVersions {
         case .controlBoard: controlBoard
         case .confidenceLayout: confidenceLayout
         case .groupPalette: groupPalette
-        case .signageBoard: signageBoard
         case .effectPresetBoard: effectPresetBoard
         case .animationPresetBoard: animationPresetBoard
         case .midiDevice: midiDevice
@@ -69,6 +69,8 @@ public final class DocumentKindVersions {
         case .slideBuildingSettings: slideBuildingSettings
         case .font: font
         case .workspaceSettings: workspaceSettings
+        case .trackChannelList: trackChannelList
+        case .trackSet: trackSet
         }
     }
 
@@ -91,7 +93,6 @@ public final class DocumentKindVersions {
         case .controlBoard: controlBoard += 1
         case .confidenceLayout: confidenceLayout += 1
         case .groupPalette: groupPalette += 1
-        case .signageBoard: signageBoard += 1
         case .effectPresetBoard: effectPresetBoard += 1
         case .animationPresetBoard: animationPresetBoard += 1
         case .midiDevice: midiDevice += 1
@@ -103,6 +104,8 @@ public final class DocumentKindVersions {
         case .slideBuildingSettings: slideBuildingSettings += 1
         case .font: font += 1
         case .workspaceSettings: workspaceSettings += 1
+        case .trackChannelList: trackChannelList += 1
+        case .trackSet: trackSet += 1
         }
     }
 

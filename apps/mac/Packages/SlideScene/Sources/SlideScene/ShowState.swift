@@ -9,7 +9,7 @@ public enum ShowFunction: String, CaseIterable, Sendable {
     case overlays
     case audio
     case alerts
-    case signage
+    case inputs
 
     public var displayName: String {
         switch self {
@@ -18,8 +18,72 @@ public enum ShowFunction: String, CaseIterable, Sendable {
         case .overlays: "Overlays"
         case .audio: "Music"
         case .alerts: "Alerts"
-        case .signage: "Signage"
+        case .inputs: "Inputs"
         }
+    }
+
+    public init?(apiName: String) {
+        self.init(rawValue: apiName == "tracks" ? ShowFunction.audio.rawValue : apiName)
+    }
+}
+
+public enum TracksClear {
+    public static func stopsTracks(sweeping functions: Set<ShowFunction>) -> Bool {
+        functions.contains(.audio)
+    }
+
+    public static func stopsTimeline(ownClockPlaying: Bool, playingTracks: Bool) -> Bool {
+        ownClockPlaying && playingTracks
+    }
+}
+
+public extension CueMedia {
+
+    var isLiveInput: Bool { mediaId.hasPrefix("input::") }
+
+    var showFunction: ShowFunction { isLiveInput ? .inputs : .media }
+}
+
+public enum ClearAllScope {
+    public static let skipsKey = "serviceControls.clearAllSkips"
+    public static let legacyIncludesAudioKey = "serviceControls.clearAllIncludesAudio"
+    public static let defaultSkips: Set<ShowFunction> = [.inputs]
+
+    public static func skips(stored: String?, legacyIncludesAudio: Bool?) -> Set<ShowFunction> {
+        if let stored {
+            Set(stored.split(separator: ",").compactMap { ShowFunction(rawValue: String($0)) })
+        } else if legacyIncludesAudio == false {
+            defaultSkips.union([.audio])
+        } else {
+            defaultSkips
+        }
+    }
+
+    public static func encode(_ skips: Set<ShowFunction>) -> String {
+        ShowFunction.allCases.filter(skips.contains).map(\.rawValue).joined(separator: ",")
+    }
+
+    public static func swept(skips: Set<ShowFunction>) -> Set<ShowFunction> {
+        Set(ShowFunction.allCases).subtracting(skips)
+    }
+
+    public static func swept(defaults: UserDefaults = .standard) -> Set<ShowFunction> {
+        swept(skips: skips(
+            stored: defaults.string(forKey: skipsKey),
+            legacyIncludesAudio: defaults.object(forKey: legacyIncludesAudioKey) as? Bool))
+    }
+
+    public static func set(_ function: ShowFunction, swept: Bool, defaults: UserDefaults = .standard) {
+        var skips = skips(
+            stored: defaults.string(forKey: skipsKey),
+            legacyIncludesAudio: defaults.object(forKey: legacyIncludesAudioKey) as? Bool)
+        if swept {
+            skips.remove(function)
+        } else {
+            skips.insert(function)
+        }
+        defaults.set(encode(skips), forKey: skipsKey)
+        defaults.set(!skips.contains(.audio), forKey: legacyIncludesAudioKey)
     }
 }
 
@@ -523,55 +587,63 @@ public struct ShowState: Sendable, Equatable {
         switch function {
         case .slides:
             clearSlide(atHostTime: atHostTime)
-        case .media:
-            liveMedia = [:]
-            directMediaFires = []
+        case .media, .inputs:
+            for (layer, cue) in liveMedia where cue.showFunction == function {
+                liveMedia[layer] = nil
+                directMediaFires.remove(layer)
+            }
         case .overlays:
             for overlay in liveOverlays {
                 dismissOverlay(id: overlay.id, atHostTime: atHostTime)
             }
-        case .audio: liveAudio = [] 
+        case .audio: liveAudio = []
         case .alerts: clearAlert(atHostTime: atHostTime)
-        case .signage:
-
-            break
         }
     }
 
     public mutating func clear(layer: LayerKind, atHostTime: Double? = nil) {
+        clear(layer: layer, atHostTime: atHostTime, sweeping: Set(ShowFunction.allCases))
+    }
+
+    private mutating func clear(layer: LayerKind, atHostTime: Double?, sweeping functions: Set<ShowFunction>) {
         switch layer {
         case .loopingVideos, .stillGraphics, .videos, .videoInput:
 
-            liveMedia[layer] = nil
-            directMediaFires.remove(layer)
+            if let cue = liveMedia[layer], functions.contains(cue.showFunction) {
+                liveMedia[layer] = nil
+                directMediaFires.remove(layer)
+            }
         case .slide:
-            clearSlide(atHostTime: atHostTime)
+            if functions.contains(.slides) { clearSlide(atHostTime: atHostTime) }
         case .overlays, .alerts:
-            break 
+            break
         }
-        for overlay in liveOverlays
-        where (overlay.layer.flatMap(LayerKind.init(rawValue:)) ?? .overlays) == layer {
-            dismissOverlay(id: overlay.id, atHostTime: atHostTime)
+        if functions.contains(.overlays) {
+            for overlay in liveOverlays
+            where (overlay.layer.flatMap(LayerKind.init(rawValue:)) ?? .overlays) == layer {
+                dismissOverlay(id: overlay.id, atHostTime: atHostTime)
+            }
         }
-        if let alert = liveAlert, (alert.layer ?? .alerts) == layer {
+        if functions.contains(.alerts), let alert = liveAlert, (alert.layer ?? .alerts) == layer {
             clearAlert(atHostTime: atHostTime)
         }
 
     }
 
-    public mutating func clearAll(includingAudio: Bool = true, protecting: Set<LayerKind> = []) {
-        guard !protecting.isEmpty else {
-            for function in ShowFunction.allCases {
-                if function == .audio && !includingAudio { continue }
+    public mutating func clearAll(
+        sweeping functions: Set<ShowFunction> = Set(ShowFunction.allCases),
+        protecting: Set<LayerKind> = []
+    ) {
+        if protecting.isEmpty {
+            for function in ShowFunction.allCases where functions.contains(function) {
                 clear(function: function)
             }
-            return
+        } else {
+            for layer in LayerKind.allCases where !protecting.contains(layer) {
+                clear(layer: layer, atHostTime: nil, sweeping: functions)
+            }
+            if functions.contains(.audio) { clear(function: .audio) }
         }
-        for layer in LayerKind.allCases where !protecting.contains(layer) {
-            clear(layer: layer)
-        }
-        if includingAudio { clear(function: .audio) }
-        clear(function: .signage)
     }
 
     public func scene(

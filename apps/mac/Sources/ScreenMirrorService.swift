@@ -19,12 +19,12 @@ final class ScreenMirrorService {
             DiagnosticsStore.shared.note("screenMirror.unknown", detail: target)
             return
         }
-        let latest = Locked<CVPixelBuffer?>(nil)
+        let latest = LiveFrameSlot()
         guard let mirror = OutputMirror(
             compositor: render.compositor,
             width: width, height: height, framesPerSecond: fps,
             provider: render.outputs.previewProvider(for: target),
-            sink: { buffer, _ in latest.value = buffer }
+            sink: { buffer, _ in latest.set(buffer) }
         ) else {
             DiagnosticsStore.shared.note("screenMirror.failed", detail: target)
             return
@@ -32,10 +32,11 @@ final class ScreenMirrorService {
         mirrors[id] = mirror
         render.media.registerLiveSource(
             id: id,
-            latestFrame: { latest.value },
+            latestFrame: { latest.frame },
             onStop: { [weak self] in
                 Task { @MainActor in self?.stopped(id: id) }
-            }
+            },
+            stillGeneration: { latest.generation }
         )
         mirror.start()
         DiagnosticsStore.shared.note(

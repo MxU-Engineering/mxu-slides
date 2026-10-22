@@ -337,3 +337,24 @@ public enum AnimationRanges {
         return String(line[line.index(line.startIndex, offsetBy: start)..<line.index(line.startIndex, offsetBy: end)])
     }
 }
+
+extension SlideObject {
+
+    public mutating func replaceText(_ replaced: Range<Int>, with replacement: String) {
+        let old = text
+        let runs = TextStyleRuns.replacing(styleRuns ?? [], range: replaced, with: replacement, in: old)
+        styleRuns = runs.isEmpty ? nil : runs
+        if let chords, !chords.isEmpty {
+            let moved = TextStyleRuns.replacing(chords, range: replaced, with: replacement, in: old)
+            self.chords = moved.isEmpty ? nil : moved
+        }
+
+        if let animationSteps, animationSteps.contains(where: { !($0.ranges ?? []).isEmpty }) {
+            let moved = AnimationRanges.reanchor(animationSteps, range: replaced, with: replacement, in: old)
+            self.animationSteps = moved.isEmpty ? nil : moved
+        }
+        let start = old.index(old.startIndex, offsetBy: min(replaced.lowerBound, old.count))
+        let end = old.index(old.startIndex, offsetBy: min(replaced.upperBound, old.count))
+        text = old.replacingCharacters(in: start..<end, with: replacement)
+    }
+}
