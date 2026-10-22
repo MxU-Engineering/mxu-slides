@@ -169,3 +169,16 @@ public enum TimelineBlockEdit {
             : String(format: "%.2fs", seconds)
     }
 }
+
+public enum TimelineFollow {
+
+    public static let lead = 0.15
+
+    public static let edge = 16.0
+
+    public static func scroll(playheadX: Double, shown: ClosedRange<Double>, contentWidth: Double) -> Double? {
+        guard playheadX < shown.lowerBound || playheadX > shown.upperBound - edge else { return nil }
+        let width = shown.upperBound - shown.lowerBound
+        return min(max(playheadX - width * lead, 0), max(contentWidth - width, 0))
+    }
+}

@@ -126,3 +126,26 @@ import Testing
         }
     }
 }
+
+@Suite struct TimelineFollowTests {
+    @Test func holdsWhileThePlayheadIsInView() {
+        #expect(TimelineFollow.scroll(playheadX: 50, shown: 0...400, contentWidth: 2000) == nil)
+        #expect(TimelineFollow.scroll(playheadX: 383, shown: 0...400, contentWidth: 2000) == nil)
+    }
+
+    @Test func runningOffTheRightPutsItNearTheLeft() {
+
+        #expect(TimelineFollow.scroll(playheadX: 390, shown: 0...400, contentWidth: 2000) == 330)
+    }
+
+    @Test func aSeekOrAManualScrollOffEitherSideBringsItBack() {
+
+        #expect(TimelineFollow.scroll(playheadX: 900, shown: 137...537, contentWidth: 2000) == 840)
+        #expect(TimelineFollow.scroll(playheadX: 100, shown: 600...1000, contentWidth: 2000) == 40)
+    }
+
+    @Test func clampsToTheContent() {
+        #expect(TimelineFollow.scroll(playheadX: 1995, shown: 1000...1400, contentWidth: 2000) == 1600)
+        #expect(TimelineFollow.scroll(playheadX: 20, shown: 300...700, contentWidth: 2000) == 0)
+    }
+}

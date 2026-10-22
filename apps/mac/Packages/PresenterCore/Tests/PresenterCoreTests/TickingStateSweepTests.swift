@@ -42,7 +42,7 @@ import Testing
 
         "timelinePlayheadTime": (
             "timelinePlayheadTime", /\btimelinePlayheadTime\b/,
-            ["PlayheadReadoutFace", "PlayheadLineFace", "PlayheadHandleFace", "PageFollowFace"]
+            ["PlayheadReadoutFace", "PlayheadLineFace", "PlayheadHandleFace", "PlayheadFollowFace"]
         ),
 
         "timecodeReading": (
@@ -230,15 +230,16 @@ import Testing
             for index in file.lines.indices {
                 let code = file.code(index)
                 for face in faces where code.contains("\(face)(") {
+                    let opener = code.contains("TickingIsland") || (index > 0 && file.code(index - 1).contains("TickingIsland {"))
                     #expect(
-                        code.contains("TickingIsland"),
+                        opener,
                         "\(file.name):\(index + 1) draws \(face) outside a TickingIsland: each tick redraws the window")
                 }
             }
         }
         let shared = try #require(sweep.file("TimelineControls.swift"))
         for face in faces {
-            #expect(shared.text.contains("TickingIsland(fits: true) { \(face)(") || shared.text.contains("TickingIsland { \(face)("))
+            #expect(shared.text.contains("\(face)("), "\(face) is drawn")
         }
     }
 }

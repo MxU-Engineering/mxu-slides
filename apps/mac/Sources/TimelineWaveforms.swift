@@ -69,6 +69,9 @@ final class TimelineVisibleWindow {
     var range: ClosedRange<Double>?
 
     var shown: ClosedRange<Double>?
+    @ObservationIgnored weak var tracker: TimelineVisibleWindowTracker.TrackerView?
+
+    func scroll(toMinX minX: Double) { tracker?.scroll(toMinX: minX) }
 }
 
 struct TimelineVisibleWindowTracker: NSViewRepresentable {
@@ -101,6 +104,18 @@ struct TimelineVisibleWindowTracker: NSViewRepresentable {
             update()
         }
 
+        func scroll(toMinX minX: Double) {
+            guard let scroller = enclosingScrollView else { return }
+            let clip = scroller.contentView
+            let origin = clip.convert(NSPoint(x: minX, y: 0), from: self)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                clip.animator().setBoundsOrigin(NSPoint(x: origin.x, y: clip.bounds.origin.y))
+            }
+            scroller.reflectScrolledClipView(clip)
+        }
+
         func update() {
             guard let clip = enclosingScrollView?.contentView else { return }
             let shown = convert(clip.bounds, from: clip)
@@ -120,11 +135,13 @@ struct TimelineVisibleWindowTracker: NSViewRepresentable {
     func makeNSView(context: Context) -> TrackerView {
         let view = TrackerView()
         view.visible = window
+        window.tracker = view
         return view
     }
 
     func updateNSView(_ view: TrackerView, context: Context) {
         view.visible = window
+        window.tracker = view
     }
 }
 

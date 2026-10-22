@@ -243,7 +243,7 @@ struct PresentationTimelineStrip: View {
         let contentWidth = max(CGFloat(length * pps) + inset * 2, viewport)
         return HStack(spacing: 4) {
             PresentationTimelineFollowScroll(
-                context: context, contentWidth: contentWidth, viewport: viewport, x: x
+                context: context, contentWidth: contentWidth, x: x
             ) {
                 VStack(spacing: 2) {
                     PresentationTimelineSlideDots(context: context, x: x)
@@ -295,39 +295,21 @@ struct PresentationTimelineStrip: View {
 struct PresentationTimelineFollowScroll<Content: View>: View {
     let context: PresentationTimelineContext
     let contentWidth: CGFloat
-    let viewport: CGFloat
     let x: (Double) -> CGFloat
     @ViewBuilder let content: () -> Content
     @State private var visible = TimelineVisibleWindow()
 
     var body: some View {
-
-        let page = max(viewport * 0.85, 1)
-        let pages = Int((contentWidth / page).rounded(.up))
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                content()
-                    .environment(visible)
-                    .background(TimelineVisibleWindowTracker(window: visible))
-                    .background(alignment: .topLeading) {
-
-                        HStack(spacing: 0) {
-                            ForEach(0..<max(pages, 1), id: \.self) { index in
-                                Color.clear
-                                    .frame(width: page, height: 1)
-                                    .id("page-\(index)")
-                            }
-                        }
-                    }
-            }
-            .background {
-                if context.isCurrent {
-                    TimelinePageFollow(source: context.clock, pageWidth: page, x: x) { index in
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo("page-\(index)", anchor: .leading)
-                        }
-                    }
-                }
+        ScrollView(.horizontal, showsIndicators: false) {
+            content()
+                .environment(visible)
+                .background(TimelineVisibleWindowTracker(window: visible))
+        }
+        .background {
+            if context.isCurrent {
+                TimelinePlayheadFollow(
+                    source: context.clock, playing: context.isPlaying, visible: visible,
+                    contentWidth: contentWidth, x: x)
             }
         }
     }
@@ -670,7 +652,7 @@ struct PresentationTimelineLanes: View {
 
                 .frame(width: 150, alignment: .leading)
                 PresentationTimelineFollowScroll(
-                    context: context, contentWidth: map.width, viewport: viewport, x: { map.x(ofTime: $0) }
+                    context: context, contentWidth: map.width, x: { map.x(ofTime: $0) }
                 ) {
                     lanes(cues, visible: visible, map: map)
                 }

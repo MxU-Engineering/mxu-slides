@@ -340,28 +340,40 @@ private struct PlayheadCap: Shape {
     }
 }
 
-struct TimelinePageFollow<Source: TimelinePlayheadSource>: View {
+struct TimelinePlayheadFollow<Source: TimelinePlayheadSource>: View {
     let source: Source
-    let pageWidth: CGFloat
+    let playing: Bool
+    let visible: TimelineVisibleWindow
+    let contentWidth: CGFloat
     let x: (Double) -> CGFloat
-    let turned: (Int) -> Void
 
     var body: some View {
-        TickingIsland { PageFollowFace(source: source, pageWidth: pageWidth, x: x, turned: turned) }
-            .allowsHitTesting(false)
+        TickingIsland {
+            PlayheadFollowFace(source: source, playing: playing, visible: visible, contentWidth: contentWidth, x: x)
+        }
+        .allowsHitTesting(false)
     }
 }
 
-private struct PageFollowFace<Source: TimelinePlayheadSource>: View {
+private struct PlayheadFollowFace<Source: TimelinePlayheadSource>: View {
     let source: Source
-    let pageWidth: CGFloat
+    let playing: Bool
+    let visible: TimelineVisibleWindow
+    let contentWidth: CGFloat
     let x: (Double) -> CGFloat
-    let turned: (Int) -> Void
 
     var body: some View {
-        let page = pageWidth > 0 ? Int(max(x(source.timelinePlayheadTime), 0) / pageWidth) : 0
+
+        let target = playing ? visible.shown.flatMap {
+            TimelineFollow.scroll(playheadX: Double(x(source.timelinePlayheadTime)), shown: $0, contentWidth: Double(contentWidth))
+        } : nil
         Color.clear
-            .onChange(of: page) { _, page in turned(page) }
+            .onChange(of: target != nil) { _, off in
+                guard off, let target else { return }
+                visible.scroll(toMinX: target)
+                DiagnosticsStore.shared.note(
+                    "timeline.follow", detail: String(format: "%.0f → %.0f", visible.shown?.lowerBound ?? 0, target))
+            }
     }
 }
 
