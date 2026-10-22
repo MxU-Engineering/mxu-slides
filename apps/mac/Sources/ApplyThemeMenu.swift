@@ -1,67 +1,6 @@
 import PresenterCore
 import SwiftUI
 
-struct PendingDeckTheme: Equatable {
-    let presentationID: String
-    let themeID: String
-}
-
-struct DeckThemeMenuItems: View {
-    let model: AppModel
-    let presentationID: String
-    let themes: [LibraryIndex.Entry]
-    @Binding var pending: PendingDeckTheme?
-
-    var body: some View {
-        let currentThemeID = model.themeID(of: presentationID)
-        let edited = model.presentationHasLocalEdits(presentationID)
-        Toggle(
-            "None",
-            isOn: Binding(
-                get: { currentThemeID.isEmpty },
-                set: { _ in model.applyTheme(to: presentationID, themeID: "") }
-            )
-        )
-        if !themes.isEmpty { Divider() }
-        ForEach(themes, id: \.id) { theme in
-            let isCurrent = theme.id == currentThemeID
-            Toggle(
-                theme.name + (isCurrent && edited ? " (edited)" : ""),
-                isOn: Binding(
-                    get: { isCurrent },
-                    set: { _ in
-
-                        if model.presentationHasSlideThemes(presentationID) {
-                            pending = PendingDeckTheme(presentationID: presentationID, themeID: theme.id)
-                        } else {
-                            model.applyTheme(to: presentationID, themeID: theme.id)
-                        }
-                    }
-                )
-            )
-        }
-    }
-}
-
-extension View {
-
-    func deckThemeConfirmation(model: AppModel, pending: Binding<PendingDeckTheme?>) -> some View {
-        confirmationDialog(
-            "Apply \(pending.wrappedValue.flatMap { model.entry($0.themeID)?.name } ?? "this theme") to every slide?",
-            isPresented: Binding(get: { pending.wrappedValue != nil }, set: { if !$0 { pending.wrappedValue = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Apply to Every Slide") {
-                if let chosen = pending.wrappedValue { model.applyTheme(to: chosen.presentationID, themeID: chosen.themeID) }
-                pending.wrappedValue = nil
-            }
-            Button("Cancel", role: .cancel) { pending.wrappedValue = nil }
-        } message: {
-            Text("Slides that follow a theme of their own will follow this one instead.")
-        }
-    }
-}
-
 struct ApplyThemeTarget: Identifiable {
     let id = UUID()
     let presentationID: String

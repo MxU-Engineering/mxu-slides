@@ -37,7 +37,7 @@ struct LibrarySidebar: View {
     @State private var newFolderTarget: LibraryIndex.Entry?
     @State private var resolutionTarget: PresentationResolutionSheet.Target?
 
-    @State private var pendingApplyTheme: PendingDeckTheme?
+    @State private var applyThemeTarget: ApplyThemeTarget?
     @State private var creatingFolder = false
     @State private var importingLyrics = false
     @State private var searchText = ""
@@ -114,9 +114,19 @@ struct LibrarySidebar: View {
         .sheet(isPresented: $importingLyrics) {
             ImportLyricsSheet(model: model, render: render, onImported: showImported)
         }
-        .deckThemeConfirmation(model: model, pending: $pendingApplyTheme)
         .sheet(item: $newFolderTarget) { entry in
             NewFolderSheet(model: model, entry: entry, parentPath: realPath(folderPath ?? []))
+        }
+        .sheet(item: $applyThemeTarget) { target in
+            ApplyThemeSheet(
+                appModel: model, render: render, deckThemeId: model.themeID(of: target.presentationID),
+                scope: "Applies to every slide in \u{201C}\(model.entry(target.presentationID)?.name ?? "this presentation")\u{201D}"
+                    + (model.presentationHasSlideThemes(target.presentationID)
+                        ? ", slides with a theme of their own too." : "."),
+                onNone: { model.applyTheme(to: target.presentationID, themeID: "") }
+            ) { themeId, design in
+                model.applyTheme(to: target.presentationID, themeID: themeId, design: design)
+            }
         }
         .sheet(item: $resolutionTarget) { target in
             PresentationResolutionSheet(model: model, target: target)
@@ -598,8 +608,6 @@ struct LibrarySidebar: View {
 
         var playlists: [LibraryIndex.Entry]
 
-        var themes: [LibraryIndex.Entry]
-
         var selection: [LibraryIndex.Entry]
     }
 
@@ -608,7 +616,6 @@ struct LibrarySidebar: View {
         return RowMenuLists(
             folders: AppModel.folderableSections.contains(section) ? model.folders(in: section) : [],
             playlists: model.playlists(in: section),
-            themes: section == .presentations ? model.entries(in: .themes) : [],
             selection: selection)
     }
 
@@ -920,6 +927,10 @@ struct LibrarySidebar: View {
         } else {
             singleEntryMenu(entry, menus: menus)
         }
+        Divider()
+        Button(batch.count > 1 ? "Delete \(batch.count) Items" : "Delete", role: .destructive) {
+            requestDelete(batch.count > 1 ? batch : [entry])
+        }
     }
 
     @ViewBuilder
@@ -929,37 +940,38 @@ struct LibrarySidebar: View {
             Button("Add \(addable.count) to Service") {
                 for entry in addable { model.addToCurrentService(entry) }
             }
-            Divider()
         }
         let tracks = batch.filter { $0.kind == .media || $0.kind == .audio }
-        if !tracks.isEmpty, tracks.allSatisfy({ $0.kind == tracks[0].kind }) {
-            Menu("Add to Playlist") {
-                ForEach(menus.playlists, id: \.id) { playlist in
-                    Button(playlist.name) {
-                        for entry in tracks { model.addToPlaylist(playlist.id, itemID: entry.id) }
-                    }
-                }
-                if !menus.playlists.isEmpty { Divider() }
-                Button("New Playlist…") {
-                    if let id = model.createPlaylist(in: model.selectedSection) {
-                        for entry in tracks { model.addToPlaylist(id, itemID: entry.id) }
-                    }
-                }
-            }
-        }
         let folderable = batch.filter { entry in
             AppModel.folderableSections.contains { $0.kind == entry.kind }
         }
-        if !folderable.isEmpty {
-            Menu("Move to Folder") {
-                Button("None") {
-                    for entry in folderable { model.moveToFolder(entry, folder: nil) }
+        Section("Organize") {
+            if !tracks.isEmpty, tracks.allSatisfy({ $0.kind == tracks[0].kind }) {
+                Menu("Add to Playlist") {
+                    ForEach(menus.playlists, id: \.id) { playlist in
+                        Button(playlist.name) {
+                            for entry in tracks { model.addToPlaylist(playlist.id, itemID: entry.id) }
+                        }
+                    }
+                    if !menus.playlists.isEmpty { Divider() }
+                    Button("New Playlist…") {
+                        if let id = model.createPlaylist(in: model.selectedSection) {
+                            for entry in tracks { model.addToPlaylist(id, itemID: entry.id) }
+                        }
+                    }
                 }
-                if !menus.folders.isEmpty {
-                    Divider()
-                    ForEach(menus.folders, id: \.self) { folder in
-                        Button(folder) {
-                            for entry in folderable { model.moveToFolder(entry, folder: folder) }
+            }
+            if !folderable.isEmpty {
+                Menu("Move to Folder") {
+                    Button("None") {
+                        for entry in folderable { model.moveToFolder(entry, folder: nil) }
+                    }
+                    if !menus.folders.isEmpty {
+                        Divider()
+                        ForEach(menus.folders, id: \.self) { folder in
+                            Button(folder) {
+                                for entry in folderable { model.moveToFolder(entry, folder: folder) }
+                            }
                         }
                     }
                 }
@@ -967,14 +979,14 @@ struct LibrarySidebar: View {
         }
         let decks = batch.filter { $0.kind == .presentation }
         if !decks.isEmpty, !runOnly {
-            Button("Resolution…") { resolutionTarget = .init(ids: decks.map(\.id)) }
+            Section("Presentation") {
+                Button("Resolution…") { resolutionTarget = .init(ids: decks.map(\.id)) }
+            }
         }
         if !tracks.isEmpty {
-            Button("Show in Finder") { showInFinder(tracks) }
-        }
-        Divider()
-        Button("Delete \(batch.count) Items", role: .destructive) {
-            requestDelete(batch)
+            Section("File") {
+                Button("Show in Finder") { showInFinder(tracks) }
+            }
         }
     }
 
@@ -982,7 +994,6 @@ struct LibrarySidebar: View {
     private func singleEntryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
         if [.presentation, .media, .audio].contains(entry.kind) {
             Button("Add to Service") { model.addToCurrentService(entry) }
-            Divider()
         }
         if entry.kind.opensInEditor {
 
@@ -993,84 +1004,92 @@ struct LibrarySidebar: View {
         }
         if entry.kind == .media {
 
-            MediaCueGrammarItems(
-                model: model, actionRouter: nil,
-                mediaID: entry.id, state: mediaMenuState
-            )
-        }
-        if entry.kind == .audio {
-
-            Button("Replace Music File…") {
-                let panel = NSOpenPanel()
-                panel.allowsMultipleSelection = false
-                panel.allowedContentTypes = [.audio]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    Task { @MainActor in model.replaceAudioFile(entry.id, with: url) }
-                }
+            Section("Cue") {
+                MediaCueGrammarItems(
+                    model: model, actionRouter: nil,
+                    mediaID: entry.id, state: mediaMenuState
+                )
             }
         }
-        if entry.kind == .media {
-
-            Button("Replace Media File…") {
-                ReplaceMediaFileFlow.start(model: model, id: entry.id, name: entry.name) { replaceFileRequest = $0 }
+        Section("Organize") {
+            Button("Rename…") {
+                renameTarget = entry
+                renameText = entry.name
             }
-            Button("Locate Missing Media…") { locatePanelShown = true }
-        }
-        if entry.kind == .audio || entry.kind == .media {
-
-            Menu("Add to Playlist") {
-                ForEach(menus.playlists, id: \.id) { playlist in
-                    Button(playlist.name) { model.addToPlaylist(playlist.id, itemID: entry.id) }
+            Button("Duplicate") { model.duplicate(entry) }
+            if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
+                Menu("Move to Folder") {
+                    Button("None") { model.moveToFolder(entry, folder: nil) }
+                        .disabled(entry.subkind.isEmpty)
+                    if !menus.folders.isEmpty {
+                        Divider()
+                        ForEach(menus.folders, id: \.self) { folder in
+                            Button(folder) { model.moveToFolder(entry, folder: folder) }
+                                .disabled(entry.subkind == folder)
+                        }
+                    }
+                    Divider()
+                    Button("New Folder…") { newFolderTarget = entry }
                 }
-                if !menus.playlists.isEmpty { Divider() }
-                Button("New Playlist…") {
-                    if let id = model.createPlaylist(in: model.selectedSection) {
-                        model.addToPlaylist(id, itemID: entry.id)
+            }
+            if entry.kind == .audio || entry.kind == .media {
+
+                Menu("Add to Playlist") {
+                    ForEach(menus.playlists, id: \.id) { playlist in
+                        Button(playlist.name) { model.addToPlaylist(playlist.id, itemID: entry.id) }
+                    }
+                    if !menus.playlists.isEmpty { Divider() }
+                    Button("New Playlist…") {
+                        if let id = model.createPlaylist(in: model.selectedSection) {
+                            model.addToPlaylist(id, itemID: entry.id)
+                        }
                     }
                 }
-            }
-        }
-        Button("Rename…") {
-            renameTarget = entry
-            renameText = entry.name
-        }
-        Button("Duplicate") { model.duplicate(entry) }
-        if entry.kind == .theme {
-            Button("Apply to All Presentations") {
-                model.applyThemeToAllPresentations(entry.id)
             }
         }
         if entry.kind == .presentation {
 
-            Menu("Apply Theme") {
-                DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
-            }
-            if !runOnly {
-                Button("Resolution…") { resolutionTarget = .init(ids: [entry.id]) }
-            }
-            Button("Export…") { model.exportPresentation(presentationID: entry.id, render: render) }
-        }
-        if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
-            Menu("Move to Folder") {
-                Button("None") { model.moveToFolder(entry, folder: nil) }
-                    .disabled(entry.subkind.isEmpty)
-                if !menus.folders.isEmpty {
-                    Divider()
-                    ForEach(menus.folders, id: \.self) { folder in
-                        Button(folder) { model.moveToFolder(entry, folder: folder) }
-                            .disabled(entry.subkind == folder)
-                    }
+            Section("Presentation") {
+                Button("Apply Theme…") {
+                    applyThemeTarget = ApplyThemeTarget(presentationID: entry.id, slideIDs: nil)
                 }
-                Divider()
-                Button("New Folder…") { newFolderTarget = entry }
+                if !runOnly {
+                    Button("Resolution…") { resolutionTarget = .init(ids: [entry.id]) }
+                }
+                Button("Export…") { model.exportPresentation(presentationID: entry.id, render: render) }
+            }
+        }
+        if entry.kind == .theme {
+            Section("Theme") {
+                Button("Apply to All Presentations") {
+                    model.applyThemeToAllPresentations(entry.id)
+                }
             }
         }
         if entry.kind == .media || entry.kind == .audio {
-            Button("Show in Finder") { showInFinder([entry]) }
+            Section("File") {
+                if entry.kind == .audio {
+
+                    Button("Replace Music File…") {
+                        let panel = NSOpenPanel()
+                        panel.allowsMultipleSelection = false
+                        panel.allowedContentTypes = [.audio]
+                        panel.begin { response in
+                            guard response == .OK, let url = panel.url else { return }
+                            Task { @MainActor in model.replaceAudioFile(entry.id, with: url) }
+                        }
+                    }
+                }
+                if entry.kind == .media {
+
+                    Button("Replace Media File…") {
+                        ReplaceMediaFileFlow.start(model: model, id: entry.id, name: entry.name) { replaceFileRequest = $0 }
+                    }
+                    Button("Locate Missing Media…") { locatePanelShown = true }
+                }
+                Button("Show in Finder") { showInFinder([entry]) }
+            }
         }
-        Divider()
-        Button("Delete", role: .destructive) { requestDelete([entry]) }
     }
 
     private func section(for entry: LibraryIndex.Entry) -> LibrarySection? {
