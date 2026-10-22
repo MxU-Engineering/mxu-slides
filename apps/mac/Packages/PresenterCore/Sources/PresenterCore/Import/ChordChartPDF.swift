@@ -58,7 +58,7 @@ public enum ChordChartPDF {
                         line = chords.map { "[\($0.symbol)]" }.joined()
                     }
                 } else {
-                    line = row.text
+                    line = joinedSyllables(row.text)
                 }
                 if sections.isEmpty { leading.append(line) } else { sections[sections.count - 1].lines.append(line) }
             }
@@ -278,7 +278,25 @@ public enum ChordChartPDF {
         for insert in inserts.enumerated().sorted(by: { ($0.element.index, $0.offset) > ($1.element.index, $1.offset) }) {
             characters.insert(contentsOf: "[\(insert.element.symbol)]", at: insert.element.index)
         }
-        return withoutLoneDashes(String(characters))
+        return withoutLoneDashes(joinedSyllables(String(characters)))
+    }
+
+    static func joinedSyllables(_ line: String) -> String {
+        var line = line
+        var from = line.startIndex
+        while let match = line[from...].firstMatch(of: #/(\p{L}+) ?[-–] ?((?:\[[^\]]*\])*)(\p{Ll}+)/#) {
+            let (_, head, chords, tail) = match.output
+            let syllable = (tail.count <= 3 || head.count <= 2) && head.lowercased() != tail
+                && !LyricPhrasing.interjections.contains(head.lowercased())
+            if syllable {
+                let offset = line.distance(from: line.startIndex, to: match.range.lowerBound)
+                line.replaceSubrange(match.range, with: head + chords + tail)
+                from = line.index(line.startIndex, offsetBy: offset)
+            } else {
+                from = head.endIndex
+            }
+        }
+        return line
     }
 
     static func withoutLoneDashes(_ line: String) -> String {

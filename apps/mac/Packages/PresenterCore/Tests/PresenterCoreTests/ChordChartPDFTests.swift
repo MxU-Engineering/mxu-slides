@@ -97,6 +97,20 @@ struct ChordChartPDFTests {
         #expect(ChordChartPDF.inline([(x: 70 + CGFloat(column) * 6, symbol: "D")], into: row) == expected)
     }
 
+    @Test(arguments: [
+        ("This song is fore-ver Yours", "This song is forever Yours"),
+        ("This song is fore - [D]ver Yours", "This song is fore[D]ver Yours"),
+        ("Hal-le-lu-jah", "Hallelujah"),
+        ("Glo-ri-ous", "Glorious"),
+        ("Our God is an all-consuming fire", "Our God is an all-consuming fire"),
+        ("Never-ending love", "Never-ending love"),
+        ("Oh-oh-oh", "Oh-oh-oh"),
+        ("Receive joy -", "Receive joy -"),
+    ])
+    func syllablesJoinIntoTheirWord(lyric: String, expected: String) {
+        #expect(ChordChartPDF.joinedSyllables(lyric) == expected)
+    }
+
     private static func glyphs(_ text: String, x: CGFloat = 70, y: CGFloat = 100) -> [PDFGlyph] {
         text.enumerated().map { index, character in
             PDFGlyph(text: String(character), x: x + CGFloat(index) * 6, y: y, width: 6, size: 13)
