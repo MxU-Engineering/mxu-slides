@@ -682,7 +682,7 @@ struct SlideEditorView: View {
                 Button("Delete \(batch.count) Slides", role: .destructive) {
                     model.deleteSlides(batch)
                 }
-                .disabled(batch.count >= model.presentation.slides.count)
+                .disabled(model.isThemeEditor && batch.count >= model.presentation.slides.count)
             } else {
 
                 if !model.isThemeEditor {
@@ -727,7 +727,7 @@ struct SlideEditorView: View {
                 }
                 Divider()
                 Button("Delete", role: .destructive) { model.deleteSlide(slide.id) }
-                    .disabled(model.presentation.slides.count == 1)
+                    .disabled(model.isThemeEditor && model.presentation.slides.count == 1)
             }
         }
     }
@@ -1106,6 +1106,8 @@ struct SlideEditorView: View {
             .toggleStyle(ToolbarCellToggleStyle())
             .help("Draw a path — click for corners, drag for curves; click the first point to close")
         }
+
+        .disabled(model.currentSlide == nil)
         .fixedSize()
     }
 
@@ -1189,6 +1191,12 @@ struct SlideEditorView: View {
                         AnimateCanvasOverlay(model: model)
                             .aspectRatio(model.canvasSize, contentMode: .fit)
                             .padding(EditorGeometry.pasteboardInset)
+                    }
+
+                    if model.presentation.slides.isEmpty, !model.isThemeEditor {
+                        EmptyDeckPrompt(onNewSlide: { model.addSlide() })
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            .frame(maxWidth: 360)
                     }
                     if canvasDropTargeted {
 

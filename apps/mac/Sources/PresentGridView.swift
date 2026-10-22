@@ -397,6 +397,93 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
     }
 }
 
+@MainActor @Observable final class GridSweep {
+    let space: String
+    var rect: CGRect?
+
+    private(set) var clears = 0
+
+    private var selectedCounts: [String: Int] = [:]
+
+    init(space: String) { self.space = space }
+
+    func move(to rect: CGRect?) {
+        if self.rect != rect { self.rect = rect }
+    }
+
+    func clearAll() { clears += 1 }
+
+    func note(_ contextID: String, selected count: Int) {
+        if selectedCounts[contextID, default: 0] != count {
+            selectedCounts[contextID] = count == 0 ? nil : count
+        }
+    }
+
+    func selected(besides contextID: String) -> Int {
+        selectedCounts.filter { $0.key != contextID }.values.reduce(0, +)
+    }
+}
+
+struct GridSweepBand: View {
+    let sweep: GridSweep
+
+    var body: some View {
+        if let rect = sweep.rect {
+            MarqueeBand(rect: rect)
+        }
+    }
+}
+
+struct GridSweepFollow: View {
+    let sweep: GridSweep
+    let pick: (CGRect) -> Void
+    let clear: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onChange(of: sweep.rect) { _, rect in
+                if let rect { pick(rect) }
+            }
+            .onChange(of: sweep.clears) { _, _ in clear() }
+    }
+}
+
+struct MarqueeBand: View {
+    let rect: CGRect
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.accentColor.opacity(0.12))
+            .overlay {
+                Rectangle()
+                    .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
+            }
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+            .allowsHitTesting(false)
+    }
+}
+
+struct EmptyDeckPrompt: View {
+    static let height: CGFloat = 150
+
+    let onNewSlide: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("No Slides")
+                .font(.headline)
+            if let onNewSlide {
+                Text("Add a slide, or drop pictures and videos here.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("New Slide…", action: onNewSlide)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: Self.height)
+    }
+}
+
 struct SlideGridBody: View {
 
     static func tileAnchor(contextID: String, index: Int) -> String {
@@ -425,6 +512,10 @@ struct SlideGridBody: View {
     var buildsRowsNearView = false
 
     var marqueeMargin: CGFloat = 0
+
+    var sweep: GridSweep? = nil
+
+    var deleteEverySelection: (() -> Void)? = nil
 
     var minimumHeight: CGFloat = 0
 
@@ -546,6 +637,8 @@ struct SlideGridBody: View {
     @State private var tileFrames: [Int: CGRect] = [:]
 
     @State private var marqueeRect: CGRect?
+
+    @State private var sweepOrigin: CGPoint = .zero
     @Environment(\.actionRouter) private var actionRouter
 
     private struct MediaActionTarget: Identifiable {
@@ -585,13 +678,16 @@ struct SlideGridBody: View {
         ZStack(alignment: .topLeading) {
 
             Color.clear
-                .frame(minHeight: max(0, minimumHeight + marqueeMargin * 2))
+                .frame(minHeight: max(
+                    0, minimumHeight + marqueeMargin * 2,
+                    presentation.slides.isEmpty ? EmptyDeckPrompt.height + marqueeMargin * 2 : 0))
                 .contentShape(Rectangle())
 
                 .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
                 .padding(-marqueeMargin)
                 .onTapGesture {
                     clearSelection()
+                    sweep?.clearAll()
                     NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
                 }
                 .gesture(marqueeGesture)
@@ -607,19 +703,32 @@ struct SlideGridBody: View {
                     }
                 }
             }
-            if let rect = marqueeRect {
-                Rectangle()
-                    .fill(Color.accentColor.opacity(0.12))
+            if presentation.slides.isEmpty {
+
+                EmptyDeckPrompt(onNewSlide: runOnly ? nil : { newSlideTarget = NewSlideTarget(after: nil) })
                     .overlay {
-                        Rectangle()
-                            .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
+                        if dropTargetIndex != nil {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color(nsColor: .controlAccentColor).opacity(0.9), lineWidth: 2)
+                                .allowsHitTesting(false)
+                        }
                     }
-                    .frame(width: rect.width, height: rect.height)
-                    .offset(x: rect.minX, y: rect.minY)
-                    .allowsHitTesting(false)
+            }
+            if let rect = marqueeRect {
+                MarqueeBand(rect: rect)
             }
         }
         .coordinateSpace(name: "slideGrid")
+        .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named(sweep?.space ?? "slideGrid")).origin } action: { sweepOrigin = $0 }
+        .background {
+            if let sweep {
+                GridSweepFollow(sweep: sweep, pick: pickTiles(under:), clear: clearSelection)
+            }
+        }
+        .onChange(of: selectedOccurrences) { _, occurrences in
+            sweep?.note(contextID, selected: SlideBulkEdit.slideIDs(occurrences: occurrences, slides: slides).count)
+        }
+        .onDisappear { sweep?.note(contextID, selected: 0) }
 
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
         .background {
@@ -787,7 +896,7 @@ struct SlideGridBody: View {
     }
 
     private var marqueeGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named("slideGrid"))
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(sweep?.space ?? "slideGrid"))
             .onChanged { value in
                 guard !runOnly else { return }
                 let rect = CGRect(
@@ -796,12 +905,26 @@ struct SlideGridBody: View {
                     width: abs(value.location.x - value.startLocation.x),
                     height: abs(value.location.y - value.startLocation.y)
                 )
-                marqueeRect = rect
                 NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
-                selectedOccurrences = Set(
-                    tileFrames.filter { $0.value.intersects(rect) }.map(\.key))
+                if let sweep {
+                    sweep.move(to: rect)
+                } else {
+                    marqueeRect = rect
+                    selectedOccurrences = Set(
+                        tileFrames.filter { $0.value.intersects(rect) }.map(\.key))
+                }
             }
-            .onEnded { _ in marqueeRect = nil }
+            .onEnded { _ in
+                marqueeRect = nil
+                sweep?.move(to: nil)
+            }
+    }
+
+    private func pickTiles(under rect: CGRect) {
+        let picked = Set(tileFrames.filter {
+            $0.value.offsetBy(dx: sweepOrigin.x, dy: sweepOrigin.y).intersects(rect)
+        }.map(\.key))
+        if picked != selectedOccurrences { selectedOccurrences = picked }
     }
 
     private func handleTap(index: Int, slide: Slide) {
@@ -820,6 +943,7 @@ struct SlideGridBody: View {
             selectedOccurrences.formUnion(min(anchor, index)...max(anchor, index))
         } else {
             clearSelection()
+            sweep?.clearAll()
 
             let isLiveTile = controls?.liveContextID == contextID && controls?.liveOccurrence == index
             if isLiveTile, let controls, controls.slideAnimationStep.map({ $0.consumed < $0.total }) == true {
@@ -914,10 +1038,7 @@ struct SlideGridBody: View {
             Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
         }
         Divider()
-        Button("Delete \(slideIDs.count) Slides", role: .destructive) {
-            deleteSlides(slideIDs)
-        }
-        .disabled(slideIDs.count >= presentation.slides.count)
+        deleteButton(slideIDs, inSelection: true)
     }
 
     private func copySlides(_ slideIDs: [String]) {
@@ -980,10 +1101,22 @@ struct SlideGridBody: View {
         }
     }
 
+    @ViewBuilder
+    private func deleteButton(_ slideIDs: [String], inSelection: Bool) -> some View {
+        let elsewhere = inSelection ? sweep?.selected(besides: contextID) ?? 0 : 0
+        if elsewhere > 0, let deleteEverySelection {
+            Button("Delete \(slideIDs.count + elsewhere) Slides", role: .destructive) { deleteEverySelection() }
+        } else {
+            Button(slideIDs.count > 1 ? "Delete \(slideIDs.count) Slides" : "Delete", role: .destructive) {
+                deleteSlides(slideIDs)
+            }
+        }
+    }
+
     private func deleteSelectedSlides() {
         guard !runOnly, !selectedOccurrences.isEmpty else { return }
         let slideIDs = SlideBulkEdit.slideIDs(occurrences: selectedOccurrences, slides: slides)
-        guard !slideIDs.isEmpty, slideIDs.count < presentation.slides.count else { return }
+        guard !slideIDs.isEmpty else { return }
         deleteSlides(slideIDs)
     }
 
@@ -1095,10 +1228,9 @@ struct SlideGridBody: View {
         }
         Divider()
 
-        Button("Delete", role: .destructive) {
-            deleteSlides([slide.id])
-        }
-        .disabled(presentation.slides.count == 1)
+        deleteButton(
+            [slide.id],
+            inSelection: SlideBulkEdit.slideIDs(occurrences: selectedOccurrences, slides: slides).contains(slide.id))
     }
 
     @ViewBuilder

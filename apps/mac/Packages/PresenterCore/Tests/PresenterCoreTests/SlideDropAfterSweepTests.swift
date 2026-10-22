@@ -28,7 +28,7 @@ import Testing
         let grid = try source("PresentGridView.swift")
         #expect(grid.contains("insertMediaSlides(mediaIDs: [payload], afterIndex: index)"))
         #expect(grid.contains("_ = insertMediaSlides(mediaIDs: imported, afterIndex: index)"))
-        #expect(grid.contains(".frame(minHeight: max(0, minimumHeight + marqueeMargin * 2))"),
+        #expect(grid.contains(".frame(minHeight: max(\n                    0, minimumHeight + marqueeMargin * 2,"),
                 "the empty space below the last row catches drops")
     }
 

@@ -1278,7 +1278,7 @@ final class SlideEditorModel {
     func deleteSlides(_ ids: [String]) {
         let targets = Set(ids)
         let survivors = presentation.slides.filter { !targets.contains($0.id) }
-        if !survivors.isEmpty, survivors.count < presentation.slides.count {
+        if !(isThemeEditor && survivors.isEmpty), survivors.count < presentation.slides.count {
             let firstIndex = presentation.slides.firstIndex { targets.contains($0.id) } ?? 0
             updateDocument { SlideBulkEdit.deleteSlides(ids, in: &$0) }
             reselectAfterRemoval(of: targets, firstIndex: firstIndex)
@@ -1287,9 +1287,13 @@ final class SlideEditorModel {
 
     private func reselectAfterRemoval(of targets: Set<String>, firstIndex: Int) {
         if let current = selectedSlideID, targets.contains(current) {
-            let fallback = presentation.slides[min(firstIndex, presentation.slides.count - 1)].id
             selectedSlideID = nil
-            selectSlide(fallback)
+            if presentation.slides.isEmpty {
+                selectedSlideIDs = []
+                selectedObjectIDs = []
+            } else {
+                selectSlide(presentation.slides[min(firstIndex, presentation.slides.count - 1)].id)
+            }
         }
     }
 
@@ -1333,6 +1337,10 @@ final class SlideEditorModel {
 
     @discardableResult
     func dropMediaObject(mediaID: String, at scenePoint: CGPoint) -> Bool {
+
+        if presentation.slides.isEmpty {
+            return insertMediaSlide(mediaID: mediaID, beforeSlideID: nil)
+        }
         guard let item = appModel.media(mediaID)
         else { return false }
         let canvas = canvasSize
@@ -2114,6 +2122,10 @@ final class SlideEditorModel {
                 presentation.slides.insert(
                     contentsOf: items.map { Slide.droppedMedia($0, sectionId: neighbor?.sectionId) },
                     at: index)
+            }
+
+            if selectedSlideID == nil, let first = presentation.slides.first {
+                selectSlide(first.id)
             }
             return true
         }

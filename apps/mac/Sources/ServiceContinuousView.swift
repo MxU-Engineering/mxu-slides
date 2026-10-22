@@ -30,6 +30,8 @@ struct ServiceContinuousView: View {
 
     @State private var clipboardRequests = SlideClipboardRequests()
 
+    @State private var sweep = GridSweep(space: ServiceContinuousView.contentSpace)
+
     @State private var mediaMenuState = MediaCueMenuState()
     @State private var playlistDropTarget: PlaylistDropTarget?
 
@@ -88,6 +90,7 @@ struct ServiceContinuousView: View {
                             .background(alignment: .topLeading) {
                                 PresentScrollWatch().frame(width: 1, height: 1)
                             }
+                            .overlay(alignment: .topLeading) { GridSweepBand(sweep: sweep) }
                             .coordinateSpace(name: Self.contentSpace)
                         }
                         .coordinateSpace(name: Self.scrollSpace)
@@ -733,7 +736,9 @@ struct ServiceContinuousView: View {
                     newSlideContexts: ((try? model.service(serviceID))?.items ?? [])
                         .filter { $0.itemKind == .presentation }.map(\.id),
                     buildsRowsNearView: true,
-                    marqueeMargin: 12
+                    marqueeMargin: 12,
+                    sweep: sweep,
+                    deleteEverySelection: { clipboardRequests.take(.delete) }
                 )
         }
         .padding(12)

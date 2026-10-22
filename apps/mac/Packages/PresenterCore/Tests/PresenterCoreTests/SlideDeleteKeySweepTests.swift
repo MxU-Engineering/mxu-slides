@@ -35,4 +35,28 @@ import Testing
         #expect(editor.contains("case .delete: model.deleteSlides(Array(model.selectedSlideIDs))"), "the slide list")
         #expect(editor.contains("case .delete: model.deleteSelectedObjects()"), "the Objects panel")
     }
+
+    @Test func emptyDecksOfferNewSlideAndDrops() throws {
+        let grid = try source("PresentGridView.swift")
+        let editor = try source("SlideEditorView.swift")
+        let model = try source("SlideEditorModel.swift")
+        let inspector = try source("SlideObjectInspector.swift")
+        #expect(grid.contains("EmptyDeckPrompt(onNewSlide: runOnly ? nil : { newSlideTarget = NewSlideTarget(after: nil) })"), "the grid")
+        #expect(grid.contains("presentation.slides.isEmpty ? EmptyDeckPrompt.height + marqueeMargin * 2 : 0"), "the drop catcher covers the prompt")
+        #expect(editor.contains("EmptyDeckPrompt(onNewSlide: { model.addSlide() })"), "the canvas")
+        #expect(editor.contains(".disabled(model.isThemeEditor && model.presentation.slides.count == 1)"), "Delete on the last row")
+        #expect(model.contains("if !(isThemeEditor && survivors.isEmpty), survivors.count < presentation.slides.count {"), "a theme keeps a category")
+        #expect(model.contains("return insertMediaSlide(mediaID: mediaID, beforeSlideID: nil)"), "a canvas drop on an empty deck is a slide")
+        #expect(inspector.contains("Add a slide to edit its settings."))
+    }
+
+    @Test func serviceFlowSweepSpansItems() throws {
+        let grid = try source("PresentGridView.swift")
+        let continuous = try source("ServiceContinuousView.swift")
+        #expect(continuous.contains(".overlay(alignment: .topLeading) { GridSweepBand(sweep: sweep) }\n                            .coordinateSpace(name: Self.contentSpace)"), "one band, in the cards' shared space")
+        #expect(continuous.contains("sweep: sweep,\n                    deleteEverySelection: { clipboardRequests.take(.delete) }"))
+        #expect(grid.contains("GridSweepFollow(sweep: sweep, pick: pickTiles(under:), clear: clearSelection)"), "every card picks under it")
+        #expect(grid.contains("DragGesture(minimumDistance: 4, coordinateSpace: .named(sweep?.space ?? \"slideGrid\"))"))
+        #expect(grid.contains("Button(\"Delete \\(slideIDs.count + elsewhere) Slides\", role: .destructive) { deleteEverySelection() }"), "Delete takes the whole sweep")
+    }
 }

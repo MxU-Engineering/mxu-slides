@@ -73,7 +73,16 @@ struct SlideObjectInspector: View {
             case .presentation:
                 presentationInspector()
             case .slide:
-                cueInspector()
+                if model.currentSlide == nil {
+
+                    ContentUnavailableView(
+                        "No Slides", systemImage: "rectangle.on.rectangle",
+                        description: Text("Add a slide to edit its settings.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    cueInspector()
+                }
             case .object:
 
                 if model.isMultiView {
