@@ -386,10 +386,12 @@ public extension TimelineTracks {
 
 public extension TimelineTracks {
 
+    static func hasTracks(_ channels: [TrackChannel]) -> Bool { !channels.isEmpty }
+
     static func shownMixes(
-        _ mixes: [(id: String, folderId: String?)], folders: [String], buses: Set<String>, tracksOn: Bool
+        _ mixes: [(id: String, folderId: String?)], folders: [String], buses: Set<String>, hasTracks: Bool
     ) -> (mixes: Set<String>, folders: Set<String>) {
-        guard !tracksOn else { return (Set(mixes.map(\.id)), Set(folders)) }
+        guard !hasTracks else { return (Set(mixes.map(\.id)), Set(folders)) }
         let shown = mixes.filter { !buses.contains($0.id) }
         let kept = folders.filter { folder in
             let members = mixes.filter { $0.folderId == folder }

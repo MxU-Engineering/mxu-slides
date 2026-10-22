@@ -858,16 +858,9 @@ private struct AudioInputDetail: View {
 private struct TracksSection: View {
     let count: Int
     let open: () -> Void
-    @AppStorage(TracksController.enabledKey) private var enabled = false
 
     var body: some View {
         Section {
-
-            Toggle(isOn: $enabled) {
-                Text("Play tracks on this computer")
-                Text("For the computer that plays click, guide and stems to the band and the room.")
-            }
-            .help("Its mixer then shows the Tracks strips and a mix for each instrument family to patch to your outputs. Any computer can add stems to songs.")
 
             Button(action: open) {
                 HStack(spacing: 8) {

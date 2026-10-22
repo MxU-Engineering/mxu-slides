@@ -4,11 +4,10 @@ import SwiftUI
 
 struct TracksMixerButton: View {
     let model: AppModel
-    @AppStorage(TracksController.enabledKey) private var tracksOn = false
-    @Environment(\.runOnly) private var runOnly
     @State private var open = false
 
     var body: some View {
+        let tracksOn = TimelineTracks.hasTracks(model.trackChannels)
         Button {
             open = true
         } label: {
@@ -23,20 +22,17 @@ struct TracksMixerButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(tracksOn ? "Tracks: where click, guide and the tracks go" : "Tracks: play songs' stems from this computer")
+        .help(tracksOn ? "Tracks: where click, guide and the tracks go" : "Tracks: a song's stems, played through this mixer")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             if tracksOn {
                 TracksSetupGuide(model: model) { open = false }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Tracks").font(.headline)
-                    Text("Play songs' stems (click, guide and backing tracks) from this computer, through this mixer: a Tracks strip, and a mix for each instrument family to send where the band and the room need them.")
+                    Text("No tracks yet. In a song's timeline, add the Tracks layer with +, then choose Import Audio… from its +. The Tracks strips and mixes then show up here.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Turn On Tracks") { tracksOn = true }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(runOnly)
                 }
                 .padding(16)
                 .frame(width: 320)

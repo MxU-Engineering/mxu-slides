@@ -186,16 +186,26 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     #expect(TimelineTracks.Family.drums.colorName == TimelineTracks.Family.percussion.colorName)
 }
 
-@Test func aComputerThatDoesntPlayTracksShowsNoBuses() {
+@Test func theMixerShowsTracksOnceTheChurchHasThem() {
+
+    var channels: [TrackChannel] = []
+    #expect(!TimelineTracks.hasTracks(channels))
     let mixes: [(id: String, folderId: String?)] = [
         ("main", nil), ("bus-keys", "tracks"), ("bus-click", "tracks"), ("stream", "mine"), ("lobby", nil),
     ]
     let folders = ["tracks", "mine", "empty"]
-    let off = TimelineTracks.shownMixes(mixes, folders: folders, buses: ["bus-keys", "bus-click"], tracksOn: false)
-    #expect(off.mixes == ["main", "stream", "lobby"])
-    #expect(off.folders == ["mine", "empty"])
-    let on = TimelineTracks.shownMixes(mixes, folders: folders, buses: ["bus-keys", "bus-click"], tracksOn: true)
-    #expect(on.mixes.count == 5 && on.folders.count == 3)
+    let before = TimelineTracks.shownMixes(
+        mixes, folders: folders, buses: ["bus-keys", "bus-click"], hasTracks: TimelineTracks.hasTracks(channels))
+    #expect(before.mixes == ["main", "stream", "lobby"])
+    #expect(before.folders == ["mine", "empty"])
+    var cues: [TimelineCue] = []
+    channels = TimelineTracks.place(
+        [.init(fileName: "Click.wav", audioID: "a", seconds: 9), .init(fileName: "Keys.wav", audioID: "b", seconds: 9)],
+        at: 0, channels: channels, into: &cues)
+    #expect(TimelineTracks.hasTracks(channels))
+    let after = TimelineTracks.shownMixes(
+        mixes, folders: folders, buses: ["bus-keys", "bus-click"], hasTracks: TimelineTracks.hasTracks(channels))
+    #expect(after.mixes.count == 5 && after.folders.count == 3)
 }
 
 @Test func theOneClickPatchLaysTheFamilyMixesAcrossTheInterface() {

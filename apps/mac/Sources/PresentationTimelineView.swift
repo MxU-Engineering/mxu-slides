@@ -573,10 +573,6 @@ struct PresentationTimelineLanes: View {
     @State private var newTrackName: String?
     @State private var settingUpOutputs = false
 
-    @AppStorage(TracksController.enabledKey) private var tracksOn = false
-
-    @State private var offeringTracks = false
-
     @State private var unmatched: UnmatchedStems?
 
     @State private var renamingTrack: String?
@@ -703,12 +699,6 @@ struct PresentationTimelineLanes: View {
                 unmatched = nil
                 if let resolution { land(pending.stems, at: pending.at, resolution: resolution, set: pending.set) }
             }
-        }
-        .alert("Play tracks on this computer?", isPresented: $offeringTracks) {
-            Button("Turn On") { tracksOn = true }
-            Button("Not Now", role: .cancel) {}
-        } message: {
-            Text("The stems are on the song. To hear them here, and to set up the Tracks strips and mixes in the mixer, this computer needs Tracks turned on. Any computer can add stems; only the one that plays them needs this.")
         }
 
         .sheet(item: $placing) { placing in
@@ -1123,8 +1113,10 @@ struct PresentationTimelineLanes: View {
         case channel(String)
     }
 
+    private var hasTracks: Bool { TimelineTracks.hasTracks(context.model.trackChannels) }
+
     private func showsTracks(_ cues: [TimelineCue]) -> Bool {
-        tracksOn || !TimelineTracks.stems(cues).isEmpty
+        hasTracks || !TimelineTracks.stems(cues).isEmpty
             || PresentationTimelineCards.shared.addedTracks.contains(context.item.id)
     }
 
@@ -1248,14 +1240,6 @@ struct PresentationTimelineLanes: View {
                 .foregroundStyle(.secondary)
                 .help(tracksExpanded ? "Fold this song's tracks into one row" : "Show this song's tracks")
                 Spacer(minLength: 0)
-                if !tracksOn, !runOnly {
-
-                    Button("Turn On") { tracksOn = true }
-                        .buttonStyle(.borderless)
-                        .controlSize(.mini)
-                        .font(.caption2)
-                        .help("Tracks don't play on this computer. Turn them on to hear stems and get the Tracks strips and mixes in the mixer (also in Settings › Audio & Video › Tracks).")
-                }
                 if !runOnly {
                     Menu {
 
@@ -1269,7 +1253,7 @@ struct PresentationTimelineLanes: View {
                             }
                         }
 
-                        if tracksOn {
+                        if hasTracks {
                             Divider()
                             Button("Set Up Outputs\u{2026}") { settingUpOutputs = true }
                         }
@@ -1390,7 +1374,6 @@ struct PresentationTimelineLanes: View {
 
                 guard let made = await context.model.importTrackSet(urls, song: context.presentation.name, joining: joining) else { return }
                 placeStems(made.stems, at: at, set: made.set.id)
-                if !tracksOn { offeringTracks = true }
             }
         }
     }
@@ -1404,7 +1387,6 @@ struct PresentationTimelineLanes: View {
         Task { @MainActor in
             guard let made = await context.model.importTrackSet(urls, song: context.presentation.name, joining: joining) else { return }
             placeStems(made.stems, at: at, channel: made.stems.count == 1 ? channel : nil, set: made.set.id)
-            if !tracksOn { offeringTracks = true }
         }
         return true
     }

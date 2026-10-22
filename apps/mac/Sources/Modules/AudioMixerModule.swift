@@ -13,8 +13,6 @@ struct AudioMixerModule: View {
     @State private var outputInventory = AudioOutputInventory.shared
     @State private var groupStore = MixerGroupStore.shared
 
-    @AppStorage(TracksController.enabledKey) private var tracksOn = false
-
     @AppStorage("mixer.scope") private var scope = 3
     @State private var consoleContentHeight: CGFloat = 0
     @State private var consoleFrameHeight: CGFloat = 0
@@ -73,8 +71,8 @@ struct AudioMixerModule: View {
                             busStrip(player, audio: audio, mixer: mixer)
                         }
 
-                        if tracksOn {
-                            let trackChannels = model.trackChannels
+                        let trackChannels = model.trackChannels
+                        if TimelineTracks.hasTracks(trackChannels) {
                             if trackChannels.count == 1, let only = trackChannels.first {
                                 trackStrip(only, mixer: mixer)
                             } else {
@@ -649,7 +647,7 @@ struct AudioMixerModule: View {
 
         let shown = TimelineTracks.shownMixes(
             mixInventory.entries.map { ($0.id, $0.folderId) }, folders: mixInventory.folders.map(\.id),
-            buses: TracksController.busIDs, tracksOn: tracksOn)
+            buses: TracksController.busIDs, hasTracks: TimelineTracks.hasTracks(model.trackChannels))
         let entries = mixInventory.entries.filter { shown.mixes.contains($0.id) }
         let folders = mixInventory.folders.filter { shown.folders.contains($0.id) }
         var rows: [MixRow] = []

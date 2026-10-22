@@ -41,8 +41,7 @@ final class TracksController {
 
     nonisolated static let playerName = "MxU Tracks Player"
 
-    nonisolated static let enabledKey = "tracks.enabled"
-    nonisolated static var enabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+    var hasTracks: Bool { TimelineTracks.hasTracks(model?.trackChannels ?? []) }
 
     nonisolated static var busIDs: Set<String> {
         Set(TimelineTracks.Family.allCases.compactMap {
@@ -172,7 +171,7 @@ final class TracksController {
     }
 
     func cueAhead(_ songs: [MultitrackSong]) {
-        guard Self.enabled, songs != preloaded else { return }
+        guard hasTracks, songs != preloaded else { return }
         preloaded = songs
         client.send(.preload(songs: songs))
         DiagnosticsStore.shared.note("tracks.cueAhead", detail: songs.map(\.id).joined(separator: ", "))
@@ -318,13 +317,14 @@ final class TracksController {
         guard let model, let mixer else { return }
         let channels = model.trackChannels
 
-        if Self.enabled {
+        let hasTracks = TimelineTracks.hasTracks(channels)
+        if hasTracks {
             for family in TimelineTracks.Family.allCases { _ = Self.familyBus(family) }
             seedSends(channels)
         }
         let resolved = Self.routing(channels: channels, extra: heardChannels(), mixer: mixer)
 
-        let reach = Self.enabled ? resolved.routing.reachedMixIds : []
+        let reach = hasTracks ? resolved.routing.reachedMixIds : []
         let replays = Self.replays(reach: reach, tracksDevice: resolved.deviceUID)
         mixer.setTracks(deviceUID: resolved.deviceUID, reach: reach, replays: replays)
         let fed = mixer.tracksFeedMixIDs.intersection(reach).union(replays.keys)

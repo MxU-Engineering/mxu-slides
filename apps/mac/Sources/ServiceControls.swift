@@ -1499,7 +1499,7 @@ final class ServiceControls {
     }
 
     private func cueTracksAhead() {
-        guard TracksController.enabled, let contextID = liveContextID, let serviceID = appModel.currentServiceID,
+        guard TimelineTracks.hasTracks(appModel.trackChannels), let contextID = liveContextID, let serviceID = appModel.currentServiceID,
               let service = try? appModel.service(serviceID) else { return }
         let show = appModel.runOfShow(service).filter { $0.itemKind == .presentation }
         guard let index = show.firstIndex(where: { $0.id == contextID }) else { return }
