@@ -21,7 +21,9 @@ public struct DeckLinkInputArrival {
     public let height: Int
     public let interlaced: Bool
     public let hasSignal: Bool
+
     public let hostTime: Double
+    public let captureHostTime: Double
 
     public let audio: UnsafePointer<Int32>?
     public let audioFrames: Int
@@ -35,6 +37,7 @@ public struct DeckLinkInputArrival {
         interlaced = raw.interlaced
         hasSignal = raw.hasSignal
         hostTime = raw.hostTime
+        captureHostTime = raw.captureHostTime
         audio = raw.audio
         audioFrames = Int(raw.audioFrames)
         audioChannels = Int(raw.audioChannels)

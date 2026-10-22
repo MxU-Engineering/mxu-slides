@@ -690,6 +690,8 @@ struct DLKInput {
     bool formatDetection = false;
     std::atomic<bool> interlaced{false};
 
+    std::atomic<uint32_t> currentMode{0};
+
     std::atomic<bool> closing{false};
 
     void reportMode(IDeckLinkDisplayMode *mode) {
@@ -718,6 +720,11 @@ HRESULT DLKInputCallback::VideoInputFormatChanged(
     DLKInput *owner = owner_;
     if (!owner || !mode || owner->closing.load()) return S_OK;
 
+    if (!dlk_input_format_needs_restart(
+            owner->currentMode.load(), mode->GetDisplayMode()))
+        return S_OK;
+    owner->currentMode.store(mode->GetDisplayMode());
+
     owner->input->PauseStreams();
     owner->input->EnableVideoInput(
         mode->GetDisplayMode(), bmdFormat8BitYUV,
@@ -734,7 +741,24 @@ HRESULT DLKInputCallback::VideoInputFrameArrived(
     if (!owner || owner->closing.load() || !owner->onFrame) return S_OK;
     DLKInputFrame frame = {};
     frame.hostTime = hostSeconds();
+    frame.captureHostTime = frame.hostTime;
     frame.interlaced = owner->interlaced.load();
+
+    if (video) {
+        BMDTimeValue frameTime = 0;
+        BMDTimeValue frameDuration = 0;
+        BMDTimeValue hardwareNow = 0;
+        BMDTimeValue timeInFrame = 0;
+        BMDTimeValue ticksPerFrame = 0;
+        if (video->GetHardwareReferenceTimestamp(
+                1000000, &frameTime, &frameDuration) == S_OK &&
+            owner->input->GetHardwareReferenceClock(
+                1000000, &hardwareNow, &timeInFrame, &ticksPerFrame) == S_OK &&
+            hardwareNow >= frameTime && hardwareNow - frameTime < 1000000) {
+            frame.captureHostTime =
+                frame.hostTime - (double)(hardwareNow - frameTime) / 1e6;
+        }
+    }
     IDeckLinkVideoBuffer *buffer = nullptr;
     bool accessing = false;
     if (video) {
@@ -880,6 +904,7 @@ DLKInput *dlk_input_open(
     handle->audioChannels = audioChannels;
     handle->formatDetection = formatDetection;
     handle->input = input.pointer;
+    handle->currentMode.store(startMode);
     {
         COMRef<IDeckLinkDisplayMode> mode;
         if (input->GetDisplayMode(startMode, mode.out()) == S_OK && mode) {
@@ -915,6 +940,10 @@ void dlk_input_close(DLKInput *input) {
     input->input->Release();
     input->device->Release();
     delete input;
+}
+
+bool dlk_input_format_needs_restart(uint32_t currentMode, uint32_t detectedMode) {
+    return detectedMode != 0 && detectedMode != currentMode;
 }
 
 void dlk_deinterlace_blend(

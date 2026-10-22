@@ -38,7 +38,7 @@ final class DeckLinkInputRelay: @unchecked Sendable {
             sink.inputAudio(
                 Data(bytes: audio, count: byteCount),
                 frames: Int32(arrival.audioFrames), channels: Int32(arrival.audioChannels),
-                hostTime: arrival.hostTime)
+                hostTime: arrival.captureHostTime)
         }
         if let video = arrival.video, arrival.hasSignal, reserveSlot() {
             if let buffer = nextBuffer(width: arrival.width, height: arrival.height),
@@ -48,7 +48,7 @@ final class DeckLinkInputRelay: @unchecked Sendable {
                 let surface = CVPixelBufferGetIOSurface(buffer)?.takeUnretainedValue() {
                 let token = UUID()
                 lock.withLock { inFlight[token] = buffer }
-                sink.inputFrame(unsafeBitCast(surface, to: IOSurface.self), hostTime: arrival.hostTime) {
+                sink.inputFrame(unsafeBitCast(surface, to: IOSurface.self), hostTime: arrival.captureHostTime) {
                     [weak self] in self?.releaseSlot(token)
                 }
             } else {

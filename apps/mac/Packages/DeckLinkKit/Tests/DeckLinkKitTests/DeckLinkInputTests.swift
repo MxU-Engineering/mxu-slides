@@ -20,6 +20,15 @@ import Testing
     #expect(DeckLinkInput.audioChannels(forMaximum: 64) == 16)
 }
 
+@Test func onlyANewModeRestartsTheStreams() {
+
+    let p2997: UInt32 = 0x48703239
+    let i5994: UInt32 = 0x48693539
+    #expect(!dlk_input_format_needs_restart(p2997, p2997))
+    #expect(dlk_input_format_needs_restart(p2997, i5994))
+    #expect(!dlk_input_format_needs_restart(p2997, 0), "an event with no mode changes nothing")
+}
+
 @Test func blendAveragesEachLineWithTheNext() {
     let source: [UInt8] = [10, 10, 20, 20, 31, 31]
     var destination = [UInt8](repeating: 0, count: 6)

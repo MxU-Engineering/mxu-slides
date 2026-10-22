@@ -111,6 +111,8 @@ typedef struct {
     bool hasSignal;
 
     double hostTime;
+
+    double captureHostTime;
     const int32_t *audio;
     int32_t audioFrames;
     int32_t audioChannels;
@@ -128,6 +130,8 @@ DLKInput *dlk_input_open(
     void *context, char *error, size_t errorLength);
 
 void dlk_input_close(DLKInput *input);
+
+bool dlk_input_format_needs_restart(uint32_t currentMode, uint32_t detectedMode);
 
 void dlk_deinterlace_blend(
     const uint8_t *source, size_t sourceRowBytes,
