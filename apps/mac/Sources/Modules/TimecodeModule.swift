@@ -12,7 +12,6 @@ struct TimecodeModule: View {
     var body: some View {
         let follower = controls.timecode
         let rows = rows()
-        let songs = rows.filter { $0.timeline?.timecodeEnabled == true }
         VStack(alignment: .leading, spacing: 10) {
             ModuleHeaderBar {
 
@@ -24,11 +23,7 @@ struct TimecodeModule: View {
                     .font(.caption)
                     .help("Songs with a timecode start play from it on this computer")
             }
-            HStack(spacing: 8) {
-                startTimesPicker
-                Spacer(minLength: 0)
-                if !songs.isEmpty { expandAllButton(songs) }
-            }
+            startTimesPicker
             if !follower.hasInput {
                 Text("No timecode input on this computer.")
                     .font(.caption)
@@ -105,15 +100,15 @@ struct TimecodeModule: View {
         TimecodeModuleSongs.shared.open[itemID] ?? (controls.timeline.itemID == itemID)
     }
 
-    private func expandAllButton(_ songs: [Row]) -> some View {
-        let allOpen = songs.allSatisfy { isOpen($0.item.id) }
+    private func expandAllButton(_ ids: [String]) -> some View {
+        let allOpen = ids.allSatisfy(isOpen)
         return Button {
             var open = TimecodeModuleSongs.shared.open
-            for song in songs { open[song.item.id] = !allOpen }
+            for id in ids { open[id] = !allOpen }
             TimecodeModuleSongs.shared.open = open
         } label: {
-            Image(systemName: allOpen ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
-                .font(.caption)
+            Image(systemName: allOpen ? "chevron.up.2" : "chevron.down.2")
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
         }
@@ -128,6 +123,15 @@ struct TimecodeModule: View {
             row.timeline.flatMap { $0.timecodeEnabled ? TimecodeFollow.Song(itemID: row.item.id, timeline: $0, start: row.start) : nil }
         }
         let clashes = TimecodeFollow.clashes(songs)
+
+        let cues = Dictionary(uniqueKeysWithValues: rows.compactMap { row -> (String, [TimecodeFollow.CueRow])? in
+            guard let deck = row.deck, let timeline = row.timeline, timeline.timecodeEnabled else { return nil }
+            return (row.item.id, TimecodeFollow.cueRows(
+                timeline, start: row.start,
+                blocks: SlideSceneBuilder.timelineBlocks(for: deck, arrangementId: row.item.arrangementId)
+            ) { id in deck.sections?.first { $0.id == id }?.name ?? "Slides" })
+        })
+        let expandable = rows.map(\.item.id).filter { cues[$0]?.isEmpty == false }
         if !rows.contains(where: { $0.item.itemKind == .presentation }) {
             Text("No presentations in this service.")
                 .font(.caption)
@@ -142,12 +146,18 @@ struct TimecodeModule: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 2) {
+                if !expandable.isEmpty {
+                    HStack {
+                        Spacer(minLength: 0)
+                        expandAllButton(expandable)
+                    }
+                }
                 ForEach(rows, id: \.item.id) { row in
                     if row.item.itemKind == .header {
                         ModuleSectionLabel(row.item.name)
                             .padding(.top, 6)
                     } else {
-                        songRow(row, clashes: clashes.contains(row.item.id))
+                        songRow(row, cues: cues[row.item.id] ?? [], clashes: clashes.contains(row.item.id))
                     }
                 }
             }
@@ -155,10 +165,10 @@ struct TimecodeModule: View {
     }
 
     @ViewBuilder
-    private func songRow(_ row: Row, clashes: Bool) -> some View {
+    private func songRow(_ row: Row, cues: [TimecodeFollow.CueRow], clashes: Bool) -> some View {
         let current = controls.timeline.itemID == row.item.id
         let on = row.timeline?.timecodeEnabled == true
-        let open = on && isOpen(row.item.id)
+        let open = !cues.isEmpty && isOpen(row.item.id)
         let byOrder = model.currentServiceID.flatMap { try? model.service($0) }?.timecodeByOrder == true
         HStack(spacing: 6) {
             Button {
@@ -171,18 +181,26 @@ struct TimecodeModule: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .opacity(on ? 1 : 0)
-            .disabled(!on)
+
+            .opacity(cues.isEmpty ? 0 : 1)
+            .disabled(cues.isEmpty)
             .accessibilityLabel(open ? "Collapse" : "Expand")
             .help(open ? "Hide this song's cues" : "Show this song's cues")
-            Toggle("", isOn: Binding(
-                get: { on },
-                set: { play in edit(row, play ? "Play from Timecode" : "Stop Playing from Timecode") { $0.timecodeEnabled = play } }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .controlSize(.small)
-                .disabled(runOnly || row.deck == nil)
-                .help("Plays from timecode")
+
+            Button {
+                edit(row, on ? "Stop Playing from Timecode" : "Play from Timecode") { $0.timecodeEnabled = !on }
+            } label: {
+                Image(systemName: on ? "clock.fill" : "clock")
+                    .font(.system(size: 11))
+                    .foregroundStyle(on ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .frame(width: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(runOnly || row.deck == nil)
+            .accessibilityLabel("Plays from Timecode")
+            .accessibilityValue(on ? "On" : "Off")
+            .help(on ? "Plays from timecode" : "Doesn't play from timecode")
             if on, byOrder, let start = row.start {
                 Text(PresentationTimelines.timecode(frames: start))
                     .font(.caption.monospacedDigit())
@@ -193,10 +211,8 @@ struct TimecodeModule: View {
                 TimecodeStartField(frames: start) { frames in edit(row, "Timecode Start") { $0.timecodeStart = frames } }
                     .disabled(runOnly)
             } else {
-                Text("--:--:--:--")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.quaternary)
-                    .frame(width: 78, alignment: .leading)
+
+                Color.clear.frame(width: 78, height: 1)
             }
             Text(row.item.name)
                 .font(.system(size: 12, weight: current ? .semibold : .regular))
@@ -211,12 +227,7 @@ struct TimecodeModule: View {
             }
         }
         .padding(.vertical, 2)
-
-        if open, let deck = row.deck, let timeline = row.timeline {
-            let cues = TimecodeFollow.cueRows(
-                timeline, start: row.start,
-                blocks: SlideSceneBuilder.timelineBlocks(for: deck, arrangementId: row.item.arrangementId)
-            ) { id in deck.sections?.first { $0.id == id }?.name ?? "Slides" }
+        if open {
             ForEach(cues, id: \.id) { cue in
                 HStack(spacing: 8) {
                     Text(cue.timecode)
@@ -291,10 +302,12 @@ struct TimecodeModuleReadout: View {
                 Text(status.word)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(status.color)
-                Text(follower.detectedRate.map { $0 == .fps2997DropFrame ? "29.97 DF" : $0.title } ?? "—")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                if let rate = follower.detectedRate {
+                    Text(rate == .fps2997DropFrame ? "29.97 DF" : rate.title)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
             .frame(width: 56, alignment: .leading)
         }

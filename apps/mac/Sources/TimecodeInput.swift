@@ -114,6 +114,8 @@ final class TimecodeFollower {
 
     static func status(_ reading: TimecodeClock.Reading, follows: Bool) -> (word: String, color: Color) {
         guard follows else { return ("Off", .secondary) }
+
+        if reading.state == .noInput { return ("Waiting", .secondary) }
         return reading.state == .locked ? ("Locked", .green) : ("Lost", .orange)
     }
 
