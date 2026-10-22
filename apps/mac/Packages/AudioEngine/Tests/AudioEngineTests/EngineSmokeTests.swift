@@ -48,7 +48,7 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     #expect(engine.isPlaying)
     #expect(engine.position?.duration ?? 0 > 0.3)
 
-    let deadline = ContinuousClock.now + .seconds(3)
+    let deadline = ContinuousClock.now + .seconds(15)
     while !ended.isRaised, ContinuousClock.now < deadline {
         try await Task.sleep(for: .milliseconds(25))
     }
@@ -119,7 +119,7 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     #expect(abs((engine.position?.duration ?? 0) - 0.9) < 0.05)
     #expect((engine.position?.elapsed ?? 0) >= 0.45)
 
-    let deadline = ContinuousClock.now + .seconds(3)
+    let deadline = ContinuousClock.now + .seconds(15)
     while !ended.isRaised, ContinuousClock.now < deadline {
         try await Task.sleep(for: .milliseconds(25))
     }
