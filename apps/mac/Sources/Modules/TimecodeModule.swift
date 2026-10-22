@@ -11,6 +11,7 @@ struct TimecodeModule: View {
 
     var body: some View {
         let follower = controls.timecode
+        let songs = follower.hasInput ? TimecodeFollower.songs(model) : []
         VStack(alignment: .leading, spacing: 10) {
             ModuleHeaderBar {
 
@@ -22,7 +23,11 @@ struct TimecodeModule: View {
                     .font(.caption)
                     .help("Songs with a timecode start play from it on this computer")
             }
-            startTimesPicker
+            HStack(spacing: 8) {
+                startTimesPicker
+                Spacer(minLength: 0)
+                if !songs.isEmpty { expandAllButton(songs) }
+            }
             if !follower.hasInput {
                 Text("No timecode input on this computer.")
                     .font(.caption)
@@ -34,7 +39,7 @@ struct TimecodeModule: View {
                 .controlSize(.small)
             } else {
                 TimecodeModuleReadout(follower: follower)
-                songsSection
+                songsSection(songs)
             }
         }
     }
@@ -68,9 +73,29 @@ struct TimecodeModule: View {
         }
     }
 
+    private func isOpen(_ itemID: String) -> Bool {
+        TimecodeModuleSongs.shared.open[itemID] ?? (controls.timeline.itemID == itemID)
+    }
+
+    private func expandAllButton(_ songs: [TimecodeFollower.FollowedSong]) -> some View {
+        let allOpen = songs.allSatisfy { isOpen($0.item.id) }
+        return Button {
+            var open = TimecodeModuleSongs.shared.open
+            for followed in songs { open[followed.item.id] = !allOpen }
+            TimecodeModuleSongs.shared.open = open
+        } label: {
+            Image(systemName: allOpen ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(allOpen ? "Collapse All" : "Expand All")
+        .help(allOpen ? "Collapse all songs" : "Expand all songs")
+    }
+
     @ViewBuilder
-    private var songsSection: some View {
-        let songs = TimecodeFollower.songs(model)
+    private func songsSection(_ songs: [TimecodeFollower.FollowedSong]) -> some View {
         let clashes = TimecodeFollow.clashes(songs.map(\.song))
         if songs.isEmpty {
             Text("No song in this service plays from timecode. Turn it on beside a song's timecode start on its timeline.")
@@ -97,7 +122,20 @@ struct TimecodeModule: View {
     @ViewBuilder
     private func songRow(_ followed: TimecodeFollower.FollowedSong, clashes: Bool) -> some View {
         let current = controls.timeline.itemID == followed.item.id
+        let open = isOpen(followed.item.id)
         HStack(spacing: 8) {
+            Button {
+                TimecodeModuleSongs.shared.open[followed.item.id] = !open
+            } label: {
+                Image(systemName: open ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(open ? "Collapse" : "Expand")
+            .help(open ? "Hide this song's cues" : "Show this song's cues")
             Text(PresentationTimelines.timecode(frames: followed.song.startFrames))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -115,7 +153,7 @@ struct TimecodeModule: View {
         }
         .padding(.vertical, 3)
 
-        if current {
+        if open {
             let deck = followed.presentation
             let rows = TimecodeFollow.cueRows(
                 followed.timeline, start: followed.song.startFrames,
@@ -131,10 +169,17 @@ struct TimecodeModule: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .padding(.leading, 12)
+                .padding(.leading, 30)
             }
         }
     }
+}
+
+@MainActor
+@Observable
+final class TimecodeModuleSongs {
+    static let shared = TimecodeModuleSongs()
+    var open: [String: Bool] = [:]
 }
 
 struct TimecodeModuleReadout: View {
