@@ -252,10 +252,10 @@ private struct GroupsForm: View {
                     GroupFormRow(model: model, group: group)
                 }
                 Button("Add Group\u{2026}") { newGroupName = ""; addingGroup = true }
-            } header: {
-                Text("Groups")
             } footer: {
-                Text("Song section labels and their colors — pills in the slide grid and arrangements wear these. A section wears its named group's color wherever it appears; \u{201C}Pre-Chorus\u{201D} and \u{201C}PreChorus\u{201D} count as the same name.")
+
+                Text("A song section wears its group's color everywhere.")
+                    .help("Pills in the slide grid and arrangements wear these colors. \u{201C}Pre-Chorus\u{201D} and \u{201C}PreChorus\u{201D} count as the same name.")
             }
             Section {
                 Button("Restore Default Groups\u{2026}") { confirmingRestore = true }
@@ -517,9 +517,12 @@ private struct VideoInputDetail: View {
 
     var body: some View {
         if let entry = inventory.entries.first(where: { $0.id == id }) {
+
             Form {
-                Section("Input") {
+                Section {
                     TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
+                }
+                Section("Connected to") {
                     Picker("Device", selection: Binding(
                         get: { deviceTag(entry) },
                         set: { tag in
@@ -533,21 +536,26 @@ private struct VideoInputDetail: View {
                         Text("No device").tag("")
                         Section("Cameras") {
                             ForEach(VideoInputWords.allCameras, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
+
+                            if let sourceId = entry.sourceId, entry.kind == .camera, AVCaptureDevice(uniqueID: sourceId) == nil {
+                                Text("Camera (not connected)").tag(sourceId)
+                            }
                         }
                         Section("Blackmagic (Direct)") {
                             ForEach(DeckLinkDeviceCatalog.shared.inputDevices) { Text($0.name).tag("decklink:\($0.persistentID)") }
                             if let sourceId = entry.sourceId, entry.kind == .decklink, VideoInputWords.directName(sourceId) == nil {
-                                Text("Blackmagic card (not found)").tag("decklink:\(sourceId)")
+                                Text("Blackmagic card (not connected)").tag("decklink:\(sourceId)")
                             }
                         }
                         Section("NDI Sources") {
                             ForEach(discoveredNDI, id: \.self) { Text($0).tag("ndi:\($0)") }
                             if let sourceId = entry.sourceId, entry.kind == .ndi, !discoveredNDI.contains(sourceId) {
-                                Text("NDI \u{B7} \(sourceId) (not on the network)").tag("ndi:\(sourceId)")
+                                Text("NDI \u{B7} \(sourceId) (not connected)").tag("ndi:\(sourceId)")
                             }
                             Text("NDI Source by Name\u{2026}").tag("ndi-by-name")
                         }
                     }
+                    .help("Blackmagic (Direct) reads the card itself: the picture follows the switcher's format (1080i is deinterlaced) and its audio arrives with the picture.")
                     Picker("Audio input", selection: Binding(
                         get: { entry.audioInputId ?? "" },
                         set: { inventory.assignAudioInput(id: id, audioInputId: $0.isEmpty ? nil : $0) })
@@ -555,6 +563,9 @@ private struct VideoInputDetail: View {
                         Text("None").tag("")
                         ForEach(audioInventory.entries) { Text($0.name).tag($0.id) }
                     }
+                    .help("Rides with this input in the Mixer while live. For a Blackmagic (Direct) card, pick its \u{201C}(Direct)\u{201D} audio and video delay can stay at 0.")
+                }
+                Section("Adjustments") {
                     if entry.kind == .camera, !frameRates.isEmpty {
                         Picker("Frame rate", selection: Binding(
                             get: { entry.frameRate ?? 0 },
@@ -568,6 +579,7 @@ private struct VideoInputDetail: View {
                                 Text(String(format: "%g fps (not offered)", rate)).tag(rate)
                             }
                         }
+                        .help("The capture device's mode, from the rates it offers. Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
                     }
                     LabeledContent("Video delay") {
                         HStack(spacing: 4) {
@@ -583,11 +595,10 @@ private struct VideoInputDetail: View {
                                 in: 0...LiveInputDelay.maxFrames).labelsHidden()
                         }
                     }
+                    .help("Holds the picture back to match late audio.")
                 }
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it. Blackmagic (Direct) reads the card itself: the picture follows the switcher's format (1080i is deinterlaced) and its audio arrives with the picture — pick the card's \u{201C}(Direct)\u{201D} device for this input's audio and video delay can stay at 0.")
                 }
             }
             .settingsForm()
@@ -621,6 +632,8 @@ private struct VideoInputDetail: View {
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Its capture stops, and slides that use it show nothing.")
             }
         } else {
             ContentUnavailableView("Input not found", systemImage: "video")
@@ -737,8 +750,10 @@ private struct AudioInputDetail: View {
         if let entry = inventory.entries.first(where: { $0.id == id }) {
             let device = AudioDeviceList.inputDevice(uid: entry.uid ?? "")
             Form {
-                Section("Input") {
+                Section {
                     TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
+                }
+                Section("Connected to") {
                     Picker("Device", selection: Binding(
                         get: { entry.uid ?? "" },
                         set: { inventory.assignDevice(id: id, uid: $0.isEmpty ? nil : $0) })
@@ -746,7 +761,7 @@ private struct AudioInputDetail: View {
                         Text("No device").tag("")
                         ForEach(devices, id: \.uid) { Text(AudioInputWords.deviceLabel($0)).tag($0.uid) }
                         if let uid = entry.uid, !uid.isEmpty, !devices.contains(where: { $0.uid == uid }) {
-                            Text("Missing device (not connected)").tag(uid)
+                            Text("Device (not connected)").tag(uid)
                         }
                     }
                     if let device, device.channelCount > 1 {
@@ -767,6 +782,8 @@ private struct AudioInputDetail: View {
                             }
                         }
                     }
+                }
+                Section("Adjustments") {
                     LabeledContent("Audio delay") {
                         HStack(spacing: 4) {
                             TextField("", value: Binding(
@@ -781,11 +798,10 @@ private struct AudioInputDetail: View {
                                 in: 0...2000, step: 5).labelsHidden()
                         }
                     }
+                    .help("Holds this input's audio back everywhere it feeds: playout, mixes, streams.")
                 }
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Removing it makes presets that used it fall back to Program Audio. Delay holds this input's audio back everywhere it feeds — playout, mixes, streams.")
                 }
             }
             .settingsForm()
@@ -798,6 +814,8 @@ private struct AudioInputDetail: View {
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Presets that used it fall back to Program Audio.")
             }
         } else {
             ContentUnavailableView("Input not found", systemImage: "mic")
@@ -894,8 +912,10 @@ private struct AudioOutputDetail: View {
         if let entry = inventory.entries.first(where: { $0.id == id }) {
             let device = entry.deviceUID.flatMap { uid in devices.first { $0.uid == uid } }
             Form {
-                Section("Output") {
+                Section {
                     TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
+                }
+                Section("Connected to") {
                     Picker("Device", selection: Binding(
                         get: { entry.isDeviceless ? "none" : (entry.deviceUID ?? "") },
                         set: { tag in
@@ -908,7 +928,7 @@ private struct AudioOutputDetail: View {
                         Text("No device").tag("none")
                         ForEach(devices, id: \.uid) { Text($0.name).tag($0.uid) }
                         if let uid = entry.deviceUID, !entry.isDeviceless, !devices.contains(where: { $0.uid == uid }) {
-                            Text("Missing device (not connected)").tag(uid)
+                            Text("Device (not connected)").tag(uid)
                         }
                     }
                     if let device, device.channelCount > 2 {
@@ -921,6 +941,8 @@ private struct AudioOutputDetail: View {
                             }
                         }
                     }
+                }
+                Section("Adjustments") {
                     LabeledContent("Playout delay") {
                         HStack(spacing: 4) {
                             TextField("", value: Binding(
@@ -935,11 +957,10 @@ private struct AudioOutputDetail: View {
                                 in: 0...2000, step: 5).labelsHidden()
                         }
                     }
+                    .help("Holds this output's playout back to match slower rooms or devices.")
                 }
                 Section {
                     Button("Remove Output\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Mixes sending here drop the send. Delay holds this output's playout back to match slower rooms or devices.")
                 }
             }
             .settingsForm()
@@ -952,6 +973,8 @@ private struct AudioOutputDetail: View {
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Mixes sending here drop the send.")
             }
         } else {
             ContentUnavailableView("Output not found", systemImage: "speaker.wave.2")
@@ -1021,7 +1044,7 @@ private struct MIDIDeviceDetail: View {
     var body: some View {
         if let item = inventory.items.first(where: { $0.id == id }) {
             Form {
-                Section("Device") {
+                Section {
                     Toggle("Enabled", isOn: Binding(get: { item.isEnabled }, set: { inventory.setEnabled(item, enabled: $0) }))
                     Picker("Direction", selection: Binding(
                         get: { item.effectiveDirection },
@@ -1035,11 +1058,13 @@ private struct MIDIDeviceDetail: View {
                         portPicker("Out port", bound: item.destinationUID, endpoints: inventory.discoveredDestinations) {
                             inventory.setDestinationBinding(item, uid: $0)
                         }
+                        .help("Automatic matches ports by name, so an imported rig lights up wherever its ports live.")
                     }
                     if item.wantsInput {
                         portPicker("In port", bound: item.sourceUID, endpoints: inventory.discoveredSources) {
                             inventory.setSourceBinding(item, uid: $0)
                         }
+                        .help("Automatic matches ports by name, so an imported rig lights up wherever its ports live.")
                         Picker("Channel", selection: Binding(
                             get: { item.device.channel ?? 0 },
                             set: { inventory.setChannel(item, channel: $0 == 0 ? nil : $0) })
@@ -1047,11 +1072,10 @@ private struct MIDIDeviceDetail: View {
                             Text("Any channel").tag(0)
                             ForEach(1...16, id: \.self) { Text("Channel \($0)").tag($0) }
                         }
+                        .help("Only notes on this channel trigger commands.")
                     }
                 } header: {
-                    Text("Ports on this Mac")
-                } footer: {
-                    Text("Automatic matches ports by name, so an imported rig lights up wherever its ports live. Channel filters which incoming notes trigger commands.")
+                    Text("Connected to")
                 }
                 Section {
                     Button("Remove Device\u{2026}", role: .destructive) { confirmRemove = true }
@@ -1074,7 +1098,7 @@ private struct MIDIDeviceDetail: View {
             Text("Automatic (match by name)").tag(Int32(0))
             ForEach(endpoints, id: \.uid) { Text($0.name).tag($0.uid) }
             if let bound, !endpoints.contains(where: { $0.uid == bound }) {
-                Text("Port not present").tag(bound)
+                Text("Port (not connected)").tag(bound)
             }
         }
     }
