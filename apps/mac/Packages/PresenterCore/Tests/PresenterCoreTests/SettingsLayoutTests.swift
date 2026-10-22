@@ -5,7 +5,7 @@ import Testing
 @Suite struct SettingsLayoutTests {
     @Test func sidebarOrderIsS13() {
         #expect(SettingsLayout.pages.map(\.id) == [
-            "account", "general", "sync", "present", "edit", "screens",
+            "general", "present", "edit", "screens",
             "avInputs", "streamRecord", "midi", "keyboard", "api",
         ])
     }
@@ -15,22 +15,14 @@ import Testing
         #expect(rows.count == Set(rows).count)
     }
 
-    @Test func rowsLandWhereCodyPutThem() {
+    @Test func rowsLandOnTheirPages() {
         let expected: [String: String] = [
             "present.nextSkipsBlanks": "screens",
             "present.defaultAnimations": "edit",
-            "account.messageNotesTheme": "edit",
             "groups.palette": "edit",
             "edit.hideSidebar": "edit",
             "appearance.scheme": "general",
-            "updates.automatic": "general",
-            "station.workspaceLinks": "sync",
-            "station.room": "account",
-            "station.campus": "account",
-            "station.enabled": "api",
-            "station.remote": "api",
             "audio.fadeEnabled": "present",
-            "account.autoSwitchServiceTimes": "present",
         ]
         for (row, page) in expected {
             #expect(SettingsLayout.page(ofRow: row) == page, "\(row)")
@@ -39,16 +31,15 @@ import Testing
 
     @Test func movedPagesOpenWhereTheirRowsWent() {
         #expect(SettingsLayout.pageID(forStored: "appearance") == "general")
-        #expect(SettingsLayout.pageID(forStored: "updates") == "general")
         #expect(SettingsLayout.pageID(forStored: "groups") == "edit")
         #expect(SettingsLayout.pageID(forStored: "audio") == "present")
-        #expect(SettingsLayout.pageID(forStored: "sync") == "sync")
+        #expect(SettingsLayout.pageID(forStored: "midi") == "midi")
         let ids = Set(SettingsLayout.pages.map(\.id))
         #expect(SettingsLayout.movedPages.values.allSatisfy(ids.contains))
     }
 
     @Test func rowsSortByPageThenRow() {
-        #expect(SettingsLayout.order(ofRow: "account.session") < SettingsLayout.order(ofRow: "appearance.scheme"))
+        #expect(SettingsLayout.order(ofRow: "appearance.scheme") < SettingsLayout.order(ofRow: "present.slideTransition"))
         #expect(SettingsLayout.order(ofRow: "present.slideTransition") < SettingsLayout.order(ofRow: "present.mediaTransition"))
         #expect(SettingsLayout.order(ofRow: "nowhere") == .max)
     }
@@ -77,38 +68,6 @@ import Testing
                 }
             }
         }
-    }
-
-    @Test func aOneComputerChurchSeesNoTags() {
-        for row in SettingsLayout.pages.flatMap(\.rows) {
-            #expect(SettingsLayout.tag(forRow: row, otherComputersOnTeam: 0, othersOnThisSetup: 0) == nil, "\(row)")
-        }
-    }
-
-    @Test func teamRowsSayTeamOnceThereAreOtherComputers() {
-        #expect(SettingsLayout.tag(forRow: "groups.palette", otherComputersOnTeam: 2, othersOnThisSetup: 0) == .team)
-        #expect(SettingsLayout.tag(forRow: "present.slideTransition", otherComputersOnTeam: 2, othersOnThisSetup: 0) == nil,
-                "another computer with its own setup doesn't share transitions")
-        #expect(SettingsLayout.tag(forRow: "appearance.scheme", otherComputersOnTeam: 2, othersOnThisSetup: 2) == nil, "this computer's own")
-    }
-
-    @Test func setupRowsSayWhoShareTheSetup() {
-        let tag = SettingsLayout.tag(forRow: "present.slideTransition", otherComputersOnTeam: 1, othersOnThisSetup: 1)
-        #expect(tag == .sharedOnSetup(others: 1))
-        #expect(tag?.words == "Shared with 1 other computer")
-    }
-
-    @Test func linkedKindsNameTheOtherComputer() {
-        func tag(_ mode: WorkspaceLinkMode) -> SettingsLayout.Tag? {
-            SettingsLayout.tag(forRow: "screens.outputPresets", otherComputersOnTeam: 1, othersOnThisSetup: 0, link: (mode, "Booth Mac"))
-        }
-        #expect(tag(.twoWay)?.words == "Shared with Booth Mac")
-        #expect(tag(.oneWay)?.words == "From Booth Mac")
-        #expect(tag(.oneWay)?.help == "Only Booth Mac can change these.")
-        #expect(tag(.namesOnly)?.words == "Names from Booth Mac")
-        #expect(tag(.thisWorkspaceOnly) == nil)
-        #expect(SettingsLayout.tag(forRow: "screens.outputPresets", otherComputersOnTeam: 1, othersOnThisSetup: 0,
-                                   link: (.thisWorkspaceOnly, "Booth Mac"), followedBy: ["Lobby Mac"]) == .sharedWith("Lobby Mac"))
     }
 
     @Test func tableAndSettingsAgree() throws {

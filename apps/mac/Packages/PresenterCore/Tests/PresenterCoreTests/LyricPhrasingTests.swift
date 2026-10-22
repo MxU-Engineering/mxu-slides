@@ -130,24 +130,6 @@ import Testing
     #expect(typed.reflowSource == words)
 }
 
-@Test func planningCenterLyricsSplitByPhraseButTheCreateSheetsTextStands() {
-    let source = PlanLyricsImporter.Source(lyrics: "Verse 1\nI cannot describe it\nBut nothing is brighter\nThan this\nOut in the open sky")
-    #expect(PlanLyricsImporter.parse(source, linesPerSlide: 2).sections.last?.slides == [
-        "I cannot describe it\nBut nothing is brighter than this", "Out in the open sky",
-    ])
-    #expect(PlanLyricsImporter.parse(source, linesPerSlide: Reflow.stanzaOnly).sections.last?.slides == [
-        "I cannot describe it\nBut nothing is brighter\nThan this\nOut in the open sky",
-    ])
-}
-
-@Test func lyricsAndChordsDropsLayoutCommandsAndCountsAsASourceOnlyWithChords() {
-    let text = "Verse 1\r\n[G]Amazing grace\r\nCOLUMN_BREAK\r\nHow sweet the sound\r\nPAGE_BREAK"
-    #expect(PlanLyricsImporter.lyricsAndChordsText(text) == "Verse 1\n[G]Amazing grace\nHow sweet the sound")
-    #expect(PlanLyricsImporter.hasChords(text))
-    #expect(PlanLyricsImporter.hasChords("G       C\nAmazing grace how sweet"))
-    #expect(!PlanLyricsImporter.hasChords("Verse 1\r\n\r\nAmazing grace\r\nHow sweet the sound"))
-}
-
 @Test func joinLinesPullsTheNextLineUpAcrossASlideBreak() {
     let text = "Verse 1\nBut nothing is [A]brighter\n\n[G]Than this\nOut in the open sky"
     let caret = ("Verse 1\nBut noth" as NSString).length

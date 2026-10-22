@@ -52,7 +52,7 @@ final class TracksController {
     }
 
     init() {
-        let path = TracksPlayerWire.socketPath(appIdentity: Bundle.main.bundleIdentifier ?? "io.prodcontrol.mxupresenter")
+        let path = TracksPlayerWire.socketPath(appIdentity: Bundle.main.bundleIdentifier ?? "com.example.mxuslides")
         client = TracksPlayerClient(socketPath: path) { Self.launchPlayer(socketPath: path) }
         let latest = latest, driving = driving, awaiting = awaitingStatus
         let feeder = shareFeeder, slots = slotMixes, sink = shareSink, lost = lostAt

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ChordClipboard {
-    public static let type = "io.prodcontrol.mxupresenter.text-chords"
+    public static let type = "com.example.mxuslides.text-chords"
 
     public struct Payload: Codable, Equatable, Sendable {
 

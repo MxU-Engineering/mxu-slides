@@ -8,7 +8,7 @@ public final class TracksShareFeeder: @unchecked Sendable {
     static let keepSeconds = 0.01
     private let share: TracksShare
     private let sink: Sink
-    private let queue = DispatchQueue(label: "io.prodcontrol.tracks-share", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.example.mxuslides.tracks-share", qos: .userInitiated)
     private var timer: DispatchSourceTimer?
 
     private var positions: [Int: Int64] = [:]

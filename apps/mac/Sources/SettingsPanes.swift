@@ -11,8 +11,6 @@ struct SettingsCategoryPane: View {
     let model: AppModel?
     let controls: ServiceControls?
 
-    var tag: (String) -> SettingsLayout.Tag? = { _ in nil }
-
     enum Page: Equatable {
         case list
         case videoInput(String)
@@ -97,10 +95,10 @@ struct SettingsCategoryPane: View {
             Form {
                 MIDIDevicesSection { page = .midiDevice($0) }
                 Section {
-                    ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0, tag: tag($0.id)) }
+                    ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0) }
                 }
                 Section("Timecode") {
-                    ForEach(rows.filter { $0.id.hasPrefix("timecode.") }) { SettingsFormRow(spec: $0, tag: tag($0.id)) }
+                    ForEach(rows.filter { $0.id.hasPrefix("timecode.") }) { SettingsFormRow(spec: $0) }
                 }
             }
             .settingsForm()
@@ -116,7 +114,7 @@ struct SettingsCategoryPane: View {
                         Section {
                             spec.control
                         } header: {
-                            SettingsRowTitle(title: spec.title, tag: tag(spec.id))
+                            Text(spec.title)
                                 .settingsHelp(spec.help)
                         } footer: {
                             if let caption = spec.caption { Text(caption) }
@@ -127,7 +125,7 @@ struct SettingsCategoryPane: View {
                                 if spec.id == "groups.palette" {
                                     drillIn(spec) { page = .groups }
                                 } else {
-                                    SettingsFormRow(spec: spec, tag: tag(spec.id))
+                                    SettingsFormRow(spec: spec)
                                 }
                             }
                         } header: {
@@ -147,7 +145,7 @@ extension SettingsCategoryPane {
         Button(action: open) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    SettingsRowTitle(title: spec.title, tag: tag(spec.id))
+                    Text(spec.title)
                     if let caption = spec.caption {
                         Text(caption).font(.caption).foregroundStyle(.secondary)
                     }
@@ -214,13 +212,12 @@ struct SettingsPageHeader: View {
 
 struct SettingsFormRow: View {
     let spec: SettingsRowSpec
-    var tag: SettingsLayout.Tag? = nil
 
     var body: some View {
         LabeledContent {
             spec.control
         } label: {
-            SettingsRowTitle(title: spec.title, tag: tag)
+            Text(spec.title)
             if let caption = spec.caption, !caption.isEmpty {
                 Text(caption)
                     .font(.caption)
@@ -229,26 +226,6 @@ struct SettingsFormRow: View {
             }
         }
         .settingsHelp(spec.help)
-    }
-}
-
-struct SettingsRowTitle: View {
-    let title: String
-    let tag: SettingsLayout.Tag?
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(title)
-            if let tag {
-                Text(tag.words)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Color.primary.opacity(0.07), in: Capsule())
-                    .help(tag.help)
-            }
-        }
     }
 }
 

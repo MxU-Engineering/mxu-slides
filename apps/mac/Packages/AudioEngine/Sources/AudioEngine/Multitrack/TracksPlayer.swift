@@ -190,7 +190,7 @@ private func connectSocket(_ path: String) -> Int32? {
 public final class TracksPlayerServer: @unchecked Sendable {
     private let path: String
     private let engine: MultitrackEngine
-    private let queue = DispatchQueue(label: "io.prodcontrol.tracksplayer.server")
+    private let queue = DispatchQueue(label: "com.example.mxuslides.tracksplayer.server")
     private var listenSource: DispatchSourceRead?
     private var client: TracksPlayerConnection?
 
@@ -200,7 +200,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
     private var alone: CFAbsoluteTime? = CFAbsoluteTimeGetCurrent()
     private var lastError: String?
     private let exit: @Sendable (Int32) -> Void
-    private let log = Logger(subsystem: "io.prodcontrol.tracksplayer", category: "server")
+    private let log = Logger(subsystem: "com.example.mxuslides.tracksplayer", category: "server")
     let orphanLimit: Double
 
     public init(
@@ -397,7 +397,7 @@ public final class TracksPlayerServer: @unchecked Sendable {
 public final class TracksPlayerClient: @unchecked Sendable {
     private let path: String
     private let launch: @Sendable () -> Void
-    private let queue = DispatchQueue(label: "io.prodcontrol.tracksplayer.client")
+    private let queue = DispatchQueue(label: "com.example.mxuslides.tracksplayer.client")
     private var connection: TracksPlayerConnection?
     private var connecting = false
 

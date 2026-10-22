@@ -35,21 +35,6 @@ private func songs(byOrder: Bool, _ items: [(id: String, timeline: PresentationT
     #expect(try AutomergeDecoder(doc: document).decode(Service.self).timecodeByOrder == true)
 }
 
-@Test func aPlanRefreshKeepsTheServicesStartTimes() {
-    func plan(_ version: String) -> PlanSyncLogic.PlanSnapshot {
-        PlanSyncLogic.PlanSnapshot(
-            hexId: "p", name: "Sunday", title: "Sunday", serviceTypeName: "Weekend",
-            startsAt: "2026-10-18T09:00:00Z", version: version,
-            times: [PlanSyncLogic.TimeSnapshot(hexId: "t1", name: "9:00 am", items: [
-                PlanSyncLogic.ItemSnapshot(hexId: "i1", name: "Way Maker", kind: "song", duration: 300, pcoItemId: "p1"),
-            ])])
-    }
-    var service = PlanSyncLogic.materialize(plan: plan("v1"))
-    #expect(service.timecodeByOrder == nil)
-    service.timecodeByOrder = true
-    #expect(PlanSyncLogic.materialize(plan: plan("v2"), into: service).timecodeByOrder == true)
-}
-
 @Test func savedWithEachSongUsesEachTimelinesOwnStart() {
     let items: [(id: String, timeline: PresentationTimeline?)] = [
         ("a", timeline("ta", start: 5 * hour)), ("bare", nil), ("b", timeline("tb", start: 9 * hour)),
@@ -118,28 +103,6 @@ private func songs(byOrder: Bool, _ items: [(id: String, timeline: PresentationT
     #expect(TimecodeRecording.mode(timeline: song, start: 2 * hour, hasInput: true, follows: true)
         == .timecode(start: 2 * hour))
     #expect(TimecodeRecording.mode(timeline: song, hasInput: true, follows: true) == .timecode(start: 0))
-}
-
-@Test func aNewServiceTakesTheLatestEarlierSameTypeServicesStartTimes() {
-    func service(_ id: String, _ date: String, type: String? = "Weekend", byOrder: Bool? = nil) -> Service {
-        var service = Service(id: id, name: id, serviceDate: date, items: [])
-        service.mxuServiceTypeName = type
-        service.timecodeByOrder = byOrder
-        return service
-    }
-    let library = [
-        service("old", "2026-10-04"), service("last", "2026-10-11", byOrder: true),
-        service("youth", "2026-10-16", type: "Youth"), service("future", "2026-10-25"),
-    ]
-    let next = service("next", "2026-10-18")
-    #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: next, from: library) == true)
-
-    let saved = library.map { $0.id == "last" ? service("last", "2026-10-11") : $0 }
-    #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: next, from: saved) == nil)
-
-    #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: service("y", "2026-10-23", type: "Youth"), from: library) == nil)
-    #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: service("local", "2026-10-18", type: nil), from: library) == nil)
-    #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: service("first", "2026-10-01"), from: library) == nil)
 }
 
 @Test func inServiceOrderOnlySongsThatPlayFromTimecodeTakeAnHour() {

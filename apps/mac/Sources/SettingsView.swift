@@ -43,8 +43,7 @@ struct AppSettingsView: View {
                 SettingsCategoryPane(
                     category: category,
                     rows: allRows.filter { $0.category == category },
-                    model: model, controls: controls,
-                    tag: tag(forRow:))
+                    model: model, controls: controls)
                     .id(category)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -57,8 +56,6 @@ struct AppSettingsView: View {
         .background(SettingsWindowFrame())
         .background(Color.basePlane)
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
-
-        .task { await workspaceLinks?.refresh() }
         .onAppear {
             if let pending = SettingsRouter.shared.pending {
                 category = pending
@@ -160,7 +157,7 @@ struct AppSettingsView: View {
                                         if let caption = spec.caption { Text(caption).font(.caption).foregroundStyle(.secondary) }
                                     }
                                 } else {
-                                    SettingsFormRow(spec: spec, tag: tag(forRow: spec.id))
+                                    SettingsFormRow(spec: spec)
                                 }
                             }
                         }
@@ -437,6 +434,7 @@ struct AppSettingsView: View {
         ))
         rows.append(contentsOf: apiRows)
         return rows
+            .sorted { SettingsLayout.order(ofRow: $0.id) < SettingsLayout.order(ofRow: $1.id) }
     }
 
     private var groupsRows: [SettingsRowSpec] {

@@ -180,9 +180,8 @@ private func ≈ (lhs: TimecodeFollow.Command?, rhs: TimecodeFollow.Command) -> 
         #expect(rows.map(\.label) == ["Verse · 2", "Chorus · 1"])
     }
 
-    @Test func stationSettingsNeverSyncOrBackUp() {
+    @Test func stationSettingsNeverBackUp() {
         for key in TimecodeStation.keys {
-            #expect(!WorkspaceSetting.allCases.contains { $0.carries(key) }, "\(key)")
             #expect(!BackupSettings.isPortable(key), "\(key)")
         }
     }

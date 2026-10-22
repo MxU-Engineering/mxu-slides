@@ -598,20 +598,19 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         keepingMusic = true
         defer { keepingMusic = false }
         let deck = next.itemKind == .presentation ? controls.appModel.presentation(next.refId) : nil
-        APIFireSource.$current.withValue(APIFireSource(kind: .timeline)) {
-            switch SongTransitions.nextStart(
-                next, hasTimeline: deck.flatMap { PresentationTimelines.timeline(for: next.arrangementId, in: $0) } != nil) {
-            case .playTimeline:
-                guard let deck else { return }
+        switch SongTransitions.nextStart(
+            next, hasTimeline: deck.flatMap { PresentationTimelines.timeline(for: next.arrangementId, in: $0) } != nil) {
+        case .playTimeline:
+            if let deck {
                 PresentationTimelineCards.shared.open.insert(next.id)
                 play(itemID: next.id, presentation: deck, arrangementId: next.arrangementId,
                      adoptingTracks: handedInPlayer ? go.nextSong?.id : nil, handingOver: true)
-            case .fire:
-                stop()
-                controls.fireServiceItem(next)
-            case .nothing:
-                break
             }
+        case .fire:
+            stop()
+            controls.fireServiceItem(next)
+        case .nothing:
+            break
         }
         if tail {
             stemsTail = true
@@ -641,9 +640,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         let effects = underTimecode ? TimecodeFollow.underTimecode(effects, playsAudio: timecodePlaysAudio) : effects
         guard !effects.isEmpty else { return }
 
-        APIFireSource.$current.withValue(APIFireSource(kind: underTimecode ? .timecode : .timeline)) {
-            fire(effects, cues: cues, deck: deck)
-        }
+        fire(effects, cues: cues, deck: deck)
     }
 
     private func fire(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {

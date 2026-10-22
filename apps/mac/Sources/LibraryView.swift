@@ -1057,6 +1057,16 @@ struct LibrarySidebar: View {
                     }
                 }
             }
+            if entry.kind == .media {
+
+                Picker("Favorite", selection: Binding(
+                    get: { model.media(entry.id)?.favorite ?? false },
+                    set: { value in model.updateMedia(entry.id) { $0.favorite = value } }
+                )) {
+                    Text("Yes").tag(true)
+                    Text("No").tag(false)
+                }
+            }
         }
         if entry.kind == .presentation {
 

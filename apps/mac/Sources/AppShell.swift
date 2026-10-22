@@ -432,6 +432,10 @@ struct ShellView: View {
                 Color.clear.frame(width: Self.trafficLightSlot(fullScreen: isFullScreen))
                 sidebarToggle
 
+                if mode == .edit, !sidebarVisible, let back = model.editorReturnMode {
+                    editorBackButton(back)
+                }
+
                 if mode == .present, !sidebarVisible {
                     if let name = currentServiceName {
 
@@ -579,9 +583,7 @@ struct ShellView: View {
                 presentFocusScroll.reset()
             }
 
-            if isRunOnlyAccount && mode != .present {
-                modeRaw = AppMode.present.rawValue
-            } else {
+            do {
                 if layout?.runOnly == true && mode != .present {
                     layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
                 }

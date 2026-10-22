@@ -722,6 +722,11 @@ struct ServiceContinuousView: View {
         let theme = model.theme(presentation.themeId)
 
         return VStack(alignment: .leading, spacing: 10) {
+
+            if let context = timelineContext(item, presentation),
+               PresentationTimelineCards.shared.expanded.contains(item.id) {
+                PresentationTimelineLanes(context: context)
+            }
             SlideGridBody(
                     model: model, render: render, controls: controls,
                     presentation: presentation, theme: theme,

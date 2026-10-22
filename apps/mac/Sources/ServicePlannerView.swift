@@ -918,6 +918,3 @@ struct ServiceItemDetailView: View {
         }
     }
 }
-
-    }
-}

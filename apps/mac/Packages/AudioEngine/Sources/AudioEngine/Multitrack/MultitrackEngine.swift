@@ -8,7 +8,7 @@ public final class MultitrackEngine: @unchecked Sendable {
     public private(set) var deviceChannels: Int
     public private(set) var deviceUID: String?
     private(set) var renderer: MultitrackRenderer
-    private let queue = DispatchQueue(label: "io.prodcontrol.multitrack", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "com.example.mxuslides.multitrack", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
     private var output: MultitrackOutput?
     private var song: MultitrackSong?
@@ -24,7 +24,7 @@ public final class MultitrackEngine: @unchecked Sendable {
     private var preloaded: [(song: MultitrackSong, rate: Double, readers: [StemReader])] = []
 
     private var preloadWanted: [MultitrackSong] = []
-    private let preloadQueue = DispatchQueue(label: "io.prodcontrol.multitrack.preload", qos: .userInitiated)
+    private let preloadQueue = DispatchQueue(label: "com.example.mxuslides.multitrack.preload", qos: .userInitiated)
 
     private(set) var cuesDecoded = 0
 
