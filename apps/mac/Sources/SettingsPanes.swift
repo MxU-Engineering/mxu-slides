@@ -1063,11 +1063,11 @@ private struct TrackChannelDetail: View {
                             .help("Remove \u{201C}\(name)\u{201D}")
                         }
                     }
-                    Button("Add Stem Name\u{2026}") { newName = ""; addingName = true }
+                    Button("Add File Name\u{2026}") { newName = ""; addingName = true }
                 } header: {
-                    Text("Other Stem Names")
+                    Text("Matching File Names")
                 } footer: {
-                    Text("Imported stems with these names go on this track.")
+                    Text("When you import audio, files with these names go on this track too.")
                 }
                 Section {
                     Button(checkingUses ? "Checking Songs\u{2026}" : "Delete Track\u{2026}", role: .destructive) {
@@ -1087,12 +1087,12 @@ private struct TrackChannelDetail: View {
             }
 
             .onDisappear(perform: commitName)
-            .alert("Add Stem Name", isPresented: $addingName) {
-                TextField("Stem name", text: $newName)
+            .alert("Add File Name", isPresented: $addingName) {
+                TextField("File name", text: $newName)
                 Button("Add") { addName() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Imported stems with this name go on \u{201C}\(channel.name)\u{201D}.")
+                Text("When you import audio, a file with this name goes on \u{201C}\(channel.name)\u{201D}.")
             }
             .alert("Delete \u{201C}\(channel.name)\u{201D}?", isPresented: Binding(
                 get: { uses != nil }, set: { if !$0 { uses = nil } })

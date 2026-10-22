@@ -58,7 +58,7 @@ struct UnmatchedStemsSheet: View {
             }
             .frame(maxHeight: 360)
             Toggle("Remember for next time", isOn: $remember)
-                .help("A file put on one of your tracks lands there by itself in the next import (the track's match names).")
+                .help("Next time you import a file with the same name, it goes on the track you picked. Change this in Settings › Audio & Video › Tracks.")
             HStack {
                 Spacer()
                 Button("Cancel") { done(nil) }
