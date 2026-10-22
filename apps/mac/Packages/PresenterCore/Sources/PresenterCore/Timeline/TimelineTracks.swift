@@ -18,21 +18,26 @@ public enum TimelineTracks {
         return stems(cues).filter { abs($0.at - cue.at) < PresentationTimelines.frame / 2 }
     }
 
-    static let aliases: [(name: String, role: Role, words: [[String]])] = [
-        ("Click", .click, [["click"], ["clk"], ["metronome"], ["count", "in"], ["countin"]]),
-        ("Guide", .guide, [["guide"], ["cues"], ["cue"], ["vocal", "cues"], ["vox", "cues"]]),
-        ("Drums", .music, [["drums"], ["drum"], ["kit"]]),
-        ("Percussion", .music, [["percussion"], ["perc"], ["percs"]]),
-        ("Bass", .music, [["bass"]]),
-        ("Keys", .music, [["keys"], ["key"], ["piano"], ["rhodes"], ["wurli"], ["organ"]]),
-        ("Synth", .music, [["synth"], ["synths"], ["lead"]]),
-        ("Pads", .music, [["pads"], ["pad"]]),
-        ("Electric Guitar", .music, [["electric", "guitar"], ["eg"], ["electric"], ["egtr"]]),
-        ("Acoustic Guitar", .music, [["acoustic", "guitar"], ["ag"], ["acoustic"], ["agtr"]]),
-        ("Vocals", .music, [["bgv"], ["bgvs"], ["vocals"], ["vox"], ["choir"]]),
-        ("Strings", .music, [["strings"], ["orchestra"], ["orch"]]),
-        ("Track", .music, [["track"], ["tracks"], ["loops"], ["loop"], ["stereo"]]),
+    static let roleWords: [(role: Role, words: [[String]])] = [
+        (.click, [["click"], ["clk"], ["metronome"], ["count", "in"], ["countin"]]),
+        (.guide, [["guide"], ["cues"], ["cue"], ["vocal", "cues"], ["vox", "cues"]]),
     ]
+
+    static let wholeNames: [[String]: String] = [
+        ["click", "track"]: "Click", ["click"]: "Click", ["clk"]: "Click", ["metronome"]: "Click",
+        ["guide"]: "Guide", ["cues"]: "Guide", ["cue"]: "Guide", ["vocal", "cues"]: "Guide", ["vox", "cues"]: "Guide",
+    ]
+
+    static let shortWords: [String: String] = [
+        "eg": "Electric Guitar", "egtr": "Electric Guitar", "ag": "Acoustic Guitar", "agtr": "Acoustic Guitar",
+        "gtr": "Guitar", "bgv": "Background Vocals", "bgvs": "Background Vocals", "perc": "Percussion",
+        "percs": "Percussion", "clk": "Click",
+    ]
+
+    static let stemWords: Set<String> = Set(shortWords.keys).union([
+        "click", "guide", "keys", "key", "piano", "organ", "synth", "synths", "pad", "pads", "bass",
+        "drums", "drum", "strings", "track", "tracks", "vox", "loop", "loops",
+    ])
 
     static func words(_ name: String) -> [String] {
         let stem = (name as NSString).deletingPathExtension.lowercased()
@@ -56,43 +61,38 @@ public enum TimelineTracks {
             words.removeLast()
         } else {
             let stem = String(last.dropLast(digits.count))
-            guard aliases.contains(where: { $0.words.contains([stem]) }) else { return (words, nil) }
+            guard stemWords.contains(stem) else { return (words, nil) }
             words[words.count - 1] = stem
         }
         return (words, Int(digits))
     }
 
-    static func alias(_ name: String) -> (name: String, role: Role)? {
-        let words = numbered(name).words
-        func position(_ phrase: [String]) -> Int? {
-            guard !phrase.isEmpty, phrase.count <= words.count else { return nil }
-            return (0 ... words.count - phrase.count).first { Array(words[$0 ..< $0 + phrase.count]) == phrase }
-        }
-        let found = aliases.compactMap { alias in
-            alias.words.compactMap(position).min().map { (alias: alias, at: $0) }
-        }
-        let pick = found.first { $0.alias.role != .music } ?? found.min { $0.at < $1.at }
-        return pick.map { ($0.alias.name, $0.alias.role) }
+    static func canonical(_ name: [String]) -> (name: String, key: [String]) {
+        let spelled = wholeNames[name] ?? name.map { shortWords[$0] ?? $0.capitalized }.joined(separator: " ")
+        return (spelled, words(spelled))
     }
 
     public static func role(forName name: String) -> Role {
-        alias(name)?.role ?? .music
+        let words = numbered(name).words
+        return roleWords.first { $0.words.contains { contains(words, $0) } }?.role ?? .music
     }
 
     public static func channel(forFileName fileName: String, in channels: [TrackChannel]) -> TrackChannel? {
         let file = numbered(fileName)
-        let number = file.number ?? 1
-        let sameNumber = channels.filter { (numbered($0.name).number ?? 1) == number }
+        return channel(words: file.words, number: file.number, in: channels)
+    }
+
+    static func channel(words: [String], number: Int?, in channels: [TrackChannel]) -> TrackChannel? {
+        let key = canonical(words).key
+        let same = channels.filter { (numbered($0.name).number ?? 1) == (number ?? 1) }
+        if let named = same.first(where: { canonical(numbered($0.name).words).key == key }) { return named }
         var best: (channel: TrackChannel, length: Int)?
-        for channel in sameNumber {
-            for phrase in [numbered(channel.name).words] + (channel.matchNames ?? []).map(Self.words)
-            where contains(file.words, phrase) {
+        for channel in same {
+            for phrase in (channel.matchNames ?? []).map(Self.words) where contains(words, phrase) {
                 if phrase.count > best?.length ?? 0 { best = (channel, phrase.count) }
             }
         }
-        if let best { return best.channel }
-        guard let alias = alias(fileName) else { return nil }
-        return sameNumber.first { Self.alias($0.name)?.name == alias.name }
+        return best?.channel
     }
 
     public static func assign(
@@ -101,33 +101,29 @@ public enum TimelineTracks {
         var channels = channels
         var assignments: [String: String] = [:]
         var used: Set<String> = []
-        for fileName in fileNames {
-            let matched = channel(forFileName: fileName, in: channels)
+        let split = fileNames.map(numbered)
+        let prefix = fileNames.count > 1 ? commonPrefix(split.map(\.words)) : 0
+        for (index, fileName) in fileNames.enumerated() {
+            let words = Array(split[index].words.dropFirst(prefix))
+            let matched = channel(words: words, number: split[index].number, in: channels)
             if let matched, !used.contains(matched.id) {
                 assignments[fileName] = matched.id
                 used.insert(matched.id)
                 continue
             }
-            let alias = alias(fileName)
-            let file = numbered(fileName)
-            let base = alias?.name ?? file.words.map(\.capitalized).joined(separator: " ")
-            let role = alias?.role ?? .music
-            var number = file.number
-            var channel: TrackChannel?
+            let base = canonical(words).name
+            let role = role(forName: fileName)
+            var number = split[index].number
+            var reuse: TrackChannel?
             if matched != nil {
 
                 number = (number ?? 1) + 1
-                while true {
-                    let name = "\(base) \(number!)"
-                    if let existing = channels.first(where: { $0.name == name }) {
-                        if !used.contains(existing.id) { channel = existing; break }
-                        number! += 1
-                    } else {
-                        break
-                    }
+                while let existing = channels.first(where: { $0.name == "\(base) \(number!)" }) {
+                    if !used.contains(existing.id) { reuse = existing; break }
+                    number! += 1
                 }
             }
-            let chosen = channel ?? {
+            let chosen = reuse ?? {
                 let name = number.map { "\(base) \($0)" } ?? base
                 let made = TrackChannel(
                     id: newID(), name: name.trimmingCharacters(in: .whitespaces).isEmpty ? "Track" : name,
@@ -139,6 +135,13 @@ public enum TimelineTracks {
             used.insert(chosen.id)
         }
         return (channels, assignments)
+    }
+
+    private static func commonPrefix(_ names: [[String]]) -> Int {
+        guard let first = names.first, let shortest = names.map(\.count).min(), shortest > 1 else { return 0 }
+        var count = 0
+        while count < shortest - 1, names.allSatisfy({ $0[count] == first[count] }) { count += 1 }
+        return count
     }
 }
 
