@@ -317,11 +317,33 @@ struct AudioMixerModule: View {
             meterAppliesGain: true,
             colorKey: "track:\(channel.id)",
             defaultColorName: "Purple",
-            extraMenu: { AnyView(self.makeTrackMixesButton(self.model.trackChannels)) }
+            extraMenu: {
+                AnyView(Group {
+
+                    Toggle("Mono", isOn: Binding(
+                        get: { channel.mono == true },
+                        set: { on in
+                            self.model.updateTrackChannels { list in
+                                guard let index = list.channels.firstIndex(where: { $0.id == channel.id }) else { return }
+                                list.channels[index].mono = on ? true : nil
+                            }
+                        }))
+                        .disabled(self.runOnly)
+                    self.makeTrackMixesButton(self.model.trackChannels)
+                })
+            }
         ) {
+            if channel.mono == true, channel.trackRole == .music {
+                Text("MONO")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 15)
+                    .help("Mono: the stem folds to one channel before the pan")
+            }
             if channel.trackRole != .music {
 
-                Text(channel.trackRole == .click ? "CLICK" : "GUIDE")
+                Text((channel.trackRole == .click ? "CLICK" : "GUIDE") + (channel.mono == true ? " · MONO" : ""))
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity)

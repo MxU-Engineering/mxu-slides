@@ -147,8 +147,10 @@ public struct TimelineStemImport: Equatable, Sendable {
     public var audioID: String
     public var seconds: Double?
 
-    public init(fileName: String, audioID: String, seconds: Double?) {
-        self.fileName = fileName; self.audioID = audioID; self.seconds = seconds
+    public var channels: Int?
+
+    public init(fileName: String, audioID: String, seconds: Double?, channels: Int? = nil) {
+        self.fileName = fileName; self.audioID = audioID; self.seconds = seconds; self.channels = channels
     }
 }
 
@@ -169,7 +171,13 @@ public extension TimelineTracks {
             cues.removeAll { $0.lane == lane && abs($0.at - at) < PresentationTimelines.frame / 2 }
             cues.append(TimelineCue(id: newID(), lane: lane, at: at, duration: stem.seconds, mediaId: stem.audioID))
         }
-        return result.channels.filter { made in !channels.contains { $0.id == made.id } }
+
+        return result.channels.filter { made in !channels.contains { $0.id == made.id } }.map { made in
+            var made = made
+            let files = stems.filter { result.assignments[$0.fileName] == made.id }
+            if !files.isEmpty, files.allSatisfy({ $0.channels == 1 }) { made.mono = true }
+            return made
+        }
     }
 }
 

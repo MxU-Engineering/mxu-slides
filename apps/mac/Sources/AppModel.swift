@@ -2838,18 +2838,20 @@ final class AppModel {
         var stems: [TimelineStemImport] = []
         for url in MediaImporter.files(in: urls) where MediaImporter.libraryKind(of: url) == .audio {
             let name = "\(song) · \(url.deletingPathExtension().lastPathComponent)"
-            let (hash, seconds) = await Task.detached(priority: .userInitiated) {
-                (try? BlobStore.sha256(of: url),
-                 (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.processingFormat.sampleRate })
+            let (hash, seconds, channels) = await Task.detached(priority: .userInitiated) {
+                let file = try? AVAudioFile(forReading: url)
+                return (try? BlobStore.sha256(of: url),
+                        file.map { Double($0.length) / $0.processingFormat.sampleRate },
+                        file.map { Int($0.processingFormat.channelCount) })
             }.value
             if let hash, case .sameFile(let id) = dedupe.match(hash: hash, name: name, kind: .audio) {
-                stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds))
+                stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds, channels: channels))
                 continue
             }
             let result = await importer?.importFiles(at: [url], placement: newPlacement, names: [url: name]).first
             guard case .audio(let id)? = result?.outcome else { continue }
             if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
-            stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds))
+            stems.append(TimelineStemImport(fileName: url.lastPathComponent, audioID: id, seconds: seconds, channels: channels))
         }
         noteMutation(.audio)
         return stems

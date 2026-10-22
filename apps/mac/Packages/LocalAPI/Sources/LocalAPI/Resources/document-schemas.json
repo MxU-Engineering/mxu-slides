@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 145,
+  "schemaVersion": 146,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -4032,6 +4032,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "mono": {
+          "type": "boolean"
         }
       },
       "required": [

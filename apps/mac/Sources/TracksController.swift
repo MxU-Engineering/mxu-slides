@@ -210,7 +210,9 @@ final class TracksController {
         let trackChannels = all.map { channel -> MultitrackRouting.Channel in
             var sends = mixer.channelSends("track:\(channel.id)")
             if let route = mixId(channel) { sends[route] = 1 }
-            return .init(id: channel.id, gain: gain(channel.id), pan: pan(channel.id), muted: muted(channel.id), sends: sends)
+            return .init(
+                id: channel.id, gain: gain(channel.id), pan: pan(channel.id), muted: muted(channel.id), sends: sends,
+                mono: channel.mono == true)
         }
         let mixes = AudioMixInventory.shared.entries.map { mix -> MultitrackRouting.ConsoleMix in
             var landings: [(deviceUID: String, output: MultitrackRouting.Output)] = []

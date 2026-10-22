@@ -109,3 +109,15 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
                              at: 0, channels: first.channels, into: &cues, newID: newID)
     #expect(cues.count == 8)
 }
+
+@Test func aChannelMadeFromMonoStemsStartsMono() {
+    var cues: [TimelineCue] = []
+    let made = TimelineTracks.place(
+        [.init(fileName: "Click.wav", audioID: "a", seconds: 10, channels: 1),
+         .init(fileName: "Keys.wav", audioID: "b", seconds: 10, channels: 2),
+         .init(fileName: "Bass.wav", audioID: "c", seconds: 10)],
+        at: 0, channels: [], into: &cues)
+    #expect(made.first { $0.name == "Click" }?.mono == true)
+    #expect(made.first { $0.name == "Keys" }?.mono == nil)
+    #expect(made.first { $0.name == "Bass" }?.mono == nil)
+}

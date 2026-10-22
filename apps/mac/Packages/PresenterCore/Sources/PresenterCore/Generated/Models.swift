@@ -2576,13 +2576,15 @@ public struct TrackChannel: Codable, Sendable, Equatable, Identifiable {
     public var role: String?
     public var colorHex: String?
     public var matchNames: [String]?
+    public var mono: Bool?
 
-    public init(id: String, name: String, role: String? = nil, colorHex: String? = nil, matchNames: [String]? = nil) {
+    public init(id: String, name: String, role: String? = nil, colorHex: String? = nil, matchNames: [String]? = nil, mono: Bool? = nil) {
         self.id = id
         self.name = name
         self.role = role
         self.colorHex = colorHex
         self.matchNames = matchNames
+        self.mono = mono
     }
 }
 

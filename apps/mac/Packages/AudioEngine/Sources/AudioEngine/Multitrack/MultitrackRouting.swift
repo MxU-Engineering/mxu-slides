@@ -11,8 +11,26 @@ public struct MultitrackRouting: Codable, Equatable, Sendable {
 
         public var sends: [String: Float]
 
-        public init(id: String, gain: Float = 1, pan: Float = 0, muted: Bool = false, sends: [String: Float] = [:]) {
-            self.id = id; self.gain = gain; self.pan = pan; self.muted = muted; self.sends = sends
+        public var mono: Bool
+
+        public init(
+            id: String, gain: Float = 1, pan: Float = 0, muted: Bool = false, sends: [String: Float] = [:],
+            mono: Bool = false
+        ) {
+            self.id = id; self.gain = gain; self.pan = pan; self.muted = muted; self.sends = sends; self.mono = mono
+        }
+
+        enum CodingKeys: String, CodingKey { case id, gain, pan, muted, sends, mono }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            gain = try c.decode(Float.self, forKey: .gain)
+            pan = try c.decode(Float.self, forKey: .pan)
+            muted = try c.decode(Bool.self, forKey: .muted)
+            sends = try c.decode([String: Float].self, forKey: .sends)
+
+            mono = try c.decodeIfPresent(Bool.self, forKey: .mono) ?? false
         }
     }
 
@@ -116,6 +134,14 @@ struct MultitrackMatrix: Sendable {
             let base = routing.trim * channel.gain
             let pan = min(max(channel.pan, -1), 1)
             let sides = [base * min(1, 1 - pan), base * min(1, 1 + pan)]
+
+            let fold: [[Float]] = channel.mono ? [[0.5, 0.5], [0.5, 0.5]] : [[1, 0], [0, 1]]
+
+            func land(_ side: Int, _ destination: Int, _ level: Float) {
+                for from in 0 ..< 2 where fold[from][side] != 0 {
+                    add(stem, from, destination, fold[from][side] * sides[side] * level, destinations)
+                }
+            }
             for (mixId, level) in channel.sends {
                 guard let mix = mixes[mixId], !mix.muted else { continue }
                 let reach = level * mix.gain
@@ -123,21 +149,15 @@ struct MultitrackMatrix: Sendable {
                     switch output.channels.count {
                     case 1 where output.channels[0] < deviceChannels:
 
-                        for side in 0 ..< 2 {
-                            add(stem, side, output.channels[0], sides[side] * reach * output.level * 0.5, destinations)
-                        }
+                        for side in 0 ..< 2 { land(side, output.channels[0], reach * output.level * 0.5) }
                     case 2 where output.channels.allSatisfy({ $0 < deviceChannels }):
-                        for side in 0 ..< 2 {
-                            add(stem, side, output.channels[side], sides[side] * reach * output.level, destinations)
-                        }
+                        for side in 0 ..< 2 { land(side, output.channels[side], reach * output.level) }
                     default:
                         continue
                     }
                 }
                 if let feed = feedMixIds.firstIndex(of: mixId) {
-                    for side in 0 ..< 2 {
-                        add(stem, side, deviceChannels + feed * 2 + side, sides[side] * reach, destinations)
-                    }
+                    for side in 0 ..< 2 { land(side, deviceChannels + feed * 2 + side, reach) }
                 }
             }
         }

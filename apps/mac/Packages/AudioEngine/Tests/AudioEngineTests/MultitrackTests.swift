@@ -257,3 +257,22 @@ func aNewDeviceRateKeepsTheSongsPlace() throws {
     #expect(abs(engine.position() - 1.5) < 0.01)
     engine.detach()
 }
+
+@Test func aMonoChannelFoldsItsStemBeforeThePan() {
+
+    let routing = MultitrackRouting(
+        channels: [.init(id: "keys", pan: -1, sends: ["main": 1], mono: true), .init(id: "pad", sends: ["main": 1])],
+        mixes: [.init(id: "main", outputs: [.init(channels: [0, 1])])])
+    let matrix = MultitrackMatrix(routing, stemChannels: ["keys", "pad"], deviceChannels: 2)
+    #expect(matrix.gain(stem: 0, side: 0, destination: 0) == 0.5)
+    #expect(matrix.gain(stem: 0, side: 1, destination: 0) == 0.5)
+    #expect(matrix.gain(stem: 0, side: 0, destination: 1) == 0)
+    #expect(matrix.gain(stem: 0, side: 1, destination: 1) == 0)
+
+    #expect(matrix.gain(stem: 1, side: 0, destination: 0) == 1)
+    #expect(matrix.gain(stem: 1, side: 1, destination: 0) == 0)
+    #expect(matrix.gain(stem: 1, side: 1, destination: 1) == 1)
+
+    let old = try! JSONDecoder().decode(MultitrackRouting.Channel.self, from: Data(#"{"id":"x","gain":1,"pan":0,"muted":false,"sends":{}}"#.utf8))
+    #expect(old.mono == false)
+}
