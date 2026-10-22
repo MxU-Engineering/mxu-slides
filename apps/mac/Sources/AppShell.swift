@@ -608,7 +608,12 @@ struct ShellView: View {
         .onChange(of: model.currentServiceID) { _, _ in presentFocusScroll.reset() }
         .onChange(of: continuousPresent) { _, _ in presentFocusScroll.reset() }
         .onChange(of: modeRaw) { oldRaw, _ in
-            presentFocusScroll.reset()
+
+            if oldRaw == AppMode.present.rawValue {
+                presentFocusScroll.leave()
+            } else {
+                presentFocusScroll.reset()
+            }
 
             if isRunOnly && mode != .present {
                 modeRaw = AppMode.present.rawValue

@@ -115,7 +115,17 @@ struct ServiceContinuousView: View {
                     }
                     .onAppear {
 
-                        scrollToFocus(focusItemID, reason: "appear", proxy: proxy, service: service)
+                        if let place = focusScroll.comeBack(
+                            to: PresentCardFrames.shared.leftPlace, serviceID: serviceID, focusItemID: focusItemID
+                        ) {
+                            PresentCardFrames.shared.putBack(place)
+                        } else if scrollToFocus(focusItemID, reason: "appear", proxy: proxy, service: service) {
+
+                            PresentCardFrames.shared.keepPlace(because: "appear", waits: PresentCardFrames.mountWaits)
+                        }
+                    }
+                    .onDisappear {
+                        PresentCardFrames.shared.left(serviceID: serviceID, focusItemID: focusItemID)
                     }
                 }
                 .focusable()
@@ -1015,17 +1025,22 @@ extension ServiceContinuousView {
             ? anchor(unlinked: itemID) : itemID
     }
 
+    @discardableResult
     private func scrollToFocus(
         _ itemID: String?, reason: String, proxy: ScrollViewProxy, service: Service
-    ) {
+    ) -> Bool {
         if let target = focusScroll.request(itemID) {
             DiagnosticsStore.shared.note("present.focus", detail: "scroll \(target) (\(reason))")
             InputTrailRecorder.shared.noteFocusScroll()
             proxy.scrollTo(Self.anchor(for: target, in: service), anchor: .top)
             PresentCardFrames.shared.holdCard(target)
             PresentCardFrames.shared.reportLanding(target: target, rows: presentRows(service))
-        } else if let itemID {
-            DiagnosticsStore.shared.note("present.focus", detail: "hold \(itemID) (\(reason), already there)")
+            return true
+        } else {
+            if let itemID {
+                DiagnosticsStore.shared.note("present.focus", detail: "hold \(itemID) (\(reason), already there)")
+            }
+            return false
         }
     }
 

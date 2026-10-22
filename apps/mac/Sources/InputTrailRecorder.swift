@@ -279,6 +279,7 @@ final class PresentCardFrames {
     }
 
     func holdCard(_ id: String) {
+        anchor = PresentLanding.Anchor(id: id, fraction: 0)
         if let top = docFrames[id]?.minY, let width = scrollView?.contentView.bounds.width {
             hold = (id, top, width, heights)
             holdPinnedUntil = ProcessInfo.processInfo.systemUptime + 0.4
@@ -381,15 +382,40 @@ final class PresentCardFrames {
         }
     }
 
-    func keepPlace(because reason: String) {
+    private(set) var leftPlace: PresentPlace?
+
+    func left(serviceID: String, focusItemID: String?) {
+        leftPlace = (PresentLanding.anchor(cards, grids: currentGrids) ?? anchor).map {
+            PresentPlace(serviceID: serviceID, focusItemID: focusItemID, anchor: $0)
+        }
+
+        hold = nil
+        frames = [:]
+        docFrames = [:]
+        grids = [:]
+        docGrids = [:]
+    }
+
+    func putBack(_ place: PresentLanding.Anchor) {
+        anchor = place
+        keepPlace(because: "back from the editor", waits: Self.mountWaits)
+    }
+
+    static let mountWaits = [0, 100, 250, 400, 600]
+
+    func keepPlace(because reason: String, waits: [Int] = [0, 100, 250]) {
         if let anchor {
             keepTask?.cancel()
-            keepingUntil = ProcessInfo.processInfo.systemUptime + 0.8
+            let started = ProcessInfo.processInfo.systemUptime
+            keepingUntil = started + Double(waits.reduce(0, +)) / 1000 + 0.45
             keepTask = Task { @MainActor in
                 var moved: CGFloat = 0
-                for wait in [0, 100, 250] {
+                for wait in waits {
                     try? await Task.sleep(for: .milliseconds(wait))
-                    if !Task.isCancelled,
+
+                    let scrolled = InputTrailRecorder.shared.sinceScroll()
+                        .map { $0 < ProcessInfo.processInfo.systemUptime - started } ?? false
+                    if !Task.isCancelled, !scrolled,
                        let delta = PresentLanding.correction(for: anchor, in: self.cards, grids: self.currentGrids),
                        abs(delta) >= 1, let scrollView = self.scrollView {
                         InputTrailRecorder.shared.noteFocusScroll()
