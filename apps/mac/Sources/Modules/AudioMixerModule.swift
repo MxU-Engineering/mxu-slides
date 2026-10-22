@@ -1577,46 +1577,51 @@ final class MeterLayerView: NSView {
             let hot = hasTicks && ticks[bar].decibels > -1
             let color: NSColor = hot ? .systemOrange : .systemGreen
             let track = sublayer("track\(bar)") { CALayer() }
-            track.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
-            track.cornerRadius = width / 2
-            track.frame = CGRect(x: x, y: 0, width: width, height: height)
+            track.set(color: NSColor.labelColor.withAlphaComponent(0.08))
+            track.set(frame: CGRect(x: x, y: 0, width: width, height: height), cornerRadius: width / 2)
             let fillHeight = max(0, height * CGFloat(AudioLevel.meterFraction(shown[bar])))
             let fill = sublayer("fill\(bar)") { CALayer() }
-            fill.backgroundColor = color.cgColor
-            fill.cornerRadius = min(width, fillHeight) / 2
-            fill.frame = CGRect(x: x, y: height - fillHeight, width: width, height: fillHeight)
+            fill.set(color: color)
+            fill.set(
+                frame: CGRect(x: x, y: height - fillHeight, width: width, height: fillHeight),
+                cornerRadius: min(width, fillHeight) / 2)
             guard hasTicks else { continue }
             let held = CGFloat(AudioLevel.meterFraction(decibels: ticks[bar].decibels))
             let tick = sublayer("tick\(bar)") { CALayer() }
-            tick.isHidden = held <= 0.01
-            tick.backgroundColor = (hot ? color : color.withAlphaComponent(0.8)).cgColor
-            tick.frame = CGRect(x: x, y: height - height * held - 0.5, width: width, height: 1.5)
+            tick.set(hidden: held <= 0.01)
+            tick.set(color: hot ? color : color.withAlphaComponent(0.8))
+            tick.set(frame: CGRect(x: x, y: height - height * held - 0.5, width: width, height: 1.5))
             let dot = sublayer("dot\(bar)") { CALayer() }
-            dot.isHidden = raw[bar] <= 0.001
-            dot.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.6).cgColor
-            dot.cornerRadius = 1.5
-            dot.frame = CGRect(x: x + (width - 3) / 2, y: height + 2, width: 3, height: 3)
+            dot.set(hidden: raw[bar] <= 0.001)
+            dot.set(color: NSColor.systemGreen.withAlphaComponent(0.6))
+            dot.set(frame: CGRect(x: x + (width - 3) / 2, y: height + 2, width: 3, height: 3), cornerRadius: 1.5)
         }
     }
 
     private func paintPeakLabel() {
-        let text = sublayer("peak") { CATextLayer() }
+        let text = sublayer("peak") { () -> CATextLayer in
+            let made = CATextLayer()
+            let font = NSFont.monospacedDigitSystemFont(ofSize: 7.5, weight: .medium)
+            made.font = font
+            made.fontSize = font.pointSize
+            made.alignmentMode = .center
+            return made
+        }
         guard let peaks else {
-            text.isHidden = true
+            text.set(hidden: true)
             return
         }
         hold.update(min((peaks.max() ?? 0) * scale, 1))
         let decibels = hold.decibels
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 7.5, weight: .medium)
-        let lineHeight = ceil(font.ascender - font.descender)
-        text.isHidden = false
-        text.contentsScale = window?.backingScaleFactor ?? 2
-        text.font = font
-        text.fontSize = font.pointSize
-        text.alignmentMode = .center
-        text.foregroundColor = (decibels > -1 ? NSColor.systemOrange : .secondaryLabelColor).cgColor
-        text.string = decibels <= -90 ? "-∞" : String(format: "%.1f", decibels)
-        text.frame = CGRect(x: 0, y: (bounds.height - lineHeight) / 2, width: bounds.width, height: lineHeight)
+        let string = decibels <= -90 ? "-∞" : String(format: "%.1f", decibels)
+        let lineHeight = ceil(text.fontSize * 1.2)
+        text.set(hidden: false)
+        if text.contentsScale != (window?.backingScaleFactor ?? 2) { text.contentsScale = window?.backingScaleFactor ?? 2 }
+        text.set(frame: CGRect(x: 0, y: (bounds.height - lineHeight) / 2, width: bounds.width, height: lineHeight))
+
+        let color = (decibels > -1 ? NSColor.systemOrange : .secondaryLabelColor).cgColor
+        if text.foregroundColor.map({ $0 == color }) != true { text.foregroundColor = color }
+        if text.string as? String != string { text.string = string }
     }
 
     private func sublayer<L: CALayer>(_ name: String, _ make: () -> L) -> L {
@@ -1625,6 +1630,22 @@ final class MeterLayerView: NSView {
         layer?.addSublayer(made)
         layers[name] = made
         return made
+    }
+}
+
+private extension CALayer {
+    func set(color: NSColor) {
+        let cg = color.cgColor
+        if backgroundColor.map({ $0 == cg }) != true { backgroundColor = cg }
+    }
+
+    func set(frame rect: CGRect, cornerRadius radius: CGFloat? = nil) {
+        if frame != rect { frame = rect }
+        if let radius, cornerRadius != radius { cornerRadius = radius }
+    }
+
+    func set(hidden: Bool) {
+        if isHidden != hidden { isHidden = hidden }
     }
 }
 
