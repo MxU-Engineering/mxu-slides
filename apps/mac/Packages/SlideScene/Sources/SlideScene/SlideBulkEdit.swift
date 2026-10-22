@@ -264,6 +264,31 @@ public enum SlideBulkEdit {
             return true
         }
     }
+
+    @discardableResult
+    public static func splitSlide(
+        _ slideID: String, objectID: String, at position: Int, in presentation: inout Presentation
+    ) -> (slideID: String, objectID: String)? {
+        var made: (slideID: String, objectID: String)?
+        if let slideIndex = presentation.slides.firstIndex(where: { $0.id == slideID }),
+           let objectIndex = presentation.slides[slideIndex].objects.firstIndex(where: { $0.id == objectID }) {
+            let characters = Array(presentation.slides[slideIndex].objects[objectIndex].text)
+            let cut = min(max(0, position), characters.count)
+            var keptEnd = cut
+            while keptEnd > 0, characters[keptEnd - 1].isWhitespace { keptEnd -= 1 }
+            var movedStart = cut
+            while movedStart < characters.count, characters[movedStart].isWhitespace { movedStart += 1 }
+            var copy = presentation.slides[slideIndex].freshIDCopy()
+            copy.actions = nil
+            copy.notes = nil
+            copy.history = nil
+            copy.objects[objectIndex].replaceText(0..<movedStart, with: "")
+            presentation.slides[slideIndex].objects[objectIndex].replaceText(keptEnd..<characters.count, with: "")
+            presentation.slides.insert(copy, at: slideIndex + 1)
+            made = (copy.id, copy.objects[objectIndex].id)
+        }
+        return made
+    }
 }
 
 extension Slide {
@@ -271,9 +296,13 @@ extension Slide {
     public func freshIDCopy() -> Slide {
         var copy = self
         copy.id = UUID().uuidString
+        let fresh = Dictionary(uniqueKeysWithValues: objects.map { ($0.id, UUID().uuidString) })
         copy.objects = copy.objects.map { object in
             var object = object
-            object.id = UUID().uuidString
+            object.id = fresh[object.id] ?? UUID().uuidString
+            if let mask = object.maskObjectId, let moved = fresh[mask] {
+                object.maskObjectId = moved
+            }
             return object
         }
         return copy

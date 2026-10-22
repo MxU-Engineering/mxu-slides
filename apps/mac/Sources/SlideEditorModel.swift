@@ -824,7 +824,9 @@ final class SlideEditorModel {
         }
     }
 
-    func beginCanvasTextEdit(objectID: String) {
+    private(set) var canvasTextEditStartCaret: Int?
+
+    func beginCanvasTextEdit(objectID: String, caretUTF16: Int? = nil) {
         guard let objects = currentSlide?.objects,
               let object = objects.first(where: { $0.id == objectID }),
 
@@ -832,6 +834,7 @@ final class SlideEditorModel {
         else { return }
         selectedObjectIDs = EditorGeometry.expandSelectionToGroups([objectID], in: objects)
         canvasTextEditStyle = resolvedStyledText(objectID: objectID)
+        canvasTextEditStartCaret = caretUTF16
         canvasTextEditID = objectID
         refreshScene()
     }
@@ -964,25 +967,29 @@ final class SlideEditorModel {
         let replaced = TextStyleRuns.characterRange(
             fromUTF16: utf16Range.location, length: utf16Range.length, in: object.text
         )
-        updateObject(id: id) { object in
-            let old = object.text
-            let runs = TextStyleRuns.replacing(
-                object.styleRuns ?? [], range: replaced, with: replacement, in: old
-            )
-            object.styleRuns = runs.isEmpty ? nil : runs
-            if let chords = object.chords, !chords.isEmpty {
-                let moved = TextStyleRuns.replacing(chords, range: replaced, with: replacement, in: old)
-                object.chords = moved.isEmpty ? nil : moved
-            }
+        updateObject(id: id) { $0.replaceText(replaced, with: replacement) }
+    }
 
-            if let animationSteps = object.animationSteps, animationSteps.contains(where: { !($0.ranges ?? []).isEmpty }) {
-                let moved = AnimationRanges.reanchor(animationSteps, range: replaced, with: replacement, in: old)
-                object.animationSteps = moved.isEmpty ? nil : moved
+    var canSplitSlideAtCanvasCaret: Bool {
+        !isThemeEditor && canvasEditedObject != nil
+    }
+
+    @discardableResult
+    func splitSlideAtCanvasCaret(_ caret: Int) -> Bool {
+        var split = false
+        if canSplitSlideAtCanvasCaret, let id = canvasTextEditID, let slideID = selectedSlideID,
+           let object = canvasEditedObject {
+            let position = TextStyleRuns.characterRange(fromUTF16: caret, length: 0, in: object.text).lowerBound
+            var made: (slideID: String, objectID: String)?
+            updateDocument { made = SlideBulkEdit.splitSlide(slideID, objectID: id, at: position, in: &$0) }
+            if let made {
+                endCanvasTextEdit()
+                selectSlide(made.slideID)
+                beginCanvasTextEdit(objectID: made.objectID, caretUTF16: 0)
+                split = true
             }
-            let start = old.index(old.startIndex, offsetBy: min(replaced.lowerBound, old.count))
-            let end = old.index(old.startIndex, offsetBy: min(replaced.upperBound, old.count))
-            object.text = old.replacingCharacters(in: start..<end, with: replacement)
         }
+        return split
     }
 
     private func resolvedStyledText(objectID: String) -> StyledText? {

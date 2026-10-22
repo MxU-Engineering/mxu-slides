@@ -151,6 +151,53 @@ final class SlideBulkEditTests: XCTestCase {
         )
     }
 
+    func testSplitSlideMovesTextAfterTheCaretAndKeepsTheOtherBoxes() {
+        let verse = SlideObject(
+            id: "verse", objectKind: .text, name: "Verse",
+            text: "For God so loved\nthe world that he gave",
+            chords: [ChordPlacement(line: 0, column: 0, symbol: "G"), ChordPlacement(line: 1, column: 4, symbol: "D")],
+            styleRuns: [TextStyleRun(line: 1, column: 4, length: 5, underline: true)]
+        )
+        let reference = SlideObject(id: "ref", objectKind: .text, name: "Reference", text: "John 3:16")
+        var doc = presentation([
+            Slide(
+                id: "s1", name: "Verse", objects: [reference, verse], sectionId: "v1",
+                actions: [SlideAction(id: "a1", kind: .fireMedia, mediaId: "m1")], notes: "read slowly"
+            ),
+            slide("s2"),
+        ])
+
+        let made = SlideBulkEdit.splitSlide("s1", objectID: "verse", at: 16, in: &doc)
+
+        XCTAssertEqual(doc.slides.map(\.id), ["s1", made?.slideID, "s2"], "the new slide lands right after")
+        XCTAssertEqual(doc.slides[0].objects[1].text, "For God so loved")
+        XCTAssertEqual(doc.slides[0].objects[1].chords, [ChordPlacement(line: 0, column: 0, symbol: "G")])
+        XCTAssertNil(doc.slides[0].objects[1].styleRuns, "the moved line's styling leaves with it")
+
+        let new = doc.slides[1]
+        XCTAssertEqual(new.objects.map(\.text), ["John 3:16", "the world that he gave"], "the reference box stays as is")
+        XCTAssertEqual(new.objects[1].id, made?.objectID)
+        XCTAssertEqual(new.objects[1].chords, [ChordPlacement(line: 0, column: 4, symbol: "D")])
+        XCTAssertEqual(new.objects[1].styleRuns, [TextStyleRun(line: 0, column: 4, length: 5, underline: true)])
+        XCTAssertEqual(new.sectionId, "v1", "the new slide stays in the section")
+        XCTAssertNil(new.actions, "an action would fire twice")
+        XCTAssertNil(new.notes)
+        XCTAssertFalse(new.objects.contains { ["verse", "ref"].contains($0.id) }, "fresh object ids")
+
+        XCTAssertNil(SlideBulkEdit.splitSlide("s1", objectID: "gone", at: 0, in: &doc))
+        XCTAssertEqual(doc.slides.count, 3)
+    }
+
+    func testFreshIDCopyPointsMasksAtTheCopiedMask() {
+        let slide = Slide(id: "s1", name: "s1", objects: [
+            SlideObject(id: "mask", objectKind: .shape, name: "Mask", text: ""),
+            SlideObject(id: "photo", objectKind: .text, name: "Text", text: "Hi", maskObjectId: "mask"),
+        ])
+        let copy = slide.freshIDCopy()
+        XCTAssertEqual(copy.objects[1].maskObjectId, copy.objects[0].id)
+        XCTAssertNotEqual(copy.objects[0].id, "mask")
+    }
+
     func testDeleteSlidesNeverEmptiesTheDeck() {
         var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
         XCTAssertTrue(SlideBulkEdit.deleteSlides(["s1", "s3"], in: &doc))

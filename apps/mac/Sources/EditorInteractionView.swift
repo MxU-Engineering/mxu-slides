@@ -198,7 +198,8 @@ final class EditorInteractionNSView: NSView {
         addSubview(overlay)
         window?.makeFirstResponder(overlay)
 
-        overlay.setSelectedRange(NSRange(location: (object.text as NSString).length, length: 0))
+        let length = (object.text as NSString).length
+        overlay.setSelectedRange(NSRange(location: min(model.canvasTextEditStartCaret ?? length, length), length: 0))
 
         textOverlay = overlay
         overlayObjectID = object.id
@@ -1287,8 +1288,29 @@ extension EditorInteractionNSView: NSTextViewDelegate {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
             endCanvasEditing()
             return true
+        } else if commandSelector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)) {
+
+            return model.splitSlideAtCanvasCaret(textView.selectedRange().location)
+        } else {
+            return false
         }
-        return false
+    }
+
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        if model.canSplitSlideAtCanvasCaret {
+            let item = NSMenuItem(title: "Split Slide Here", action: #selector(splitSlideFromMenu(_:)), keyEquivalent: "\r")
+            item.keyEquivalentModifierMask = .option
+            item.target = self
+            menu.insertItem(.separator(), at: 0)
+            menu.insertItem(item, at: 0)
+        }
+        return menu
+    }
+
+    @objc private func splitSlideFromMenu(_ sender: Any?) {
+        if let overlay = textOverlay {
+            model.splitSlideAtCanvasCaret(overlay.selectedRange().location)
+        }
     }
 }
 
