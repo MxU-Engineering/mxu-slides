@@ -480,7 +480,7 @@ struct RunOrderList: View {
                 bulkMenu(batch)
             } else if !runOnly {
 
-                if let entry = model.entry(item.refId), entry.kind.opensInEditor {
+                if let entry = model.entry(item.refId), entry.kind.opensInEditor, item.itemKind != .media {
                     Button("Edit…") {
                         model.openInEditor(entryID: entry.id)
                         appModeRaw = AppMode.edit.rawValue

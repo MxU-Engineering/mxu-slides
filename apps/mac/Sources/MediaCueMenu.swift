@@ -62,6 +62,7 @@ struct MediaCueMenuItems: View {
         if let item = model.media(mediaID) {
 
             Button("Media Settings…") { state.settingsTargetID = mediaID }
+            MediaEditorDoors(model: model, mediaID: mediaID, item: item)
             Button("Rename…") {
                 state.renameText = item.name
                 state.renameTargetID = mediaID
@@ -118,6 +119,30 @@ struct MediaCueMenuItems: View {
                 }
             }
         }
+    }
+}
+
+struct MediaEditorDoors: View {
+    let model: AppModel
+    let mediaID: String
+    let item: MediaItem
+
+    var onOpen: () -> Void = {}
+
+    var body: some View {
+        Button("Edit Media…") {
+            onOpen()
+            model.openInEditor(entryID: mediaID)
+            UserDefaults.standard.set(AppMode.edit.rawValue, forKey: "appMode")
+        }
+        .help("Opens this media in the editor.")
+        Button("Show in Finder") {
+            if let url = model.blobs?.url(forHash: item.fileHash) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+        .disabled(model.isMediaFileMissing(item))
+        .help(model.isMediaFileMissing(item) ? "The file isn't on this Mac." : "Reveals the file in Finder.")
     }
 }
 

@@ -26,6 +26,17 @@ import Testing
         #expect(!(try source("ActionEditors.swift")).contains("systemName: \"pencil\""))
     }
 
+    @Test func quickMediaSurfacesOpenTheEditorAndTheFile() throws {
+        let menu = try source("MediaCueMenu.swift")
+        #expect(menu.contains("Button(\"Media Settings…\") { state.settingsTargetID = mediaID }\n            MediaEditorDoors(model: model, mediaID: mediaID, item: item)"))
+        #expect(menu.contains("model.openInEditor(entryID: mediaID)\n            UserDefaults.standard.set(AppMode.edit.rawValue, forKey: \"appMode\")"))
+        #expect(menu.contains("NSWorkspace.shared.activateFileViewerSelecting([url])"))
+        let popup = try source("InspectorView.swift")
+        #expect(popup.contains("MediaEditorDoors(model: model, mediaID: mediaID, item: item) { dismiss() }"), "the popup closes before the mode flips")
+        let planner = try source("ServicePlannerView.swift")
+        #expect(planner.contains("entry.kind.opensInEditor, item.itemKind != .media {"), "media rows don't show Edit twice")
+    }
+
     @Test func mediaPickersSearchOrImportANewItem() throws {
         let picker = try source("SlideEditorView.swift")
         #expect(picker.contains("Label(\"Search Media\", systemImage: \"magnifyingglass\").tag(Tab.search)"))

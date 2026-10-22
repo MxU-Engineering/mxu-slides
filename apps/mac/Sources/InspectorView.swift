@@ -191,9 +191,17 @@ struct MediaSettingsSheet: View {
                         RoundedRectangle.standard(CornerStandard.element)
                             .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
                     }
-                Text(model.indexEntry(mediaID)?.name ?? "Media")
-                    .font(.headline)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(model.indexEntry(mediaID)?.name ?? "Media")
+                        .font(.headline)
+                        .lineLimit(2)
+                    if let item = model.media(mediaID) {
+                        HStack(spacing: 6) {
+                            MediaEditorDoors(model: model, mediaID: mediaID, item: item) { dismiss() }
+                        }
+                        .controlSize(.small)
+                    }
+                }
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
