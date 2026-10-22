@@ -447,7 +447,7 @@ struct AudioModule: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Fade on play, pause, and stop")
                     .font(.caption.weight(.semibold))
-                Toggle("Fade in/out", isOn: Binding(
+                Toggle("Fade in and out", isOn: Binding(
                     get: { audio.fadeEnabled },
                     set: { audio.fadeEnabled = $0 }
                 ))

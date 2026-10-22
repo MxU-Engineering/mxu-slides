@@ -225,7 +225,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.mediaTransition", category: .present,
                 title: "Media transition",
-                caption: "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The footer chips adjust the same setting on the fly.",
+                caption: "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The header's transition chips change the same setting.",
                 keywords: "transition dissolve fade blur media default cut clear background foreground",
                 control: AnyView(DefaultTransitionControl(
                     kindKey: "transition.media.kind", durationKey: "transition.media.duration",
@@ -265,14 +265,14 @@ struct AppSettingsView: View {
             ),
             SettingsRowSpec(
                 id: "present.roundedCorners", category: .present,
-                title: "Rounded thumbnail corners",
-                caption: nil,
+                title: "Rounded corners",
+                caption: "Slide thumbnails in Present.",
                 keywords: "slide grid thumbnails corners",
                 control: AnyView(Toggle("", isOn: $roundedCorners).settingsToggle())
             ),
             SettingsRowSpec(
                 id: "present.transparencyGrid", category: .present,
-                title: "Transparency grid in thumbnails",
+                title: "Transparency grid",
                 caption: "Checkerboard shows wherever nothing opaque covers the slide — where lower layers would show through on glass.",
                 keywords: "transparency grid checkerboard alpha thumbnails photoshop",
                 control: AnyView(Toggle("", isOn: $transparencyGrid).settingsToggle())
@@ -390,7 +390,7 @@ struct AppSettingsView: View {
         ))
         rows.append(SettingsRowSpec(
             id: "midi.map", category: .midi,
-            title: "MIDI input map",
+            title: "Input map",
             caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
             keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter overlay prop playlist media audio music alert message select index",
             control: AnyView(MIDIMapManager())

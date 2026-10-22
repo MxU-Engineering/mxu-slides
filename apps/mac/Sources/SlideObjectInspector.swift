@@ -760,7 +760,7 @@ struct SlideObjectInspector: View {
                 )
             }
         }
-        Text("Room Default follows Settings › Transitions when this slide fires.")
+        Text("Room Default follows Settings › Present › Slide transition when this slide fires.")
             .font(.caption)
             .foregroundStyle(.secondary)
     }

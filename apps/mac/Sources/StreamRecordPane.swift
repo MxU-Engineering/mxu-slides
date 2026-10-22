@@ -373,16 +373,21 @@ private struct AddCustomDestinationSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+
+            Text("Add Custom Destination")
+                .font(.headline)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
             Form {
                 Picker("Transport", selection: $transport) {
                     ForEach(StreamTransport.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
                 }
-                TextField("Server URL", text: $url, prompt: Text("rtmps://host/app"))
+                TextField("Server URL", text: $url, prompt: Text("Paste from your provider"))
                 if transport != .srt {
                     SecureField("Stream key", text: $key)
                 }
-                TextField("Name", text: $name, prompt: Text("Resi, North Campus Decoder\u{2026}"))
+                TextField("Name", text: $name, prompt: Text("e.g. Resi"))
             }
             .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -401,7 +406,7 @@ private struct AddCustomDestinationSheet: View {
             }
             .padding(16)
         }
-        .frame(width: 440, height: 260)
+        .frame(width: 440, height: 290)
     }
 }
 

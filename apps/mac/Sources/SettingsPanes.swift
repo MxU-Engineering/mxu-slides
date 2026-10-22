@@ -69,8 +69,6 @@ struct SettingsCategoryPane: View {
                 MIDIDevicesSection { page = .midiDevice($0) }
                 Section {
                     ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0) }
-                } header: {
-                    Text("MIDI Input Map")
                 }
             }
             .settingsForm()
@@ -230,6 +228,7 @@ private struct GroupFormRow: View {
             ColorPicker("", selection: colorBinding, supportsOpacity: false)
                 .labelsHidden()
             TextField("Name", text: $draft)
+                .labelsHidden()
                 .textFieldStyle(.plain)
                 .focused($focused)
                 .onSubmit(commit)
@@ -279,7 +278,8 @@ private struct GroupFormRow: View {
 private struct VideoInputsSection: View {
     let open: (String) -> Void
     @State private var inventory = VideoInputInventory.shared
-    @State private var discoveredNDI: [String] = []
+
+    @State private var discoveredNDI: [String]?
     @State private var ndiRuntimeAvailable = true
     @State private var addingNDI = false
     @State private var ndiName = ""
@@ -301,6 +301,11 @@ private struct VideoInputsSection: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
+                        if SettingsDeviceStatus.showsNotConnected(
+                            assigned: entry.kind == nil ? nil : entry.sourceId,
+                            found: VideoInputWords.found(entry, discoveredNDI: discoveredNDI)) {
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
+                        }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
@@ -367,7 +372,7 @@ private struct VideoInputsSection: View {
 
     private var addableNDI: [String] {
         let fragments = inventory.entries.filter { $0.kind == .ndi }.compactMap(\.sourceId)
-        return discoveredNDI.filter { name in !fragments.contains { name.localizedCaseInsensitiveContains($0) } }
+        return (discoveredNDI ?? []).filter { name in !fragments.contains { name.localizedCaseInsensitiveContains($0) } }
     }
 }
 
@@ -377,8 +382,17 @@ private enum VideoInputWords {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "No device" }
         switch kind {
         case .ndi: return "NDI \u{B7} \(sourceId)"
-        case .decklink: return "Blackmagic direct \u{B7} \(directName(sourceId) ?? "card not found")"
-        case .camera: return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Missing camera"
+        case .decklink: return directName(sourceId).map { "Blackmagic direct \u{B7} \($0)" } ?? "Blackmagic direct"
+        case .camera: return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Camera"
+        }
+    }
+
+    static func found(_ entry: VideoInputInventory.Entry, discoveredNDI: [String]?) -> Bool {
+        switch (entry.kind, entry.sourceId) {
+        case (.ndi, let sourceId?): SettingsDeviceStatus.ndiFound(sourceId, discovered: discoveredNDI)
+        case (.decklink, let sourceId?): !DeckLinkDeviceCatalog.shared.hasFetched || directName(sourceId) != nil
+        case (.camera, let sourceId?): AVCaptureDevice(uniqueID: sourceId) != nil
+        default: true
         }
     }
 
@@ -574,8 +588,9 @@ private struct AudioInputsSection: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        if entry.isAssigned, AudioDeviceList.inputDevice(uid: entry.uid ?? "") == nil {
-                            Text("Not connected").font(.system(size: 11)).foregroundStyle(.orange)
+                        if SettingsDeviceStatus.showsNotConnected(
+                            assigned: entry.uid, found: AudioDeviceList.inputDevice(uid: entry.uid ?? "") != nil) {
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
                         }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
@@ -614,7 +629,7 @@ private struct AudioInputsSection: View {
 private enum AudioInputWords {
     static func subtitle(_ entry: AudioInputInventory.Entry, devices: [AudioDeviceList.AudioInputDevice]) -> String {
         guard let uid = entry.uid, !uid.isEmpty else { return "No device" }
-        guard let device = AudioDeviceList.inputDevice(uid: uid) else { return "Missing device" }
+        guard let device = AudioDeviceList.inputDevice(uid: uid) else { return channels(entry) }
         var parts = [device.name]
         if device.channelCount > 1 { parts.append(channels(entry)) }
         if let ms = entry.delayMs, ms > 0 { parts.append("\(ms) ms delay") }
@@ -732,6 +747,8 @@ private struct AudioOutputsSection: View {
     @State private var inventory = AudioOutputInventory.shared
     @State private var devices: [AudioOutputDevice] = []
 
+    @State private var listed = false
+
     var body: some View {
         Section {
             if inventory.entries.isEmpty {
@@ -747,6 +764,11 @@ private struct AudioOutputsSection: View {
                                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
+                        if SettingsDeviceStatus.showsNotConnected(
+                            assigned: entry.isDeviceless ? nil : entry.deviceUID,
+                            found: !listed || devices.contains { $0.uid == entry.deviceUID }) {
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
+                        }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
@@ -769,6 +791,7 @@ private struct AudioOutputsSection: View {
         .task {
             while !Task.isCancelled {
                 devices = AudioDeviceList.outputDevices()
+                listed = true
                 try? await Task.sleep(for: .seconds(4))
             }
         }
@@ -783,7 +806,7 @@ private enum AudioOutputWords {
         else if let uid = entry.deviceUID {
             if let device = devices.first(where: { $0.uid == uid }) {
                 parts.append(device.channelCount > 2 ? "\(device.name) \(entry.channelOffset + 1)-\(entry.channelOffset + 2)" : device.name)
-            } else { parts.append("Missing device") }
+            } else { parts.append("Channels \(entry.channelOffset + 1)-\(entry.channelOffset + 2)") }
         } else { parts.append("System default") }
         if let ms = entry.delayMs, ms > 0 { parts.append("\(ms) ms delay") }
         return parts.joined(separator: " \u{B7} ")
@@ -889,7 +912,7 @@ private struct MIDIDevicesSection: View {
                         if !item.isConnected(
                             destinations: Set(inventory.discoveredDestinations.map(\.uid)),
                             sources: Set(inventory.discoveredSources.map(\.uid))) {
-                            Text("Not connected").font(.system(size: 11)).foregroundStyle(.orange)
+                            Text(SettingsDeviceStatus.notConnected).font(.system(size: 11)).foregroundStyle(.orange)
                         }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                     }
