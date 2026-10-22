@@ -584,6 +584,8 @@ final class SlideEditorModel {
     var choosingDeckTheme = false
     var choosingSlideTheme = false
 
+    var slideThemeTargetID: String?
+
     var hasPresentationSettings: Bool {
         if case .presentation = host { true } else { false }
     }

@@ -35,6 +35,9 @@ struct ServiceContinuousView: View {
     @State private var mediaMenuState = MediaCueMenuState()
     @State private var playlistDropTarget: PlaylistDropTarget?
 
+    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+    @State private var settingsPopoverItemID: String?
+
     @State private var viewportHeight: CGFloat = 0
 
     @State private var headerHeights: [String: CGFloat] = [:]
@@ -539,7 +542,11 @@ struct ServiceContinuousView: View {
 
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
 
-                PresentationSettingsButton(model: model, render: render, controls: controls, presentation: presentation)
+                PresentationSettingsButton(
+                    model: model, render: render, controls: controls, presentation: presentation,
+                    isPresented: Binding(
+                        get: { settingsPopoverItemID == item.id },
+                        set: { settingsPopoverItemID = $0 ? item.id : nil }))
             } leading: {
 
                 if SlideSceneBuilder.showsArrangements(for: presentation) {
@@ -586,7 +593,11 @@ struct ServiceContinuousView: View {
             }
 
             .contextMenu {
-                if !runOnly { arrangementMenu(item, presentation) }
+                if !runOnly {
+                    arrangementMenu(item, presentation)
+                    Button("Presentation Settings…") { settingsPopoverItemID = item.id }
+                    Button("Edit…") { openInEditor(presentation.id) }
+                }
             }
         } else {
 
@@ -1051,6 +1062,11 @@ extension ServiceContinuousView {
            presentRows(service).contains(where: { $0.id == itemID }) {
             PresentCardFrames.shared.reveal(itemID, slide: occurrence, headerHeight: headerHeights[itemID] ?? 44)
         }
+    }
+
+    func openInEditor(_ id: String) {
+        model.openInEditor(entryID: id)
+        appModeRaw = AppMode.edit.rawValue
     }
 }
 

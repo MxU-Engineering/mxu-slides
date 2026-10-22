@@ -485,28 +485,28 @@ struct RunOrderList: View {
                         model.openInEditor(entryID: entry.id)
                         appModeRaw = AppMode.edit.rawValue
                     }
-                    Divider()
                 }
-
-                if item.itemKind == .media {
-
-                    MediaCueMenuItems(
-                        model: model, actionRouter: controls?.actionRouter,
-                        mediaID: item.refId, state: mediaMenuState,
-                        fallbackName: item.name,
-                        replace: SpotReplace(label: "Replace in This Service…") { _, newID in
-                            model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)
-                        }
-                    )
-                    Divider()
-                    outputPresetMenu(item)
-                } else if item.itemKind != .info {
-
+                if item.itemKind != .media, item.itemKind != .info {
                     Button("Rename…") {
                         renamingItem = item
                         itemRenameText = displayName(item)
                     }
-                    if item.itemKind == .presentation {
+                }
+                if item.itemKind == .media {
+
+                    Section("Media") {
+                        MediaCueMenuItems(
+                            model: model, actionRouter: controls?.actionRouter,
+                            mediaID: item.refId, state: mediaMenuState,
+                            fallbackName: item.name,
+                            replace: SpotReplace(label: "Replace in This Service…") { _, newID in
+                                model.replaceServiceItemMedia(serviceID, itemID: item.id, mediaID: newID)
+                            }
+                        )
+                        outputPresetMenu(item)
+                    }
+                } else if item.itemKind == .presentation {
+                    Section("Presentation") {
                         arrangementMenu(item)
                         outputPresetMenu(item)
 

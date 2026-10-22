@@ -66,19 +66,26 @@ struct SlideThemeSheet: View {
     @State private var looks: [ThemeLook]?
 
     var body: some View {
-        let slide = model.currentSlide
+        let slide = model.slideThemeTargetID.flatMap { id in model.presentation.slides.first { $0.id == id } }
+            ?? model.currentSlide
         VStack(spacing: 0) {
             ThemeExplorerView(
                 appModel: appModel, render: render, deckThemeId: model.presentation.themeId, looks: looks,
                 currentDesign: slide?.themeId?.isEmpty != false ? slide?.themeSlideName : nil
             ) { themeId, design in
-                pick(design.name, themeId: themeId)
+                pick(design.name, themeId: themeId, slide: slide)
             }
             Divider()
             HStack {
                 Text("Applies to this slide.").font(.callout).foregroundStyle(.secondary)
                 Spacer()
-                Button("Automatic") { pick(nil, themeId: model.presentation.themeId) }
+
+                Button("Blank") {
+                    if let slide { model.setSlideBlank(slide.id) }
+                    dismiss()
+                }
+                .help("No theme styles this slide")
+                Button("Automatic") { pick(nil, themeId: model.presentation.themeId, slide: slide) }
                     .help("Follow the deck's theme with this slide's own kind of design")
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -89,9 +96,9 @@ struct SlideThemeSheet: View {
         .task { looks = await ThemeLook.load(appModel, firstThemeId: model.presentation.themeId) }
     }
 
-    private func pick(_ name: String?, themeId: String) {
-        if let slideID = model.currentSlide?.id {
-            model.pickThemeSlide(name, themeId: themeId, for: slideID)
+    private func pick(_ name: String?, themeId: String, slide: Slide?) {
+        if let slide {
+            model.pickThemeSlide(name, themeId: themeId, for: slide.id)
         }
         dismiss()
     }

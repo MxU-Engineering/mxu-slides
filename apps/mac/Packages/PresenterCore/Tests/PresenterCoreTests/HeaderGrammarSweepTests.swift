@@ -86,7 +86,10 @@ import Testing
         let slideSheet = try slice(sheets, from: "struct SlideThemeSheet: View {", to: "private func pick(")
         #expect(slideSheet.contains("ThemeExplorerView("))
         #expect(slideSheet.contains("Button(\"Automatic\")"), "the old picker's Automatic row survives")
-        #expect(sheets.contains("model.pickThemeSlide(name, themeId: themeId, for: slideID)"))
+        #expect(sheets.contains("model.pickThemeSlide(name, themeId: themeId, for: slide.id)"))
+        #expect(slideSheet.contains("Button(\"Blank\")"), "the slide list's Blank (No Theme) survives")
+        #expect(!editor.contains("Menu(\"Theme Slide\")"), "never a menu of names")
+        #expect(editor.contains("model.slideThemeTargetID = slide.id\n                                model.choosingSlideTheme = true"))
         #expect(sheets.contains("Button(\"No Theme\")"), "the old Theme menu's None survives")
     }
 

@@ -8,8 +8,11 @@ struct PresentationSettingsButton: View {
     let controls: ServiceControls?
     let presentation: Presentation
 
+    var isPresented: Binding<Bool>? = nil
+
     @Environment(\.runOnly) private var runOnly
-    @State private var popoverShown = false
+    @State private var localShown = false
+    private var popoverShown: Binding<Bool> { isPresented ?? $localShown }
     @State private var sheet: PresentationSettingsSheet?
 
     @State private var pendingSheet: PresentationSettingsSheet?
@@ -17,7 +20,7 @@ struct PresentationSettingsButton: View {
     var body: some View {
         let changed = presentation.autoAdvance != nil || presentation.transition != nil
         Button {
-            popoverShown.toggle()
+            popoverShown.wrappedValue.toggle()
         } label: {
             HStack(spacing: 4) {
                 if let slideShow = presentation.autoAdvance {
@@ -40,7 +43,7 @@ struct PresentationSettingsButton: View {
         .buttonStyle(.plain)
         .fixedSize()
         .help("Presentation settings")
-        .popover(isPresented: $popoverShown, arrowEdge: .bottom) {
+        .popover(isPresented: popoverShown, arrowEdge: .bottom) {
             popover
                 .onDisappear {
                     sheet = pendingSheet
@@ -91,7 +94,7 @@ struct PresentationSettingsButton: View {
 
     private func open(_ next: PresentationSettingsSheet) {
         pendingSheet = next
-        popoverShown = false
+        popoverShown.wrappedValue = false
     }
 
     private var themeSheet: some View {

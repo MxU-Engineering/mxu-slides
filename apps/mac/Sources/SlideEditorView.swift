@@ -209,7 +209,10 @@ struct SlideEditorView: View {
                 model.applyTheme(themeId, design: design)
             }
         }
-        .sheet(isPresented: Binding(get: { model.choosingSlideTheme }, set: { model.choosingSlideTheme = $0 })) {
+        .sheet(isPresented: Binding(get: { model.choosingSlideTheme }, set: {
+            model.choosingSlideTheme = $0
+            if !$0 { model.slideThemeTargetID = nil }
+        })) {
             SlideThemeSheet(appModel: appModel, render: render, model: model)
         }
     }
@@ -668,118 +671,85 @@ struct SlideEditorView: View {
 
             let batch = model.slideBatch(for: slide.id)
             if batch.count > 1 {
-                Button("Copy \(batch.count) Slides") { model.copySlides(batch) }
-                moveToThemeMenu(model, batch: batch)
+                Text("\(batch.count) Slides")
+                Section("Arrange") {
+                    Button("Copy \(batch.count) Slides") { model.copySlides(batch) }
+                    moveToThemeMenu(model, batch: batch)
+                    Button("Duplicate \(batch.count) Slides") { model.duplicateSlides(batch) }
+                }
                 Divider()
-                Button("Duplicate \(batch.count) Slides") { model.duplicateSlides(batch) }
                 Button("Delete \(batch.count) Slides", role: .destructive) {
                     model.deleteSlides(batch)
                 }
                 .disabled(batch.count >= model.presentation.slides.count)
             } else {
-                Button("Rename Slide") { beginSlideRename(slide) }
+
                 if !model.isThemeEditor {
                     Button("Quick Edit…") { quickEditTarget = QuickEditTarget(id: slide.id) }
-                    Divider()
-                    Button("Start New Section Here…") {
-                        newSectionTarget = QuickEditTarget(id: slide.id)
-                        newSectionName = ""
-                    }
-                    if !model.sections.isEmpty {
-                        Menu("Move to Section") {
-                            ForEach(model.sections) { section in
-                                Button(section.name) {
-                                    model.moveSlide(slide.id, toSection: section.id)
-                                }
-                                .disabled(slide.sectionId == section.id)
+                }
+                Button("Rename…") { beginSlideRename(slide) }
+                if !model.isThemeEditor {
+
+                    if !model.themeSlideNames.isEmpty || !model.otherThemeChoices.isEmpty {
+                        Section("Look") {
+                            Button("Theme Slide…") {
+                                model.slideThemeTargetID = slide.id
+                                model.choosingSlideTheme = true
                             }
+                            overrideDesignMenu(model, slide: slide)
                         }
                     }
-
-                    if !model.themeSlideNames.isEmpty {
-                        let edited = model.slideHasLocalEdits(slide)
-                        Menu("Theme Slide") {
-                            Toggle(
-                                "Automatic" + (editedSuffix(model, slide: slide, name: nil, edited: edited)),
-                                isOn: themeSlideBinding(model, slide: slide, name: nil)
-                            )
-
-                            Toggle("Blank (No Theme)", isOn: Binding(
-                                get: { model.presentation.slides.first { $0.id == slide.id }?.unthemed == true },
-                                set: { _ in model.setSlideBlank(slide.id) }))
-                            Divider()
-                            ForEach(Array(model.themeSlideGroups.enumerated()), id: \.offset) { _, group in
-                                if let folder = group.folder {
-                                    Section(folder) {
-                                        ForEach(group.names, id: \.self) { name in
-                                            Toggle(
-                                                name + editedSuffix(model, slide: slide, name: name, edited: edited),
-                                                isOn: themeSlideBinding(model, slide: slide, name: name)
-                                            )
-                                        }
+                    Section("Section") {
+                        Button("Start New Section Here…") {
+                            newSectionTarget = QuickEditTarget(id: slide.id)
+                            newSectionName = ""
+                        }
+                        if !model.sections.isEmpty {
+                            Menu("Move to Section") {
+                                ForEach(model.sections) { section in
+                                    Button(section.name) {
+                                        model.moveSlide(slide.id, toSection: section.id)
                                     }
-                                } else {
-                                    ForEach(group.names, id: \.self) { name in
-                                        Toggle(
-                                            name + editedSuffix(model, slide: slide, name: name, edited: edited),
-                                            isOn: themeSlideBinding(model, slide: slide, name: name)
-                                        )
-                                    }
-                                }
-                            }
-
-                            let looks = actionRouter?.activeOverrideLooks() ?? []
-                            if !looks.isEmpty {
-                                Divider()
-                                ForEach(looks) { look in
-                                    let chosen = model.presentation.slides.first { $0.id == slide.id }?.overrideDesignName(forTheme: look.theme.id)
-                                    Menu("On \(look.theme.name)\(look.folder.map { " › \($0)" } ?? "") outputs") {
-                                        Toggle("Same as this slide", isOn: Binding(
-                                            get: { chosen == nil },
-                                            set: { _ in model.setOverrideDesign(nil, forTheme: look.theme.id, for: slide.id) }))
-                                        Divider()
-                                        ForEach(look.theme.slides ?? [], id: \.id) { design in
-                                            Toggle(design.name, isOn: Binding(
-                                                get: { chosen?.caseInsensitiveCompare(design.name) == .orderedSame },
-                                                set: { _ in model.setOverrideDesign(design.name, forTheme: look.theme.id, for: slide.id) }))
-                                        }
-                                    }
-                                }
-                            }
-
-                            let others = model.otherThemeChoices
-                            if !others.isEmpty {
-                                Divider()
-                                ForEach(others, id: \.theme.id) { choice in
-                                    Menu(choice.theme.name) {
-                                        ForEach(Array(choice.groups.enumerated()), id: \.offset) { _, group in
-                                            if let folder = group.folder {
-                                                Section(folder) {
-                                                    ForEach(group.names, id: \.self) { name in
-                                                        Toggle(name, isOn: otherThemeSlideBinding(model, slide: slide, themeId: choice.theme.id, name: name))
-                                                    }
-                                                }
-                                            } else {
-                                                ForEach(group.names, id: \.self) { name in
-                                                    Toggle(name, isOn: otherThemeSlideBinding(model, slide: slide, themeId: choice.theme.id, name: name))
-                                                }
-                                            }
-                                        }
-                                    }
+                                    .disabled(slide.sectionId == section.id)
                                 }
                             }
                         }
                     }
-                    Divider()
                 }
 
-                Button("Copy Slide") { model.copySlides([slide.id]) }
-                Button("Paste Slide After") { model.pasteSlides(after: slide.id) }
-                    .disabled(!SlidePasteboard.hasSlide)
-                moveToThemeMenu(model, batch: [slide.id])
-                Button("Duplicate") { model.duplicateSlide(slide.id) }
+                Section("Arrange") {
+                    Button("Copy") { model.copySlides([slide.id]) }
+                    Button("Paste After") { model.pasteSlides(after: slide.id) }
+                        .disabled(!SlidePasteboard.hasSlide)
+                    moveToThemeMenu(model, batch: [slide.id])
+                    Button("Duplicate") { model.duplicateSlide(slide.id) }
+                }
+                Divider()
                 Button("Delete", role: .destructive) { model.deleteSlide(slide.id) }
                     .disabled(model.presentation.slides.count == 1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func overrideDesignMenu(_ model: SlideEditorModel, slide: Slide) -> some View {
+        let looks = actionRouter?.activeOverrideLooks() ?? []
+        if !looks.isEmpty {
+            Menu("Other Outputs") {
+                ForEach(looks) { look in
+                    let chosen = model.presentation.slides.first { $0.id == slide.id }?.overrideDesignName(forTheme: look.theme.id)
+                    Menu("On \(look.theme.name)\(look.folder.map { " › \($0)" } ?? "") outputs") {
+                        Toggle("Same as this slide", isOn: Binding(
+                            get: { chosen == nil },
+                            set: { _ in model.setOverrideDesign(nil, forTheme: look.theme.id, for: slide.id) }))
+                        Divider()
+                        ForEach(look.theme.slides ?? [], id: \.id) { design in
+                            Toggle(design.name, isOn: Binding(
+                                get: { chosen?.caseInsensitiveCompare(design.name) == .orderedSame },
+                                set: { _ in model.setOverrideDesign(design.name, forTheme: look.theme.id, for: slide.id) }))
+                        }
+                    }
+                }
             }
         }
     }
@@ -796,46 +766,6 @@ struct SlideEditorView: View {
 
             .disabled(batch.count >= model.presentation.slides.count)
         }
-    }
-
-    private func editedSuffix(
-        _ model: SlideEditorModel, slide: Slide, name: String?, edited: Bool
-    ) -> String {
-        guard edited else { return "" }
-        let current = model.presentation.slides.first { $0.id == slide.id }?.themeSlideName
-        let isCurrent = name == nil
-            ? (current ?? "").isEmpty
-            : current?.caseInsensitiveCompare(name!) == .orderedSame
-        return isCurrent ? " (edited)" : ""
-    }
-
-    private func themeSlideBinding(
-        _ model: SlideEditorModel, slide: Slide, name: String?
-    ) -> Binding<Bool> {
-        Binding(
-            get: {
-                let held = model.presentation.slides.first { $0.id == slide.id }
-                let current = held?.themeSlideName
-                return held?.unthemed != true && (name == nil
-                    ? (current ?? "").isEmpty
-                    : current?.caseInsensitiveCompare(name!) == .orderedSame)
-            },
-
-            set: { _ in model.setThemeSlide(name, for: slide.id) }
-        )
-    }
-
-    private func otherThemeSlideBinding(
-        _ model: SlideEditorModel, slide: Slide, themeId: String, name: String
-    ) -> Binding<Bool> {
-        Binding(
-            get: {
-                let current = model.presentation.slides.first { $0.id == slide.id }
-                return current?.unthemed != true && current?.themeId == themeId
-                    && current?.themeSlideName?.caseInsensitiveCompare(name) == .orderedSame
-            },
-            set: { _ in model.setThemeSlide(name, themeId: themeId, for: slide.id) }
-        )
     }
 
     private var newSectionActive: Binding<Bool> {
