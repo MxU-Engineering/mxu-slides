@@ -130,21 +130,30 @@ struct SidebarSectionHeader<Accessory: View>: View {
 
 struct ModeSwitcher: View {
     @Binding var modeRaw: String
+
+    var layout: PresentLayoutController?
+    @AppStorage(VolunteerModeLogic.enabledKey) private var volunteerEnabled = false
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @State private var hovering = false
 
-    private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .edit }
+    private var volunteerOn: Bool { layout?.runOnly ?? false }
 
     var body: some View {
+        let choices = VolunteerModeLogic.choices(enabled: volunteerEnabled)
+        let selected = VolunteerModeLogic.selected(mode: modeRaw, volunteerOn: volunteerOn)
         Menu {
-            ForEach(AppMode.allCases, id: \.rawValue) { mode in
-                Toggle(mode.title, isOn: Binding(
-                    get: { modeRaw == mode.rawValue },
-                    set: { _ in modeRaw = mode.rawValue }
+            ForEach(choices, id: \.self) { choice in
+
+                if choice == .volunteer, choices.count > 1 { Divider() }
+                Toggle(choice.title, isOn: Binding(
+                    get: { selected == choice },
+                    set: { _ in pick(choice) }
                 ))
             }
         } label: {
             HStack(spacing: 5) {
-                Text(mode.title)
+                Text(selected.title)
                     .font(.subheadline.weight(.medium))
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .semibold))
@@ -170,6 +179,20 @@ struct ModeSwitcher: View {
         .onHover { hovering = $0 }
         .help("Switch between Present and Edit")
     }
+
+    private func pick(_ choice: VolunteerModeLogic.Choice) {
+        switch VolunteerModeLogic.picking(choice, volunteerOn: volunteerOn) {
+        case .nothing:
+            break
+        case .switchMode(let mode):
+            modeRaw = mode
+        case .enterVolunteer:
+            layout?.enterRunOnly()
+        case .leaveVolunteer(let mode):
+            layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
+            modeRaw = mode
+        }
+    }
 }
 
 struct ViewCommands: Commands {
@@ -189,10 +212,8 @@ struct ViewCommands: Commands {
 
             Button("Edit") { modeRaw = AppMode.edit.rawValue }
                 .keyboardShortcut(command: .modeEdit)
-                .disabled(runOnly)
             Button("Scheduler") { modeRaw = AppMode.scheduler.rawValue }
                 .keyboardShortcut(command: .modeScheduler)
-                .disabled(runOnly)
             Divider()
 
             ForEach(Array(EditContext.allCases.enumerated()), id: \.element.rawValue) { index, context in
@@ -201,7 +222,7 @@ struct ViewCommands: Commands {
                     if let model { context.apply(to: model) }
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 4)")), modifiers: .command)
-                .disabled(model == nil || runOnly)
+                .disabled(model == nil)
             }
             Divider()
             Button(sidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
@@ -234,7 +255,6 @@ struct ShellView: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.confidenceMonitor) private var confidenceMonitor
 
-    @State private var pinFlow: PinFlow?
 
     private var workspaceImportAction: MenuAction? {
         if let render, let controls {
@@ -265,30 +285,6 @@ struct ShellView: View {
     private static let presentNewSlideAction = MenuAction("presentNewSlide") {
         NewSlideRouter.shared.request()
     }
-
-    private var runOnlyLockChip: some View {
-        Button {
-            pinFlow = .verify
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 9))
-                Text("Run-Only")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 4)
-            .contentShape(RoundedRectangle.standard(CornerStandard.element))
-        }
-        .buttonStyle(.plain)
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
-        .help("Run-only mode — enter the passcode to exit")
-    }
-
 
     @AppStorage("appMode") private var modeRaw = AppMode.edit.rawValue
     @AppStorage("present.continuous") private var continuousPresent = true
@@ -428,14 +424,8 @@ struct ShellView: View {
         }
         .overlay(alignment: .top) {
 
-            Group {
-                if isRunOnly {
-                    runOnlyLockChip
-                } else {
-                    ModeSwitcher(modeRaw: $modeRaw)
-                }
-            }
-            .frame(height: Self.headerHeight)
+            ModeSwitcher(modeRaw: $modeRaw, layout: layout)
+                .frame(height: Self.headerHeight)
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
@@ -512,23 +502,8 @@ struct ShellView: View {
         .focusedSceneValue(\.presentNewSlide, mode == .present ? Self.presentNewSlideAction : nil)
 
         .environment(\.runOnly, isRunOnly)
-        .sheet(item: $pinFlow) { flow in
-            PasscodeSheet(
-                flow: flow,
-                verify: { layout?.verifyPIN($0) ?? false },
-                waitSeconds: { layout?.pinWaitSeconds() ?? 0 }
-            ) { pin in
-                switch flow {
-                case .set:
-                    layout?.setPIN(pin)
-                    layout?.enterRunOnly()
-                case .change:
-                    layout?.setPIN(pin)
-                case .verify:
-                    layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
-                }
-            }
-        }
+
+        .modifier(VolunteerMenuRequests(layout: layout))
 
         .task {
             await model.resident.ready([.service, .serviceLinkRules, .media, .audio, .playlist])
@@ -604,9 +579,13 @@ struct ShellView: View {
                 presentFocusScroll.reset()
             }
 
-            if isRunOnly && mode != .present {
+            if isRunOnlyAccount && mode != .present {
                 modeRaw = AppMode.present.rawValue
             } else {
+                if layout?.runOnly == true && mode != .present {
+                    layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)
+                }
+
                 if oldRaw == AppMode.present.rawValue {
                     model.stashPresentSelection()
                 }

@@ -2432,7 +2432,7 @@ struct MediaFireView: View {
                 "Deleted from the library",
                 systemImage: "questionmark.square.dashed",
                 description: Text(runOnly
-                    ? "Unlock run-only to restore a file for it."
+                    ? "Leave Volunteer Mode to restore a file for it."
                     : "Right-click to restore a file for it — every slide and service using it heals.")
             )
             .contextMenu {

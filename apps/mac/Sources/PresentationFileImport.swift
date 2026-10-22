@@ -114,7 +114,7 @@ enum PresentationFileOpener {
                 if UserDefaults.standard.bool(forKey: PresentLayoutController.lockedKey) {
                     let alert = NSAlert()
                     alert.messageText = "Unlock MxU Slides to import"
-                    alert.informativeText = "Run-only mode is on. Unlock it, then open the presentation again."
+                    alert.informativeText = "Volunteer Mode is on. Leave it from the mode switcher, then open the presentation again."
                     alert.runModal()
                 } else {
                     Task { @MainActor in await model.importPresentationFiles(urls) }

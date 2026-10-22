@@ -43,7 +43,8 @@ public enum SettingsLayout {
                 "present.continuous", "present.slidesAcross", "present.roundedCorners",
                 "present.transparencyGrid", "present.scopedBackgrounds",
             ]),
-            Section("Layouts", ["present.layouts", "present.runOnly"]),
+            Section("Layouts", ["present.layouts"]),
+            Section("Volunteers", ["present.runOnly", "present.volunteerTabs"]),
         ]),
         Page(id: "edit", sections: [
             Section("Editing", ["edit.hideSidebar"]),

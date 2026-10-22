@@ -130,6 +130,8 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     case modePresent
     case modeEdit
     case modeScheduler
+
+    case modeVolunteer
     case toggleSidebar
     case toggleRightPanels
     case openKeyboardSettings
@@ -163,6 +165,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .modePresent: [KeyChord("1", command: true)]
         case .modeEdit: [KeyChord("2", command: true)]
         case .modeScheduler: [KeyChord("3", command: true)]
+        case .modeVolunteer: []
         case .toggleSidebar: [KeyChord("s", command: true, control: true)]
         case .toggleRightPanels: [KeyChord("r", command: true, control: true)]
         case .openKeyboardSettings: [KeyChord("k", option: true)]
@@ -184,7 +187,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
             .createLibrary
         case .boldSelection, .italicSelection, .underlineSelection:
             .editor
-        case .modePresent, .modeEdit, .modeScheduler, .toggleSidebar,
+        case .modePresent, .modeEdit, .modeScheduler, .modeVolunteer, .toggleSidebar,
              .toggleRightPanels, .openKeyboardSettings:
             .application
         }
@@ -201,7 +204,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .boldSelection, .italicSelection, .underlineSelection:
             .editor
         case .newPresentation, .newSlide, .newService, .newOverlay, .newTheme,
-             .findInLibrary, .modePresent, .modeEdit, .modeScheduler,
+             .findInLibrary, .modePresent, .modeEdit, .modeScheduler, .modeVolunteer,
              .toggleSidebar, .toggleRightPanels, .openKeyboardSettings:
             .anywhere
         }
@@ -214,7 +217,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .clearAll, .clearSlides, .clearMedia, .clearOverlays, .clearAudio,
              .clearAlerts, .clearInputs, .clearSignage,
              .videoPlayPause, .videoGoToBeginning,
-             .modePresent, .toggleSidebar, .toggleRightPanels,
+             .modePresent, .modeVolunteer, .toggleSidebar, .toggleRightPanels,
              .openKeyboardSettings:
             true
         case .newPresentation, .newSlide, .newService, .newOverlay, .newTheme,
@@ -261,6 +264,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .modePresent: "Go to Present"
         case .modeEdit: "Go to Edit"
         case .modeScheduler: "Go to Scheduler"
+        case .modeVolunteer: "Go to Volunteer Mode"
         case .toggleSidebar: "Toggle Sidebar"
         case .toggleRightPanels: "Toggle Right Panels"
         case .openKeyboardSettings: "Open Keyboard Settings"

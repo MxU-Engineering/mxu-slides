@@ -13,11 +13,6 @@ struct AppSettingsView: View {
 
     var outputPresets: OutputPresetsController? = nil
 
-    @State private var pinFlow: PinFlow?
-
-    @State private var entering: RunOnlyEntry?
-
-    @State private var afterEntrySheet: (() -> Void)?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
 
@@ -30,6 +25,7 @@ struct AppSettingsView: View {
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
     @AppStorage(SlideSceneBuilder.emptyRepeatsOnceKey) private var emptyRepeatsOnce = false
     @AppStorage(EditSidebarLogic.settingKey) private var hideSidebarOnEdit = false
+    @AppStorage(VolunteerModeLogic.enabledKey) private var volunteerModeEnabled = false
 
     @State private var category: SettingsCategory = .general
     @State private var query = ""
@@ -75,45 +71,13 @@ struct AppSettingsView: View {
                 SettingsRouter.shared.pending = nil
             }
         }
-        .sheet(item: $pinFlow) { flow in
-            PasscodeSheet(
-                flow: flow,
-                verify: { layout?.verifyPIN($0) ?? false },
-                waitSeconds: { layout?.pinWaitSeconds() ?? 0 }
-            ) { pin in
-                layout?.setPIN(pin)
-            }
-        }
-        .sheet(item: $entering, onDismiss: {
-            afterEntrySheet?()
-            afterEntrySheet = nil
-        }) { entry in
-            RunOnlyEntrySheet(
-                needsPIN: layout?.hasPIN != true,
-                initial: entry.saved?.volunteerModules
-                    ?? layout?.suggestedRunOnlyModules ?? ServiceControlsModule.defaultOrder
-            ) { pin, modules in
-                if let pin { layout?.setPIN(pin) }
-                if let saved = entry.saved {
-                    layout?.setLayoutRunOnlyModules(id: saved.id, modules)
-                }
-                layout?.setRunOnlyModules(modules)
-                afterEntrySheet = { enterRunOnly(applying: entry.saved, closing: entry.settingsWindow) }
-            }
-        }
     }
 
-    private func requestRunOnly(applying saved: PresentLayout?) {
+    private func enterVolunteer(applying saved: PresentLayout?) {
         let settingsWindow = NSApp.keyWindow
-        if let savedModules = saved?.volunteerModules, layout?.hasPIN == true {
+        if let savedModules = saved?.volunteerModules {
             layout?.setRunOnlyModules(savedModules)
-            enterRunOnly(applying: saved, closing: settingsWindow)
-        } else {
-            entering = RunOnlyEntry(saved: saved, settingsWindow: settingsWindow)
         }
-    }
-
-    private func enterRunOnly(applying saved: PresentLayout?, closing settingsWindow: NSWindow?) {
         layout?.enterRunOnly(applying: saved.map { saved in
             { layout?.apply(saved, openWindow: openWindow, dismissWindow: dismissWindow) }
         })
@@ -344,20 +308,23 @@ struct AppSettingsView: View {
                 caption: "Save and switch panel arrangements.",
                 keywords: "layout workspace arrangement save panels windows dock",
                 control: AnyView(PresentLayoutMenuControl(layout: layout) { saved in
-                    requestRunOnly(applying: saved)
+                    enterVolunteer(applying: saved)
                 })
             ))
+
             rows.append(SettingsRowSpec(
                 id: "present.runOnly",
-                title: "Run-Only Mode",
-                caption: "Volunteers run slides with editing hidden.",
-                keywords: "run only volunteer lock passcode pin kiosk",
-                control: AnyView(HStack(spacing: 6) {
-                    if layout.hasPIN {
-                        Button("Change Passcode…") { pinFlow = .change }
-                    }
-                    Button("Enter Run-Only Mode…") { requestRunOnly(applying: nil) }
-                })
+                title: "Volunteer Mode",
+                caption: "Adds Volunteer to the mode switcher.",
+                keywords: "volunteer mode run only simple kiosk switcher",
+                control: AnyView(Toggle("", isOn: $volunteerModeEnabled).settingsToggle())
+            ))
+            rows.append(SettingsRowSpec(
+                id: "present.volunteerTabs",
+                title: "Tabs volunteers keep",
+                caption: "The Service Controls tabs Volunteer Mode shows.",
+                keywords: "volunteer tabs service controls modules timers combos alerts",
+                control: AnyView(VolunteerTabsControl(layout: layout))
             ))
         }
         rows.append(contentsOf: groupsRows)
@@ -647,7 +614,7 @@ struct SettingsRowSpec: Identifiable {
         "present.layouts": "Save and switch whole arrangements: panels, sizes and windows.",
         "present.mediaTransition": "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The header's transition chips change the same setting.",
         "present.nextSkipsBlanks": "Blank slides parked as clears are ignored: NEXT shows the first upcoming slide that has text.",
-        "present.runOnly": "Strips every editing affordance: volunteers run slides, clears, and the Service Controls tabs you pick on entry. Exiting asks for the passcode.",
+        "present.runOnly": "Volunteers run slides, clears and the tabs below, with editing hidden. No passcode: Present or Edit in the mode switcher leaves it.",
         "present.scopedBackgrounds": "Thumbnails after the declaring slide drop the shared background.",
         "present.slideTransition": "How the slide layer changes between slides. The header's transition chips change the same setting.",
         "present.slidesAcross": "How many slide thumbnails share a row in Present: a fixed count, never a fit to the window or the sidebars.",
@@ -770,7 +737,7 @@ private struct PresentLayoutMenuControl: View {
                     showingRename = true
                 }
 
-                Picker("Run-Only Layout", selection: Binding(
+                Picker("Volunteer Layout", selection: Binding(
                     get: { active.runOnly },
                     set: { layout.setLayoutRunOnly(id: active.id, $0) }
                 )) {
@@ -851,6 +818,31 @@ private struct SettingsWindowFrame: NSViewRepresentable {
             window.setFrameUsingName(Self.autosaveName)
             window.setFrameAutosaveName(Self.autosaveName)
         }
+    }
+}
+
+private struct VolunteerTabsControl: View {
+    let layout: PresentLayoutController
+
+    var body: some View {
+        let chosen = Set(layout.suggestedRunOnlyModules)
+        Menu {
+            ForEach(ServiceControlsModule.defaultOrder, id: \.self) { module in
+                Toggle(module.title, isOn: Binding(
+                    get: { chosen.contains(module) },
+                    set: { on in
+                        let next = on ? chosen.union([module]) : chosen.subtracting([module])
+
+                        if !next.isEmpty {
+                            layout.setRunOnlyModules(ServiceControlsModule.defaultOrder.filter(next.contains))
+                        }
+                    }
+                ))
+            }
+        } label: {
+            Text(chosen.count == ServiceControlsModule.defaultOrder.count ? "All tabs" : "\(chosen.count) tab\(chosen.count == 1 ? "" : "s")")
+        }
+        .fixedSize()
     }
 }
 

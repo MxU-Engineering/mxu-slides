@@ -119,35 +119,6 @@ import Testing
         #expect(try #require(sweep.file("PresentLayoutController.swift")).text.contains("fresh.runOnlyModules = layouts[index].runOnlyModules"))
     }
 
-    @Test func entrySnapshotsBeforeApplyingAndClosesSettings() throws {
-        let sweep = try SourceSweep.app()
-        let controller = try #require(sweep.file("PresentLayoutController.swift")).text
-        let entry = try #require(controller.range(of: "func enterRunOnly(applying apply: (() -> Void)? = nil) {"))
-        let body = controller[entry.upperBound...].prefix(600)
-        let snapshot = try #require(body.range(of: "forKey: Self.preRunOnlyKey)"))
-        let apply = try #require(body.range(of: "apply?()"))
-        #expect(snapshot.upperBound <= apply.lowerBound, "exit restores the operator's arrangement, not the run-only layout")
-        let settings = try #require(sweep.file("SettingsView.swift")).text
-        #expect(settings.contains("RunOnlyEntrySheet("))
-        #expect(settings.contains("settingsWindow?.close()"))
-        #expect(settings.contains("Button(\"Change Passcode…\") { pinFlow = .change }"))
-    }
-
-    @Test func everyPasscodeViewFocusesAField() throws {
-        let sweep = try SourceSweep.app()
-        let gate = try #require(sweep.file("RunOnlyGate.swift"))
-        let views = Set(gate.codeLines.indices.compactMap { line in
-            gate.code(line).contains("SecureField(") ? gate.enclosingType(of: line) : nil
-        })
-        #expect(!views.isEmpty)
-        for view in views {
-            let start = try #require(gate.codeLines.firstIndex { $0.contains("struct \(view):") })
-            let body = gate.codeLines[gate.block(from: start)].joined(separator: "\n")
-            #expect(body.contains("@FocusState"), "\(view) never focuses its passcode field")
-            #expect(body.contains(".focused("), "\(view) never focuses its passcode field")
-        }
-    }
-
     @Test func everyWindowSceneIsPlaced() throws {
         let sweep = try SourceSweep.app()
         let app = try #require(sweep.file("MxUSlidesApp.swift"))

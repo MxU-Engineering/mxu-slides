@@ -16,7 +16,7 @@ struct ModuleWindowView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let allowed = layout?.volunteerModules, !allowed.contains(module) {
-                        Text("\(module.title) is locked in run-only mode.")
+                        Text("\(module.title) is hidden in Volunteer Mode.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
