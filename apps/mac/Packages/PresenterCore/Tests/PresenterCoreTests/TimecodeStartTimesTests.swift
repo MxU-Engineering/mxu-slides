@@ -141,3 +141,28 @@ private func songs(byOrder: Bool, _ items: [(id: String, timeline: PresentationT
     #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: service("local", "2026-10-18", type: nil), from: library) == nil)
     #expect(PlanSyncLogic.inheritedTimecodeByOrder(for: service("first", "2026-10-01"), from: library) == nil)
 }
+
+@Test func inServiceOrderOnlySongsThatPlayFromTimecodeTakeAnHour() {
+    var off = timeline("tb", start: 7 * hour)
+    off.timecodeEnabled = false
+    let items = service.map { $0.id == "b" ? ("b", off) : $0 }
+
+    #expect(T.serviceStarts(items, byOrder: true) == ["a": hour, "b": 7 * hour, "c": 2 * hour])
+
+    #expect(T.serviceStarts(service, byOrder: true)["c"] == 3 * hour)
+}
+
+@Test func aSongWithNoSlideCueShowsItsFirstSlideFromTimecode() {
+    let blocks = [TimelinePlayedBlock(sectionId: "v", slideIds: ["v1", "v2"])]
+    let overlay = TimelineCue(id: "o", lane: "overlays", at: 2, overlayId: "lt")
+    let cues = TimecodeFollow.followedCues([overlay], blocks: blocks)
+    #expect(cues.map(\.slideId) == ["v1", nil])
+
+    #expect(T.crossing(cues, blocks: blocks, from: -T.frame, to: 0.1, live: []) == [.showSlide(occurrence: 0, actions: true)])
+    #expect(T.landing(cues, blocks: blocks, at: 30, live: []).first == .showSlide(occurrence: 0, actions: false))
+
+    let cued = [T.slideCue(id: "s", at: 3, anchor: T.anchor(occurrence: 1, in: blocks)!)]
+    #expect(TimecodeFollow.followedCues(cued, blocks: blocks) == cued)
+
+    #expect(TimecodeFollow.followedCues([], blocks: []).isEmpty)
+}

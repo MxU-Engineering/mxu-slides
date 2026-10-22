@@ -331,11 +331,19 @@ public enum PresentationTimelines {
     public static func serviceStarts(
         _ items: [(id: String, timeline: PresentationTimeline?)], byOrder: Bool
     ) -> [String: Int] {
-        let songs = items.compactMap { item in item.timeline.map { (item.id, $0) } }
+        var starts: [String: Int] = [:]
+        var hour = 0
+        for item in items {
+            guard let timeline = item.timeline, starts[item.id] == nil else { continue }
+            if byOrder, timeline.timecodeEnabled {
+                hour += 1
 
-        return Dictionary(
-            songs.enumerated().map { ($1.0, byOrder ? ($0 + 1) * 3600 * framesPerSecond : $1.1.timecodeStart) },
-            uniquingKeysWith: { first, _ in first })
+                starts[item.id] = hour * 3600 * framesPerSecond
+            } else {
+                starts[item.id] = timeline.timecodeStart
+            }
+        }
+        return starts
     }
 
     public static func suggestedStart(length: Int, avoiding others: [Window], id: String = "") -> Int {

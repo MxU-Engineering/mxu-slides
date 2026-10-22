@@ -97,10 +97,12 @@ public enum TimecodeStation {
 
     public static let followKey = "timecode.follow"
 
+    public static let audioKey = "timecode.playsAudio"
+
     public static let sourceKey = "timecode.source"
 
     public static let midiSourceKey = "timecode.midiSourceUID"
-    public static let keys = [deviceKey, channelKey, offsetKey, followKey, sourceKey, midiSourceKey]
+    public static let keys = [deviceKey, channelKey, offsetKey, followKey, audioKey, sourceKey, midiSourceKey]
     public static let offsetRange = -30...30
 }
 
@@ -221,14 +223,46 @@ public struct TimecodeFollow: Sendable {
         }
     }
 
-    public static func underTimecode(_ effects: [PresentationTimelines.Effect]) -> [PresentationTimelines.Effect] {
-        effects.filter {
+    public static func underTimecode(
+        _ effects: [PresentationTimelines.Effect], playsAudio: Bool = false
+    ) -> [PresentationTimelines.Effect] {
+        if playsAudio { return effects }
+        return effects.filter {
             switch $0 {
             case .playAudio: false
             case .fire(let lane, _), .clear(let lane, _): lane != .audio
             case .showSlide, .runActions: true
             }
         }
+    }
+
+    public static func followedCues(_ cues: [TimelineCue], blocks: [TimelinePlayedBlock]) -> [TimelineCue] {
+        guard !cues.contains(where: { $0.kind == .slide }),
+              let anchor = PresentationTimelines.anchor(occurrence: 0, in: blocks) else { return cues }
+        return [PresentationTimelines.slideCue(id: "timecode.firstSlide", at: 0, anchor: anchor)] + cues
+    }
+
+    public static let audioDrift = 0.5
+
+    public static func audioSync(
+        _ cues: [TimelineCue], at position: Double, playing: [String: Double]
+    ) -> [PresentationTimelines.Effect] {
+        let tracks = cues.filter { $0.kind == .audio && $0.contentId != nil }
+        let held = tracks.filter {
+            $0.at <= position && position < PresentationTimelines.end(of: $0, in: cues)
+        }.max { $0.at < $1.at }
+        var effects: [PresentationTimelines.Effect] = []
+        for id in Set(tracks.compactMap(\.contentId)).sorted() where id != held?.contentId && playing[id] != nil {
+            effects.append(.clear(lane: .audio, id: id))
+        }
+        if let held, let id = held.contentId {
+            let due = position - held.at
+            if let at = playing[id], abs(at - due) <= audioDrift {
+                return effects
+            }
+            effects.append(.playAudio(id: id, from: due))
+        }
+        return effects
     }
 
     private static func enter(_ id: String, at position: Double) -> Command {

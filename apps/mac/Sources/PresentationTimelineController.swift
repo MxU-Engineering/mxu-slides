@@ -372,7 +372,10 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     private func cues(of deck: Presentation) -> [TimelineCue]? {
-        recordingTimeline?.cues ?? timeline(of: deck)?.cues
+        guard let cues = recordingTimeline?.cues ?? timeline(of: deck)?.cues else { return nil }
+
+        return underTimecode && timecodeRecording == nil
+            ? TimecodeFollow.followedCues(cues, blocks: blocks(of: deck)) : cues
     }
 
     private func blocks(of deck: Presentation) -> [TimelinePlayedBlock] {
