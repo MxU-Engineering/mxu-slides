@@ -2,9 +2,9 @@ import AppKit
 import AVFoundation
 import ImageIO
 import PresenterCore
-import UniformTypeIdentifiers
 import RenderEngine
 import SlideScene
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -413,6 +413,17 @@ final class ThumbnailStore {
 
     private nonisolated static func downsampledImage(url: URL) -> CGImage? {
         PosterDecode.downsampled(url: url)
+    }
+
+    nonisolated static func filePoster(url: URL) async -> CGImage? {
+        let type = UTType(filenameExtension: url.pathExtension) ?? .data
+        return if type.conforms(to: .image) {
+            await Task.detached(priority: .userInitiated) { downsampledImage(url: url) }.value
+        } else if type.conforms(to: .movie) || type.conforms(to: .video) {
+            await videoPoster(url: url, at: 0, maxPixels: PosterDecode.maxPixelSize)
+        } else {
+            nil
+        }
     }
 
     private nonisolated static func videoPoster(url: URL, at seconds: Double, maxPixels: Int) async -> CGImage? {

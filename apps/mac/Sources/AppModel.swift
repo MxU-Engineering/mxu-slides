@@ -1974,6 +1974,12 @@ final class AppModel {
         }
     }
 
+    func mediaHolding(file hash: String, except id: String) -> MediaItem? {
+        resident.media.values
+            .filter { $0.fileHash == hash && $0.id != id }
+            .min { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     func replaceMediaFile(_ id: String, with url: URL) async -> [String]? {
         guard let blobs, let current = media(id) else { return nil }
         guard let probe = await MediaRelink.probe(url: url),
@@ -3131,9 +3137,9 @@ final class AppModel {
         defer { isImporting = false }
         let files = MediaImporter.files(in: urls)
         var dedupe = MediaImportDedupe(media: Array(resident.media.values), audio: Array(resident.audio.values))
-        var replaceRest: Bool?
+        var useExistingForRest: Bool?
         var mediaIDs: [String] = []
-        var added = 0, reused = 0, replaced = 0, flagged = 0, skipped = 0
+        var added = 0, reused = 0, flagged = 0, skipped = 0
         for (index, url) in files.enumerated() {
             let kind = MediaImporter.libraryKind(of: url)
             let name = url.deletingPathExtension().lastPathComponent
@@ -3141,56 +3147,54 @@ final class AppModel {
                 try? BlobStore.sha256(of: url)
             }.value
             let match = if let kind, let hash { dedupe.match(hash: hash, name: name, kind: kind) } else { MediaImportDedupe.Match.new }
-            var replacing: String?
-            var keptName: String?
-            if case .sameName(let id, let existing) = match, let kind {
-                let bothName = dedupe.availableName(existing, kind: kind)
-                let replace: Bool
-                if let replaceRest {
-                    replace = replaceRest
-                } else {
-                    let answer = await askMediaNameConflict(
-                        name: existing, keptName: bothName, othersLeft: files.count - index - 1)
-                    replace = answer.replace
-                    if answer.forRest { replaceRest = answer.replace }
-                }
-                replacing = replace ? id : nil
-
-                keptName = replace ? nil : bothName
+            let conflict: (id: String, name: String, kind: MediaImportPrompt.Conflict)? = switch match {
+            case .sameFile(let id): (id, media(id)?.name ?? audio(id)?.name ?? name, .sameFile)
+            case .sameName(let id, let existing): (id, existing, .sameName)
+            case .new: nil
             }
-            if case .sameFile(let id) = match {
+            var existingID: String?
+            var copyName: String?
+            if let conflict, let kind {
+
+                let numbered = dedupe.availableName(conflict.name, kind: kind)
+                let useExisting: Bool
+                if let useExistingForRest {
+                    useExisting = useExistingForRest
+                } else {
+                    let answer = await MediaImportPrompt.ask(
+                        model: self, conflict: conflict.kind, kind: kind, existingID: conflict.id,
+                        existingName: conflict.name, incoming: url, copyName: numbered,
+                        othersLeft: files.count - index - 1)
+                    useExisting = answer.useExisting
+                    if answer.forRest { useExistingForRest = answer.useExisting }
+                }
+                existingID = useExisting ? conflict.id : nil
+                copyName = useExisting ? nil : numbered
+            }
+            if let existingID {
                 reused += 1
-                if kind == .media { mediaIDs.append(id) }
-            } else if let id = replacing, kind == .media, await replaceMediaFile(id, with: url) != nil {
-                replaced += 1
-                mediaIDs.append(id)
-                if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .media) }
-            } else if let id = replacing, kind == .audio {
-                replaceAudioFile(id, with: url)
-                replaced += 1
-                if let hash { dedupe.note(id: id, hash: hash, name: name, kind: .audio) }
+                if kind == .media { mediaIDs.append(existingID) }
             } else {
                 let result = await importer?.importFiles(
-                    at: [url], placement: placement ?? newPlacement, names: keptName.map { [url: $0] } ?? [:]
+                    at: [url], placement: placement ?? newPlacement, names: copyName.map { [url: $0] } ?? [:]
                 ).first
                 switch result?.outcome {
                 case .media(let id, let status)?:
                     added += 1
                     if status == .needsTranscode { flagged += 1 }
                     mediaIDs.append(id)
-                    if let hash { dedupe.note(id: id, hash: hash, name: keptName ?? name, kind: .media) }
+                    if let hash { dedupe.note(id: id, hash: hash, name: copyName ?? name, kind: .media) }
                 case .audio(let id)?:
                     added += 1
-                    if let hash { dedupe.note(id: id, hash: hash, name: keptName ?? name, kind: .audio) }
+                    if let hash { dedupe.note(id: id, hash: hash, name: copyName ?? name, kind: .audio) }
                 case .skipped?, nil:
                     skipped += 1
                 }
             }
         }
         lastImportSummary = [
-            added > 0 || reused + replaced == 0 ? "Imported \(added) of \(files.count) files" : nil,
+            added > 0 || reused == 0 ? "Imported \(added) of \(files.count) files" : nil,
             reused > 0 ? "\(reused) already in the library" : nil,
-            replaced > 0 ? "\(replaced) replaced" : nil,
             flagged > 0 ? "\(flagged) flagged for transcode" : nil,
             skipped > 0 ? "\(skipped) skipped" : nil,
         ].compactMap { $0 }.joined(separator: " — ")
@@ -3202,26 +3206,6 @@ final class AppModel {
         let ids = await importFiles(urls, placement: placement)
         await client.settled()
         return ids.first.flatMap { indexEntry($0) }
-    }
-
-    private func askMediaNameConflict(
-        name: String, keptName: String, othersLeft: Int
-    ) async -> (replace: Bool, forRest: Bool) {
-        let alert = NSAlert()
-        alert.messageText = "“\(name)” is already in your library"
-        alert.informativeText = "Replace it with the new file everywhere it’s used, or keep both? Keep Both adds the new file as “\(keptName)”."
-        alert.addButton(withTitle: "Keep Both")
-        alert.addButton(withTitle: "Replace")
-        alert.showsSuppressionButton = othersLeft > 0
-        alert.suppressionButton?.title = "Do the same for the rest of this import"
-        let response: NSApplication.ModalResponse = if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
-            }
-        } else {
-            alert.runModal()
-        }
-        return (response == .alertSecondButtonReturn, alert.suppressionButton?.state == .on)
     }
 
     @discardableResult

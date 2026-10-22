@@ -62,9 +62,8 @@ import Testing
 
     @Test func keepBothNamesAndTheDateAddedShows() throws {
         let app = try source("AppModel.swift")
-        #expect(app.contains("keptName = replace ? nil : bothName"))
-        #expect(app.contains("at: [url], placement: placement ?? newPlacement, names: keptName.map { [url: $0] } ?? [:]"))
-        #expect(app.contains("Keep Both adds the new file as “\\(keptName)”."))
+        #expect(app.contains("copyName = useExisting ? nil : numbered"))
+        #expect(app.contains("at: [url], placement: placement ?? newPlacement, names: copyName.map { [url: $0] } ?? [:]"))
         #expect(app.contains("$0.importedAt = Date().timeIntervalSince1970"), "a Duplicate is added now")
         #expect(try source("MediaEditorView.swift").contains("LabeledContent(\"Added\", value: Date(timeIntervalSince1970: added)"))
         let picker = try source("SlideEditorView.swift")
@@ -74,5 +73,26 @@ import Testing
         let library = try source("LibraryView.swift")
         #expect(library.contains("ForEach(LibrarySort.choices(for: section.kind), id: \\.self)"))
         #expect(library.contains(".merged(items, cloud: cloud, addedAt: model.mediaAddedAt)"))
+    }
+
+    @Test func importsAskWithAPictureAndNeverSwapAFile() throws {
+        let app = try source("AppModel.swift")
+        let start = try #require(app.range(of: "func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {"))
+        let end = try #require(app.range(of: "func importMediaForPick(", range: start.upperBound..<app.endIndex))
+        let body = String(app[start.upperBound..<end.lowerBound])
+        #expect(!body.contains("replaceMediaFile(") && !body.contains("replaceAudioFile("))
+        #expect(body.contains("case .sameFile(let id): (id, media(id)?.name ?? audio(id)?.name ?? name, .sameFile)"))
+        #expect(body.contains("let answer = await MediaImportPrompt.ask("))
+        let prompt = try source("MediaImportPrompt.swift")
+        #expect(prompt.contains("Button(\"Add as New Copy\") { finish(0) }"))
+        #expect(prompt.contains("Button(\"Use Existing\") { finish(1) }\n                    .keyboardShortcut(.defaultAction)"))
+        #expect(prompt.contains("PosterImage(model: model, mediaId: id)"), "the library item's picture")
+        #expect(prompt.contains(".task(id: url) { image = await ThumbnailStore.filePoster(url: url) }"), "the new file's picture")
+        #expect(prompt.contains("parent.beginSheet(sheet)"), "a sheet, never a modal loop over a drop")
+        let flow = try source("ReplaceMediaFileFlow.swift")
+        #expect(flow.contains("let panel = NSOpenPanel()"), "Replace Media File goes straight to disk")
+        #expect(!flow.contains("LibraryPickerSheet"))
+        #expect(flow.contains("let other = hash.flatMap { model.mediaHolding(file: $0, except: id) }"))
+        #expect(flow.contains("if proceed, let carried = await model.replaceMediaFile(id, with: url) {"))
     }
 }

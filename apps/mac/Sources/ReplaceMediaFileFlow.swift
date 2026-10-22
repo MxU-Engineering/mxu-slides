@@ -34,7 +34,15 @@ enum ReplaceMediaFileFlow {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             Task { @MainActor in
-                if let carried = await model.replaceMediaFile(id, with: url) {
+                let hash = await Task.detached(priority: .userInitiated) { try? BlobStore.sha256(of: url) }.value
+                let other = hash.flatMap { model.mediaHolding(file: $0, except: id) }
+                let proceed = if let other {
+                    await MediaImportPrompt.confirmSharedFile(
+                        model: model, otherID: other.id, otherName: other.name, itemName: name)
+                } else {
+                    true
+                }
+                if proceed, let carried = await model.replaceMediaFile(id, with: url) {
                     MediaRelinkAlerts.carriedSettingsWarning(itemName: name, carried: carried)
                 }
             }
