@@ -121,8 +121,8 @@ struct ProDocumentMapperTests {
 
     @Test func groupHotKeysImportAsNormalizedLetters() {
         var doc = songDocument()
-        doc.cueGroups[0].group.hotKey.code = .ansiA 
-        doc.cueGroups[1].group.hotKey.code = .f1 
+        doc.cueGroups[0].group.hotKey.code = .ansiA
+        doc.cueGroups[1].group.hotKey.code = .f1
         let mapped = ProDocumentMapper.map(doc, fallbackName: "Song")
         #expect(mapped.groupHotKeys == ["verse1": "a"])
 
@@ -168,7 +168,7 @@ struct ProDocumentMapperTests {
             chordAttribute("G", start: 0, end: 5),
             chordAttribute("C/E", start: 5, end: 9),
             chordAttribute("Am7", start: 9, end: 14),
-            chordAttribute("D", start: 99, end: 99),  
+            chordAttribute("D", start: 99, end: 99),
         ]
         graphics.text = text
         let placements = ProDocumentMapper.chordPlacements(graphics, plainText: "Line one\nLine two")
@@ -216,7 +216,7 @@ struct ProDocumentMapperTests {
 
         let mapped = ProDocumentMapper.map(doc, fallbackName: "X")
         #expect(mapped.presentation.musicKey == "Db")
-        #expect(mapped.presentation.displayKey == nil)  
+        #expect(mapped.presentation.displayKey == nil)
         let lyric = mapped.presentation.slides[0].objects[0]
         #expect(lyric.chords?.map(\.symbol) == ["Em"])
         #expect(lyric.textStyle?.showChords == nil)
@@ -335,7 +335,7 @@ struct ProDocumentMapperTests {
         var noteOn = RVData_Action.CommunicationType()
         var midi = RVData_Action.CommunicationType.MIDICommand()
         midi.state = .on
-        midi.channel = 1  
+        midi.channel = 1
         midi.note = 60
         midi.intensity = 100
         noteOn.commandTypeData = .midiCommand(midi)
@@ -368,7 +368,7 @@ struct ProDocumentMapperTests {
         #expect(slides[0].notes?.contains("device control") == true)
 
         let second = try! #require(slides[1].actions)
-        #expect(second[0].midiValue == 0)  
+        #expect(second[0].midiValue == 0)
     }
 
     @Test func unmappableGoToNextShapesFlattenToNotes() {
@@ -431,7 +431,7 @@ struct ProDocumentMapperTests {
         #expect(object.x == 88)
         #expect(object.y == 944)
         #expect(object.width == 1744)
-        #expect(object.rotationDegrees == nil)  
+        #expect(object.rotationDegrees == nil)
 
         let style = try! #require(object.textStyle)
 
@@ -467,7 +467,7 @@ struct ProDocumentMapperTests {
         #expect(lineFill.fill.fillKind == .solid)
         #expect(lineFill.fill.colorHex == "#000000FF")
         #expect(lineFill.widthMode == .lineWidth)
-        #expect(lineFill.verticalPadding == nil)  
+        #expect(lineFill.verticalPadding == nil)
         #expect(lineFill.horizontalPadding == 8)
         #expect(lineFill.verticalOffset == -4)
         #expect(lineFill.horizontalOffset == -1)
@@ -529,7 +529,7 @@ struct ProDocumentMapperTests {
         let object = try! #require(mapped.presentation.slides[0].objects.first)
         #expect(object.objectKind == .text)
         #expect(object.textLink?.source == .videoCountdown)
-        #expect(object.x == 88)  
+        #expect(object.x == 88)
 
         #expect(object.textLink?.showsVideoName == false)
     }
@@ -576,7 +576,7 @@ struct ProDocumentMapperTests {
         #expect(style.insetLeft == 20)
         #expect(style.insetTop == 10)
         #expect(style.insetBottom == 5)
-        #expect(style.insetRight == nil)  
+        #expect(style.insetRight == nil)
     }
 
     @Test func paragraphIndentsImportFromProtobufStyle() {
@@ -727,7 +727,7 @@ struct ProDocumentMapperTests {
 
         let want = try! #require(mapped.mediaWants.first)
         #expect(want.placeholderID == background.mediaId)
-        #expect(want.absolutePath == "/Users/test/Media/Assets/loop one.mov")  
+        #expect(want.absolutePath == "/Users/test/Media/Assets/loop one.mov")
         #expect(want.relativePath == "Media/Assets/loop one.mov")
         #expect(want.classification == .background)
 
@@ -820,6 +820,60 @@ struct ProDocumentMapperTests {
         #expect(mapped.mediaWants.first?.classification == .background)
     }
 
+    @Test func timelineImportsOntoEveryPlayedOrder() {
+        func timelineCue(_ at: Double, slide: String) -> RVData_Presentation.Timeline.Cue {
+            var cue = RVData_Presentation.Timeline.Cue()
+            cue.triggerTime = at
+            cue.cueID = uuid(slide)
+            return cue
+        }
+        func mediaAction(_ id: String, _ type: RVData_Media.OneOf_TypeProperties) -> RVData_Action {
+            var media = RVData_Media()
+            media.uuid = uuid(id)
+            media.url.storage = .absoluteString("file:///Users/test/\(id)")
+            media.typeProperties = type
+            var mediaType = RVData_Action.MediaType()
+            mediaType.element = media
+            var action = RVData_Action()
+            action.actionTypeData = .media(mediaType)
+            return action
+        }
+        var doc = songDocument()
+        var graphic = RVData_Presentation.Timeline.Cue()
+        graphic.triggerTime = 7
+        graphic.action = mediaAction("GRAPHIC", .image(RVData_Media.ImageTypeProperties()))
+        doc.timeline.cuesV2 = [
+            timelineCue(1, slide: "CUE-V1"), timelineCue(3, slide: "CUE-V2"), timelineCue(5, slide: "CUE-C1"),
+            graphic, timelineCue(9, slide: "CUE-V1"), timelineCue(11, slide: "CUE-GONE"),
+        ]
+        doc.timeline.audioAction = mediaAction("SONG", .audio(RVData_Media.AudioTypeProperties()))
+        doc.timeline.timecodeEnable = true
+        doc.timeline.timecodeOffset = 3600
+        doc.timeline.duration = 240
+
+        let mapped = ProDocumentMapper.map(doc, fallbackName: "Song")
+        let timelines = try! #require(mapped.presentation.timelines)
+        #expect(timelines.map(\.arrangementId) == [nil, "arr-1"])
+        let sunday = timelines[1]
+        #expect(sunday.timecodeEnabled && sunday.timecodeStart == 3600 * 30 && sunday.length == 240)
+        let slides = sunday.cues.filter { $0.kind == .slide }
+        #expect(slides.map(\.slideId) == ["cue-v1", "cue-v2", "cue-c1", "cue-v1"])
+        #expect(slides.last?.sectionOccurrence == 1, "the second verse")
+
+        #expect(timelines[0].cues.filter { $0.kind == .slide }.last?.sectionOccurrence == 0)
+        #expect(sunday.cues.first { $0.kind == .actions }?.actions?.first?.kind == .fireMedia)
+        let song = try! #require(sunday.cues.first { $0.kind == .audio })
+        #expect(song.at == 0)
+        #expect(mapped.warnings.contains { $0.contains("1 cue(s) name slides that aren't in the presentation") })
+
+        let resolved = ProDocumentMapper.replacingMediaIDs(mapped.presentation, with: [song.mediaId!: "song-id"])
+        let cues = try! #require(resolved.timelines?[1].cues)
+        #expect(cues.first { $0.kind == .audio }?.mediaId == "song-id")
+        #expect(!cues.contains { $0.kind == .actions })
+
+        #expect(ProDocumentMapper.map(songDocument(), fallbackName: "Song").presentation.timelines == nil)
+    }
+
     @Test func replacingMediaIDsRewritesAndStripsUnresolved() {
         var media = RVData_Media()
         media.uuid = uuid("MEDIA-1")
@@ -834,10 +888,10 @@ struct ProDocumentMapperTests {
 
         var doc = songDocument()
         doc.cues[0].actions.append(action)
-        doc.cues[1].actions.append(action)  
+        doc.cues[1].actions.append(action)
 
         let mapped = ProDocumentMapper.map(doc, fallbackName: "fallback")
-        #expect(mapped.mediaWants.count == 1)  
+        #expect(mapped.mediaWants.count == 1)
         let placeholder = mapped.mediaWants[0].placeholderID
 
         let resolved = ProDocumentMapper.replacingMediaIDs(mapped.presentation, with: [placeholder: "real-id"])
@@ -966,7 +1020,7 @@ struct ProDocumentMapperTests {
 
         let objects = ProDocumentMapper.map(doc, fallbackName: "fallback").presentation.slides[0].objects
         let byID = Dictionary(uniqueKeysWithValues: objects.map { ($0.id, $0) })
-        #expect(byID["el-o1"]?.opacity == nil)  
+        #expect(byID["el-o1"]?.opacity == nil)
         #expect(byID["el-o2"]?.opacity == 0.5)
         #expect(byID["el-o3"]?.opacity == 0.4)
     }
@@ -1260,7 +1314,7 @@ struct ProDocumentMapperTests {
         #expect(bold.column == 8)
         #expect(bold.length == 5)
         #expect(bold.fontName == "Helvetica-Bold")
-        #expect(bold.fontSize == 100)  
+        #expect(bold.fontSize == 100)
         let colored = try! #require(runs.first { $0.colorHex != nil })
         #expect(colored.column == 18)
         #expect(colored.length == 5)

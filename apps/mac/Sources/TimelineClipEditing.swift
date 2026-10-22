@@ -185,14 +185,14 @@ struct TimelineRangeOverlay: View {
 }
 
 struct TimelineClipKeyMonitor: NSViewRepresentable {
-    enum Verb { case split, copy, paste, delete, rippleDelete }
+    enum Verb: Equatable { case split, copy, paste, delete, rippleDelete, nudge(seconds: Double), discard }
 
     let active: Bool
-    let action: (Verb) -> Void
+    let action: (Verb) -> Bool
 
     final class Coordinator {
         var monitor: Any?
-        var action: (Verb) -> Void = { _ in }
+        var action: (Verb) -> Bool = { _ in false }
         weak var view: NSView?
 
         deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
@@ -200,8 +200,7 @@ struct TimelineClipKeyMonitor: NSViewRepresentable {
         func install() {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, let verb = verb(for: event) else { return event }
-                action(verb)
+                guard let self, let verb = verb(for: event), action(verb) else { return event }
                 return nil
             }
         }
@@ -214,15 +213,20 @@ struct TimelineClipKeyMonitor: NSViewRepresentable {
         private func verb(for event: NSEvent) -> Verb? {
             guard let window = view?.window, event.window === window, window.isKeyWindow, window.attachedSheet == nil,
                   !(window.firstResponder is NSText) else { return nil }
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.function, .numericPad])
             let key = event.charactersIgnoringModifiers?.lowercased()
             let backspace = event.keyCode == 51 || event.keyCode == 117
+            let arrow: Double? = event.keyCode == 123 ? -1 : event.keyCode == 124 ? 1 : nil
             switch (flags, key) {
             case (.command, "b"): return .split
             case (.command, "c"): return .copy
             case (.command, "v"): return .paste
             case ([], _) where backspace: return .delete
             case (.shift, _) where backspace: return .rippleDelete
+            case ([], _) where arrow != nil: return .nudge(seconds: arrow! * PresentationTimelines.frame)
+            case (.shift, _) where arrow != nil: return .nudge(seconds: arrow!)
+            case ([], _) where event.keyCode == 53: return .discard
             default: return nil
             }
         }

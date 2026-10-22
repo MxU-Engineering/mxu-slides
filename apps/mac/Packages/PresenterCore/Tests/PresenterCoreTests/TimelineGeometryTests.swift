@@ -104,6 +104,15 @@ import Testing
         #expect(TimelineBlockEdit.liveDuration(1, mode: .move, delta: 600, pointsPerSecond: 120) == 1)
     }
 
+    @Test func aDragSnapsTheNearestEdgeWithinReach() {
+
+        #expect(TimelineBlockEdit.snappedDelta(20, edges: [100], targets: [124, 300]) == 24)
+
+        #expect(TimelineBlockEdit.snappedDelta(20, edges: [100, 150], targets: [125, 172]) == 22)
+
+        #expect(TimelineBlockEdit.snappedDelta(20, edges: [100], targets: [130]) == 20)
+    }
+
     @Test func durationLabelsShowTwoDecimalsOnlyWhenNeeded() {
         #expect(TimelineBlockEdit.durationLabel(0.4) == "0.4s")
         #expect(TimelineBlockEdit.durationLabel(0.45) == "0.45s")

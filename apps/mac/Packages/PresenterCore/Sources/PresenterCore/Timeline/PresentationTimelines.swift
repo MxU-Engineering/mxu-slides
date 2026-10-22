@@ -105,6 +105,27 @@ public enum PresentationTimelines {
             sectionOccurrence: anchor.sectionOccurrence, slideId: anchor.slideId)
     }
 
+    public static func slideCues(
+        _ fires: [(at: Double, slideId: String)], in blocks: [TimelinePlayedBlock], idPrefix: String
+    ) -> (cues: [TimelineCue], missing: Int) {
+        let order = blocks.flatMap(\.slideIds)
+        var next = 0
+        var cues: [TimelineCue] = []
+        var missing = 0
+        for (index, fire) in fires.sorted(by: { $0.at < $1.at }).enumerated() {
+            guard let occurrence = order[min(next, order.count)...].firstIndex(of: fire.slideId)
+                    ?? order.lastIndex(of: fire.slideId),
+                  let anchor = anchor(occurrence: occurrence, in: blocks)
+            else {
+                missing += 1
+                continue
+            }
+            next = max(next, occurrence + 1)
+            cues.append(slideCue(id: idPrefix + String(index), at: snappedToFrame(max(fire.at, 0)), anchor: anchor))
+        }
+        return (cues, missing)
+    }
+
     public static func end(of cue: TimelineCue, in cues: [TimelineCue]) -> Double {
         guard cue.isBlock else { return cue.at }
         if let duration = cue.duration { return cue.at + max(duration, 0) }
@@ -264,8 +285,44 @@ public enum PresentationTimelines {
         return effects
     }
 
-    public static func recording(_ cues: [TimelineCue], from start: Double) -> [TimelineCue] {
-        cues.filter { $0.kind != .slide || $0.at < start - frame / 2 }
+    public static func nextSlideCue(
+        after position: Double, in cues: [TimelineCue], blocks: [TimelinePlayedBlock]
+    ) -> TimelineCue? {
+        cues.filter { $0.kind == .slide && $0.at > position && occurrence(of: $0, in: blocks) != nil }
+            .min { $0.at < $1.at }
+    }
+
+    public struct Take: Equatable, Sendable {
+
+        public var original: [TimelineCue]
+
+        public var swept: [ClosedRange<Double>]
+
+        public var recorded: [TimelineCue] = []
+
+        public init(_ cues: [TimelineCue], from start: Double) {
+            original = cues
+            swept = [start - frame / 2 ... start]
+        }
+
+        public mutating func played(from: Double, to: Double) {
+            guard to > from else { return }
+            if let last = swept.last, from >= last.lowerBound, from <= last.upperBound + frame / 2 {
+                swept[swept.count - 1] = last.lowerBound ... max(last.upperBound, to)
+            } else {
+                swept.append(from ... to)
+            }
+        }
+
+        public mutating func record(_ cue: TimelineCue) {
+            recorded = PresentationTimelines.recorded(cue, into: recorded)
+        }
+
+        public var cues: [TimelineCue] {
+            var cues = original.filter { cue in cue.kind != .slide || !swept.contains { $0.contains(cue.at) } }
+            for cue in recorded { cues = PresentationTimelines.recorded(cue, into: cues) }
+            return cues
+        }
     }
 
     public static func recorded(_ cue: TimelineCue, into cues: [TimelineCue]) -> [TimelineCue] {

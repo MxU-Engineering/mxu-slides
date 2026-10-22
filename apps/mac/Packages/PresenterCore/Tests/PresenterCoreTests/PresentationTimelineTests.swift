@@ -190,18 +190,48 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     #expect(T.landing(cues, blocks: blocks, at: 16, live: ["bumper"]) == [.clear(lane: .videos, id: "bumper")])
 }
 
-@Test func reRecordingReplacesOnlyTheSlideCuesAfterIt() {
+@Test func aTakeReplacesOnlyTheSlideCuesItPlayedOver() {
     let cues = [
         slide("early", at: 2, occurrence: 0),
-        slide("late", at: 8, occurrence: 1),
-        block("ov", .overlays, at: 9, duration: 2, ref: "title"),
+        slide("start", at: 5, occurrence: 1),
+        slide("mid", at: 7, occurrence: 2),
+        block("ov", .overlays, at: 8, duration: 2, ref: "title"),
+        slide("late", at: 12, occurrence: 3),
+        slide("far", at: 30, occurrence: 4),
     ]
-    let kept = T.recording(cues, from: 5)
-    #expect(kept.map(\.id) == ["early", "ov"])
-    let recorded = T.recorded(slide("new", at: 6, occurrence: 2), into: kept)
-    #expect(recorded.map(\.id) == ["early", "new", "ov"])
+    var take = T.Take(cues, from: 5)
 
-    #expect(T.recorded(slide("again", at: 6.01, occurrence: 3), into: recorded).map(\.id) == ["early", "again", "ov"])
+    #expect(take.cues.map(\.id) == ["early", "mid", "ov", "late", "far"])
+    take.played(from: 5, to: 9)
+    take.record(slide("new", at: 6, occurrence: 2))
+
+    #expect(take.cues.map(\.id) == ["early", "new", "ov", "late", "far"])
+
+    take.record(slide("again", at: 6.01, occurrence: 3))
+    #expect(take.cues.map(\.id) == ["early", "again", "ov", "late", "far"])
+
+    take.played(from: 25, to: 31)
+    #expect(take.cues.map(\.id) == ["early", "again", "ov", "late"])
+    #expect(take.original == cues)
+}
+
+@Test func slidesFiredByIdTakeTheirNextPlaceInTheOrder() {
+    let fires: [(at: Double, slideId: String)] = [
+        (1, "v1"), (3, "v2"), (5, "c1"), (9, "v1"), (11.01, "v2"), (13, "c1"), (15, "c1"), (20, "gone"),
+    ]
+    let (cues, missing) = T.slideCues(fires, in: blocks, idPrefix: "pro-")
+    #expect(missing == 1)
+    #expect(cues.map { T.occurrence(of: $0, in: blocks) } == [0, 1, 2, 3, 4, 5, 5])
+    #expect(cues[5].sectionId == "c" && cues[5].sectionOccurrence == 1, "the second chorus")
+    #expect(cues[4].at == T.snappedToFrame(11.01))
+    #expect(cues.first?.id == "pro-0")
+}
+
+@Test func theNextSlideCueSkipsOrphans() {
+    let orphan = TimelineCue(id: "o", lane: "slide", at: 4, sectionId: "x", sectionOccurrence: 0, slideId: "nope")
+    let cues = [slide("a", at: 2, occurrence: 0), orphan, slide("b", at: 6, occurrence: 1)]
+    #expect(T.nextSlideCue(after: 2, in: cues, blocks: blocks)?.id == "b")
+    #expect(T.nextSlideCue(after: 6, in: cues, blocks: blocks) == nil)
 }
 
 @Test func nudgesSnapToFramesAndStopAtZero() {

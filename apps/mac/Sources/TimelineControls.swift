@@ -541,6 +541,8 @@ private struct TimelineBlockGestures<Menu: View>: ViewModifier {
     let autoScroll: () -> Void
     let ended: (TimelineBlockEdit.Mode?, CGFloat) -> Void
     let doubleClicked: () -> Void
+
+    let snap: ((TimelineBlockEdit.Mode, CGFloat) -> CGFloat)?
     @ViewBuilder let menu: () -> Menu
 
     func body(content: Content) -> some View {
@@ -574,7 +576,7 @@ private struct TimelineBlockGestures<Menu: View>: ViewModifier {
                             edit.mode = mode
                             engaged(mode, start, measured)
                         }
-                        edit.delta = dx
+                        edit.delta = edit.mode.flatMap { mode in snap?(mode, dx) } ?? dx
                         if edit.mode == .move {
                             moved(dx)
                         } else {
@@ -587,6 +589,7 @@ private struct TimelineBlockGestures<Menu: View>: ViewModifier {
                         var dx: CGFloat = 0
                         if let start = edit.pressStart, let mouse = anchor.mouseLocal() {
                             dx = mouse.x - start.x
+                            if let mode { dx = snap?(mode, dx) ?? dx }
                         }
                         edit = TimelineBlockEditState()
                         ended(mode, dx)
@@ -612,12 +615,13 @@ extension View {
         autoScroll: @escaping () -> Void,
         ended: @escaping (TimelineBlockEdit.Mode?, CGFloat) -> Void,
         doubleClicked: @escaping () -> Void,
+        snap: ((TimelineBlockEdit.Mode, CGFloat) -> CGFloat)? = nil,
         @ViewBuilder menu: @escaping () -> Menu
     ) -> some View {
         modifier(TimelineBlockGestures(
             id: id, anchor: anchor, edit: edit, frames: frames, frame: frame,
             engaged: engaged, moved: moved, autoScroll: autoScroll, ended: ended,
-            doubleClicked: doubleClicked, menu: menu
+            doubleClicked: doubleClicked, snap: snap, menu: menu
         ))
     }
 }

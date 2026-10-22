@@ -1520,12 +1520,13 @@ final class AppModel {
 
     func updatePresentationField<Field: Codable & Equatable & Sendable>(
         _ presentationID: String, _ keyPath: WritableKeyPath<Presentation, Field?> & Sendable, key: String,
-        to value: Field?, undoLabel: String?
+        to value: Field?, undoLabel: String?, undoingTo: Field?? = nil
     ) {
 
         withDeck(presentationID) { [weak self] deck in
             if let self {
-                let before = deck.map { $0[keyPath: keyPath] }
+
+                let before = undoingTo ?? deck.map { $0[keyPath: keyPath] }
                 updatePresentation(presentationID, scope: "field", value: { $0[keyPath: keyPath] = value }) {
                     try $0.updateField(keyPath, key: key, to: value)
                 }

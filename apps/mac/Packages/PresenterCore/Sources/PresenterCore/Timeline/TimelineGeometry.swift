@@ -147,6 +147,19 @@ public enum TimelineBlockEdit {
         }
     }
 
+    public static let snapDistance: CGFloat = 6
+
+    public static func snappedDelta(_ delta: CGFloat, edges: [CGFloat], targets: [CGFloat]) -> CGFloat {
+        var pull: CGFloat?
+        for edge in edges {
+            for target in targets {
+                let gap = target - (edge + delta)
+                if abs(gap) <= snapDistance, abs(gap) < abs(pull ?? .infinity) { pull = gap }
+            }
+        }
+        return delta + (pull ?? 0)
+    }
+
     public static func snapped(_ seconds: Double) -> Double {
         max((seconds * 20).rounded() / 20, minimumDuration)
     }

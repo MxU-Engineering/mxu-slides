@@ -29,6 +29,9 @@ final class PresentationTimelineController: TimelinePlayheadSource {
 
     @ObservationIgnored private var recordingTimeline: PresentationTimeline?
 
+    @ObservationIgnored private var take: PresentationTimelines.Take?
+    @ObservationIgnored private var takeBefore: (presentationID: String, timelines: [PresentationTimeline]?)?
+
     @ObservationIgnored private var firing = false
 
     @ObservationIgnored private var underTimecode = false
@@ -154,9 +157,35 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     private func endRecording() {
+        if let timeline = recordingTimeline, let before = takeBefore {
+            save(timeline, presentationID: before.presentationID, undoLabel: "Record Timeline", undoingTo: before.timelines)
+        }
         recording = false
         recordingTimeline = nil
+        take = nil
+        takeBefore = nil
         timecodeRecording = nil
+    }
+
+    func discardTake() {
+        guard let before = takeBefore else { return stop() }
+        take = nil
+        takeBefore = nil
+        recordingTimeline = nil
+        stop()
+        controls?.appModel.updatePresentationField(
+            before.presentationID, \.timelines, key: "timelines", to: before.timelines, undoLabel: "Discard Take")
+        DiagnosticsStore.shared.note("timeline.record", detail: "take discarded")
+    }
+
+    private func beginTake(_ timeline: PresentationTimeline, at start: Double, presentation: Presentation) {
+        var timeline = timeline
+        let take = PresentationTimelines.Take(timeline.cues, from: start)
+        takeBefore = (presentation.id, presentation.timelines)
+        timeline.cues = take.cues
+        self.take = take
+        recordingTimeline = timeline
+        save(timeline, presentationID: presentation.id, undoLabel: nil)
     }
 
     func record(itemID: String, presentation: Presentation, arrangementId: String?, newStart: Int, start: Int? = nil) {
@@ -169,14 +198,13 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             DiagnosticsStore.shared.note("timeline.record", detail: "armed for timecode")
             return
         }
-        var timeline = timeline(of: presentation) ?? PresentationTimeline(
+        let timeline = timeline(of: presentation) ?? PresentationTimeline(
             id: UUID().uuidString, arrangementId: arrangementId.flatMap { $0.isEmpty ? nil : $0 },
             timecodeEnabled: false, timecodeStart: newStart, cues: [])
-        timeline.cues = PresentationTimelines.recording(timeline.cues, from: timelinePlayheadTime)
-        recordingTimeline = timeline
-        save(timeline, presentationID: presentation.id, undoLabel: "Record Timeline")
+        beginTake(timeline, at: timelinePlayheadTime, presentation: presentation)
         play(itemID: itemID, presentation: presentation, arrangementId: arrangementId)
         recording = true
+        nextCue = nil
     }
 
     func stopTracks() {
@@ -377,12 +405,10 @@ final class PresentationTimelineController: TimelinePlayheadSource {
             return nil
         case .begin(let start, let at):
             guard let deck = deck() else { break }
-            var timeline = timeline(of: deck) ?? PresentationTimeline(
+            let timeline = timeline(of: deck) ?? PresentationTimeline(
                 id: UUID().uuidString, arrangementId: arrangementId.flatMap { $0.isEmpty ? nil : $0 },
                 timecodeEnabled: true, timecodeStart: start, cues: [])
-            timeline.cues = PresentationTimelines.recording(timeline.cues, from: at)
-            recordingTimeline = timeline
-            save(timeline, presentationID: deck.id, undoLabel: "Record Timeline")
+            beginTake(timeline, at: at, presentation: deck)
             take.start = start
             take.started = true
             timecodeRecording = take
@@ -405,6 +431,7 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     private(set) var clockAnchor: ClockAnchor?
 
     private func publishClock(position: Double, running: Bool) {
+        if !running, nextCue != nil { nextCue = nil }
         guard let itemID else {
             if clockAnchor != nil { clockAnchor = nil }
             return
@@ -619,20 +646,52 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     }
 
     func advance(to position: Double) {
+        if let before = recordingTimeline, take != nil {
+            take?.played(from: lastPosition, to: position)
+            recordingTimeline?.cues = take?.cues ?? []
+
+            if let after = recordingTimeline, after.cues.count != before.cues.count, let presentationID {
+                save(after, presentationID: presentationID, undoLabel: nil)
+            }
+        }
         guard let deck = deck(), let cues = cues(of: deck) else {
             lastPosition = position
             return
         }
-        let effects = PresentationTimelines.crossing(
-            cues, blocks: blocks(of: deck), from: lastPosition, to: position, live: live())
+        let blocks = blocks(of: deck)
+        let effects = PresentationTimelines.crossing(cues, blocks: blocks, from: lastPosition, to: position, live: live())
         lastPosition = position
         apply(effects, cues: cues, deck: deck)
+        noteNextCue(cues, blocks: blocks, position: position)
     }
 
     func land(at position: Double) {
         lastPosition = position
         guard let deck = deck(), let cues = cues(of: deck) else { return }
-        apply(PresentationTimelines.landing(cues, blocks: blocks(of: deck), at: position, live: live()), cues: cues, deck: deck)
+        let blocks = blocks(of: deck)
+        apply(PresentationTimelines.landing(cues, blocks: blocks, at: position, live: live()), cues: cues, deck: deck)
+        noteNextCue(cues, blocks: blocks, position: position)
+    }
+
+    struct NextCue: Equatable {
+        var itemID: String
+        var cueID: String
+        var firesAt: Date
+    }
+
+    private(set) var nextCue: NextCue?
+
+    private func noteNextCue(_ cues: [TimelineCue], blocks: [TimelinePlayedBlock], position: Double) {
+        let running = playing || underTimecode
+        let next = recording || !running ? nil : itemID.flatMap { itemID in
+            PresentationTimelines.nextSlideCue(after: position, in: cues, blocks: blocks).map {
+                NextCue(itemID: itemID, cueID: $0.id, firesAt: Date().addingTimeInterval($0.at - position))
+            }
+        }
+        if next?.cueID != nextCue?.cueID || next?.itemID != nextCue?.itemID
+            || abs((next?.firesAt ?? .distantPast).timeIntervalSince(nextCue?.firesAt ?? .distantPast)) > 0.25 {
+            nextCue = next
+        }
     }
 
     private func apply(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {
@@ -735,7 +794,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         else { return }
         let cue = PresentationTimelines.slideCue(
             id: UUID().uuidString, at: PresentationTimelines.snappedToFrame(lastPosition), anchor: anchor)
-        timeline.cues = PresentationTimelines.recorded(cue, into: timeline.cues)
+        take?.record(cue)
+        timeline.cues = take?.cues ?? PresentationTimelines.recorded(cue, into: timeline.cues)
         recordingTimeline = timeline
 
         lastPosition = max(lastPosition, cue.at)
@@ -762,9 +822,13 @@ final class PresentationTimelineController: TimelinePlayheadSource {
         SlideSceneBuilder.timelineBlocks(for: deck, arrangementId: arrangementId)
     }
 
-    func save(_ timeline: PresentationTimeline, presentationID: String, undoLabel: String?) {
+    func save(
+        _ timeline: PresentationTimeline, presentationID: String, undoLabel: String?,
+        undoingTo: [PresentationTimeline]?? = nil
+    ) {
         guard let model = controls?.appModel else { return }
         let all = PresentationTimelines.replacing(timeline, in: model.presentation(presentationID)?.timelines)
-        model.updatePresentationField(presentationID, \.timelines, key: "timelines", to: all, undoLabel: undoLabel)
+        model.updatePresentationField(
+            presentationID, \.timelines, key: "timelines", to: all, undoLabel: undoLabel, undoingTo: undoingTo)
     }
 }
