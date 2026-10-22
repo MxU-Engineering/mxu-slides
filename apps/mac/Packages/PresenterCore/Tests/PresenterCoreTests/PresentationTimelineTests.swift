@@ -241,6 +241,20 @@ private func block(_ id: String, _ lane: TimelineLane, at: Double, duration: Dou
     #expect(T.nextSlideCue(after: 6, in: cues, blocks: blocks) == nil)
 }
 
+@Test func aSlideCueMovedOntoAnotherStepsPastIt() {
+    let cues = [slide("a", at: 1, occurrence: 0), slide("b", at: 2, occurrence: 1), slide("c", at: 2 + T.frame, occurrence: 2)]
+    var moved = cues
+    moved[0].at = 2
+
+    #expect(T.steppingSlideCuesApart(moved, moved: ["a"], forward: true)[0].at == T.snappedToFrame(2 + 2 * T.frame))
+
+    #expect(T.steppingSlideCuesApart(moved, moved: ["a"], forward: false)[0].at == T.snappedToFrame(2 - T.frame))
+
+    var atZero = [slide("a", at: 0, occurrence: 0), slide("z", at: 0, occurrence: 1)]
+    atZero = T.steppingSlideCuesApart(atZero, moved: ["a"], forward: false)
+    #expect(atZero[0].at == T.frame)
+}
+
 @Test func nudgesSnapToFramesAndStopAtZero() {
     let cue = slide("s", at: 1, occurrence: 0)
     #expect(T.moved(cue, by: T.frame).at == T.snappedToFrame(1 + 1.0 / 30))

@@ -372,6 +372,23 @@ public enum PresentationTimelines {
         return edited
     }
 
+    public static func steppingSlideCuesApart(
+        _ cues: [TimelineCue], moved: Set<String>, forward: Bool
+    ) -> [TimelineCue] {
+        var cues = cues
+        for index in cues.indices where moved.contains(cues[index].id) && cues[index].kind == .slide {
+            func taken() -> Bool {
+                cues.contains { $0.id != cues[index].id && $0.kind == .slide && abs($0.at - cues[index].at) < frame / 2 }
+            }
+            var step = forward ? frame : -frame
+            while taken() {
+                if cues[index].at + step < 0 { step = frame }
+                cues[index].at = snappedToFrame(cues[index].at + step)
+            }
+        }
+        return cues
+    }
+
     public static func snappedToFrame(_ seconds: Double) -> Double {
         (seconds * Double(framesPerSecond)).rounded() / Double(framesPerSecond)
     }

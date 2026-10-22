@@ -1190,7 +1190,10 @@ struct PresentationTimelineLanes: View {
         let left = map.x(ofTime: cue.at)
         let end = PresentationTimelines.end(of: cue, in: cues)
 
-        let next = cues.filter { $0.kind == cue.kind && $0.at > cue.at }.map(\.at).min()
+        let index = cues.firstIndex { $0.id == cue.id } ?? 0
+        let next = cues.enumerated().filter { other in
+            other.element.kind == cue.kind && (other.element.at > cue.at || (other.element.at == cue.at && other.offset > index))
+        }.map(\.element.at).min()
 
         let pin = !isBlock
         let gap = (next.map { map.x(ofTime: $0) } ?? left + 140) - left
@@ -1337,6 +1340,7 @@ struct PresentationTimelineLanes: View {
                 timeline.cues[at] = PresentationTimelines.edited(
                     each, in: before, mode: mode, by: seconds, openEnd: each.id == id ? openEnd : nil)
             }
+            timeline.cues = PresentationTimelines.steppingSlideCuesApart(timeline.cues, moved: together, forward: seconds >= 0)
         }
     }
 
@@ -2035,6 +2039,7 @@ extension PresentationTimelineContext {
     func slideWords(_ cue: TimelineCue, room: CGFloat) -> String {
         let number = PresentationTimelines.occurrence(of: cue, in: blocks).map { "\($0 + 1)" } ?? "?"
 
+        guard room >= 8 else { return "" }
         guard let slide = presentation.slides.first(where: { $0.id == cue.slideId }) else { return number }
         let words = PresentationTimelines.leadingWords(ConfidenceSceneBuilder.lyricText(for: slide), fitting: Double(room))
         return words.isEmpty ? number : words
