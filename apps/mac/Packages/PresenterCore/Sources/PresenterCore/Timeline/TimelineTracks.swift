@@ -268,6 +268,16 @@ public extension TimelineTracks {
     }
 }
 
+public extension TimelineTracks {
+
+    static func patchPlan(start: Int, deviceChannels: Int) -> [(family: Family, channel: Int)] {
+        Family.allCases.enumerated().compactMap { index, family in
+            let channel = start + index
+            return channel >= 0 && channel < deviceChannels ? (family, channel) : nil
+        }
+    }
+}
+
 public extension TrackChannel {
     var trackRole: TimelineTracks.Role { role.flatMap(TimelineTracks.Role.init(rawValue:)) ?? .music }
 }

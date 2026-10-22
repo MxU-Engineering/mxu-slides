@@ -129,6 +129,15 @@ final class AudioOutputInventory {
         persist()
     }
 
+    @discardableResult
+    func ensureMono(device: AudioOutputDevice, channel: Int) -> Entry {
+        if let found = entries.first(where: { $0.deviceUID == device.uid && $0.monoChannel == channel }) { return found }
+        let made = Entry(name: "\(device.name) \(channel + 1)", deviceUID: device.uid, channelOffset: 0, monoChannel: channel)
+        entries.append(made)
+        persist()
+        return made
+    }
+
     func channelWords(_ entry: Entry) -> String {
         entry.monoChannel.map { "\($0 + 1)" } ?? "\(entry.channelOffset + 1)-\(entry.channelOffset + 2)"
     }
@@ -141,7 +150,7 @@ final class AudioOutputInventory {
     }
 
     func remove(_ entry: Entry) {
-        guard entries.count > 1 else { return }  
+        guard entries.count > 1 else { return }
         entries.removeAll { $0.id == entry.id }
         persist()
     }

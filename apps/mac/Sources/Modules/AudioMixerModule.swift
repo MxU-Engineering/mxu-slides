@@ -40,6 +40,7 @@ struct AudioMixerModule: View {
                 }
                 .buttonStyle(.plain)
                 .help(audio.isMuted ? "Unmute music" : "Mute music")
+                TracksMixerButton(model: model)
                 if !runOnly {
 
                     Button {
@@ -522,7 +523,10 @@ struct AudioMixerModule: View {
         _ mix: AudioMixInventory.Entry, audio: AudioController,
         mixer: AudioMixerController
     ) -> some View {
-        ConsoleStrip(
+
+        let idle = TracksController.busIDs.contains(mix.id)
+            && !TracksController.fedMixIDs(model.trackChannels, mixer: mixer).contains(mix.id)
+        return ConsoleStrip(
             name: mix.name,
             live: false,
             tint: .blue,
@@ -567,6 +571,7 @@ struct AudioMixerModule: View {
                     })
             }
         ) { EmptyView() }
+        .opacity(idle ? 0.5 : 1)
     }
 
     private enum OutputRow: Identifiable {

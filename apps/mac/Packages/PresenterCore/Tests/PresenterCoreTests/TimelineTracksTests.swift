@@ -187,3 +187,12 @@ private func stem(_ channel: String, at: Double = 0, duration: Double = 180, id:
     let on = TimelineTracks.shownMixes(mixes, folders: folders, buses: ["bus-keys", "bus-click"], tracksOn: true)
     #expect(on.mixes.count == 5 && on.folders.count == 3)
 }
+
+@Test func theOneClickPatchLaysTheFamilyMixesAcrossTheInterface() {
+    let sixteen = TimelineTracks.patchPlan(start: 0, deviceChannels: 16)
+    #expect(sixteen.count == 12)
+    #expect(sixteen.first! == (.click, 0) && sixteen[1] == (.guide, 1) && sixteen.last! == (.other, 11))
+
+    let late = TimelineTracks.patchPlan(start: 8, deviceChannels: 16)
+    #expect(late.count == 8 && late.last!.channel == 15)
+}

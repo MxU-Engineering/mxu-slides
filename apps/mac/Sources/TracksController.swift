@@ -142,7 +142,8 @@ final class TracksController {
         if let stored = UserDefaults.standard.string(forKey: "audio.track.\(channel.id).mixId") {
             return stored.isEmpty ? nil : stored
         }
-        return channel.trackRole == .music ? AudioMixInventory.mainID : nil
+
+        return channel.trackRole == .music && !UserDefaults.standard.bool(forKey: offMainKey) ? AudioMixInventory.mainID : nil
     }
 
     static func setMix(_ mixId: String?, for channel: String) {
@@ -199,10 +200,29 @@ final class TracksController {
     }
 
     static func musicOnMain(_ channels: [TrackChannel]) -> Bool {
-        channels.filter { $0.trackRole == .music }.contains { mixId($0) == AudioMixInventory.mainID }
+        let music = channels.filter { $0.trackRole == .music }
+        guard !music.isEmpty else { return !UserDefaults.standard.bool(forKey: offMainKey) }
+        return music.contains { mixId($0) == AudioMixInventory.mainID }
+    }
+
+    static let offMainKey = "tracks.offMain"
+
+    static func existingBus(_ family: TimelineTracks.Family) -> AudioMixInventory.Entry? {
+        UserDefaults.standard.string(forKey: "audio.tracks.bus.\(family.rawValue)")
+            .flatMap { AudioMixInventory.shared.entry(id: $0) }
+    }
+
+    static func fedMixIDs(_ channels: [TrackChannel], mixer: AudioMixerController) -> Set<String> {
+        var fed: Set<String> = []
+        for channel in channels {
+            if let route = mixId(channel) { fed.insert(route) }
+            fed.formUnion(mixer.channelSends("track:\(channel.id)").filter { $0.value > 0 }.keys)
+        }
+        return fed
     }
 
     static func setMusicOnMain(_ on: Bool, _ channels: [TrackChannel]) {
+        UserDefaults.standard.set(!on, forKey: offMainKey)
         for channel in channels where channel.trackRole == .music {
             let route = mixId(channel)
             if on, route == nil { setMix(AudioMixInventory.mainID, for: channel.id) }
