@@ -2113,9 +2113,10 @@ struct SlideThumbnailView: View {
     private func posterLayer(mediaId: String) -> some View {
         Color.clear
             .overlay {
-                PosterImage(
-                    model: model, mediaId: mediaId,
-                    maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
+                PosterLookImage(
+                    model: model, render: render, mediaId: mediaId,
+                    canvas: SlideSceneBuilder.canvasSize(for: presentation),
+                    pixelWidth: pixelWidth)
             }
             .clipped()
     }
@@ -2187,6 +2188,36 @@ struct PosterImage: View {
             if loadedStamp != stamp { image = nil }
             image = await ThumbnailStore.shared.poster(for: item, blobs: blobs, maxPixels: maxPixels)
             loadedStamp = stamp
+        }
+    }
+}
+
+struct PosterLookImage: View {
+    let model: AppModel
+    let render: RenderContext?
+    let mediaId: String
+    var canvas = SlideSceneBuilder.canvasSize
+    var pixelWidth = ThumbnailResolution.base
+
+    var body: some View {
+
+        let effects = model.mediaSceneEffects(id: mediaId)
+        let item = model.media(mediaId)
+        let look = item.flatMap { item in
+            !effects.isEmpty && !model.isMediaFileMissing(item)
+                ? ThumbnailStore.shared.posterLook(
+                    mediaID: mediaId, effects: effects, canvas: canvas, pixelWidth: pixelWidth,
+                    render: render, model: model)
+                : nil
+        }
+        if let look {
+            Image(decorative: look, scale: 1)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            PosterImage(
+                model: model, mediaId: mediaId,
+                maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
         }
     }
 }
@@ -2355,7 +2386,7 @@ struct MediaFireView: View {
 
                 Color.clear
                     .aspectRatio(16 / 9, contentMode: .fit)
-                    .overlay { PosterImage(model: model, mediaId: mediaID) }
+                    .overlay { PosterLookImage(model: model, render: controls?.render, mediaId: mediaID) }
                     .frame(maxWidth: 640)
                     .clipShape(RoundedRectangle.standard(CornerStandard.element))
                     .overlay {

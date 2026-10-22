@@ -341,6 +341,64 @@ final class ThumbnailStore {
         }
     }
 
+    @ObservationIgnored private var looksInFlight: Set<String> = []
+
+    func posterLook(
+        mediaID: String, effects: [SceneEffect], canvas: CGSize, pixelWidth: Int,
+        render: RenderContext?, model: AppModel?
+    ) -> CGImage? {
+
+        _ = thumbStillsVersion
+        _ = contentsVersion
+        let stillID = Self.thumbStillID(mediaID, pixelWidth: pixelWidth)
+        let identity = "look|\(mediaID)|\(Int(canvas.width))x\(Int(canvas.height))|w\(pixelWidth)"
+        if thumbStillIsCurrent(stillID, mediaID: mediaID, pixelWidth: pixelWidth, render: render, model: model),
+           let compositor = render?.compositor {
+            let key = "\(identity)|\(thumbStillKeys[stillID] ?? "")|\(effects.hashValue)"
+            if let hit = contents.object(forKey: key as NSString) {
+                return hit.image
+            } else {
+                if !looksInFlight.contains(key) {
+                    looksInFlight.insert(key)
+                    let scene = SlideSceneBuilder.posterLookScene(
+                        mediaID: mediaID, stillID: stillID, canvas: canvas, effects: effects)
+                    let height = max(1, Int((CGFloat(pixelWidth) * canvas.height
+                        / max(1, canvas.width)).rounded()))
+                    let large = pixelWidth > ThumbnailResolution.base
+                    let mediaFilesAtBuild = mediaFilesGeneration
+                    Self.renderQueue.async {
+                        let frame = try? compositor.renderFrame(
+                            scene: scene, width: pixelWidth, height: height,
+                            transparentBackground: true
+                        )
+                        Task { @MainActor in
+                            ThumbnailStore.shared.landLook(
+                                key: key, identity: identity, frame: frame, large: large,
+                                mediaFilesAtBuild: mediaFilesAtBuild
+                            )
+                        }
+                    }
+                }
+                return lastFrame(identity)
+            }
+        } else {
+            registerThumbStill(id: mediaID, pixelWidth: pixelWidth, render: render, model: model)
+            return nil
+        }
+    }
+
+    private func landLook(
+        key: String, identity: String, frame: RenderedFrame?, large: Bool, mediaFilesAtBuild: Int
+    ) {
+        looksInFlight.remove(key)
+
+        if let image = frame?.cgImage, mediaFilesAtBuild == mediaFilesGeneration {
+            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
+            lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image, large: large))
+            scheduleContentsBump()
+        }
+    }
+
     func cachedPoster(for item: MediaItem, maxPixels: Int = PosterDecode.maxPixelSize) -> CGImage? {
         posters.object(forKey: posterKey(item, maxPixels: maxPixels) as NSString)?.image
     }

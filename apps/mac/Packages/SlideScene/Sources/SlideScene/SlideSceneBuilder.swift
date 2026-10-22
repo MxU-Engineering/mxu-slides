@@ -255,6 +255,19 @@ public enum SlideSceneBuilder {
         return scene
     }
 
+    public static func posterLookScene(
+        mediaID: String, stillID: String, canvas: CGSize, effects: [SceneEffect]
+    ) -> RenderScene {
+        var scene = RenderScene(canvasSize: canvas, background: .clear)
+        scene.addItem(RenderItem(
+            id: "look::\(mediaID)",
+            frame: CGRect(origin: .zero, size: canvas),
+            content: .media(id: stillID, scaleMode: .fill, sourceRect: nil),
+            effects: effects
+        ), to: .loopingVideos)
+        return scene
+    }
+
     public static func placeholder(in themeSlide: Slide) -> SlideObject? {
         themeSlide.objects.first { $0.objectKind == .text }
     }
