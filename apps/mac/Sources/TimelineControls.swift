@@ -78,6 +78,35 @@ struct TimelineZoomControls: View {
     }
 }
 
+struct TimelineRowHeightControls: View {
+    let height: Double
+    let range: ClosedRange<Double>
+    let set: (Double) -> Void
+
+    var body: some View {
+        Button {
+            set(TimelineZoom.zoomedOut(height, in: range))
+        } label: {
+            Image(systemName: "rectangle.compress.vertical")
+        }
+        .buttonStyle(.plain)
+        .controlSize(.mini)
+        .help("Shorter rows")
+        Slider(value: Binding(get: { height }, set: { set($0.rounded()) }), in: range)
+            .controlSize(.mini)
+            .frame(width: 60)
+            .help("Row height")
+        Button {
+            set(TimelineZoom.zoomedIn(height, in: range))
+        } label: {
+            Image(systemName: "rectangle.expand.vertical")
+        }
+        .buttonStyle(.plain)
+        .controlSize(.mini)
+        .help("Taller rows")
+    }
+}
+
 private struct TimelinePinchZoom: ViewModifier {
     let current: () -> Double
     let zoom: (Double) -> Void
@@ -261,6 +290,7 @@ struct TimelinePageFollow<Source: TimelinePlayheadSource>: View {
 
 struct TimelineBlockCard<Content: View>: View {
     let width: CGFloat
+    var height: CGFloat = 22
     let tint: Color
     let selected: Bool
     var rampIn = false
@@ -273,7 +303,7 @@ struct TimelineBlockCard<Content: View>: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 9)
-        .frame(width: width, height: 22, alignment: .leading)
+        .frame(width: width, height: height, alignment: .leading)
         .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
@@ -291,7 +321,7 @@ struct TimelineBlockCard<Content: View>: View {
 
             RoundedRectangle(cornerRadius: 2)
                 .fill(tint.opacity(0.55))
-                .frame(width: 4, height: 14)
+                .frame(width: 4, height: min(14, height - 8))
                 .padding(.trailing, 2)
                 .allowsHitTesting(false)
                 .help("Drag to change how long it runs")
@@ -300,7 +330,7 @@ struct TimelineBlockCard<Content: View>: View {
 
             RoundedRectangle(cornerRadius: 2)
                 .fill(tint.opacity(0.55))
-                .frame(width: 4, height: 14)
+                .frame(width: 4, height: min(14, height - 8))
                 .padding(.leading, 2)
                 .allowsHitTesting(false)
                 .help("Drag to move where it starts; the end stays put")
@@ -311,7 +341,7 @@ struct TimelineBlockCard<Content: View>: View {
     private func rampWedge(leading: Bool) -> some View {
         RampTriangle()
             .fill(tint.opacity(0.35))
-            .frame(width: 8, height: 22)
+            .frame(width: 8, height: height)
             .scaleEffect(x: leading ? 1 : -1)
     }
 }

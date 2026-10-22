@@ -16,6 +16,8 @@ final class PresentationTimelineCards {
     var addedTracks: Set<String> = []
 
     var addedTrackRows: [String: Set<String>] = [:]
+
+    var rowHeight: CGFloat = PresentationTimelineLanes.defaultRowHeight
 }
 
 struct PresentationTimelineButton: View {
@@ -239,8 +241,9 @@ struct PresentationTimelineStrip: View {
                 VStack(spacing: 2) {
                     PresentationTimelineSlideDots(context: context, x: x)
                         .frame(width: contentWidth, height: 8, alignment: .leading)
-                    PresentationTimelineSectionsBar(context: context, length: length, page: viewport * 0.85, x: x)
-                        .frame(width: contentWidth, height: 18, alignment: .leading)
+                    PresentationTimelineSectionsBar(
+                        context: context, length: length, page: viewport * 0.85, waveformZoom: pps, x: x)
+                        .frame(width: contentWidth, height: 24, alignment: .leading)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
                     PresentationTimelineStepsRow(context: context, x: x)
                         .frame(width: contentWidth, height: 12, alignment: .leading)
@@ -248,7 +251,7 @@ struct PresentationTimelineStrip: View {
                 .overlay(alignment: .topLeading) {
                     if context.isCurrent {
                         TimelinePlayheadLine(source: context.clock, cap: true, x: x)
-                            .frame(height: 42, alignment: .top)
+                            .frame(height: 48, alignment: .top)
                     }
                 }
                 .contentShape(Rectangle())
@@ -288,6 +291,7 @@ struct PresentationTimelineFollowScroll<Content: View>: View {
     let viewport: CGFloat
     let x: (Double) -> CGFloat
     @ViewBuilder let content: () -> Content
+    @State private var visible = TimelineVisibleWindow()
 
     var body: some View {
 
@@ -296,6 +300,8 @@ struct PresentationTimelineFollowScroll<Content: View>: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 content()
+                    .environment(visible)
+                    .background(TimelineVisibleWindowTracker(window: visible))
                     .background(alignment: .topLeading) {
 
                         HStack(spacing: 0) {
@@ -374,6 +380,8 @@ struct PresentationTimelineSectionsBar: View {
     var flat = false
 
     var page: CGFloat?
+
+    var waveformZoom: Double?
     let x: (Double) -> CGFloat
 
     private func namePositions(left: CGFloat, width: CGFloat) -> [CGFloat] {
@@ -390,6 +398,17 @@ struct PresentationTimelineSectionsBar: View {
         } ?? []
         let palette = context.model.groupColors
         ZStack(alignment: .leading) {
+            if let waveformZoom, !flat {
+                let cues = timeline?.cues ?? []
+                let stems = context.musicStems(TimelineTracks.stems(cues))
+                TimelineWaveform(
+                    sources: (stems.isEmpty ? cues.filter { $0.kind == .audio } : stems)
+                        .compactMap { TimelineWaveformSource.of($0, model: context.model) },
+                    blobs: context.model.blobs, origin: 0, length: length, pointsPerSecond: waveformZoom,
+                    contentX: x(0), color: Color.primary.opacity(0.4))
+                    .padding(.vertical, 1)
+                    .offset(x: x(0))
+            }
             if spans.isEmpty {
                 Text(context.runOnlyHint(timeline))
                     .font(.caption2)
@@ -410,8 +429,8 @@ struct PresentationTimelineSectionsBar: View {
                 } else {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(color.opacity(0.35))
-                        .frame(width: spanWidth, height: 16)
-                        .position(x: left + spanWidth / 2, y: 9)
+                        .frame(width: spanWidth, height: 22)
+                        .position(x: left + spanWidth / 2, y: 12)
                 }
                 ForEach(namePositions(left: left, width: spanWidth), id: \.self) { at in
                     let room = min(left + spanWidth - at - 6, 140)
@@ -421,7 +440,7 @@ struct PresentationTimelineSectionsBar: View {
                             .foregroundStyle(flat ? .secondary : .primary)
                             .lineLimit(1)
                             .frame(width: room, alignment: .leading)
-                            .position(x: at + 3 + room / 2, y: flat ? 6 : 9)
+                            .position(x: at + 3 + room / 2, y: flat ? 6 : 12)
                     }
                 }
             }
@@ -434,6 +453,13 @@ struct PresentationTimelineSectionsBar: View {
 }
 
 extension PresentationTimelineContext {
+
+    func musicStems(_ stems: [TimelineCue]) -> [TimelineCue] {
+        let cueOnly = Set(model.trackChannels.filter { $0.trackRole != .music }.map(\.id))
+        let music = stems.filter { !cueOnly.contains($0.trackChannelId ?? "") }
+        return music.isEmpty ? stems : music
+    }
+
     func runOnlyHint(_ timeline: PresentationTimeline?) -> String {
         timeline?.cues.isEmpty == false
             ? "No slide cues yet"
@@ -570,7 +596,17 @@ struct PresentationTimelineLanes: View {
     static let lanes: [TimelineLane] = TimelineLane.allCases
 
     static let standingLanes: Set<TimelineLane> = [.slide, .loopingVideos]
-    static let laneHeight: CGFloat = 26
+
+    static let rowHeights: ClosedRange<Double> = 20...96
+    static let defaultRowHeight: CGFloat = 26
+    private var rowHeight: CGFloat { PresentationTimelineCards.shared.rowHeight }
+
+    static let maxLanesHeight: CGFloat = 360
+
+    private func lanesHeight(_ cues: [TimelineCue], visible: [TimelineLane]) -> CGFloat {
+        let tracks = showsTracks(cues) ? 1 + (tracksExpanded ? trackChannels(cues).count : 0) : 0
+        return Self.rulerHeight + Self.sectionsHeight + 2 + CGFloat(visible.count + tracks) * (rowHeight + 1) + 28
+    }
     static let rulerHeight: CGFloat = 16
     static let sectionsHeight: CGFloat = 18
 
@@ -594,7 +630,7 @@ struct PresentationTimelineLanes: View {
         let visible = visibleLanes(cues)
         VStack(alignment: .leading, spacing: 6) {
             toolbar(cues, pps: pps, display: display)
-            HStack(alignment: .top, spacing: 8) {
+            let area = HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
 
                     Color.clear.frame(height: Self.rulerHeight + Self.sectionsHeight + 1)
@@ -607,7 +643,7 @@ struct PresentationTimelineLanes: View {
                             Spacer(minLength: 0)
                             if !runOnly { addMenu(lane) }
                         }
-                        .frame(height: Self.laneHeight)
+                        .frame(height: rowHeight)
                     }
                     if showsTracks(cues) { trackLabels(cues) }
                     addLaneMenu(visible, cues)
@@ -621,6 +657,15 @@ struct PresentationTimelineLanes: View {
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
                 .timelinePinchZoom(current: { pps }, range: TimelineZoom.songRange) { pointsPerSecond = $0 }
+            }
+
+            Group {
+                if lanesHeight(cues, visible: visible) > Self.maxLanesHeight {
+                    ScrollView(.vertical) { area }
+                        .frame(height: Self.maxLanesHeight)
+                } else {
+                    area
+                }
             }
 
             .dropDestination(for: String.self) { payloads, _ in
@@ -695,6 +740,7 @@ struct PresentationTimelineLanes: View {
                 Text(runOnly ? "Timeline" : "Drag from the library onto the lanes, or + on a lane adds at the playhead")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
             TimelineZoomControls(
@@ -704,6 +750,9 @@ struct PresentationTimelineLanes: View {
                         seconds: display, viewportWidth: viewport, reserve: 0, in: TimelineZoom.songRange)
                 },
                 fitHelp: "Fit the song to the width", range: TimelineZoom.songRange)
+            TimelineRowHeightControls(
+                height: Double(rowHeight), range: Self.rowHeights,
+                set: { PresentationTimelineCards.shared.rowHeight = CGFloat($0) })
         }
         .foregroundStyle(.secondary)
     }
@@ -841,10 +890,12 @@ struct PresentationTimelineLanes: View {
                 card(cue, cues, map: map)
             }
         }
-        .frame(width: map.width, height: Self.laneHeight)
+        .frame(width: map.width, height: rowHeight)
     }
 
-    private func card(_ cue: TimelineCue, _ cues: [TimelineCue], map: TimelineMap, title: String? = nil) -> some View {
+    private func card(
+        _ cue: TimelineCue, _ cues: [TimelineCue], map: TimelineMap, title: String? = nil, group: [TimelineCue]? = nil
+    ) -> some View {
         let isBlock = cue.isBlock
         let left = map.x(ofTime: cue.at)
         let end = PresentationTimelines.end(of: cue, in: cues)
@@ -864,12 +915,24 @@ struct PresentationTimelineLanes: View {
         let section = cue.kind == .slide ? context.presentation.sections?.first { $0.id == cue.sectionId } : nil
         let tint = orphan ? .red : GroupColor.fill(section, palette: context.model.groupColors)
             ?? cue.kind?.tint ?? (cue.trackChannelId != nil ? Self.tracksTint : .gray)
+
+        let audio = cue.kind == .audio || cue.trackChannelId != nil
         let face: AnyView = pin
             ? AnyView(actionPin(cue, width: span.width, selected: selection == cue.id))
-            : AnyView(TimelineBlockCard(width: span.width, tint: tint, selected: selection == cue.id) {
+            : AnyView(TimelineBlockCard(width: span.width, height: rowHeight - 4, tint: tint, selected: selection == cue.id) {
                 Text(title ?? (cue.kind == .slide ? context.slideBadge(cue, width: span.width) : context.label(cue)))
                     .font(.system(size: 10, weight: cue.kind == .slide ? .semibold : .regular).monospacedDigit())
                     .lineLimit(1)
+            }
+            .background(alignment: .leading) {
+                if audio {
+                    TimelineWaveform(
+                        sources: (group ?? [cue]).compactMap { TimelineWaveformSource.of($0, model: context.model) },
+                        blobs: context.model.blobs, origin: cue.at, length: Double(width / map.pointsPerSecond),
+                        pointsPerSecond: Double(map.pointsPerSecond), contentX: span.x, color: tint.opacity(0.55))
+                        .padding(.vertical, 2)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
             })
         return face
         .help(orphan ? "This slide is no longer in the arrangement: the cue won't fire" : title ?? context.label(cue))
@@ -911,7 +974,7 @@ struct PresentationTimelineLanes: View {
             }
         }
 
-        .position(x: span.x + span.width / 2 - (pin ? Self.pinSize / 2 : 0), y: Self.laneHeight / 2)
+        .position(x: span.x + span.width / 2 - (pin ? Self.pinSize / 2 : 0), y: rowHeight / 2)
     }
 
     static let pinSize: CGFloat = 16
@@ -921,7 +984,7 @@ struct PresentationTimelineLanes: View {
 
             Rectangle()
                 .fill(selected ? Color.accentColor : Color.secondary)
-                .frame(width: selected ? 2 : 1, height: Self.laneHeight - 4)
+                .frame(width: selected ? 2 : 1, height: rowHeight - 4)
                 .frame(width: Self.pinSize)
             Image(systemName: TimelineLane.actions.symbol)
                 .font(.system(size: 9))
@@ -931,7 +994,7 @@ struct PresentationTimelineLanes: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-        .frame(width: width, height: Self.laneHeight, alignment: .leading)
+        .frame(width: width, height: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
         .clipped()
     }
@@ -1050,7 +1113,7 @@ struct PresentationTimelineLanes: View {
 
     private func trackRow(atY y: CGFloat?, visible: [TimelineLane], cues: [TimelineCue]) -> TrackRow? {
         guard let y, showsTracks(cues) else { return nil }
-        let row = Int(floor((y - CGFloat(visible.count) * (Self.laneHeight + 1)) / (Self.laneHeight + 1)))
+        let row = Int(floor((y - CGFloat(visible.count) * (rowHeight + 1)) / (rowHeight + 1)))
         guard row >= 0 else { return nil }
         let channels = trackChannels(cues)
         return tracksExpanded && row >= 1 && row <= channels.count ? .channel(channels[row - 1].id) : .folded
@@ -1121,7 +1184,7 @@ struct PresentationTimelineLanes: View {
                     }
                 }
             }
-            .frame(height: Self.laneHeight)
+            .frame(height: rowHeight)
             if tracksExpanded {
                 ForEach(rows) { channel in
                     HStack(spacing: 3) {
@@ -1137,7 +1200,7 @@ struct PresentationTimelineLanes: View {
                         }
                     }
                     .padding(.leading, 11)
-                    .frame(height: Self.laneHeight)
+                    .frame(height: rowHeight)
                 }
             }
         }
@@ -1165,11 +1228,11 @@ struct PresentationTimelineLanes: View {
                     ForEach(leaders, id: \.id) { leader in
                         let group = TimelineTracks.group(of: leader, in: cues)
                         let longest = group.max { ($0.duration ?? 0) < ($1.duration ?? 0) } ?? leader
-                        card(longest, cues, map: map, title: group.count == 1 ? nil : "\(group.count) stems")
+                        card(longest, cues, map: map, title: group.count == 1 ? nil : "\(group.count) stems", group: context.musicStems(group))
                     }
                 }
             }
-            .frame(width: map.width, height: Self.laneHeight)
+            .frame(width: map.width, height: rowHeight)
             if tracksExpanded {
                 ForEach(trackChannels(cues)) { channel in
                     ZStack(alignment: .topLeading) {
@@ -1179,7 +1242,7 @@ struct PresentationTimelineLanes: View {
                             card(stem, cues, map: map)
                         }
                     }
-                    .frame(width: map.width, height: Self.laneHeight)
+                    .frame(width: map.width, height: rowHeight)
                 }
             }
         }
