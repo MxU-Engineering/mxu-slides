@@ -592,19 +592,21 @@ struct SlideGridBody: View {
     }
 
     var body: some View {
+
+        let _ = (dropTargetIndex, dropTargetAfterIndex, backgroundDropIndex)
         ZStack(alignment: .topLeading) {
 
             Color.clear
                 .frame(minHeight: max(0, minimumHeight + marqueeMargin * 2))
                 .contentShape(Rectangle())
+
+                .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
                 .padding(-marqueeMargin)
                 .onTapGesture {
                     clearSelection()
                     NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
                 }
                 .gesture(marqueeGesture)
-
-                .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
             let aspect = SlideGridMetrics.tileAspect(for: presentation)
             let cell = self.cell
             if buildsRowsNearView {
@@ -1276,7 +1278,7 @@ struct SlideGridBody: View {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(width: 3)
-                    .padding(.vertical, 14)
+
                     .offset(x: -7.5)
             }
         }
@@ -1285,7 +1287,6 @@ struct SlideGridBody: View {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(width: 3)
-                    .padding(.vertical, 14)
                     .offset(x: 7.5)
             }
         }

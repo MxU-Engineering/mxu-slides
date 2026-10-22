@@ -32,6 +32,17 @@ import Testing
                 "the empty space below the last row catches drops")
     }
 
+    @Test func theEmptySpaceCatcherHearsTheWholeBandAndRedraws() throws {
+        let grid = try source("PresentGridView.swift")
+        #expect(grid.contains("""
+                            .onDrop(of: [.plainText, .fileURL], delegate: gapDropDelegate(enabled: !runOnly))
+                            .padding(-marqueeMargin)
+            """), "the catcher's drop area covers the host's padding, not just the grid")
+        #expect(grid.contains("let _ = (dropTargetIndex, dropTargetAfterIndex, backgroundDropIndex)"),
+                "the body reads the drop feedback, so the catcher's changes redraw")
+        #expect(!grid.contains(".padding(.vertical, 14)\n                    .offset(x: "), "insertion lines run the slide's full height")
+    }
+
     @Test func aRowsBottomBandMakesSlidesAfterIt() throws {
         let editor = try source("SlideEditorView.swift")
         #expect(editor.contains("rowSize: { slideRowFrames[slide.id]?.size ?? .zero },"))
