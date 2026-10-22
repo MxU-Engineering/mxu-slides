@@ -22,7 +22,7 @@ struct TimecodeModule: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .font(.caption)
-                    .help("Songs with a timecode start play from it on this computer")
+                    .help("Items with a timecode start play from it on this computer")
             }
             TimecodeModuleReadout(follower: follower) {
                 SettingsRouter.shared.pending = .midi
@@ -56,7 +56,7 @@ struct TimecodeModule: View {
             .fixedSize()
             .disabled(runOnly)
             .accessibilityLabel("Start times")
-            .help("Start times. In service order: songs that play from timecode start at 01:00, 02:00, … in run order, for this service only")
+            .help("Start times. In service order: items that play from timecode start at 01:00, 02:00, … in run order, for this service only")
         }
     }
 
@@ -90,22 +90,23 @@ struct TimecodeModule: View {
         TimecodeModuleSongs.shared.open[itemID] ?? (controls.timeline.itemID == itemID)
     }
 
-    private func songsHeader(_ ids: [String]) -> some View {
-        let allOpen = !ids.isEmpty && ids.allSatisfy(isOpen)
-        return HStack(spacing: TimecodeGrid.gap) {
+    @ViewBuilder
+    private func expandAllHeader(_ ids: [String]) -> some View {
+        if !ids.isEmpty {
+            let allOpen = ids.allSatisfy(isOpen)
             Button {
                 var open = TimecodeModuleSongs.shared.open
                 for id in ids { open[id] = !allOpen }
                 TimecodeModuleSongs.shared.open = open
             } label: {
-                TimecodeGrid.chevron(open: allOpen)
+                HStack(spacing: TimecodeGrid.gap) {
+                    TimecodeGrid.chevron(open: allOpen)
+                    ModuleSectionLabel(allOpen ? "Collapse all" : "Expand all")
+                }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .opacity(ids.isEmpty ? 0 : 1)
-            .disabled(ids.isEmpty)
             .accessibilityLabel(allOpen ? "Collapse All" : "Expand All")
-            .help(allOpen ? "Collapse all songs" : "Expand all songs")
-            ModuleSectionLabel("Songs")
         }
     }
 
@@ -131,14 +132,14 @@ struct TimecodeModule: View {
         } else {
             if !clashes.isEmpty {
                 Label(
-                    "\(clashes.count) songs share a timecode start, so timecode can't tell them apart. Give each its own start in Playback and here.",
+                    "\(clashes.count) items share a timecode start, so timecode can't tell them apart. Give each its own start in Playback and here.",
                     systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 2) {
-                songsHeader(expandable)
+                expandAllHeader(expandable)
                 ForEach(rows, id: \.item.id) { row in
                     if row.item.itemKind == .header {
                         ModuleSectionLabel(row.item.name)
@@ -169,7 +170,7 @@ struct TimecodeModule: View {
             .opacity(cues.isEmpty ? 0 : 1)
             .disabled(cues.isEmpty)
             .accessibilityLabel(open ? "Collapse" : "Expand")
-            .help(open ? "Hide this song's cues" : "Show this song's cues")
+            .help(open ? "Hide this item's cues" : "Show this item's cues")
 
             Button {
                 edit(row, on ? "Stop Playing from Timecode" : "Play from Timecode") { $0.timecodeEnabled = !on }
@@ -207,7 +208,7 @@ struct TimecodeModule: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
                     .foregroundStyle(.orange)
-                    .help("Shares its timecode start with another song")
+                    .help("Shares its timecode start with another item")
             }
         }
         .padding(.vertical, 2)
@@ -256,7 +257,7 @@ struct TimecodeStartField: View {
             .onChange(of: focused) { if !focused { commit() } }
             .onAppear { text = PresentationTimelines.timecode(frames: frames) }
             .onChange(of: frames) { text = PresentationTimelines.timecode(frames: frames) }
-            .help("Timecode start, saved with the song")
+            .help("Timecode start, saved with the presentation")
     }
 
     private func commit() {
