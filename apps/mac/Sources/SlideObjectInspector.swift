@@ -39,6 +39,21 @@ struct SlideObjectInspector: View {
 
     @State private var tab: Tab = .object
 
+    private var tabOptions: [(Tab, String)] {
+        var options: [(Tab, String)] = []
+        if model.hasPresentationSettings {
+            options.append((.presentation, "Presentation"))
+        }
+        options.append((.slide, slideTabTitle))
+
+        options.append((.object, model.isMultiView ? "Tile" : "Object"))
+
+        if model.editorMode == .design, !model.isMultiView {
+            options.append((.animation, "Animation"))
+        }
+        return options
+    }
+
     private var slideTabTitle: String {
         if model.isThemeEditor { return "Category" }
         if model.isOverlayEditor { return "Overlay" }
@@ -49,23 +64,11 @@ struct SlideObjectInspector: View {
     var body: some View {
         let _ = BodyMeter.tick(.slideObjectInspector)
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                if model.hasPresentationSettings {
-                    Text("Presentation").tag(Tab.presentation)
-                }
-                Text(slideTabTitle).tag(Tab.slide)
 
-                Text(model.isMultiView ? "Tile" : "Object").tag(Tab.object)
-
-                if model.editorMode == .design, !model.isMultiView {
-                    Text("Animation").tag(Tab.animation)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
+            ToolbarSegments(options: tabOptions, selection: $tab, fillsWidth: true)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
             switch tab {
             case .presentation:
                 presentationInspector()

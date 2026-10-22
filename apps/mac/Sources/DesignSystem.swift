@@ -273,17 +273,32 @@ struct ToolbarSegments<Option: Hashable>: View {
     let options: [(Option, String)]
     @Binding var selection: Option
 
+    var fillsWidth = false
+
     var body: some View {
+        if fillsWidth {
+            segments
+        } else {
+            segments.fixedSize()
+        }
+    }
+
+    private var segments: some View {
         ToolbarCluster {
             ForEach(options, id: \.0) { option, title in
                 let selected = selection == option
-                Button(title) { selection = option }
-                    .buttonStyle(ToolbarCellStyle(isOn: selected, horizontalPadding: 12))
-                    .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .accessibilityAddTraits(selected ? .isSelected : [])
+                Button {
+                    selection = option
+                } label: {
+                    Text(title)
+                        .lineLimit(1)
+                        .frame(maxWidth: fillsWidth ? .infinity : nil)
+                }
+                .buttonStyle(ToolbarCellStyle(isOn: selected, horizontalPadding: fillsWidth ? 4 : 12))
+                .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .fixedSize()
     }
 }
 

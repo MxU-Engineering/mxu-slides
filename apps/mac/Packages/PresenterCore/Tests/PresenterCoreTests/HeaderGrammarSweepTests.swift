@@ -65,7 +65,7 @@ import Testing
     @Test func thePresentationTabCarriesTheWholeDeck() throws {
         let inspector = try source("SlideObjectInspector.swift")
         #expect(inspector.contains("case presentation, slide, object, animation"))
-        #expect(inspector.contains("if model.hasPresentationSettings {\n                    Text(\"Presentation\").tag(Tab.presentation)"))
+        #expect(inspector.contains("if model.hasPresentationSettings {\n            options.append((.presentation, \"Presentation\"))"))
         let tab = try slice(inspector, from: "private func presentationInspector()", to: "private var deckThemeTitle")
         #expect(tab.contains("model.choosingDeckTheme = true"))
         #expect(tab.contains("PresentationBackgroundRows(model: model)"))
@@ -107,5 +107,8 @@ import Testing
         #expect(shell.contains(".padding(.trailing, rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)"), "the drag-catcher stops at the right card")
         #expect(shell.contains(".frame(width: rightPanelWidth.map { $0 + CornerStandard.panelInset + 16 } ?? 16)"), "the controls stand left of it")
         #expect(shell.contains("- (rightPanelWidth.map { $0 + CornerStandard.panelInset } ?? 0)"), "the header's shrink priority counts the editor card too")
+
+        let inspector = try source("SlideObjectInspector.swift")
+        #expect(inspector.contains("ToolbarSegments(options: tabOptions, selection: $tab, fillsWidth: true)"))
     }
 }
