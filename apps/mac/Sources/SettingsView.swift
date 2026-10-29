@@ -39,6 +39,9 @@ struct AppSettingsView: View {
             if query.isEmpty, category == .streamRecord, let model, let controls {
                 StreamRecordPane(model: model, controls: controls)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if query.isEmpty, category == .bible {
+                BibleAPISettingsPane()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if query.isEmpty {
                 SettingsCategoryPane(
                     category: category,
@@ -177,6 +180,13 @@ struct AppSettingsView: View {
 
     private var allRows: [SettingsRowSpec] {
         var rows: [SettingsRowSpec] = [
+            SettingsRowSpec(
+                id: "bible.apiBible",
+                title: "Online Bible translations",
+                caption: "Connect API.Bible or ESV and choose translations for Bible.",
+                keywords: "bible scripture NIV NLT ESV Crossway API credentials translations",
+                control: AnyView(EmptyView()), stacked: true
+            ),
             SettingsRowSpec(
                 id: "appearance.scheme",
                 title: "Appearance",
@@ -565,6 +575,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case midi
 
     case keyboard
+    case bible
     case api
 
     var id: String { rawValue }
@@ -580,6 +591,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .screens: "Screens"
         case .streamRecord: "Stream & Record"
 
+        case .bible: "Bible"
         case .api: "Network & API"
         }
     }
@@ -594,6 +606,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "keyboard"
         case .screens: "display"
         case .streamRecord: "record.circle"
+        case .bible: "book.closed"
         case .api: "network"
         }
     }

@@ -16,6 +16,8 @@ settings:
     DEVELOPMENT_TEAM: ""
 
 packages:
+  BibleKit:
+    path: Packages/BibleKit
   PresenterCore:
     path: Packages/PresenterCore
   RenderEngine:
@@ -56,6 +58,7 @@ targets:
       - HelperShared
       - Assets.xcassets
     dependencies:
+      - package: BibleKit
       - package: PresenterCore
       - package: RenderEngine
       - package: MediaEngine

@@ -5,12 +5,14 @@ enum AppMode: String, CaseIterable {
     case present
     case edit
     case scheduler
+    case bible
 
     var title: String {
         switch self {
         case .present: "Present"
         case .edit: "Edit"
         case .scheduler: "Scheduler"
+        case .bible: "Bible"
         }
     }
 }
@@ -177,7 +179,7 @@ struct ModeSwitcher: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
         )
         .onHover { hovering = $0 }
-        .help("Switch between Present and Edit")
+        .help("Switch between Present, Edit, Scheduler, and Bible")
     }
 
     private func pick(_ choice: VolunteerModeLogic.Choice) {
@@ -214,6 +216,9 @@ struct ViewCommands: Commands {
                 .keyboardShortcut(command: .modeEdit)
             Button("Scheduler") { modeRaw = AppMode.scheduler.rawValue }
                 .keyboardShortcut(command: .modeScheduler)
+            Button("Bible") { modeRaw = AppMode.bible.rawValue }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .disabled(model == nil || runOnly)
             Divider()
 
             ForEach(Array(EditContext.allCases.enumerated()), id: \.element.rawValue) { index, context in
@@ -354,7 +359,7 @@ struct ShellView: View {
     private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .edit }
 
     private var railVisible: Bool {
-        (mode == .present || mode == .scheduler) && !rightRailHidden
+        (mode == .present || mode == .scheduler || mode == .bible) && !rightRailHidden
     }
 
     private var rightPanelWidth: CGFloat? {
@@ -1390,7 +1395,7 @@ struct ShellView: View {
         }
 
         .overlay(alignment: .bottom) {
-            if mode != .present || editorTakesOver {
+            if (mode != .present && mode != .bible) || editorTakesOver {
                 MediaTransportStrip(controls: controls, floating: true)
                     .padding(.bottom, 14)
             }
@@ -1503,6 +1508,21 @@ struct ShellView: View {
 
     @ViewBuilder
     private var centerContent: some View {
+        ZStack {
+            // Keep the lookup and slide selection when moving between workspaces.
+            BibleBrowser(model: model, render: render, controls: controls, isActive: mode == .bible)
+                .frame(width: mode == .bible ? nil : 0, height: mode == .bible ? nil : 0)
+                .clipped()
+                .opacity(mode == .bible ? 1 : 0)
+                .disabled(mode != .bible)
+                .allowsHitTesting(mode == .bible)
+                .accessibilityHidden(mode != .bible)
+            if mode != .bible { modeContent }
+        }
+    }
+
+    @ViewBuilder
+    private var modeContent: some View {
         switch mode {
         case .present:
 
@@ -1548,6 +1568,8 @@ struct ShellView: View {
         case .scheduler:
 
             SchedulerView(model: model, controls: controls)
+        case .bible:
+            EmptyView()
         }
     }
 

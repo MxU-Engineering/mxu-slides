@@ -6,7 +6,7 @@ import Testing
     @Test func sidebarOrderIsS13() {
         #expect(SettingsLayout.pages.map(\.id) == [
             "general", "present", "edit", "screens",
-            "avInputs", "streamRecord", "midi", "keyboard", "api",
+            "avInputs", "streamRecord", "midi", "keyboard", "bible", "api",
         ])
     }
 
@@ -22,6 +22,7 @@ import Testing
             "groups.palette": "edit",
             "edit.hideSidebar": "edit",
             "appearance.scheme": "general",
+            "bible.apiBible": "bible",
             "audio.fadeEnabled": "present",
         ]
         for (row, page) in expected {

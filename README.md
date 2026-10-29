@@ -61,6 +61,19 @@ Run `node apps/mac/scripts/test-dependency-locking.mjs` from the repository root
 
 Debug builds are ad-hoc signed (`CODE_SIGN_IDENTITY: "-"` in `apps/mac/project.yml`), so a fresh clone builds and runs without an Apple developer account. Set `bundleIdPrefix`, `DEVELOPMENT_TEAM`, and a signing identity there before archiving or distributing.
 
+### Bibles
+
+Choose **Bible** from the main workspace switcher (or **View → Bible**) for offline
+WEB passage and keyword lookup. Click a slide to select it, then enable
+**Presentation Mode** to put it live and make subsequent clicks go live. Scripture
+can be presented without saving, or explicitly saved/appended. Additional authorized translations can be
+imported as JSON. **Settings → Bible** also connects API.Bible using a Keychain-stored
+application key and lets you choose which online editions appear in the translation
+menu. Direct ESV/Crossway access has separate key setup on the same page. Theme and
+Design are always visible, with a text-block assignment popover and compact publisher
+notices. Online access depends on your account’s translation permissions. See [the Bible tool guide](apps/mac/Packages/BibleKit/README.md)
+for the format and source information.
+
 ### Document schema
 
 Edit `packages/schema/documents.json`, then regenerate:

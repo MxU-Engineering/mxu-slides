@@ -57,6 +57,7 @@ public enum SettingsLayout {
             Section("Timecode", ["timecode.follow", "timecode.audio", "timecode.input", "timecode.signal", "timecode.offset"]),
         ]),
         Page(id: "keyboard", sections: []),
+        Page(id: "bible", sections: [Section(nil, ["bible.apiBible"])]),
         Page(id: "api", sections: [
             Section(nil, ["network.ndi"]),
             Section("Local API", ["api.enabled", "api.port", "api.address", "api.tokens", "api.docs"]),

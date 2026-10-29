@@ -5,20 +5,21 @@ public enum VolunteerModeLogic {
     public static let enabledKey = "present.volunteerModeEnabled"
 
     public enum Choice: String, CaseIterable, Sendable {
-        case present, edit, scheduler, volunteer
+        case present, edit, scheduler, bible, volunteer
 
         public var title: String {
             switch self {
             case .present: "Present"
             case .edit: "Edit"
             case .scheduler: "Scheduler"
+            case .bible: "Bible"
             case .volunteer: "Volunteer"
             }
         }
     }
 
     public static func choices(enabled: Bool) -> [Choice] {
-        enabled ? [.present, .edit, .scheduler, .volunteer] : [.present, .edit, .scheduler]
+        enabled ? [.present, .edit, .scheduler, .bible, .volunteer] : [.present, .edit, .scheduler, .bible]
     }
 
     public static func selected(mode: String, volunteerOn: Bool) -> Choice {
