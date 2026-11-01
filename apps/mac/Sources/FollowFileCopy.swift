@@ -5,6 +5,8 @@ import PresenterCore
 @MainActor
 enum FollowFileCopy {
 
+    static let copiedKey = "follow.copiedItems"
+
     static func offered(_ model: AppModel) async throws -> FollowFiles.List {
         let snapshot = try await model.client.settledSnapshot()
         let blobs = model.blobs
@@ -59,8 +61,20 @@ enum FollowFileCopy {
             let document = try await get(FollowFiles.Document.self, "/v1/follow/files/\(item.kind)/\(item.id)", endpoint)
             try await model.client.mergeCopy(kind: kind, id: item.id, bytes: document.bytes).value
         }
-        if !wanted.documents.isEmpty || !wanted.files.isEmpty {
-            DiagnosticsStore.shared.note("follow.copied", detail: "\(wanted.documents.count) items, \(wanted.files.count) files")
+
+        let copied = Set(UserDefaults.standard.stringArray(forKey: copiedKey) ?? [])
+        let snapshot = try await model.client.settledSnapshot()
+        let gone: [SyncLedger.Key] = FollowFiles.gone(copied: copied, booth: list.items).compactMap { key in
+            let parts = key.split(separator: "/", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let kind = DocumentKind(rawValue: parts[0]), snapshot.area(kind: kind, id: parts[1]) == .local else { return nil }
+            return SyncLedger.Key(kind: kind, id: parts[1])
+        }
+        if !gone.isEmpty { _ = try await model.client.delete(gone, origin: .landed).value }
+
+        let held = list.items.map { "\($0.kind)/\($0.id)" }
+        if Set(held) != copied { UserDefaults.standard.set(held, forKey: copiedKey) }
+        if !wanted.documents.isEmpty || !wanted.files.isEmpty || !gone.isEmpty {
+            DiagnosticsStore.shared.note("follow.copied", detail: "\(wanted.documents.count) items, \(wanted.files.count) files, \(gone.count) removed")
         }
         return wanted.documents.count
     }

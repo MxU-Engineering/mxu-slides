@@ -217,6 +217,12 @@ final class FollowFilesTests: XCTestCase {
         XCTAssertEqual(wanted.files, [sha])
     }
 
+    func testCopiesTheBoothNoLongerHoldsGo() {
+        let booth = [FollowFiles.Item(kind: "presentation", id: "kept", heads: ["h1"])]
+        XCTAssertEqual(FollowFiles.gone(copied: ["presentation/kept", "presentation/deleted", "media/m1"], booth: booth), ["media/m1", "presentation/deleted"])
+        XCTAssertEqual(FollowFiles.gone(copied: [], booth: booth), [], "nothing this backup didn't copy")
+    }
+
     func testARefusalReadsAsItsMessage() {
         XCTAssertEqual(APIError(status: 403, code: "wrong_code", message: "That code doesn't match.").localizedDescription, "That code doesn't match.")
     }
