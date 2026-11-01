@@ -6,6 +6,7 @@ public final class BonjourAdvertiser: @unchecked Sendable {
 
     public static let stationKey = "stationHexId"
     public static let teamKey = "teamHexId"
+    public static let nameKey = "stationName"
 
     private let queue = DispatchQueue(label: "localapi.bonjour")
     private var serviceRef: DNSServiceRef?
@@ -61,6 +62,7 @@ public final class BonjourAdvertiser: @unchecked Sendable {
         var pairs: [String: String] = [:]
         pairs[stationKey] = info.stationHexId
         pairs[teamKey] = info.teamHexId
+        pairs[nameKey] = info.stationName
         return pairs
     }
 }

@@ -1062,9 +1062,11 @@ public struct APIServerInfo: Codable, Sendable, Equatable {
     public var stationHexId: String?
     public var teamHexId: String?
 
+    public var stationName: String?
+
     public init(
         name: String, product: String, apiVersion: String, schemaVersion: Int,
-        stationHexId: String? = nil, teamHexId: String? = nil
+        stationHexId: String? = nil, teamHexId: String? = nil, stationName: String? = nil
     ) {
         self.name = name
         self.product = product
@@ -1072,5 +1074,6 @@ public struct APIServerInfo: Codable, Sendable, Equatable {
         self.schemaVersion = schemaVersion
         self.stationHexId = stationHexId
         self.teamHexId = teamHexId
+        self.stationName = stationName
     }
 }

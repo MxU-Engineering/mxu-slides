@@ -61,11 +61,12 @@ public final class LocalAPIServer: @unchecked Sendable {
         self.info = OSAllocatedUnfairLock(initialState: configuration.info)
     }
 
-    public func update(stationHexId: String?, teamHexId: String?) {
+    public func update(stationHexId: String?, teamHexId: String?, stationName: String? = nil) {
         let changed = info.withLock { info -> APIServerInfo? in
-            guard info.stationHexId != stationHexId || info.teamHexId != teamHexId else { return nil }
+            guard info.stationHexId != stationHexId || info.teamHexId != teamHexId || info.stationName != stationName else { return nil }
             info.stationHexId = stationHexId
             info.teamHexId = teamHexId
+            info.stationName = stationName
             return info
         }
         if let changed, configuration.advertise {

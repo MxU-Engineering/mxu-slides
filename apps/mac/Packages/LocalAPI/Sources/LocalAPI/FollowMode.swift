@@ -232,12 +232,15 @@ public enum FollowFiles {
         public var file: String?
         public var ext: String?
 
-        public init(kind: String, id: String, heads: [String], file: String? = nil, ext: String? = nil) {
+        public var area: String?
+
+        public init(kind: String, id: String, heads: [String], file: String? = nil, ext: String? = nil, area: String? = nil) {
             self.kind = kind
             self.id = id
             self.heads = heads
             self.file = file
             self.ext = ext
+            self.area = area
         }
     }
 

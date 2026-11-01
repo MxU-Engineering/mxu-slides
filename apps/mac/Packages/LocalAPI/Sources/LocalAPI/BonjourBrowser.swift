@@ -5,6 +5,8 @@ public final class BonjourBrowser: @unchecked Sendable {
     public struct Peer: Sendable, Hashable {
         public var name: String
         public var stationHexId: String
+
+        public var stationName: String?
         public var host: String
         public var port: UInt16
     }
@@ -12,6 +14,7 @@ public final class BonjourBrowser: @unchecked Sendable {
     struct Candidate: Equatable {
         var name: String
         var stationHexId: String
+        var stationName: String?
     }
 
     static let resolveTimeout: TimeInterval = 5
@@ -73,7 +76,7 @@ public final class BonjourBrowser: @unchecked Sendable {
               let station = txt[BonjourAdvertiser.stationKey], !station.isEmpty,
               station != ownStationHexId
         else { return nil }
-        return Candidate(name: name, stationHexId: station)
+        return Candidate(name: name, stationHexId: station, stationName: txt[BonjourAdvertiser.nameKey].flatMap { $0.isEmpty ? nil : $0 })
     }
 
     private func update(_ results: Set<NWBrowser.Result>) {
@@ -85,7 +88,8 @@ public final class BonjourBrowser: @unchecked Sendable {
                     name: name, txt: record.dictionary, teamHexId: teamHexId, ownStationHexId: ownStationHexId)
             else { continue }
             seen.insert(name)
-            if resolved[name]?.stationHexId != candidate.stationHexId, resolving[name] == nil {
+            let held = resolved[name]
+            if held?.stationHexId != candidate.stationHexId || held?.stationName != candidate.stationName, resolving[name] == nil {
                 resolve(result.endpoint, candidate)
             }
         }
@@ -109,7 +113,7 @@ public final class BonjourBrowser: @unchecked Sendable {
             case .ready:
                 if case .hostPort(let host, let port) = connection.currentPath?.remoteEndpoint {
                     self.resolved[candidate.name] = Peer(
-                        name: candidate.name, stationHexId: candidate.stationHexId,
+                        name: candidate.name, stationHexId: candidate.stationHexId, stationName: candidate.stationName,
                         host: Self.text(host), port: port.rawValue)
                     self.publish()
                 }

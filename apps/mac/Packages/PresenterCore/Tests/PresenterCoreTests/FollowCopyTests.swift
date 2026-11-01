@@ -37,6 +37,54 @@ private func deck(_ id: String) -> Presentation {
         #expect(merged.slides.map(\.name) == ["Welcome back"])
     }
 
+    @LibraryActor @Test func aDriveItemLandsInTheDriveAndADriveCopyHereStaysThere() throws {
+        let (boothRoot, backupRoot) = (makeRoot(), makeRoot())
+        defer { [boothRoot, backupRoot].forEach { try? FileManager.default.removeItem(at: $0) } }
+        let booth = LibraryEngine(rootURL: boothRoot)
+        let backup = LibraryEngine(rootURL: backupRoot)
+        try booth.bootstrap()
+        try backup.bootstrap()
+        try booth.create(deck("drive"), area: .team)
+        try booth.create(deck("station"))
+
+        let drive = try #require(try booth.documentBytes(kind: .presentation, id: "drive"))
+        let landed = try backup.mergeCopy(kind: .presentation, id: "drive", bytes: drive, area: FollowCopy.landing("team"))
+        #expect(landed.changes.map(\.origin) == [.landed])
+        #expect(try backup.opened().index.area(kind: .presentation, id: "drive") == .team, "the same Drive document the cloud brings")
+        try backup.mergeCopy(kind: .presentation, id: "station", bytes: #require(try booth.documentBytes(kind: .presentation, id: "station")), area: FollowCopy.landing(nil))
+        #expect(try backup.opened().index.area(kind: .presentation, id: "station") == .local, "the booth's This Station is the booth's alone")
+
+        try backup.mergeCopy(kind: .presentation, id: "drive", bytes: drive, area: .local)
+        #expect(try backup.opened().index.area(kind: .presentation, id: "drive") == .team)
+    }
+
+    @LibraryActor @Test func anItemTheBackupHoldsKeepsItsOwnArea() throws {
+        let root = makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let backup = LibraryEngine(rootURL: root)
+        try backup.bootstrap()
+        try backup.create(deck("both"))
+        let landed = try backup.mergeCopy(kind: .presentation, id: "both", bytes: #require(try backup.documentBytes(kind: .presentation, id: "both")), area: .local)
+        #expect(landed.areaMoves.isEmpty, "the backup's own This Station item stays This Station")
+        #expect(try backup.opened().index.area(kind: .presentation, id: "both") == nil)
+    }
+
+    @Test func aCopyLandsWhereTheBackupAlreadyFilesIt() {
+        #expect(FollowCopy.area(.team, here: nil) == .team)
+        #expect(FollowCopy.area(.local, here: nil) == .local)
+        #expect(FollowCopy.area(.local, here: .station) == .station, "a built-in deck both have")
+        #expect(FollowCopy.area(.local, here: .team) == .team, "never out of the Drive")
+        #expect(FollowCopy.area(.team, here: .local) == .team, "the booth moved its original to the Drive")
+        #expect(FollowCopy.area(.team, here: .station) == .station)
+    }
+
+    @Test func theBoothSaysWhichItemsAreDrive() {
+        #expect(FollowCopy.offered(.team) == "team")
+        #expect(FollowCopy.offered(.station) == nil && FollowCopy.offered(.local) == nil && FollowCopy.offered(nil) == nil)
+        #expect(FollowCopy.landing("team") == .team)
+        #expect(FollowCopy.landing(nil) == .local)
+    }
+
     @LibraryActor @Test func aSaveNamingAnotherIdIsRefused() throws {
         let root = makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

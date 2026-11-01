@@ -14,7 +14,7 @@ struct FollowSettingsControl: View {
             Button("Stop Backing Up") { Task { await follow.unpair(station: station) } }
         } else {
             Button("Back Up Another Computer\u{2026}") { choosing = true }
-                .disabled(station?.stationHexId == nil || documentSync == nil || EmulationController.isEmulating)
+                .disabled(station?.lanStationHexId == nil || documentSync == nil || EmulationController.isEmulating)
                 .sheet(isPresented: $choosing) {
                     if let station, let documentSync {
                         FollowPairingSheet(station: station, documentSync: documentSync)
@@ -69,7 +69,7 @@ struct FollowPairingSheet: View {
     private var name: String { peer.map(displayName) ?? "that computer" }
 
     private func displayName(_ peer: BonjourBrowser.Peer) -> String {
-        stations[peer.stationHexId]?.name ?? peer.name
+        stations[peer.stationHexId]?.name ?? peer.stationName ?? peer.name
     }
 
     private var switchesSetup: Bool { booth?.workspaceHexId != nil && booth?.workspaceHexId != station.workspaceHexId }
@@ -165,7 +165,7 @@ struct FollowPairingSheet: View {
 
     private func browse() async {
         guard let team = MxUAccountController.shared.user?.teamHexId else { return }
-        let browser = BonjourBrowser(teamHexId: team, ownStationHexId: station.stationHexId)
+        let browser = BonjourBrowser(teamHexId: team, ownStationHexId: station.lanStationHexId)
         defer { browser.stop() }
         for await found in browser.start() {
             peers = found.sorted { $0.name < $1.name }
