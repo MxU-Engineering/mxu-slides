@@ -136,7 +136,7 @@ final class AppAPIBridge: LocalAPIBridge {
         }
         var mediaLayers: [String: APIShowStatus.LayerContent] = [:]
         for (layer, cue) in state.liveMedia {
-            mediaLayers[layer.rawValue] = APIShowStatus.LayerContent(
+            mediaLayers[layer] = APIShowStatus.LayerContent(
                 mediaId: cue.mediaId,
                 mediaName: appModel.entry(cue.mediaId)?.name,
                 loops: cue.loops
@@ -179,7 +179,7 @@ final class AppAPIBridge: LocalAPIBridge {
         let countdowns = render.confidenceInfo.videoCountdowns
             .sorted { $0.key < $1.key }
             .map { layer, countdown in
-                let mediaId = LayerKind(rawValue: layer).flatMap { controls.state.liveMedia[$0]?.mediaId }
+                let mediaId = controls.state.liveMedia[layer]?.mediaId
                 let serviceItemId = mediaId.flatMap { controls.mediaFireContexts[$0] }
                 return APIVideoCountdown(
                     layer: layer, name: countdown.name, duration: countdown.duration,

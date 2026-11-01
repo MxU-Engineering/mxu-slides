@@ -97,9 +97,9 @@ extension ShowState {
         var seen = Set<String>()
 
         for layer in [LayerKind.videoInput, .loopingVideos, .stillGraphics, .videos] {
-            guard let media = liveMedia[layer], !media.mediaId.isEmpty,
+            guard let media = liveMedia[layer.rawValue], !media.mediaId.isEmpty,
                   seen.insert(media.mediaId).inserted else { continue }
-            let direct = directMediaFires.contains(layer)
+            let direct = directMediaFires.contains(layer.rawValue)
             let origin: TransportOrigin = layer == .videos
                 ? (direct ? .foregroundServiceItem : .foregroundCue)
                 : (direct ? .backgroundServiceItem : .backgroundCue)

@@ -49,6 +49,29 @@ final class LayerPlacementRoutingTests: XCTestCase {
         XCTAssertEqual(layer(.loopingVideos, in: after), layer(.loopingVideos, in: before))
     }
 
+    func testACustomLayerRoutesAndPlacesByItsId() throws {
+        let outputs = try makeManager()
+        outputs.sceneProvider = {
+            var scene = program()
+            scene.insertCustomLayer(id: "lower", name: "Lower", above: "slide")
+            scene.addItem(RenderItem(id: "bug", frame: .zero, content: .solid(.white)), toLayerID: "lower")
+            return scene
+        }
+        let screens = try wall(outputs)
+        outputs.setLayerRouting([screens.left.uuidString: [LayerKind.slide.rawValue]])
+        func lower(_ screen: UUID) -> RenderLayer {
+            outputs.previewProvider(for: screen.uuidString)().layers.first { $0.id == "lower" }!
+        }
+        XCTAssertTrue(lower(screens.left).isHidden, "no dot for it on the left")
+        XCTAssertFalse(lower(screens.right).isHidden, "no assignment = everything")
+        outputs.setLayerPlacements(["lower": [MapPlacement(rect: CGRect(x: 0, y: 900, width: 1920, height: 180))]])
+        let placed = lower(screens.left)
+        XCTAssertFalse(placed.isHidden)
+        XCTAssertEqual(placed.placed?.frames.first?.rect, CGRect(x: 0, y: 900, width: 1920, height: 180))
+        XCTAssertEqual(placed.items.map(\.id), ["bug"])
+        XCTAssertTrue(lower(screens.right).isHidden, "placed elsewhere = nothing here")
+    }
+
     func testASpannedLayerLandsHalfOnEachScreenAndIgnoresTheDot() throws {
         let outputs = try makeManager()
         outputs.sceneProvider = { program() }

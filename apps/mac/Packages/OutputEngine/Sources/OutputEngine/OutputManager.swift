@@ -698,7 +698,7 @@ public final class OutputManager {
             guard let enabled = routing.value[routingKey] else { return scene }
             for index in scene.layers.indices
             where scene.layers[index].placed == nil
-                && !enabled.contains(scene.layers[index].kind.rawValue) {
+                && !enabled.contains(scene.layers[index].id) {
                 scene.layers[index].isHidden = true
             }
             return scene

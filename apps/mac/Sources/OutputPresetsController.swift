@@ -35,6 +35,9 @@ final class OutputPresetsController {
     private func armThemeMutationWatch() {
         withObservationTracking {
             _ = appModel.version(of: .theme)
+
+            _ = appModel.version(of: .outputPreset)
+            _ = version
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -95,6 +98,8 @@ final class OutputPresetsController {
         applyRetryTask?.cancel()
         applyRetryTask = nil
         let table = appModel.resident.outputPresets
+
+        controls?.setCustomLayers(customLayers)
         if let id = activePresetID, let preset = preset(id) {
             let waiting = Self.slideThemeIDs(of: preset).filter { themeID in
                 if case .afterFill = appModel.resident.themes.fireRead(themeID) { true } else { false }

@@ -853,7 +853,8 @@ public struct RenderItem: Identifiable, Equatable, Sendable {
 
 public struct RenderLayer: Identifiable, Equatable, Sendable {
     public var id: String
-    public var kind: LayerKind
+
+    public var kind: LayerKind?
     public var name: String
     public var isHidden: Bool
     public var items: [RenderItem]
@@ -868,6 +869,21 @@ public struct RenderLayer: Identifiable, Equatable, Sendable {
         self.name = name ?? kind.displayName
         self.isHidden = isHidden
         self.items = items
+    }
+
+    public init(customID: String, name: String) {
+        self.id = customID
+        self.kind = nil
+        self.name = name
+        self.isHidden = false
+        self.items = []
+    }
+
+    public var isMediaLayer: Bool {
+        switch kind {
+        case .none, .loopingVideos, .stillGraphics, .videos: true
+        default: false
+        }
     }
 }
 
@@ -959,8 +975,20 @@ public struct RenderScene: Equatable, Sendable {
     }
 
     public mutating func addItem(_ item: RenderItem, to kind: LayerKind) {
-        guard let index = layers.firstIndex(where: { $0.kind == kind }) else { return }
+        addItem(item, toLayerID: kind.rawValue)
+    }
+
+    public mutating func addItem(_ item: RenderItem, toLayerID id: String) {
+        guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
         layers[index].items.append(item)
+    }
+
+    public mutating func insertCustomLayer(id: String, name: String, above: String?) {
+        guard !layers.contains(where: { $0.id == id }) else { return }
+        let anchor = layers.firstIndex { $0.id == above }
+            ?? layers.firstIndex { $0.kind == .slide }
+            ?? layers.count - 1
+        layers.insert(RenderLayer(customID: id, name: name), at: anchor + 1)
     }
 
     public mutating func setLayerHidden(_ hidden: Bool, kind: LayerKind) {

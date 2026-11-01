@@ -93,7 +93,7 @@ final class ActionRouter {
         guard !effective.isEmpty else { return }
         execute(
             effective, depth: 0, visited: [], skippingPresetSwitches: true,
-            protected: [layer])
+            protected: [layer.rawValue])
     }
 
     private func resolvedPresetID(for slide: Slide, contextID: String?) -> String? {
@@ -246,7 +246,7 @@ final class ActionRouter {
 
     private func execute(
         _ actions: [SlideAction], depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool = false, protected: Set<LayerKind> = []
+        skippingPresetSwitches: Bool = false, protected: Set<String> = []
     ) {
         let schedule = SlideSceneBuilder.delaySchedule(actions)
         for action in schedule.immediate {
@@ -314,7 +314,7 @@ final class ActionRouter {
 
     private func perform(
         _ action: SlideAction, depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool = false, protected: Set<LayerKind> = []
+        skippingPresetSwitches: Bool = false, protected: Set<String> = []
     ) {
         performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
     }
@@ -335,7 +335,7 @@ final class ActionRouter {
 
     private func performNow(
         _ action: SlideAction, depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool, protected: Set<LayerKind>
+        skippingPresetSwitches: Bool, protected: Set<String>
     ) {
         DiagnosticsStore.shared.note("actions.step", detail: label(action))
         switch action.kind {
@@ -344,7 +344,7 @@ final class ActionRouter {
                 return miss(action, "layer")
             }
 
-            if protected.contains(layer) {
+            if protected.contains(layer.rawValue) {
                 DiagnosticsStore.shared.note(
                     "actions.clear.skippedOwnLayer", detail: layer.rawValue)
                 return
@@ -354,7 +354,7 @@ final class ActionRouter {
             if !protected.isEmpty {
                 DiagnosticsStore.shared.note(
                     "actions.clear.allScoped",
-                    detail: protected.map(\.rawValue).sorted().joined(separator: ","))
+                    detail: protected.sorted().joined(separator: ","))
             }
             controls.clearAll(protecting: protected, cancelsPendingActions: false)
         case .clearAudio:

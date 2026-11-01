@@ -317,7 +317,9 @@ struct PresetPlacementsEditor: View {
 
     private var map: ScreenMap { outputs.screenMap ?? ScreenMap() }
     private var placements: [LayerPlacement] { presets.placements(presetID: presetID, layer: layer) }
-    private var layerName: String { LayerKind(rawValue: layer)?.displayName ?? layer }
+    private var layerName: String {
+        LayerKind(rawValue: layer)?.displayName ?? presets.customLayers(presetID: presetID).first { $0.id == layer }?.name ?? layer
+    }
     private var mapped: [PlaceholderScreen] {
         outputs.placeholderScreens.filter { outputs.role(forScreen: $0.id) != .confidence && map.rect(for: $0.id) != nil }
     }
@@ -336,6 +338,10 @@ struct PresetPlacementsEditor: View {
                     Picker("Layer", selection: $layer) {
                         ForEach(LayerKind.allCases, id: \.rawValue) { kind in
                             Text(kind.displayName).tag(kind.rawValue)
+                        }
+
+                        ForEach(presets.customLayers(presetID: presetID)) { custom in
+                            Text(custom.name).tag(custom.id)
                         }
                     }
                     .pickerStyle(.menu)

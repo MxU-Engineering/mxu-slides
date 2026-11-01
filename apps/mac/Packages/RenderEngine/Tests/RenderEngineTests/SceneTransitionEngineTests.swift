@@ -29,7 +29,7 @@ final class SceneTransitionEngineTests: XCTestCase {
         ).isEmpty, "same ids = a content edit, never a fade")
         XCTAssertEqual(
             SceneTransitionEngine.changedLayers(from: scene(["a"]), to: scene(["b"])),
-            [.slide]
+            ["slide"]
         )
     }
 
@@ -68,8 +68,8 @@ final class SceneTransitionEngineTests: XCTestCase {
         let mid = SceneTransitionEngine.composite(
             previous: both("a"), target: both("b"),
             transitions: [
-                .slide: SceneTransition(kind: .dissolve, duration: 1),
-                .loopingVideos: SceneTransition(kind: .dissolve, duration: 0.25),
+                "slide": SceneTransition(kind: .dissolve, duration: 1),
+                "loopingVideos": SceneTransition(kind: .dissolve, duration: 0.25),
             ],
             elapsed: 0.5
         )
@@ -180,7 +180,7 @@ extension SceneTransitionEngineTests {
             SceneTransitionEngine.changedLayers(
                 from: fillScene("clip-a"), to: fillScene("clip-b")
             ),
-            [.slide], "a fill media swap is a content change"
+            ["slide"], "a fill media swap is a content change"
         )
         let engine = SceneTransitionEngine(initial: fillScene("clip-a"))
         engine.push(fillScene("clip-b"), transition: SceneTransition(kind: .dissolve, duration: 1))
@@ -204,7 +204,7 @@ extension SceneTransitionEngineTests {
             SceneTransitionEngine.changedLayers(
                 from: mediaScene("clip-a"), to: mediaScene("clip-b")
             ),
-            [.loopingVideos]
+            ["loopingVideos"]
         )
         let mid = SceneTransitionEngine.composite(
             previous: mediaScene("clip-a"), target: mediaScene("clip-b"),

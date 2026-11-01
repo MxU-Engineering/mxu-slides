@@ -634,26 +634,27 @@ public enum SlideSceneBuilder {
 
     public static func protectedLayers(
         for slide: Slide, mediaLayer: (String) -> LayerKind? = { _ in nil }
-    ) -> Set<LayerKind> {
-        var protected: Set<LayerKind> = [.slide]
+    ) -> Set<String> {
+        var protected: Set<String> = [LayerKind.slide.rawValue]
         if let background = slide.background, !background.mediaId.isEmpty {
-            protected.insert(layerKind(background.layer))
+            protected.insert(layerKind(background.layer).rawValue)
+            if let id = background.layerId, !id.isEmpty { protected.insert(id) }
         }
         for action in slide.actions ?? [] where action.kind == .fireMedia {
             if let id = action.mediaId, let layer = mediaLayer(id) {
-                protected.insert(layer)
+                protected.insert(layer.rawValue)
             }
         }
         return protected
     }
 
     public static func fireActions(
-        for slide: Slide, protected: Set<LayerKind>
+        for slide: Slide, protected: Set<String>
     ) -> [SlideAction] {
         guard let actions = slide.actions else { return [] }
         return actions.filter { action in
             guard action.kind == .clearLayer, !waitsBeforeFiring(action),
-                  let layer = action.layer.flatMap(LayerKind.init(rawValue:))
+                  let layer = action.layer
             else { return true }
             return !protected.contains(layer)
         }

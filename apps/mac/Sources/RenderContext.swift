@@ -33,7 +33,7 @@ final class RenderContext {
         didSet { sceneBox.value = scene }
     }
 
-    var nextLiveTransitions: [LayerKind: SceneTransition] = [:]
+    var nextLiveTransitions: [String: SceneTransition] = [:]
 
     static func roomDefault(for layer: LayerKind) -> SceneTransition? {
         let defaults = UserDefaults.standard
@@ -64,6 +64,10 @@ final class RenderContext {
         }
     }
 
+    static func roomDefault(forLayerID id: String) -> SceneTransition? {
+        roomDefault(for: LayerKind(rawValue: id) ?? .videos)
+    }
+
     static func sceneTransition(from transition: MediaTransition?) -> SceneTransition? {
         guard let transition else { return nil }
         let duration = transition.durationSeconds ?? 0.5
@@ -88,7 +92,7 @@ final class RenderContext {
             let stash = nextLiveTransitions
             nextLiveTransitions = [:]
             transitions.push(liveScene) { layer in
-                stash[layer] ?? Self.roomDefault(for: layer)
+                stash[layer] ?? Self.roomDefault(forLayerID: layer)
             }
         }
     }
@@ -103,7 +107,7 @@ final class RenderContext {
                 let engine = engines[themeID] ?? SceneTransitionEngine(initial: variant)
                 engines[themeID] = engine
                 engine.push(variant) { layer in
-                    stash[layer] ?? Self.roomDefault(for: layer)
+                    stash[layer] ?? Self.roomDefault(forLayerID: layer)
                 }
             }
         }
