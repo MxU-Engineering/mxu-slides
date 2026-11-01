@@ -132,6 +132,7 @@ struct MxUSlidesApp: App {
         _renderContext = State(initialValue: render)
         _appModel = State(initialValue: model)
         if let render {
+            DiagnosticsStore.shared.attach(media: render.media)
             let controls = ServiceControls(appModel: model, render: render)
             #if DEBUG || MXU_PERF_HOOKS
             PerfHooks.controls = controls

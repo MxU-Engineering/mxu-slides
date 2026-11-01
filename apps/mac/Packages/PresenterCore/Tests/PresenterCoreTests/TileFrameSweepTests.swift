@@ -32,3 +32,17 @@ import Testing
         #expect(thumbs.contains("let built = SlideSceneBuilder.withoutLayerMedia("))
     }
 }
+
+@Suite struct ThumbnailCacheCostSweepTests {
+    @Test func everyCachedImageCostsItsBytes() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/ThumbnailStore.swift")
+        let thumbs = try String(contentsOf: sources, encoding: .utf8)
+        #expect(thumbs.contains("private static func cost(of image: CGImage) -> Int {\n        image.bytesPerRow * image.height\n    }"))
+        let sets = thumbs.components(separatedBy: ".setObject(Box(").count - 1
+        let costed = thumbs.components(separatedBy: "cost: Self.cost(of: image))").count - 1
+        #expect(sets > 0 && sets == costed, "an image with no cost never ages out")
+    }
+}

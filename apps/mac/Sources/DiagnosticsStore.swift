@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import MediaEngine
 import MetricKit
 import PresenterCore
 import QuartzCore
@@ -55,6 +56,9 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
     private var lastHangSampleAt: Double = -1_000
     private var lastCPUTime: Double = -1
 
+    private let media = OSAllocatedUnfairLock<MediaEngine?>(initialState: nil)
+    func attach(media engine: MediaEngine) { media.withLock { $0 = engine } }
+
     private var mainThreadStack: ThreadStackCapture?
     private var hitchGate = HitchCaptureGate()
     private var pendingPingStack: RawStack?
@@ -96,6 +100,16 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
         let snapshot = RenderPulse.shared.drain()
         let cpu = cpuPercentSinceLastPulse()
         var parts: [String] = [String(format: "cpu %.0f%%", cpu)]
+        if let mem = ProcessFootprint.megabytes() {
+            parts.append(String(format: "mem %.0fMB peak %.0fMB", mem.now, mem.peak))
+        }
+        if let tally = media.withLock({ $0 })?.stillTally(), !tally.isEmpty {
+            let rows = tally.sorted { $0.key < $1.key }.map {
+                String(format: "%@ %d %.0fMB", $0.key.isEmpty ? "library" : $0.key,
+                       $0.value.count, Double($0.value.bytes) / 1_048_576)
+            }
+            parts.append("stills " + rows.joined(separator: ", "))
+        }
         if snapshot.placeholderFrames > 0 || snapshot.placeholderSkips > 0 {
             let frames = max(snapshot.placeholderFrames, 1)
             parts.append(String(

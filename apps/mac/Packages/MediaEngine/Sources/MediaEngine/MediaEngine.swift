@@ -191,6 +191,16 @@ public final class MediaEngine: @unchecked Sendable {
         }
     }
 
+    public func stillTally() -> [String: (count: Int, bytes: Int)] {
+        stills.value.reduce(into: [:]) { tally, entry in
+            let space = entry.key.range(of: "::").map { String(entry.key[..<$0.upperBound]) } ?? ""
+            var row = tally[space] ?? (0, 0)
+            row.count += 1
+            if case .bgra(let texture, _, _) = entry.value.surface { row.bytes += texture.allocatedSize }
+            tally[space] = row
+        }
+    }
+
     public func hasStill(id: String) -> Bool {
         stills.value[id] != nil
     }
