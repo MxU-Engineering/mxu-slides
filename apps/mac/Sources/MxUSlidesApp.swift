@@ -42,6 +42,11 @@ enum WindowBridge {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows flag: Bool
     ) -> Bool {
@@ -55,7 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 WindowBridge.openMain?()
             }
         }
-        return true
+
+        return false
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -176,7 +182,7 @@ struct MxUSlidesApp: App {
 
     var body: some Scene {
 
-        WindowGroup("MxU Slides", id: "main") {
+        Window("MxU Slides", id: "main") {
             if let appModel, appModel.libraryOpenError != nil {
 
                 Text("Could not open the library.")
