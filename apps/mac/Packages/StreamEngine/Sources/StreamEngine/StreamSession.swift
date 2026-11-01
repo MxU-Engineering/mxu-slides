@@ -31,6 +31,8 @@ public final class StreamSession: @unchecked Sendable {
         public var uploadKbps: Int?
         public var videoKbps: Int?
 
+        public var backlogSeconds: Double?
+
         public var lastDrop: String?
     }
 
@@ -42,6 +44,7 @@ public final class StreamSession: @unchecked Sendable {
         var retargeted = false
         var uploadKbps: Int?
         var videoKbps: Int?
+        var backlogSeconds: Double?
         var lastDrop: String?
         var state: State = .idle
         var framesSubmitted = 0
@@ -83,6 +86,7 @@ public final class StreamSession: @unchecked Sendable {
                 audioBuffersDropped: storage.audioBuffersDropped,
                 uploadKbps: storage.uploadKbps,
                 videoKbps: storage.videoKbps,
+                backlogSeconds: storage.backlogSeconds,
                 lastDrop: storage.lastDrop)
         }
     }
@@ -307,6 +311,8 @@ public final class StreamSession: @unchecked Sendable {
                         let retargeted = self.mutable.withLock {
                             self.storage.uploadKbps = stall.bytesOutPerSecond / 125
                             self.storage.videoKbps = videoKbps
+
+                            self.storage.backlogSeconds = Double(stall.queuedBytes) / Double((videoKbps + 128) * 125)
                             return self.storage.retargeted
                         }
                         if retargeted { throw StreamSessionError.transportClosed("new destination") }

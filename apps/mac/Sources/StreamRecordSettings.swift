@@ -140,9 +140,9 @@ struct StreamQualityPopover: View {
 
     private var slowUpload: some View {
         VStack(alignment: .leading, spacing: 6) {
-            customRow("SLOW UPLOAD") {
+            customRow("BITRATE MODE") {
                 ChipPicker(
-                    options: [(true, "Lower bitrate"), (false, "Hold bitrate")],
+                    options: [(true, "Adaptive"), (false, "Constant")],
                     selection: Binding(get: { adapt }, set: setAdapt))
             }
             if adapt {

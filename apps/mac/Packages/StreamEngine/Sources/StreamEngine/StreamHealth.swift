@@ -75,6 +75,18 @@ public struct PlatformHealthTracker: Sendable, Equatable {
     }
 }
 
+public enum NetworkHealth: String, Sendable {
+    case good, slow, stalled
+
+    public static func of(_ status: StreamSession.Status, fullKbps: Int) -> NetworkHealth? {
+        guard status.state == .publishing, let upload = status.uploadKbps else { return nil }
+        let backlog = status.backlogSeconds ?? 0
+        if upload == 0, backlog > 0.5 { return .stalled }
+        if backlog >= 1 || (status.videoKbps ?? fullKbps) < fullKbps * 9 / 10 { return .slow }
+        return .good
+    }
+}
+
 public enum StreamHealthRollup {
     public enum Tint: Equatable, Sendable { case none, green, amber, red }
 

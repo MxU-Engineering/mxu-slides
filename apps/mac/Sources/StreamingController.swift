@@ -389,6 +389,7 @@ final class StreamingController {
                             + String(format: "elapsed=%.2fs audio=%.2fs ", Date().timeIntervalSince(live.startedAt), status.audioSecondsSent)
                             + "audioDropped=\(status.audioBuffersDropped) "
                             + (status.uploadKbps.map { "upload=\($0)kbps " } ?? "")
+                            + (status.backlogSeconds.map { String(format: "backlog=%.1fs ", $0) } ?? "")
                             + (status.videoKbps.map { "video=\($0)/\(session.video.bitrateKbps)kbps " } ?? "")
                             + (status.lastDrop.map { "lastDrop=\($0) " } ?? "")
                             + (AudioMixerController.current?.feedLossSummary ?? "")

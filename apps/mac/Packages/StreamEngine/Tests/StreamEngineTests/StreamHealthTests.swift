@@ -43,6 +43,20 @@ final class StreamHealthTests: XCTestCase {
         XCTAssertEqual(stall.stalled(targetKbps: 6000), "upload 15 MB behind")
     }
 
+    func testNetworkHealthReadsTheBacklogNotTheSendRate() {
+        func status(_ upload: Int?, video: Int = 10000, backlog: Double = 0, state: StreamSession.State = .publishing) -> StreamSession.Status {
+            StreamSession.Status(
+                state: state, framesSubmitted: 0, framesDropped: 0,
+                uploadKbps: upload, videoKbps: video, backlogSeconds: backlog)
+        }
+        XCTAssertNil(NetworkHealth.of(status(nil), fullKbps: 10000), "not measured yet")
+        XCTAssertNil(NetworkHealth.of(status(500, state: .reconnecting(attempt: 1)), fullKbps: 10000))
+        XCTAssertEqual(NetworkHealth.of(status(80), fullKbps: 10000), .good, "a still slide sends little")
+        XCTAssertEqual(NetworkHealth.of(status(4000, backlog: 2), fullKbps: 10000), .slow)
+        XCTAssertEqual(NetworkHealth.of(status(2000, video: 2000), fullKbps: 10000), .slow, "quality lowered")
+        XCTAssertEqual(NetworkHealth.of(status(0, backlog: 3), fullKbps: 10000), .stalled)
+    }
+
     func testAdaptiveFloorFollowsThePresetChoice() {
         XCTAssertNil(StreamVideoConfiguration.adaptiveFloor(adapt: false, minKbps: 3000, bitrateKbps: 6000), "constant")
         XCTAssertEqual(StreamVideoConfiguration.adaptiveFloor(adapt: nil, minKbps: nil, bitrateKbps: 6000), 2000)
