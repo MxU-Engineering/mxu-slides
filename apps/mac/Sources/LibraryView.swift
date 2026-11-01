@@ -729,22 +729,20 @@ struct LibrarySidebar: View {
 
     private func folderRow(_ name: String, count: Int, path: [String]) -> some View {
         HStack(spacing: 6) {
-            Button {
-                folderPath = path
-            } label: {
-                HStack(spacing: 8) {
-                    Glyph(kind: .folder, size: 14)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18)
-                    Text(name)
-                    Spacer()
-                    Text("\(count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                Glyph(kind: .folder, size: 14)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                Text(name)
+                Spacer()
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .onTapGesture { folderPath = path }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
         }
         .contextMenu { folderMenu(path) }
         .draggable(isUnfiled(path) ? "" : TeamDriveLogic.folderPayload(path: path, area: shownArea))
@@ -756,8 +754,31 @@ struct LibrarySidebar: View {
     @ViewBuilder
     private func folderMenu(_ path: [String]) -> some View {
         if !isUnfiled(path), !runOnly {
+            folderMoveMenu(path, folders: rowMenuLists(for: model.selectedSection).folders)
             Button("Rename Folder…") { folderRenameTarget = FolderRenameTarget(path: path) }
         }
+    }
+
+    private func folderMoveMenu(_ path: [String], folders: [String]) -> some View {
+        let moving = path.joined(separator: "/")
+        let targets = folders.filter { !TeamDriveLogic.isUnder($0, prefix: moving) }
+        let nested = path.count > 1
+        return Menu("Move to Folder") {
+            if nested {
+                Button("Top Level") { moveFolder(path, into: []) }
+            }
+            if nested, !targets.isEmpty {
+                Divider()
+            }
+            FolderTreeMenu(nodes: TeamDriveLogic.folderTree(targets), current: path.dropLast().joined(separator: "/")) { folder in
+                moveFolder(path, into: folder.split(separator: "/").map(String.init))
+            }
+        }
+        .disabled(!nested && targets.isEmpty)
+    }
+
+    private func moveFolder(_ path: [String], into destination: [String]) {
+        _ = handleDrop([TeamDriveLogic.folderPayload(path: path, area: shownArea)], into: destination)
     }
 
     private func handleDrop(_ payloads: [String], into path: [String]) -> Bool {
@@ -993,10 +1014,8 @@ struct LibrarySidebar: View {
                     }
                     if !menus.folders.isEmpty {
                         Divider()
-                        ForEach(menus.folders, id: \.self) { folder in
-                            Button(folder) {
-                                for entry in folderable { model.moveToFolder(entry, folder: folder) }
-                            }
+                        FolderTreeMenu(nodes: TeamDriveLogic.folderTree(menus.folders), current: nil) { folder in
+                            for entry in folderable { model.moveToFolder(entry, folder: folder) }
                         }
                     }
                 }
@@ -1048,9 +1067,8 @@ struct LibrarySidebar: View {
                         .disabled(entry.subkind.isEmpty)
                     if !menus.folders.isEmpty {
                         Divider()
-                        ForEach(menus.folders, id: \.self) { folder in
-                            Button(folder) { model.moveToFolder(entry, folder: folder) }
-                                .disabled(entry.subkind == folder)
+                        FolderTreeMenu(nodes: TeamDriveLogic.folderTree(menus.folders), current: entry.subkind) { folder in
+                            model.moveToFolder(entry, folder: folder)
                         }
                     }
                     Divider()
@@ -1968,6 +1986,28 @@ struct FolderPreviewCard: View {
             }
         }
         .clipped()
+    }
+}
+
+struct FolderTreeMenu: View {
+    let nodes: [TeamDriveLogic.FolderNode]
+    let current: String?
+    let pick: (String) -> Void
+
+    var body: some View {
+        ForEach(nodes) { node in
+            if node.children.isEmpty {
+                Button(node.name) { pick(node.path) }
+                    .disabled(node.path == current)
+            } else {
+                Menu(node.name) {
+                    Button(node.name) { pick(node.path) }
+                        .disabled(node.path == current)
+                    Divider()
+                    FolderTreeMenu(nodes: node.children, current: current, pick: pick)
+                }
+            }
+        }
     }
 }
 
