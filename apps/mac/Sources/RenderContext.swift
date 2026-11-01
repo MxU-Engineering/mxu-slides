@@ -190,6 +190,26 @@ final class RenderContext {
         outputs.placeholderConfigurationChanged = { [weak self] in
             self?.savePlaceholderScreens()
         }
+        restoreScreenMap()
+        outputs.screenMapChanged = { [weak self] in self?.saveScreenMap() }
+    }
+
+    private static let screenMapKey = "outputs.screenMap"
+
+    private func saveScreenMap() {
+        let defaults = UserDefaults.standard
+        if let map = outputs.screenMap, let data = try? JSONEncoder().encode(map) {
+            defaults.set(data, forKey: Self.screenMapKey)
+        } else {
+            defaults.removeObject(forKey: Self.screenMapKey)
+        }
+    }
+
+    private func restoreScreenMap() {
+        guard let data = UserDefaults.standard.data(forKey: Self.screenMapKey),
+              let map = try? JSONDecoder().decode(ScreenMap.self, from: data)
+        else { return }
+        outputs.setScreenMap(map)
     }
 
     private struct PlaceholderScreenConfig: Codable {

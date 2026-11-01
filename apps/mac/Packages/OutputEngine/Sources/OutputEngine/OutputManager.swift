@@ -32,6 +32,15 @@ public final class OutputManager {
 
     public var placeholderConfigurationChanged: (() -> Void)?
 
+    public private(set) var screenMap: ScreenMap?
+    public var screenMapChanged: (() -> Void)?
+
+    public func setScreenMap(_ map: ScreenMap?) {
+        guard map != screenMap else { return }
+        screenMap = map
+        screenMapChanged?()
+    }
+
     public private(set) var reconfigurationCount = 0
 
     public let sleepProofing: SleepProofing
