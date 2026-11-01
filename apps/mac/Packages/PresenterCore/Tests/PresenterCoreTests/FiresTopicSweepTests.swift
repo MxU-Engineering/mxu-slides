@@ -37,6 +37,18 @@ import Testing
         ("ActionRouter.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .combo, id: comboID))"),
         ("OutputPresetsController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .outputPreset, id: id))"),
         ("LockController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .lock, locked: on))"),
+
+        ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .audioPlaylist, id: playlist.id, entryId: entryID))"),
+        ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .audioItem, id: audioItem.id))"),
+        ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(playlistId: playlistID)))"),
+        ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(audioItemId: audioItemID)))"),
+        ("AudioController.swift", "APIAudioTransportCommand(action: \"playPause\")"),
+        ("AudioController.swift", "APIAudioTransportCommand(action: \"next\")"),
+        ("AudioController.swift", "APIAudioTransportCommand(action: \"previous\")"),
+        ("AudioController.swift", "APIAudioTransportCommand(action: \"seek\", position: seconds)"),
+        ("MediaTransportController.swift", "APIMediaTransportCommand(action: row.state.isPlaying ? \"pause\" : \"resume\")"),
+        ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"seek\", position: seconds)"),
+        ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"reset\")"),
     ]
 
     @Test func everyFireKindPublishesOnceFromWhereItRuns() throws {
@@ -47,10 +59,14 @@ import Testing
         }
         let total = all.values.map { $0.components(separatedBy: "APIFireFeed.shared.publish(").count - 1 }.reduce(0, +)
         #expect(total == Self.sites.count, "a publish outside the known sites fires twice on a follower")
-        let kinds = ["slide", "step", "clear", "clearAll", "media", "overlay", "dismissOverlay", "alert", "timer", "combo", "outputPreset", "lock"]
+        let kinds = ["slide", "step", "clear", "clearAll", "media", "overlay", "dismissOverlay", "alert", "timer", "combo", "outputPreset", "lock",
+                     "audioPlaylist", "audioItem", "stopAudio"]
         for kind in kinds {
             #expect(Self.sites.contains { $0.publish.contains("kind: .\(kind),") || $0.publish.contains("kind: .\(kind))") }, "\(kind) has a site")
         }
+
+        #expect(try source("AudioController.swift").components(separatedBy: "kind: .audioTransport").count - 1 == 4)
+        #expect(try source("MediaTransportController.swift").components(separatedBy: "kind: .mediaTransport").count - 1 == 3)
     }
 
     @Test func aWaitingSlidePublishesOnce() throws {

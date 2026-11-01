@@ -152,6 +152,14 @@ final class MIDIInController {
     }
 
     func handle(_ command: MIDICommand, velocity: Int) {
+        if FollowController.isBackingUp {
+            DiagnosticsStore.shared.note("follow.held", detail: "MIDI \(command.rawValue)")
+            return
+        }
+        APIFireSource.$current.withValue(APIFireSource(kind: .midi)) { handleCommand(command, velocity: velocity) }
+    }
+
+    private func handleCommand(_ command: MIDICommand, velocity: Int) {
 
         let index = velocity - 1
         switch command {

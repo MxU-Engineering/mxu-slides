@@ -509,6 +509,9 @@ struct ShellView: View {
 
         .modifier(VolunteerMenuRequests(layout: layout))
 
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FollowBanner(follow: FollowController.shared)
+        }
         .task {
             await model.resident.ready([.service, .serviceLinkRules, .media, .audio, .playlist])
         }
