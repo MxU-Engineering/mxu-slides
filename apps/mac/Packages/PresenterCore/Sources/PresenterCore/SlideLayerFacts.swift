@@ -51,12 +51,6 @@ extension OutputPreset {
 
 public enum SlideLayerFacts {
     public struct Chip: Equatable, Sendable, Identifiable {
-        public enum Kind: Equatable, Sendable {
-            case layer
-            case preset
-        }
-
-        public var kind: Kind
         public var id: String
 
         public var label: String
@@ -69,8 +63,7 @@ public enum SlideLayerFacts {
     public static func chips(
         for slide: Slide,
         item: (String) -> (name: String, kind: MediaKind)?,
-        layerName: (String) -> String?,
-        presetName: (String) -> String?
+        layerName: (String) -> String?
     ) -> [Chip] {
         var chips: [Chip] = []
         if let cue = slide.background, let stored = cue.storedRoutingLayerId,
@@ -78,17 +71,8 @@ public enum SlideLayerFacts {
            stored != cue.defaultLayer(kind: item.kind).rawValue,
            let name = layerName(stored) {
             chips.append(Chip(
-                kind: .layer, id: "layer:\(cue.mediaId)", label: name,
+                id: "layer:\(cue.mediaId)", label: name,
                 targetId: stored, itemName: item.name))
-        }
-
-        if let action = (slide.actions ?? []).last(where: {
-            $0.kind == .switchOutputPreset && !($0.presetId?.isEmpty ?? true)
-        }), let presetID = action.presetId {
-            chips.append(Chip(
-                kind: .preset, id: "preset:\(presetID)",
-                label: "→ \(presetName(presetID) ?? "Preset")",
-                targetId: presetID, itemName: ""))
         }
         return chips
     }

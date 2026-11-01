@@ -1985,14 +1985,12 @@ struct SlideTile: View {
     @State private var hoveredChipID: String?
 
     private var layerChips: [SlideLayerFacts.Chip] {
-        guard slide.background?.storedRoutingLayerId != nil || !(slide.actions ?? []).isEmpty
-        else { return [] }
+        guard slide.background?.storedRoutingLayerId != nil else { return [] }
         return SlideLayerFacts.chips(
             for: slide,
 
             item: { id in model.media(id).map { ($0.name, $0.mediaKind) } },
-            layerName: { id in actionRouter?.layerName(id) ?? LayerKind(rawValue: id)?.displayName },
-            presetName: { actionRouter?.presetName($0) })
+            layerName: { id in actionRouter?.layerName(id) ?? LayerKind(rawValue: id)?.displayName })
     }
 
     @State private var tip: String?
@@ -2767,10 +2765,9 @@ struct LayerChip: View {
     let chip: SlideLayerFacts.Chip
 
     static let layerTint = Color(red: 0.54, green: 0.71, blue: 1)
-    static let presetTint = Color(red: 1, green: 0.82, blue: 0.4)
 
     var body: some View {
-        let tint = chip.kind == .layer ? Self.layerTint : Self.presetTint
+        let tint = Self.layerTint
         Text(chip.label)
             .font(.system(size: 8, weight: .semibold))
             .foregroundStyle(tint)
@@ -2797,13 +2794,6 @@ struct LayerChipHover: View {
     @ViewBuilder
     private var lines: some View {
         Group {
-            if chip.kind == .preset {
-                Text("\(chip.label): this slide switches to that preset when it fires.")
-                    .font(.caption.weight(.semibold))
-                Text("A preset picked in the header during the service stays over it.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
                 Text("\(chip.itemName) · \(chip.label) layer")
                     .font(.caption.weight(.semibold))
                 if let destinations = actionRouter?.activeDestinations(layerId: chip.targetId) {
@@ -2838,7 +2828,6 @@ struct LayerChipHover: View {
                 Text("Nothing here is saved on the slide — the preset decides.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-            }
         }
         .fixedSize(horizontal: false, vertical: true)
     }

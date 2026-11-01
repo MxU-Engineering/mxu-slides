@@ -12,18 +12,16 @@ import Testing
         let chips = SlideLayerFacts.chips(
             for: slide,
             item: { _ in ("Online Preservice Graphic", .image) },
-            layerName: { $0 == "x" ? "Live Stream" : nil },
-            presetName: { $0 == "sermon" ? "Sermon" : nil })
-        #expect(chips.map(\.kind) == [.layer, .preset])
+            layerName: { $0 == "x" ? "Live Stream" : nil })
+        #expect(chips.count == 1, "the preset switch wears no chip; its action glyph does the telling")
         #expect(chips[0].label == "Live Stream")
         #expect(chips[0].itemName == "Online Preservice Graphic")
-        #expect(chips[1].label == "→ Sermon")
 
         let plain = Slide(id: "s2", name: "", objects: [], background: CueMedia.droppedAsNewSlide(mediaId: "m1", kind: .image))
-        #expect(SlideLayerFacts.chips(for: plain, item: { _ in ("Pic", .image) }, layerName: { _ in "?" }, presetName: { _ in nil }).isEmpty)
+        #expect(SlideLayerFacts.chips(for: plain, item: { _ in ("Pic", .image) }, layerName: { _ in "?" }).isEmpty)
         var gone = plain
         gone.background?.layerId = "deleted"
-        #expect(SlideLayerFacts.chips(for: gone, item: { _ in ("Pic", .image) }, layerName: { _ in nil }, presetName: { _ in nil }).isEmpty)
+        #expect(SlideLayerFacts.chips(for: gone, item: { _ in ("Pic", .image) }, layerName: { _ in nil }).isEmpty)
     }
 
     @Test func addAndRemoveLayerRoundTripThroughThePreset() throws {

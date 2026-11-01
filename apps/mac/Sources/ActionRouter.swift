@@ -40,10 +40,6 @@ final class ActionRouter {
         LayerKind(rawValue: id)?.displayName ?? presets.customLayers.first { $0.id == id }?.name
     }
 
-    func presetName(_ id: String) -> String? {
-        presets.preset(id)?.name
-    }
-
     func activeDestinations(layerId: String) -> (preset: String, screens: [String])? {
         guard let id = presets.activePresetID, let preset = presets.preset(id) else { return nil }
         return (preset.name, presets.routedTargetNames(presetID: id, layerId: layerId))
