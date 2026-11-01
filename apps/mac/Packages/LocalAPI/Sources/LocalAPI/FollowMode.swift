@@ -186,6 +186,10 @@ public enum FollowFiles {
         return (documents, Set(items.compactMap(\.file)).subtracting(filesHere).sorted())
     }
 
+    public static func gone(copied: Set<String>, booth: [Item]) -> [String] {
+        copied.subtracting(booth.map { "\($0.kind)/\($0.id)" }).sorted()
+    }
+
     public static func isHash(_ value: String) -> Bool {
         value.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
     }
