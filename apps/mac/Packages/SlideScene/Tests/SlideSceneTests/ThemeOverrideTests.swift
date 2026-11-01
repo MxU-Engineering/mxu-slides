@@ -224,6 +224,7 @@ private func transformed(
 
     var placeholder = SlideObject(id: "ph", objectKind: .text, name: "Default", text: "Sample")
     placeholder.textStyle = TextStyle(fontName: "Gotham-Black", fontSize: 70, colorHex: "#111111FF")
+    placeholder.textStyle?.textTransform = .uppercase
     let theme = Theme(
         id: "t", name: "Series", fontFamily: "Gotham-Book", fontSize: 45,
         textColorHex: "#FFFFFFFF", backgroundColorHex: "#000000FF"
@@ -231,6 +232,7 @@ private func transformed(
     let made = SlideObject(id: "o", objectKind: .text, name: "Default", text: "Giving generously")
     let base = ThemeOverride.BaseStyle(object: made, placeholder: placeholder, theme: theme)
     #expect(base.fontName == "Gotham-Black" && base.fontSize == 70 && base.colorHex == "#111111FF")
+    #expect(base.textTransform == .uppercase)
 
     var own = made
     own.textStyle = TextStyle(fontName: "Gotham-Book")

@@ -35,6 +35,8 @@ public enum ThemeOverride {
         public var colorHex: String
         public var tracking: Double
 
+        public var textTransform: TextTransform
+
         public init(object: SlideObject, placeholder: SlideObject?, theme: Theme?) {
             let own = object.textStyle
 
@@ -45,6 +47,7 @@ public enum ThemeOverride {
                 ?? theme?.fontSize ?? ThemeOverride.defaultFontSize
             colorHex = own?.colorHex ?? base?.colorHex ?? theme?.textColorHex ?? "#FFFFFFFF"
             tracking = own?.tracking ?? base?.tracking ?? 0
+            textTransform = own?.textTransform ?? base?.textTransform ?? .none
         }
     }
 

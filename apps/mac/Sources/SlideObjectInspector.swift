@@ -1274,9 +1274,9 @@ struct SlideObjectInspector: View {
                         )),
 
                         (.allCaps, Binding(
-                            get: { (run?.textTransform ?? base?.textTransform) == .uppercase },
+                            get: { (run?.textTransform ?? base.textTransform) == .uppercase },
                             set: { on in model.applyStyleToSelection {
-                                $0.textTransform = on ? .uppercase : (base?.textTransform == .uppercase ? TextTransform.none : nil)
+                                $0.textTransform = on ? .uppercase : (base.textTransform == .uppercase ? TextTransform.none : nil)
                             } }
                         )),
                     ])
