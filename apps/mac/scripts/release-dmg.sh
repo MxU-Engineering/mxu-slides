@@ -38,8 +38,9 @@ xcodebuild -project "$MAC_DIR/MxUSlides.xcodeproj" \
   PROVISIONING_PROFILE_SPECIFIER= \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" MXU_GIT_COMMIT="$GIT_COMMIT" \
   build > "$MAC_DIR/build/xcodebuild.log" 2>&1 || {
-  grep -E -A4 ': (error|fatal error):' "$MAC_DIR/build/xcodebuild.log" | head -80
-  tail -5 "$MAC_DIR/build/xcodebuild.log"
+  grep -E -A4 ': (error|fatal error):' "$MAC_DIR/build/xcodebuild.log" | head -80 || true
+  grep -E -B2 -A8 'BUILD FAILED|^error:|commands failed' "$MAC_DIR/build/xcodebuild.log" | head -60 || true
+  tail -20 "$MAC_DIR/build/xcodebuild.log"
   exit 1
 }
 tail -5 "$MAC_DIR/build/xcodebuild.log"
