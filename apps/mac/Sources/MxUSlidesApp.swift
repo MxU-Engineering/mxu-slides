@@ -125,6 +125,7 @@ struct MxUSlidesApp: App {
         UserDefaults.standard.set(AppMode.present.rawValue, forKey: "appMode")
         let model = AppModel()
         PresentationFileOpener.model = model
+        ScheduledBackupController.shared.start(model: model)
         #if DEBUG || MXU_PERF_HOOKS
 
         PerfHooks.start(model: model)

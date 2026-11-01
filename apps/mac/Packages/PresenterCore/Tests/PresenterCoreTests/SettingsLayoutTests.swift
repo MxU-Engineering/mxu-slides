@@ -22,6 +22,7 @@ import Testing
             "groups.palette": "edit",
             "edit.hideSidebar": "edit",
             "appearance.scheme": "general",
+            "library.scheduledBackup": "general",
             "audio.fadeEnabled": "present",
         ]
         for (row, page) in expected {
