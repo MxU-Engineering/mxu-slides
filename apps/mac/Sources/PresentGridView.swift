@@ -1805,7 +1805,7 @@ struct SlideTile: View {
                         .padding(3)
                         .background(Color.orange, in: Circle())
                         .padding(4)
-                        .help("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
+                        .tileHelp("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
                 }
             }
             .overlay {
@@ -1905,6 +1905,10 @@ struct SlideTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
+        .environment(\.tileTip, $tip)
+        .overlay(alignment: .bottomTrailing) {
+            if let tip { TileTipLabel(text: tip) }
+        }
 
         .task(id: clippedTextKey) {
             let slide = slide
@@ -1933,6 +1937,8 @@ struct SlideTile: View {
     @State private var hasClippedText = false
     @State private var pageLooks: [PageLook] = []
     @State private var pagesHovered = false
+
+    @State private var tip: String?
 
     struct PageLook: Identifiable {
         let id: String
@@ -2643,9 +2649,59 @@ struct SongKeyChip: View {
     }
 }
 
+private struct TileTipKey: EnvironmentKey {
+    static let defaultValue: Binding<String?>? = nil
+}
+
+extension EnvironmentValues {
+    var tileTip: Binding<String?>? {
+        get { self[TileTipKey.self] }
+        set { self[TileTipKey.self] = newValue }
+    }
+}
+
+private struct TileHelp: ViewModifier {
+    let text: () -> String
+    @Environment(\.tileTip) private var tip
+    @State private var wait: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content.onHover { over in
+            wait?.cancel()
+            guard let tip else { return }
+            if over {
+                wait = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !Task.isCancelled else { return }
+                    let text = text()
+                    if !text.isEmpty { tip.wrappedValue = text }
+                }
+            } else if tip.wrappedValue != nil {
+                tip.wrappedValue = nil
+            }
+        }
+    }
+}
+
 extension View {
-    @ViewBuilder
-    func tileHelp(_ text: @autoclosure () -> String) -> some View {
-        self
+    func tileHelp(_ text: @autoclosure @escaping () -> String) -> some View {
+        modifier(TileHelp(text: text))
+    }
+}
+
+struct TileTipLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.trailing)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(.sRGB, white: 0.12).opacity(0.92), in: RoundedRectangle.standard(CornerStandard.element))
+            .padding(.horizontal, 4)
+            .padding(.bottom, SlideGridMetrics.labelHeight + SlideGridMetrics.labelGap + 4)
+            .allowsHitTesting(false)
     }
 }
