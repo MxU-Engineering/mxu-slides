@@ -43,9 +43,10 @@ struct FolderNameSheet: View {
             working = true
             Task {
                 let done = await submit(trimmed)
+
+                if done { dismiss() }
                 working = false
                 failed = !done
-                if done { dismiss() }
             }
         }
     }

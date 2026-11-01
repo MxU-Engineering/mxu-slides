@@ -47,6 +47,13 @@ import Testing
         expectInOrder(["listBumpsHeld += 1", "let result = body()", "listBumpsHeld -= 1", "if listBumpsHeld == 0, listBumpOwed {", "listVersion += 1"], in: coalescing, "coalescingListBumps")
     }
 
+    @Test func aFolderNameSheetDismissesBeforeItsStateMoves() throws {
+        let areas = try source("LibraryAreas.swift")
+        let save = try block(after: "    private func save() {", in: areas)
+        expectInOrder(["let done = await submit(trimmed)", "if done { dismiss() }", "working = false", "failed = !done"],
+                      in: save, "FolderNameSheet.save")
+    }
+
     @Test func theViewMenuSortsAndNarrowsOffMain() throws {
         let model = try source("AppModel.swift")
         let browse = try block(after: "func browserEntries(in section: LibrarySection) -> [LibraryIndex.Entry] {", in: model)
