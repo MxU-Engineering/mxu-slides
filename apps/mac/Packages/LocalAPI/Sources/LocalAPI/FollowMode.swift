@@ -63,6 +63,56 @@ public enum FollowReplay {
     }
 }
 
+public struct FollowStandby: Sendable {
+    public var show: APIShowStatus
+    public var transport: [APITransportRow]
+    public var audio: APIAudioStatus?
+    public var at: Date
+
+    public init(show: APIShowStatus, transport: [APITransportRow], audio: APIAudioStatus?, at: Date) {
+        self.show = show
+        self.transport = transport
+        self.audio = audio
+        self.at = at
+    }
+
+    public static func showsAnything(_ show: APIShowStatus, audio: APIAudioStatus) -> Bool {
+        show.liveSlide != nil || !show.mediaLayers.isEmpty || !show.overlays.isEmpty || audio.buses.contains(where: \.playing)
+    }
+
+    public static func position(_ position: Double, duration: Double?, playing: Bool, looping: Bool, from at: Date, to now: Date) -> Double {
+        guard playing else { return position }
+        let moved = position + max(0, now.timeIntervalSince(at))
+        guard let duration, duration > 0 else { return moved }
+        return looping ? moved.truncatingRemainder(dividingBy: duration) : min(moved, duration)
+    }
+
+    public func takeover(here: APIShowStatus, now: Date) -> [APIFireEvent] {
+        var events = FollowReplay.catchUp(booth: show, here: here)
+        if let live = show.liveSlide {
+            events.append(APIFireEvent(kind: .slide, slide: APIFireSlideCommand(
+                presentationId: live.presentationId, slideId: live.slideId,
+                serviceItemId: live.serviceItemId, occurrence: live.occurrence)))
+        }
+        for row in transport {
+            let at = Self.position(row.position, duration: row.duration, playing: row.playing, looping: row.looping, from: self.at, to: now)
+            events.append(APIFireEvent(kind: .mediaTransport, id: row.mediaId, mediaTransport: APIMediaTransportCommand(action: "seek", position: at)))
+            if !row.playing {
+                events.append(APIFireEvent(kind: .mediaTransport, id: row.mediaId, mediaTransport: APIMediaTransportCommand(action: "pause")))
+            }
+        }
+        for bus in audio?.buses ?? [] where bus.playing && bus.playlistId == nil {
+            guard let item = bus.audioItemId else { continue }
+            events.append(APIFireEvent(kind: .audioItem, id: item))
+            if let position = bus.position {
+                let at = Self.position(position, duration: bus.duration, playing: true, looping: false, from: self.at, to: now)
+                events.append(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "seek", position: at)))
+            }
+        }
+        return events
+    }
+}
+
 public final class FollowPairing: @unchecked Sendable {
     public static let maxAttempts = 5
 

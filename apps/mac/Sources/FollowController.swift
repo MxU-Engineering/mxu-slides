@@ -25,6 +25,8 @@ final class FollowController {
         var tookOverOnItsOwn: Bool?
 
         var tookOverFrozen: Bool?
+
+        var mirrors: Bool?
     }
 
     struct SteppedDown: Codable, Equatable {
@@ -63,6 +65,9 @@ final class FollowController {
 
     private(set) var cameBack: String?
 
+    private(set) var standby: FollowStandby?
+    private var standbyRead = 0
+
     nonisolated static let launch = UUID().uuidString
     nonisolated static let presence = FollowPresence { names in
         Task { @MainActor in FollowController.shared.backupsHeard(names) }
@@ -93,6 +98,8 @@ final class FollowController {
 
     var backingUp: Bool { pairing != nil && !inCharge }
 
+    var standingBy: Bool { backingUp && pairing?.mirrors == false }
+
     var inCharge: Bool { pairing?.role.map { $0.inCharge != pairing?.stationHexId } ?? false }
 
     func configure(bridge: any LocalAPIBridge, station: StationSyncController, controls: ServiceControls?) {
@@ -120,7 +127,7 @@ final class FollowController {
         Thread.sleep(forTimeInterval: 0.25)
     }
 
-    func pair(with peer: BonjourBrowser.Peer, name: String, code: String, automatic: Bool, teamHexId: String, station: StationSyncController) async -> String? {
+    func pair(with peer: BonjourBrowser.Peer, name: String, code: String, automatic: Bool, mirrors: Bool, teamHexId: String, station: StationSyncController) async -> String? {
         guard let stationHexId = station.lanStationHexId, let client = MxUAccountController.shared.client else {
             return "Sign in first."
         }
@@ -133,7 +140,7 @@ final class FollowController {
         }
         let pairing = Pairing(
             stationHexId: peer.stationHexId, name: name, host: peer.host, port: peer.port,
-            automatic: automatic, role: .start(booth: peer.stationHexId))
+            automatic: automatic, role: .start(booth: peer.stationHexId), mirrors: mirrors)
         FollowKeyKeychain.save(key, account: pairing.stationHexId)
         save(pairing)
         _ = try? await client.setFollow(hexId: stationHexId, followsStationHexId: pairing.stationHexId)
@@ -168,7 +175,36 @@ final class FollowController {
         DiagnosticsStore.shared.note("follow.tookOver", detail: "\(reason), term \(role.term)")
 
         if !(pairing.tookOverOnItsOwn == true && !frozen) { await tellBooth() }
+        if pairing.mirrors == false { await putUpBoothPicture() }
         return nil
+    }
+
+    func setMirrors(_ mirrors: Bool) async {
+        guard var pairing, (pairing.mirrors ?? true) != mirrors else { return }
+        pairing.mirrors = mirrors
+        save(pairing)
+        DiagnosticsStore.shared.note("follow.mode", detail: mirrors ? "live" : "standby")
+        if backingUp, let endpoint { await catchUp(endpoint) }
+    }
+
+    private func putUpBoothPicture() async {
+        guard let bridge, let standby else { return }
+        let events = standby.takeover(here: bridge.showStatus(), now: .now)
+        await APIFireSource.$current.withValue(APIFireSource(kind: .follow, name: pairing?.name)) {
+            for event in events {
+
+                for attempt in 0..<10 {
+                    do {
+                        try await FollowReplay.apply(event, to: bridge)
+                        break
+                    } catch {
+                        guard [.mediaTransport, .audioTransport].contains(event.kind), attempt < 9 else { break }
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                }
+            }
+        }
+        DiagnosticsStore.shared.note("follow.putUp", detail: "\(standby.show.liveSlide?.slideId ?? "no slide"), \(standby.transport.count) videos, read \(Int(Date.now.timeIntervalSince(standby.at)))s before")
     }
 
     @discardableResult
@@ -361,7 +397,12 @@ final class FollowController {
                 boothQuit = true
                 DiagnosticsStore.shared.note("follow.boothQuit", detail: pairing?.name ?? "")
             } else if backingUp, FollowReplay.replays(event) {
-                await replay(event)
+                if standingBy {
+                    lastFire = .now
+                    await readStandby(endpoint)
+                } else {
+                    await replay(event)
+                }
             }
         case .event:
             break
@@ -402,6 +443,17 @@ final class FollowController {
         }
     }
 
+    private func readStandby(_ endpoint: LocalAPIClient.Endpoint) async {
+        standbyRead += 1
+        let read = standbyRead
+        guard let show = await Self.showStatus(endpoint) else { return }
+        async let transport: [APITransportRow]? = Self.get("/v1/transport", endpoint)
+        async let audio: APIAudioStatus? = Self.get("/v1/audio", endpoint)
+        let (rows, sound) = await (transport, audio)
+        guard read == standbyRead else { return }
+        standby = FollowStandby(show: show, transport: rows ?? [], audio: sound, at: .now)
+    }
+
     private func catchUp(_ endpoint: LocalAPIClient.Endpoint) async {
         if let status = await Self.followStatus(endpoint) {
             boothStream = status.streamPresetId
@@ -411,6 +463,16 @@ final class FollowController {
                let newer = (pairing.role ?? .start(booth: pairing.stationHexId)).newer(FollowRole(term: term, inCharge: pairing.stationHexId)) {
                 adopt(newer)
             }
+        }
+        if standingBy {
+            await readStandby(endpoint)
+            if let bridge, FollowStandby.showsAnything(bridge.showStatus(), audio: bridge.audioStatus()) {
+                await APIFireSource.$current.withValue(APIFireSource(kind: .follow, name: pairing?.name)) {
+                    for event in [APIFireEvent(kind: .clearAll), APIFireEvent(kind: .stopAudio)] { try? await FollowReplay.apply(event, to: bridge) }
+                }
+            }
+            DiagnosticsStore.shared.note("follow.standingBy", detail: standby?.show.liveSlide?.slideId ?? "no slide")
+            return
         }
         guard let bridge, let show = await Self.showStatus(endpoint) else { return }
         let differences = FollowReplay.catchUp(booth: show, here: bridge.showStatus())
@@ -556,6 +618,13 @@ final class FollowController {
         return try? JSONDecoder().decode(APIFollowStatus.self, from: data)
     }
 
+    private nonisolated static func get<T: Decodable>(_ path: String, _ endpoint: LocalAPIClient.Endpoint) async -> T? {
+        var request = URLRequest(url: URL(string: "http://\(endpoint.host):\(endpoint.port)\(path)")!, timeoutInterval: 5)
+        request.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
     private nonisolated static func showStatus(_ endpoint: LocalAPIClient.Endpoint) async -> APIShowStatus? {
         var request = URLRequest(url: URL(string: "http://\(endpoint.host):\(endpoint.port)/v1/status")!, timeoutInterval: 5)
         request.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
@@ -634,7 +703,7 @@ struct FollowBanner: View {
                     Button("Hand Back to \(pairing.name)") { Task { await follow.handBack() } }
                 }
             } else {
-                let line = Follow.banner(following: pairing.name, state: follow.state, lastFire: follow.lastFire, boothQuit: follow.boothQuit)
+                let line = Follow.banner(following: pairing.name, state: follow.state, lastFire: follow.lastFire, boothQuit: follow.boothQuit, standby: follow.standingBy)
                 bar(color: color, title: line.title, detail: follow.problem ?? follow.copyProblem ?? follow.cameBack ?? line.detail) {
                     if follow.state == .gaveUp {
                         Button("Try Again") { follow.tryAgain() }

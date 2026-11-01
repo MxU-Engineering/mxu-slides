@@ -33,19 +33,24 @@ public enum Follow {
         case gaveUp
     }
 
-    public static func banner(following name: String, state: State, lastFire: Date?, boothQuit: Bool = false, calendar: Calendar = .current) -> (title: String, detail: String) {
+    public static func banner(following name: String, state: State, lastFire: Date?, boothQuit: Bool = false, standby: Bool = false, calendar: Calendar = .current) -> (title: String, detail: String) {
         if boothQuit, state != .live, state != .connecting {
-            return ("\(name) quit.", "This computer keeps showing the last thing it fired, and follows again when \(name) opens.")
+            return ("\(name) quit.", standby
+                ? "Nothing shows here, and this computer stands by again when \(name) opens."
+                : "This computer keeps showing the last thing it fired, and follows again when \(name) opens.")
         }
+        let waits = standby ? "Nothing shows here until this computer takes over." : "This computer's triggers wait until it takes over."
         return switch state {
         case .connecting:
-            ("Connecting to \(name)\u{2026}", "This computer's triggers wait until it takes over.")
+            ("Connecting to \(name)\u{2026}", waits)
         case .live:
-            ("Backing up \(name).", lastFire.map {
-                "Last fire \($0.formatted(Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).hour().minute().second())). This computer's triggers wait until it takes over."
-            } ?? "In step. This computer's triggers wait until it takes over.")
+            (standby ? "Ready to take over from \(name)." : "Backing up \(name).", lastFire.map {
+                "Last fire \($0.formatted(Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).hour().minute().second())). \(waits)"
+            } ?? (standby ? waits : "In step. \(waits)"))
         case .lost(let frozen):
-            (frozen ? "\(name) froze." : "\(name) stopped answering.", "This computer keeps showing the last thing it fired.")
+            (frozen ? "\(name) froze." : "\(name) stopped answering.", standby
+                ? "Take Over puts up what \(name) last showed."
+                : "This computer keeps showing the last thing it fired.")
         case .gaveUp:
             ("Can't reach \(name).", "Check that both computers are on the same network, then try again.")
         }
