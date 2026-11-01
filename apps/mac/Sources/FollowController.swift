@@ -1,6 +1,5 @@
 import Foundation
 import LocalAPI
-import MxUAPI
 import os
 import PresenterCore
 import SwiftUI
@@ -85,7 +84,6 @@ final class FollowController {
     private var copyRun = UUID()
 
     private var bridge: (any LocalAPIBridge)?
-    private weak var station: StationSyncController?
     private weak var controls: ServiceControls?
     private var client: LocalAPIClient?
     private var endpoint: LocalAPIClient.Endpoint?
@@ -96,7 +94,9 @@ final class FollowController {
         steppedDown = Self.load(SteppedDown.self, Self.steppedDownKey)
     }
 
-    private var me: String? { station?.lanStationHexId }
+    var me: String? { controls?.appModel.machineID }
+
+    private var myName: String { controls?.appModel.computerName() ?? "This Mac" }
 
     var backingUp: Bool { pairing != nil && !inCharge }
 
@@ -104,9 +104,8 @@ final class FollowController {
 
     var inCharge: Bool { pairing?.role.map { $0.inCharge != pairing?.stationHexId } ?? false }
 
-    func configure(bridge: any LocalAPIBridge, station: StationSyncController, controls: ServiceControls?) {
+    func configure(bridge: any LocalAPIBridge, controls: ServiceControls?) {
         self.bridge = bridge
-        self.station = station
         self.controls = controls
         if let steppedDown { Self.held.withLock { $0 = steppedDown.backupName } }
         refreshBackups()
@@ -129,11 +128,9 @@ final class FollowController {
         Thread.sleep(forTimeInterval: 0.25)
     }
 
-    func pair(with peer: BonjourBrowser.Peer, name: String, code: String, automatic: Bool, mirrors: Bool, teamHexId: String, station: StationSyncController) async -> String? {
-        guard let stationHexId = station.lanStationHexId, let client = MxUAccountController.shared.client else {
-            return "Sign in first."
-        }
-        let request = APIFollowPairRequest(code: code, teamHexId: teamHexId, stationHexId: stationHexId, name: station.lanStationName)
+    func pair(with peer: BonjourBrowser.Peer, name: String, code: String, automatic: Bool, mirrors: Bool) async -> String? {
+        guard let stationHexId = me else { return "This computer isn't ready yet." }
+        let request = APIFollowPairRequest(code: code, stationHexId: stationHexId, name: myName)
         let key: String
         do {
             key = try await Self.requestKey(request, host: peer.host, port: peer.port)
@@ -145,22 +142,17 @@ final class FollowController {
             automatic: automatic, role: .start(booth: peer.stationHexId), mirrors: mirrors)
         FollowKeyKeychain.save(key, account: pairing.stationHexId)
         save(pairing)
-        _ = try? await client.setFollow(hexId: stationHexId, followsStationHexId: pairing.stationHexId)
         DiagnosticsStore.shared.note("follow.paired", detail: "\(pairing.name) at \(pairing.host):\(pairing.port)")
         start(pairing, key: key)
         return nil
     }
 
-    func unpair(station: StationSyncController) async {
-
+    func unpair() async {
         if let endpoint { await Self.postUnpair(endpoint) }
         stopClient()
         if let pairing { FollowKeyKeychain.clear(account: pairing.stationHexId) }
         save(nil)
         Self.held.withLock { $0 = nil }
-        if let stationHexId = station.lanStationHexId, let client = MxUAccountController.shared.client {
-            _ = try? await client.setFollow(hexId: stationHexId, followsStationHexId: nil)
-        }
         DiagnosticsStore.shared.note("follow.unpaired")
     }
 
@@ -260,7 +252,7 @@ final class FollowController {
 
     private func post(role: FollowRole, for pairing: Pairing) async -> APIFollowRoleCommand? {
         guard let endpoint else { return nil }
-        let command = APIFollowRoleCommand(term: role.term, inCharge: role.inCharge, name: station?.lanStationName ?? "Backup")
+        let command = APIFollowRoleCommand(term: role.term, inCharge: role.inCharge, name: myName)
         return await Self.postRole(command, endpoint: endpoint)
     }
 
@@ -278,7 +270,7 @@ final class FollowController {
         let mine = boothRole
         let incoming = FollowRole(term: command.term, inCharge: command.inCharge)
         guard let newer = mine.newer(incoming) else {
-            return APIFollowRoleCommand(term: mine.term, inCharge: mine.inCharge, name: station?.lanStationName ?? "")
+            return APIFollowRoleCommand(term: mine.term, inCharge: mine.inCharge, name: myName)
         }
         boothRole = newer
         if newer.inCharge == me {
@@ -544,9 +536,8 @@ final class FollowController {
     }
 
     private func watchForBooth() {
-        guard watch == nil, rewatches < Self.maxRewatches, let pairing,
-              let team = MxUAccountController.shared.user?.teamHexId else { return }
-        let browser = BonjourBrowser(teamHexId: team, ownStationHexId: me)
+        guard watch == nil, rewatches < Self.maxRewatches, let pairing else { return }
+        let browser = BonjourBrowser(ownStationHexId: me)
         watch = browser
         let booth = pairing.stationHexId
         watchTask = Task { [weak self] in
@@ -659,7 +650,7 @@ enum FollowKeyKeychain {
     private static let memory = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
 
     #if DEBUG || MXU_PERF_HOOKS
-    private static let skips = KeychainTokenStore.skips(isDebug: true, envValue: ProcessInfo.processInfo.environment[KeychainTokenStore.environmentKey])
+    private static let skips = ProcessInfo.processInfo.environment["MXU_SKIP_KEYCHAIN"] == "1"
     #else
     private static let skips = false
     #endif
@@ -694,7 +685,6 @@ enum FollowKeyKeychain {
 
 struct FollowBanner: View {
     let follow: FollowController
-    let station: StationSyncController?
 
     var body: some View {
         if let steppedDown = follow.steppedDown {
@@ -723,9 +713,7 @@ struct FollowBanner: View {
                         Button("Try Again") { follow.tryAgain() }
                     }
                     Button("Take Over") { Task { await follow.takeOver() } }
-                    if let station {
-                        Button("Stop Backing Up") { Task { await follow.unpair(station: station) } }
-                    }
+                    Button("Stop Backing Up") { Task { await follow.unpair() } }
                 }
             }
         }

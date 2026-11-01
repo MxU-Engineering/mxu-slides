@@ -13,7 +13,7 @@ private func deck(_ id: String) -> Presentation {
 }
 
 @Suite struct FollowCopyTests {
-    @LibraryActor @Test func aBoothsSaveLandsThisMacOnlyAndMergesWithTheBackupsEdits() throws {
+    @LibraryActor @Test func aBoothsSaveLandsHereAndMergesWithTheBackupsEdits() throws {
         let (boothRoot, backupRoot) = (makeRoot(), makeRoot())
         defer { [boothRoot, backupRoot].forEach { try? FileManager.default.removeItem(at: $0) } }
         let booth = LibraryEngine(rootURL: boothRoot)
@@ -37,25 +37,25 @@ private func deck(_ id: String) -> Presentation {
         #expect(merged.slides.map(\.name) == ["Welcome back"])
     }
 
-    @LibraryActor @Test func aDriveItemLandsInTheDriveAndADriveCopyHereStaysThere() throws {
+    @LibraryActor @Test func aSharedItemLandsSharedAndASharedCopyHereStaysShared() throws {
         let (boothRoot, backupRoot) = (makeRoot(), makeRoot())
         defer { [boothRoot, backupRoot].forEach { try? FileManager.default.removeItem(at: $0) } }
         let booth = LibraryEngine(rootURL: boothRoot)
         let backup = LibraryEngine(rootURL: backupRoot)
         try booth.bootstrap()
         try backup.bootstrap()
-        try booth.create(deck("drive"), area: .team)
+        try booth.create(deck("shared"), area: .team)
         try booth.create(deck("station"))
 
-        let drive = try #require(try booth.documentBytes(kind: .presentation, id: "drive"))
-        let landed = try backup.mergeCopy(kind: .presentation, id: "drive", bytes: drive, area: FollowCopy.landing("team"))
+        let shared = try #require(try booth.documentBytes(kind: .presentation, id: "shared"))
+        let landed = try backup.mergeCopy(kind: .presentation, id: "shared", bytes: shared, area: FollowCopy.landing("team"))
         #expect(landed.changes.map(\.origin) == [.landed])
-        #expect(try backup.opened().index.area(kind: .presentation, id: "drive") == .team, "the same Drive document the cloud brings")
+        #expect(try backup.opened().index.area(kind: .presentation, id: "shared") == .team, "the same shared document")
         try backup.mergeCopy(kind: .presentation, id: "station", bytes: #require(try booth.documentBytes(kind: .presentation, id: "station")), area: FollowCopy.landing(nil))
         #expect(try backup.opened().index.area(kind: .presentation, id: "station") == .local, "the booth's This Station is the booth's alone")
 
-        try backup.mergeCopy(kind: .presentation, id: "drive", bytes: drive, area: .local)
-        #expect(try backup.opened().index.area(kind: .presentation, id: "drive") == .team)
+        try backup.mergeCopy(kind: .presentation, id: "shared", bytes: shared, area: .local)
+        #expect(try backup.opened().index.area(kind: .presentation, id: "shared") == .team)
     }
 
     @LibraryActor @Test func anItemTheBackupHoldsKeepsItsOwnArea() throws {
@@ -73,12 +73,12 @@ private func deck(_ id: String) -> Presentation {
         #expect(FollowCopy.area(.team, here: nil) == .team)
         #expect(FollowCopy.area(.local, here: nil) == .local)
         #expect(FollowCopy.area(.local, here: .station) == .station, "a built-in deck both have")
-        #expect(FollowCopy.area(.local, here: .team) == .team, "never out of the Drive")
-        #expect(FollowCopy.area(.team, here: .local) == .team, "the booth moved its original to the Drive")
+        #expect(FollowCopy.area(.local, here: .team) == .team, "never out of the shared library")
+        #expect(FollowCopy.area(.team, here: .local) == .team, "the booth moved its original to the shared library")
         #expect(FollowCopy.area(.team, here: .station) == .station)
     }
 
-    @Test func theBoothSaysWhichItemsAreDrive() {
+    @Test func theBoothSaysWhichItemsAreShared() {
         #expect(FollowCopy.offered(.team) == "team")
         #expect(FollowCopy.offered(.station) == nil && FollowCopy.offered(.local) == nil && FollowCopy.offered(nil) == nil)
         #expect(FollowCopy.landing("team") == .team)
@@ -95,9 +95,11 @@ private func deck(_ id: String) -> Presentation {
         #expect(throws: (any Error).self) { try engine.mergeCopy(kind: .presentation, id: "d2", bytes: bytes) }
     }
 
-    @Test func onlyTeamLibraryKindsAreOffered() {
+    @Test func theLibraryAndItsPresetsAreOffered() {
         #expect(FollowCopy.kinds.contains(.presentation))
         #expect(FollowCopy.kinds.contains(.media))
-        #expect(!FollowCopy.kinds.contains(.outputPreset), "the setup follows through the cloud")
+        #expect(FollowCopy.kinds.contains(.outputPreset), "fires switch presets by id")
+        #expect(FollowCopy.kinds.contains(.streamRecordPreset), "Start Stream Here after a takeover")
+        #expect(!FollowCopy.kinds.contains(.midiDevice), "MIDI gear is each computer's own")
     }
 }

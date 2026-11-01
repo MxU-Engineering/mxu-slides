@@ -51,7 +51,6 @@ public enum FollowReplay {
         case .timer: if let id = event.id, let timer = event.timer { try bridge.timerAction(id: id, action: timer) }
         case .combo: if let id = event.id { try bridge.fireActionCombo(id: id) }
         case .outputPreset: try bridge.activateOutputPreset(id: event.id)
-        case .lock: if let locked = event.locked { await bridge.setLock(APILockCommand(locked: locked)) }
         case .audioItem: if let id = event.id { try bridge.fireAudioItem(id: id) }
         case .audioPlaylist: if let id = event.id { try bridge.fireAudioPlaylist(id: id, startAtEntryId: event.entryId) }
         case .stopAudio: try bridge.stopAudio(event.audioStop ?? APIAudioStopCommand())
@@ -149,12 +148,9 @@ public final class FollowPairing: @unchecked Sendable {
         return code
     }
 
-    public func answer(_ body: Data, teamHexId: String?, tokens: APITokenStore) -> APIHandlerResponse {
+    public func answer(_ body: Data, tokens: APITokenStore) -> APIHandlerResponse {
         guard let request = try? JSONDecoder().decode(APIFollowPairRequest.self, from: body) else {
-            return .json(APIError.badRequest("Send code, teamHexId, stationHexId and name."), status: 400)
-        }
-        guard let teamHexId, request.teamHexId == teamHexId else {
-            return .json(APIError(status: 403, code: "other_team", message: "That computer isn't on this team."), status: 403)
+            return .json(APIError.badRequest("Send code, stationHexId and name."), status: 400)
         }
         lock.lock()
         let matched = misses < Self.maxAttempts && request.code == code
@@ -216,13 +212,11 @@ public final class FollowPresence: @unchecked Sendable {
 
 public struct APIFollowPairRequest: Codable, Sendable, Equatable {
     public var code: String
-    public var teamHexId: String
     public var stationHexId: String
     public var name: String
 
-    public init(code: String, teamHexId: String, stationHexId: String, name: String) {
+    public init(code: String, stationHexId: String, name: String) {
         self.code = code
-        self.teamHexId = teamHexId
         self.stationHexId = stationHexId
         self.name = name
     }

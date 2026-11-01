@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import LocalAPI
 import Observation
 import PresenterCore
 import SlideScene
@@ -367,7 +368,7 @@ final class SchedulerController {
             RunRecord(
                 triggerID: trigger.id, name: trigger.name, at: Date(),
                 outcome: late ? .late : .fired, source: source))
-        router.execute(trigger.actions)
+        APIFireSource.$current.withValue(APIFireSource(kind: .scheduler)) { router.execute(trigger.actions) }
 
         if ScheduleMath.spentOneOffDue(
             for: trigger, asOf: Date(), calendar: .current) != nil

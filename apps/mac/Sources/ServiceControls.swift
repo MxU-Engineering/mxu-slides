@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import AudioEngine
 import Foundation
+import LocalAPI
 import MediaEngine
 import NDIKit
 import Observation

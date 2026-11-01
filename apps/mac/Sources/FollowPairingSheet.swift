@@ -1,16 +1,13 @@
 import LocalAPI
-import MxUAPI
 import PresenterCore
 import SwiftUI
 
 struct FollowSettingsControl: View {
-    let station: StationSyncController?
-    let documentSync: DocumentSyncController?
     @State private var choosing = false
 
     var body: some View {
         let follow = FollowController.shared
-        if let pairing = follow.pairing, let station {
+        if let pairing = follow.pairing {
             HStack(spacing: 8) {
                 Picker("While \(pairing.name) runs", selection: Binding(
                     get: { pairing.mirrors ?? true },
@@ -20,15 +17,13 @@ struct FollowSettingsControl: View {
                 }
                 .labelsHidden()
                 .fixedSize()
-                Button("Stop Backing Up") { Task { await follow.unpair(station: station) } }
+                Button("Stop Backing Up") { Task { await follow.unpair() } }
             }
         } else {
             Button("Back Up Another Computer\u{2026}") { choosing = true }
-                .disabled(station?.lanStationHexId == nil || documentSync == nil || EmulationController.isEmulating)
+                .disabled(follow.me == nil)
                 .sheet(isPresented: $choosing) {
-                    if let station, let documentSync {
-                        FollowPairingSheet(station: station, documentSync: documentSync)
-                    }
+                    FollowPairingSheet(own: follow.me)
                 }
         }
     }
@@ -52,12 +47,10 @@ struct FollowPairingCodeControl: View {
 }
 
 struct FollowPairingSheet: View {
-    let station: StationSyncController
-    let documentSync: DocumentSyncController
+    let own: String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var peers: [BonjourBrowser.Peer] = []
-    @State private var stations: [String: MxUAPIClient.Station] = [:]
     @State private var picked: String?
     @State private var code = Self.qaCode
     @State private var working = false
@@ -77,14 +70,11 @@ struct FollowPairingSheet: View {
     }
 
     private var peer: BonjourBrowser.Peer? { peers.first { $0.stationHexId == picked } }
-    private var booth: MxUAPIClient.Station? { picked.flatMap { stations[$0] } }
     private var name: String { peer.map(displayName) ?? "that computer" }
 
     private func displayName(_ peer: BonjourBrowser.Peer) -> String {
-        stations[peer.stationHexId]?.name ?? peer.stationName ?? peer.name
+        peer.stationName ?? peer.name
     }
-
-    private var switchesSetup: Bool { booth?.workspaceHexId != nil && booth?.workspaceHexId != station.workspaceHexId }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -96,11 +86,10 @@ struct FollowPairingSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             if peers.isEmpty {
-                Label("Looking for your team's computers on this network\u{2026} The other computer needs MxU Slides open with its API on.", systemImage: "network")
+                Label("Looking for MxU Slides on this network\u{2026} The other computer needs MxU Slides open with its API on.", systemImage: "network")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
                     GridRow {
                         Text("Computer").gridColumnAlignment(.trailing)
@@ -154,20 +143,12 @@ struct FollowPairingSheet: View {
         .padding(20)
         .frame(width: 460)
         .task { await browse() }
-        .task { await loadStations() }
         .onAppear { unconnected = Follow.unconnectedScreens(in: UserDefaults.standard.dictionaryRepresentation()) }
     }
 
     private var checks: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if switchesSetup {
-                check("Runs \(name)'s setup. MxU Slides reopens to finish.", ok: true)
-            } else if booth != nil {
-                check("Runs \(name)'s setup already.", ok: true)
-            }
-            if booth != nil {
-                check("Downloads what \(name) downloads.", ok: true)
-            }
+            check("Copies \(name)'s library, output presets and stream presets here over the network.", ok: true)
             ForEach(unconnected, id: \.self) { screen in
                 check("\(screen) isn't connected on this computer, so it won't show here. Connect it in Settings › Screens.", ok: false)
             }
@@ -185,8 +166,7 @@ struct FollowPairingSheet: View {
     }
 
     private func browse() async {
-        guard let team = MxUAccountController.shared.user?.teamHexId else { return }
-        let browser = BonjourBrowser(teamHexId: team, ownStationHexId: station.lanStationHexId)
+        let browser = BonjourBrowser(ownStationHexId: own)
         defer { browser.stop() }
         for await found in browser.start() {
             peers = found.sorted { $0.name < $1.name }
@@ -194,30 +174,15 @@ struct FollowPairingSheet: View {
         }
     }
 
-    private func loadStations() async {
-        guard let client = MxUAccountController.shared.client, let all = try? await client.stations() else { return }
-        stations = Dictionary(all.map { ($0.hexId, $0) }, uniquingKeysWith: { first, _ in first })
-    }
-
     private func pair() {
-        guard let peer, let team = MxUAccountController.shared.user?.teamHexId else { return }
-        let booth = booth
-        let switchesSetup = switchesSetup
+        guard let peer else { return }
         working = true
         problem = nil
         Task {
             defer { working = false }
-            if let refused = await FollowController.shared.pair(with: peer, name: displayName(peer), code: code, automatic: automatic, mirrors: mirrors, teamHexId: team, station: station) {
+            if let refused = await FollowController.shared.pair(with: peer, name: displayName(peer), code: code, automatic: automatic, mirrors: mirrors) {
                 problem = refused
                 return
-            }
-            if let booth {
-
-                _ = await station.setOffline(booth.offline.map { OfflineSetLogic.Entry(kind: $0.kind, ref: $0.ref, library: $0.library) })
-                if switchesSetup, let workspace = booth.workspaceHexId, let refused = await documentSync.runWorkspace(workspace) {
-                    problem = "Paired, but this computer couldn't switch to \(displayName(peer))'s setup: \(refused)"
-                    return
-                }
             }
             dismiss()
         }

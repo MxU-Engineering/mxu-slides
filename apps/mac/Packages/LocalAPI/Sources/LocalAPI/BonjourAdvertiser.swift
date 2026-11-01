@@ -5,7 +5,6 @@ public final class BonjourAdvertiser: @unchecked Sendable {
     public static let serviceType = "_mxu-slides._tcp"
 
     public static let stationKey = "stationHexId"
-    public static let teamKey = "teamHexId"
     public static let nameKey = "stationName"
 
     private let queue = DispatchQueue(label: "localapi.bonjour")
@@ -61,7 +60,6 @@ public final class BonjourAdvertiser: @unchecked Sendable {
     static func txt(for info: APIServerInfo) -> [String: String] {
         var pairs: [String: String] = [:]
         pairs[stationKey] = info.stationHexId
-        pairs[teamKey] = info.teamHexId
         pairs[nameKey] = info.stationName
         return pairs
     }

@@ -19,7 +19,6 @@ public final class BonjourBrowser: @unchecked Sendable {
 
     static let resolveTimeout: TimeInterval = 5
 
-    private let teamHexId: String
     private let ownStationHexId: String?
     private let queue = DispatchQueue(label: "localapi.bonjour.browse")
     private var browser: NWBrowser?
@@ -28,8 +27,7 @@ public final class BonjourBrowser: @unchecked Sendable {
     private var resolving: [String: NWConnection] = [:]
     private var continuation: AsyncStream<[Peer]>.Continuation?
 
-    public init(teamHexId: String, ownStationHexId: String?) {
-        self.teamHexId = teamHexId
+    public init(ownStationHexId: String?) {
         self.ownStationHexId = ownStationHexId
     }
 
@@ -70,10 +68,9 @@ public final class BonjourBrowser: @unchecked Sendable {
     }
 
     static func candidate(
-        name: String, txt: [String: String], teamHexId: String, ownStationHexId: String?
+        name: String, txt: [String: String], ownStationHexId: String?
     ) -> Candidate? {
-        guard txt[BonjourAdvertiser.teamKey] == teamHexId,
-              let station = txt[BonjourAdvertiser.stationKey], !station.isEmpty,
+        guard let station = txt[BonjourAdvertiser.stationKey], !station.isEmpty,
               station != ownStationHexId
         else { return nil }
         return Candidate(name: name, stationHexId: station, stationName: txt[BonjourAdvertiser.nameKey].flatMap { $0.isEmpty ? nil : $0 })
@@ -85,7 +82,7 @@ public final class BonjourBrowser: @unchecked Sendable {
             guard case .service(let name, _, _, _) = result.endpoint,
                   case .bonjour(let record) = result.metadata,
                   let candidate = Self.candidate(
-                    name: name, txt: record.dictionary, teamHexId: teamHexId, ownStationHexId: ownStationHexId)
+                    name: name, txt: record.dictionary, ownStationHexId: ownStationHexId)
             else { continue }
             seen.insert(name)
             let held = resolved[name]

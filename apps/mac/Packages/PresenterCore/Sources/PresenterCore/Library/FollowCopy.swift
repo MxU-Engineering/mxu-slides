@@ -2,7 +2,9 @@ import Foundation
 
 public enum FollowCopy {
 
-    public static let kinds: [DocumentKind] = Library.listedKinds.filter { SyncScope.scope(for: $0) == .team }
+    public static let kinds: [DocumentKind] = Library.listedKinds.filter { SyncScope.scope(for: $0) == .team || setupKinds.contains($0) }
+
+    public static let setupKinds: Set<DocumentKind> = [.outputPreset, .streamRecordPreset, .streamDestination]
 
     public static func offered(_ area: LibraryArea?) -> String? {
         area == .team ? LibraryArea.team.rawValue : nil

@@ -36,7 +36,6 @@ import Testing
         ("TimersController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .timer, id: id, timer: .reset))"),
         ("ActionRouter.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .combo, id: comboID))"),
         ("OutputPresetsController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .outputPreset, id: id))"),
-        ("LockController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .lock, locked: on))"),
 
         ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .audioPlaylist, id: playlist.id, entryId: entryID))"),
         ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .audioItem, id: audioItem.id))"),
@@ -64,7 +63,7 @@ import Testing
         }
         let total = all.values.map { $0.components(separatedBy: "APIFireFeed.shared.publish(").count - 1 }.reduce(0, +)
         #expect(total == Self.sites.count, "a publish outside the known sites fires twice on a follower")
-        let kinds = ["slide", "step", "clear", "clearAll", "media", "overlay", "dismissOverlay", "alert", "timer", "combo", "outputPreset", "lock",
+        let kinds = ["slide", "step", "clear", "clearAll", "media", "overlay", "dismissOverlay", "alert", "timer", "combo", "outputPreset",
                      "audioPlaylist", "audioItem", "stopAudio"]
         for kind in kinds {
             #expect(Self.sites.contains { $0.publish.contains("kind: .\(kind),") || $0.publish.contains("kind: .\(kind))") }, "\(kind) has a site")

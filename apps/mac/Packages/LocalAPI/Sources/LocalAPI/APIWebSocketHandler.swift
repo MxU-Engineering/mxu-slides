@@ -82,7 +82,7 @@ struct APIWebSocketHandler: WSMessageHandler {
         }
         switch inbound.type {
         case "ping":
-            if let heard, let tokenName { heard(tokenName) }
+            if let heard { heard(token.name) }
             var pong: [String: Any] = ["type": "pong"]
             if let beat { pong["beat"] = beat() }
             Self.send(pong, to: continuation)

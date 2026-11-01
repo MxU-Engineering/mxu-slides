@@ -33,7 +33,6 @@ final class FollowReplayTests: XCTestCase {
             event(.timer) { $0.id = "t1"; $0.timer = .play },
             event(.combo) { $0.id = "c1" },
             event(.outputPreset) { $0.id = nil },
-            event(.lock) { $0.locked = true },
             event(.audioItem) { $0.id = "a1" },
             event(.audioPlaylist) { $0.id = "pl1"; $0.entryId = "e2" },
             event(.stopAudio),
@@ -48,7 +47,7 @@ final class FollowReplayTests: XCTestCase {
         XCTAssertEqual(bridge.calls, [
             "fireSlide:p1", "advance:-1", "clear:media", "clearAll", "fireMedia:m1", "fireOverlay:o1", "dismissOverlay:o1",
             "fireAlert:Parking lot", "dismissAlert", "timer:t1:play", "fireActionCombo:c1", "activatePreset:none",
-            "setLock:true:-", "fireAudioItem:a1", "firePlaylist:pl1", "stopAudio", "audioTransport:next", "mediaTransport:m1:pause",
+            "fireAudioItem:a1", "firePlaylist:pl1", "stopAudio", "audioTransport:next", "mediaTransport:m1:pause",
         ])
     }
 
@@ -131,21 +130,20 @@ final class FollowPairingTests: XCTestCase {
         APITokenStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("tokens-\(UUID().uuidString).json"))
     }
 
-    private func body(_ code: String, team: String = "team1") -> Data {
-        try! JSONEncoder().encode(APIFollowPairRequest(code: code, teamHexId: team, stationHexId: "backup1", name: "Backup Mac"))
+    private func body(_ code: String) -> Data {
+        try! JSONEncoder().encode(APIFollowPairRequest(code: code, stationHexId: "backup1", name: "Backup Mac"))
     }
 
-    func testTheRightCodeFromATeammateGetsAnOperateKeyNamedForIt() throws {
+    func testTheRightCodeGetsAnOperateKeyNamedForTheBackup() throws {
         let tokens = store()
         let pairing = FollowPairing(code: "4817")
-        XCTAssertEqual(pairing.answer(body("4817", team: "other"), teamHexId: "team1", tokens: tokens).status, 403)
-        let answer = pairing.answer(body("4817"), teamHexId: "team1", tokens: tokens)
+        let answer = pairing.answer(body("4817"), tokens: tokens)
         XCTAssertEqual(answer.status, 200)
         let key = try JSONDecoder().decode(APIFollowPairResponse.self, from: answer.body).token
         let token = try XCTUnwrap(tokens.verify(secret: key))
         XCTAssertEqual(token.scope, .control)
         XCTAssertEqual(token.name, "Backup: Backup Mac")
-        let again = pairing.answer(body("4817"), teamHexId: "team1", tokens: tokens)
+        let again = pairing.answer(body("4817"), tokens: tokens)
         let second = try JSONDecoder().decode(APIFollowPairResponse.self, from: again.body).token
         XCTAssertNil(tokens.verify(secret: key), "pairing again replaces the old key")
         XCTAssertNotNil(tokens.verify(secret: second))
@@ -186,12 +184,12 @@ final class FollowPairingTests: XCTestCase {
         let tokens = store()
         let pairing = FollowPairing(code: "4817")
         for _ in 0 ..< FollowPairing.maxAttempts {
-            XCTAssertEqual(pairing.answer(body("0000"), teamHexId: "team1", tokens: tokens).status, 403)
+            XCTAssertEqual(pairing.answer(body("0000"), tokens: tokens).status, 403)
         }
         XCTAssertNil(pairing.current)
-        XCTAssertEqual(pairing.answer(body("4817"), teamHexId: "team1", tokens: tokens).status, 403, "even the right code, once retired")
+        XCTAssertEqual(pairing.answer(body("4817"), tokens: tokens).status, 403, "even the right code, once retired")
         let fresh = pairing.refresh()
-        XCTAssertEqual(pairing.answer(body(fresh), teamHexId: "team1", tokens: tokens).status, 200)
+        XCTAssertEqual(pairing.answer(body(fresh), tokens: tokens).status, 200)
         XCTAssertTrue(tokens.all.count == 1)
     }
 }
@@ -211,7 +209,7 @@ final class FollowHoldTests: XCTestCase {
             configuration: .init(
                 port: port, serviceName: "Backup Mac", advertise: false, info: info,
                 hold: { FollowHold.error(for: $0, following: "Booth Mac") },
-                pair: { pairing.answer($0, teamHexId: "team1", tokens: tokens) }),
+                pair: { pairing.answer($0, tokens: tokens) }),
             routes: routes, tokens: tokens)
         let task = Task { try await server.run() }
         defer { task.cancel(); Task { await server.stop() } }
@@ -233,7 +231,7 @@ final class FollowHoldTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(APIError.self, from: next.1).code, "backing_up")
         let paired = try await call(
             "POST", "/v1/follow/pair",
-            body: try JSONEncoder().encode(APIFollowPairRequest(code: "1234", teamHexId: "team1", stationHexId: "b", name: "Lobby Mac")), auth: false)
+            body: try JSONEncoder().encode(APIFollowPairRequest(code: "1234", stationHexId: "b", name: "Lobby Mac")), auth: false)
         XCTAssertEqual(paired.0, 200, "pairing needs no key")
     }
 }
@@ -247,7 +245,7 @@ final class FollowEndToEndTests: XCTestCase {
         let info = APIServerInfo(name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1)
         let booth = LocalAPIServer(
             configuration: .init(port: port, serviceName: "Booth Mac", advertise: false, info: info,
-                                 pair: { pairing.answer($0, teamHexId: "team1", tokens: tokens) }),
+                                 pair: { pairing.answer($0, tokens: tokens) }),
             routes: [], tokens: tokens)
         let task = Task { try await booth.run() }
         defer { task.cancel(); Task { await booth.stop() } }
@@ -255,7 +253,7 @@ final class FollowEndToEndTests: XCTestCase {
 
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/follow/pair")!)
         request.httpMethod = "POST"
-        request.httpBody = try JSONEncoder().encode(APIFollowPairRequest(code: "2468", teamHexId: "team1", stationHexId: "backup", name: "Backup Mac"))
+        request.httpBody = try JSONEncoder().encode(APIFollowPairRequest(code: "2468", stationHexId: "backup", name: "Backup Mac"))
         let (data, _) = try await URLSession.shared.data(for: request)
         let key = try JSONDecoder().decode(APIFollowPairResponse.self, from: data).token
 
@@ -325,9 +323,9 @@ final class FollowFilesTests: XCTestCase {
         XCTAssertEqual(FollowFiles.gone(copied: [], booth: booth), [], "nothing this backup didn't copy")
     }
 
-    func testADriveItemSaysSoAndAnOlderBoothsListStillReads() throws {
-        let drive = FollowFiles.Item(kind: "presentation", id: "d1", heads: ["h1"], area: "team")
-        XCTAssertEqual(try JSONDecoder().decode(FollowFiles.Item.self, from: JSONEncoder().encode(drive)).area, "team")
+    func testAnItemsAreaRidesAlongAndAnOlderBoothsListStillReads() throws {
+        let shared = FollowFiles.Item(kind: "presentation", id: "d1", heads: ["h1"], area: "team")
+        XCTAssertEqual(try JSONDecoder().decode(FollowFiles.Item.self, from: JSONEncoder().encode(shared)).area, "team")
         let older = Data(#"{"kind":"presentation","id":"d1","heads":["h1"]}"#.utf8)
         XCTAssertNil(try JSONDecoder().decode(FollowFiles.Item.self, from: older).area)
     }
