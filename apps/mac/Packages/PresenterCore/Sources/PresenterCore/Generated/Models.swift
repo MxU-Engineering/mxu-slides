@@ -1070,6 +1070,7 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var mediaKind: MediaKind
     public var classification: MediaClassification
     public var fileHash: String
+    public var previousFileHash: String?
     public var fileName: String
     public var fileStatus: MediaFileStatus
     public var statusDetail: String
@@ -1093,12 +1094,13 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var actions: [SlideAction]?
     public var autoAdvance: AutoAdvance?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, previousFileHash: String? = nil, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
         self.classification = classification
         self.fileHash = fileHash
+        self.previousFileHash = previousFileHash
         self.fileName = fileName
         self.fileStatus = fileStatus
         self.statusDetail = statusDetail
@@ -1128,6 +1130,7 @@ public struct AudioItem: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var fileHash: String
+    public var previousFileHash: String?
     public var fileName: String
     public var tags: [String]
     public var favorite: Bool
@@ -1137,10 +1140,11 @@ public struct AudioItem: Codable, Sendable, Equatable, Identifiable {
     public var folder: String?
     public var folderId: String?
 
-    public init(id: String, name: String, fileHash: String, fileName: String, tags: [String], favorite: Bool, inPoint: Double? = nil, outPoint: Double? = nil, durationSeconds: Double? = nil, folder: String? = nil, folderId: String? = nil) {
+    public init(id: String, name: String, fileHash: String, previousFileHash: String? = nil, fileName: String, tags: [String], favorite: Bool, inPoint: Double? = nil, outPoint: Double? = nil, durationSeconds: Double? = nil, folder: String? = nil, folderId: String? = nil) {
         self.id = id
         self.name = name
         self.fileHash = fileHash
+        self.previousFileHash = previousFileHash
         self.fileName = fileName
         self.tags = tags
         self.favorite = favorite

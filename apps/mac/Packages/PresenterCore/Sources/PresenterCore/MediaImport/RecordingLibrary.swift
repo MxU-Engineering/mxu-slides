@@ -56,10 +56,6 @@ public enum RecordingLibrary {
         return item
     }
 
-    public static func isRecording(_ item: MediaItem) -> Bool {
-        item.recordedAt != nil || inSubtree(item.folder, of: defaultFolder)
-    }
-
     public static func exportCopy(of blob: URL, to destination: URL) throws {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.copyItem(at: blob, to: destination)

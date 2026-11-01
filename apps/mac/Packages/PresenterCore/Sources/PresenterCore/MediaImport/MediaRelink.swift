@@ -52,6 +52,20 @@ public enum MediaRelink {
         return out
     }
 
+    public static func refingerprinted(_ item: MediaItem, hash: String, probe: Probe?) -> MediaItem {
+        var out = item
+        out.fileHash = hash
+        if let probe {
+            out.mediaKind = probe.mediaKind
+            out.fileStatus = probe.fileStatus
+            out.statusDetail = probe.statusDetail
+            out.durationSeconds = probe.durationSeconds
+            out.pixelWidth = probe.pixelWidth
+            out.pixelHeight = probe.pixelHeight
+        }
+        return out
+    }
+
     public static func carriedSettings(of item: MediaItem) -> [String] {
         var out: [String] = []
         if item.inPoint != nil || item.outPoint != nil { out.append("Trim") }

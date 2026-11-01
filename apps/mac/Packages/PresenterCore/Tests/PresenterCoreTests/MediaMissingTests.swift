@@ -314,6 +314,23 @@ struct MediaMissingTests {
         #expect(MediaRelink.carriedSettings(of: makeMediaItem()).isEmpty)
     }
 
+    @Test func aChangedFileKeepsItsNameAndSettingsAndTakesTheNewBytes() {
+        var item = makeMediaItem(hash: "old", inPoint: 2)
+        item.name = "One-Off Capture"
+        item.durationSeconds = 1492.9
+        let probe = MediaRelink.Probe(
+            mediaKind: .video, fileStatus: .ready, statusDetail: "", durationSeconds: 47.8, pixelWidth: 1920, pixelHeight: 1080)
+
+        let readded = MediaRelink.refingerprinted(item, hash: "new", probe: probe)
+        #expect(readded.fileHash == "new")
+        #expect(readded.durationSeconds == 47.8 && readded.pixelWidth == 1920)
+        #expect(readded.id == item.id && readded.name == "One-Off Capture" && readded.fileName == "clip.mp4")
+        #expect(readded.inPoint == 2)
+
+        let unprobed = MediaRelink.refingerprinted(item, hash: "new", probe: nil)
+        #expect(unprobed.fileHash == "new" && unprobed.durationSeconds == 1492.9, "an unreadable file keeps the facts it had")
+    }
+
     @LibraryActor @Test func tombstoneRestoreHealsReferencesUnderOriginalId() async throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

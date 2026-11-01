@@ -162,26 +162,33 @@ struct MediaImportTests {
         #expect(try await onLibraryActor(reading: libraryRoot) { try $0.index.entries(of: .media).count } == 2)
     }
 
-    @Test func blobsAreReadOnlyAndTheOriginalIsNot() throws {
+    @Test func blobsAreEditableAndAnEditIsFound() throws {
         let dir = try makeDir()
         let libraryRoot = try makeDir()
         defer {
             try? FileManager.default.removeItem(at: dir)
             try? FileManager.default.removeItem(at: libraryRoot)
         }
-        let original = dir.appendingPathComponent("a.png")
+        let original = dir.appendingPathComponent("logo.png")
         try writePNG(to: original)
         let blobs = try BlobStore(libraryRoot: libraryRoot)
-        let stored = try #require(blobs.url(forHash: try blobs.store(fileURL: original)))
-        #expect(!FileManager.default.isWritableFile(atPath: stored.path))
-        #expect(FileManager.default.isWritableFile(atPath: original.path))
+        let hash = try blobs.store(fileURL: original)
+        let stored = try #require(blobs.url(forHash: hash))
+        #expect(FileManager.default.isWritableFile(atPath: stored.path))
+        #expect(blobs.editedFiles(settle: 0).settled.isEmpty)
 
-        let older = blobs.directory.appendingPathComponent("older.mov")
+        try Data("trimmed".utf8).write(to: stored)
+        #expect(blobs.editedFiles(settle: 60).settled.isEmpty && blobs.editedFiles(settle: 60).settling, "still being written")
+        #expect(blobs.editedFiles(now: Date().addingTimeInterval(61), settle: 60).settled.map(\.hash) == [hash])
+        BlobStore.stampKnown(stored)
+        #expect(blobs.editedFiles(settle: 0).settled.isEmpty, "stamped: not hashed again")
+
+        let older = blobs.directory.appendingPathComponent(String(repeating: "a", count: 64) + ".mov")
         try Data("bytes".utf8).write(to: older)
-        blobs.lockAll()
-        #expect(!FileManager.default.isWritableFile(atPath: older.path))
-
-        #expect(try blobs.remove(hash: "older"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: older.path)
+        blobs.unlockAll()
+        #expect(FileManager.default.isWritableFile(atPath: older.path))
+        #expect(blobs.editedFiles(settle: 0).settled.isEmpty, "a locked blob was never edited")
     }
 
     @MainActor @Test func anImportTakesTheGivenNameAndRecordsWhenItCameIn() async throws {

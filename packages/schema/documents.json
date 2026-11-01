@@ -1998,6 +1998,12 @@
           "type": "string"
         },
         {
+          "name": "previousFileHash",
+          "type": "string",
+          "optional": true,
+          "doc": "v156: the file before the last edit made on a Mac, kept only when it had reached the cloud (the server keeps an unnamed file 30 days); Restore Previous Version swaps the two. Absent = never edited."
+        },
+        {
           "name": "fileName",
           "type": "string"
         },
@@ -2116,6 +2122,12 @@
         {
           "name": "fileHash",
           "type": "string"
+        },
+        {
+          "name": "previousFileHash",
+          "type": "string",
+          "optional": true,
+          "doc": "v156: the file before the last edit made on a Mac, kept only when it had reached the cloud (the server keeps an unnamed file 30 days); Restore Previous Version swaps the two. Absent = never edited."
         },
         {
           "name": "fileName",
