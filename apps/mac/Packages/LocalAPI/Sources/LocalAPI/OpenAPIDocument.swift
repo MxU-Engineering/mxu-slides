@@ -317,19 +317,10 @@ public enum OpenAPIDocument {
                 ], required: ["id", "name", "active"]),
             ]),
         ], required: ["screens", "presets"]),
-        "FireSlideCommand": obj([
-            "presentationId": str, "slideId": str, "slideIndex": int,
-            "arrangementId": str, "serviceItemId": str, "occurrence": int,
-        ]),
+        "FireSlideCommand": fireSlideCommand,
         "AdvanceCommand": obj(["steps": int, "settled": .object(["type": "boolean"])]),
-        "ClearCommand": obj(["function": str, "layer": str]),
-        "FireAlertCommand": obj([
-            "presetId": str, "message": str,
-            "tokens": .object([
-                "type": "object", "additionalProperties": .object(["type": "string"]),
-            ]),
-            "behavior": str, "target": str, "themeId": str,
-        ]),
+        "ClearCommand": clearCommand,
+        "FireAlertCommand": fireAlertCommand,
         "AudioFireCommand": obj(["startAtEntryId": str]),
         "AudioStopCommand": obj(["playlistId": str, "audioItemId": str]),
         "AudioTransportCommand": obj(["action": str, "position": num], required: ["action"]),
@@ -337,8 +328,36 @@ public enum OpenAPIDocument {
         "AddServiceItemCommand": obj(["refId": str, "index": int], required: ["refId"]),
         "ServerInfo": obj([
             "name": str, "product": str, "apiVersion": str, "schemaVersion": int,
+            "stationHexId": str, "teamHexId": str,
         ], required: ["name", "product", "apiVersion", "schemaVersion"]),
+        "FireEvent": obj([
+            "seq": int, "at": num,
+            "source": obj(["kind": str, "name": str], required: ["kind"]),
+            "cause": int,
+            "kind": .object(["type": "string", "enum": .array(APIFireEvent.Kind.allCases.map { .string($0.rawValue) })]),
+            "id": str,
+            "slide": fireSlideCommand,
+            "settled": .object(["type": "boolean"]), "slideActions": .object(["type": "boolean"]),
+            "steps": int,
+            "clear": clearCommand,
+            "alert": fireAlertCommand,
+            "layer": str, "serviceItemId": str, "loops": .object(["type": "boolean"]),
+            "timer": str, "locked": .object(["type": "boolean"]),
+        ], required: ["seq", "at", "source", "kind"]),
     ]
+
+    private static let fireSlideCommand = obj([
+        "presentationId": str, "slideId": str, "slideIndex": int,
+        "arrangementId": str, "serviceItemId": str, "occurrence": int,
+    ])
+    private static let clearCommand = obj(["function": str, "layer": str])
+    private static let fireAlertCommand = obj([
+        "presetId": str, "message": str,
+        "tokens": .object([
+            "type": "object", "additionalProperties": .object(["type": "string"]),
+        ]),
+        "behavior": str, "target": str, "themeId": str,
+    ])
 
     private static let str = JSONValue.object(["type": "string"])
     private static let int = JSONValue.object(["type": "integer"])
@@ -369,6 +388,7 @@ public enum AsyncAPIDocument {
         .library: ("LibrarySummary", false),
         .scheduler: ("SchedulerStatus", false),
         .timecode: ("TimecodeStatus", false),
+        .fires: ("FireEvent", false),
     ]
 
     static func topicDescription(_ topic: APITopic) -> String {
@@ -377,6 +397,8 @@ public enum AsyncAPIDocument {
             return "Snapshot pushed when the live show changes: the live slide (with step counters — stepIndex = click groups consumed so far, stepCount = click groups on the slide; both absent when the slide has no animation steps), next-slide text, media layers, overlays. Same shape as GET /v1/status. POST /v1/show/advance consumes one click group per call and pushes a new snapshot; past the last click one more call plays the exit group (the cue stays live, stepIndex reaches stepCount), and the call after that moves slides."
         case .timecode:
             return "Snapshot pushed when timecode locks or loses lock, changes song or rate, starts, stops or jumps — never per frame. Count frames from anchor (and the timeline playhead from timeline) yourself. Same shape as GET /v1/timecode."
+        case .fires:
+            return "Not a snapshot: one message per fire this computer executes (slide, animation step, clear, media, overlay, alert, timer, combo, output preset, Lock), whoever fired it. seq counts up from launch (a gap = a missed fire); at is the sender's monotonic clock in seconds; cause is the seq of the fire this is an effect of (a slide's actions, a combo's steps), absent for a fire someone or something started."
         default:
             return "Snapshot pushed when \(topic.rawValue) state changes; same shape as its REST endpoint."
         }

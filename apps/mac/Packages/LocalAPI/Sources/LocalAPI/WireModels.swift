@@ -779,7 +779,74 @@ public struct APIOutputsStatus: Codable, Sendable {
     }
 }
 
-public struct APIFireSlideCommand: Codable, Sendable {
+public struct APIFireEvent: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+
+        case slide
+
+        case step
+
+        case clear, clearAll
+
+        case media
+
+        case overlay, dismissOverlay
+
+        case alert
+
+        case timer
+
+        case combo
+
+        case outputPreset
+
+        case lock
+    }
+
+    public var seq: Int
+    public var at: Double
+    public var source: APIFireSource
+    public var cause: Int?
+    public var kind: Kind
+    public var id: String?
+    public var slide: APIFireSlideCommand?
+    public var settled: Bool?
+    public var slideActions: Bool?
+    public var steps: Int?
+    public var clear: APIClearCommand?
+    public var alert: APIFireAlertCommand?
+    public var layer: String?
+    public var serviceItemId: String?
+    public var loops: Bool?
+    public var timer: APITimerAction?
+    public var locked: Bool?
+
+    public init(
+        kind: Kind, id: String? = nil, slide: APIFireSlideCommand? = nil, settled: Bool? = nil,
+        slideActions: Bool? = nil, steps: Int? = nil, clear: APIClearCommand? = nil,
+        alert: APIFireAlertCommand? = nil, layer: String? = nil, serviceItemId: String? = nil,
+        loops: Bool? = nil, timer: APITimerAction? = nil, locked: Bool? = nil
+    ) {
+        self.seq = 0
+        self.at = 0
+        self.source = APIFireSource(kind: .ui)
+        self.kind = kind
+        self.id = id
+        self.slide = slide
+        self.settled = settled
+        self.slideActions = slideActions
+        self.steps = steps
+        self.clear = clear
+        self.alert = alert
+        self.layer = layer
+        self.serviceItemId = serviceItemId
+        self.loops = loops
+        self.timer = timer
+        self.locked = locked
+    }
+}
+
+public struct APIFireSlideCommand: Codable, Sendable, Equatable {
     public var presentationId: String?
     public var slideId: String?
     public var slideIndex: Int?
@@ -813,7 +880,7 @@ public struct APIAdvanceCommand: Codable, Sendable {
     }
 }
 
-public struct APIClearCommand: Codable, Sendable {
+public struct APIClearCommand: Codable, Sendable, Equatable {
 
     public var function: String?
     public var layer: String?
@@ -824,7 +891,7 @@ public struct APIClearCommand: Codable, Sendable {
     }
 }
 
-public struct APIFireAlertCommand: Codable, Sendable {
+public struct APIFireAlertCommand: Codable, Sendable, Equatable {
     public var presetId: String?
     public var message: String?
 
@@ -938,16 +1005,24 @@ public struct APIAddServiceItemCommand: Codable, Sendable {
     }
 }
 
-public struct APIServerInfo: Codable, Sendable {
+public struct APIServerInfo: Codable, Sendable, Equatable {
     public var name: String
     public var product: String
     public var apiVersion: String
     public var schemaVersion: Int
 
-    public init(name: String, product: String, apiVersion: String, schemaVersion: Int) {
+    public var stationHexId: String?
+    public var teamHexId: String?
+
+    public init(
+        name: String, product: String, apiVersion: String, schemaVersion: Int,
+        stationHexId: String? = nil, teamHexId: String? = nil
+    ) {
         self.name = name
         self.product = product
         self.apiVersion = apiVersion
         self.schemaVersion = schemaVersion
+        self.stationHexId = stationHexId
+        self.teamHexId = teamHexId
     }
 }

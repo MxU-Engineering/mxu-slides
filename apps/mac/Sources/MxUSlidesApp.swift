@@ -162,6 +162,7 @@ struct MxUSlidesApp: App {
                 scheduler: schedulerController
             )
             _localAPI = State(initialValue: api)
+            api.identity = { [machineID = model.machineID] in (machineID, nil) }
             MIDIDeviceInventory.shared.configure(model: model)
 
             let midiIn = MIDIInController(

@@ -168,7 +168,8 @@ import Testing
 
     @Test func theFirePathReadsTheThemeTable() throws {
         let controls = try source("ServiceControls.swift")
-        let fire = try body(of: "    func fire(", in: controls)
+
+        let fire = try body(of: "    private func dispatch(", in: controls)
         #expect(fire.contains("appModel.resident.themes.fireRead(themeID)"))
         #expect(fire.contains("await self?.appModel.themesFilled([themeID])"))
         let alert = try body(of: "func fireAlert(", in: controls)
