@@ -532,7 +532,6 @@ final class AppAPIBridge: LocalAPIBridge {
             }
             controls.clear(function: function)
         } else if let raw = command.layer {
-
             let ids = controls.layerStack.map(\.id)
             guard ids.contains(raw) else {
                 throw APIError.badRequest("Unknown layer '\(raw)'. Layers: \(ids.joined(separator: ", ")).")

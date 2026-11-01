@@ -70,7 +70,6 @@ import Testing
 }
 
 @Test func aShortLineThatOpensAPhraseKeepsTheChartsBreak() {
-
     let verse = [
         "How great the [C]chasm", "That lay be[Gsus4]tween [G]us", "How high the [F]mountain[Am]",
         "I could [Gsus4]not climb", "In desper[C]ation", "I turned to [Gsus4]Hea[G]ven",

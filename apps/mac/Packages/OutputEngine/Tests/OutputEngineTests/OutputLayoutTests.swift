@@ -25,7 +25,6 @@ final class OutputLayoutTests: XCTestCase {
     }
 
     func testPlacementIsOrthogonalToTheShape() throws {
-
         let outputs = try makeManager()
         let screen = try XCTUnwrap(
             outputs.addPlaceholderScreen(name: "Wall", width: 832, height: 416))

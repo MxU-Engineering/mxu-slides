@@ -1263,7 +1263,6 @@ struct SlideGridBody: View {
                         }
                     },
                     inheritedTransition: presentation.transition,
-
                     layer: slide.background?.mediaId == mediaID
                         ? slide.background.flatMap { cue in
                             model.media(mediaID).map { item in
@@ -1813,7 +1812,6 @@ struct SlideTile: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-
                 let chips = layerChips
                 if !chips.isEmpty {
                     HStack(spacing: 3) {
@@ -1838,8 +1836,6 @@ struct SlideTile: View {
                     }
                     .padding(5)
                 }
-            }
-
             }
             .overlay(alignment: .topTrailing) {
                 if mediaMissing {
@@ -1989,7 +1985,6 @@ struct SlideTile: View {
         guard slide.background?.storedRoutingLayerId != nil else { return [] }
         return SlideLayerFacts.chips(
             for: slide,
-
             item: { id in model.media(id).map { ($0.name, $0.mediaKind) } },
             layerName: { id in actionRouter?.layerName(id) ?? LayerKind(rawValue: id)?.displayName })
     }

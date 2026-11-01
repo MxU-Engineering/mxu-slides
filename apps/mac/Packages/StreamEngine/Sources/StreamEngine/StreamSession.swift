@@ -303,7 +303,6 @@ public final class StreamSession: @unchecked Sendable {
                     }
                 }
                 group.addTask { [weak self] in
-
                     while let self {
                         try await Task.sleep(nanoseconds: 1_000_000_000)
                         let stall = await watch.stall

@@ -153,7 +153,6 @@ struct SpotLayer {
 }
 
 extension MediaCueMenuItems {
-
     @ViewBuilder
     func layerPicker(_ layer: SpotLayer) -> some View {
         let offered = SpotLayer.builtIn.map(\.rawValue) + layer.customLayers.map(\.id)
@@ -359,7 +358,6 @@ struct LibraryMediaPlaybackRows: View {
             }
         }
         if !videos.isEmpty {
-
             Picker("Loop", selection: Binding(
                 get: { Self.shared(videos.map(\.loops)) },
                 set: { value in

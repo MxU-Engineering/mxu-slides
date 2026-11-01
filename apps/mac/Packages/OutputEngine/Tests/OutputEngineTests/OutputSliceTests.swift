@@ -305,7 +305,6 @@ final class PackedFrameTests: XCTestCase {
     }
 
     func testRestoredClaimsJoinADisplayInsteadOfStealingIt() throws {
-
         let outputs = try makeManager()
         let wall = try XCTUnwrap(
             outputs.addPlaceholderScreen(name: "Wall", width: 832, height: 416))

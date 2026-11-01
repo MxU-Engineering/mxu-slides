@@ -1920,8 +1920,8 @@ final class AppModel {
 
         let hashes = Set(entries.flatMap { entry -> [String?] in
             switch entry.kind {
-            case .media: media(entry.id).map { [$0.fileHash, $0.previousFileHash] } ?? []
-            case .audio: audio(entry.id).map { [$0.fileHash, $0.previousFileHash] } ?? []
+            case .media: media(entry.id).map { [$0.fileHash] } ?? []
+            case .audio: audio(entry.id).map { [$0.fileHash] } ?? []
             default: []
             }
         }.compactMap { $0 })

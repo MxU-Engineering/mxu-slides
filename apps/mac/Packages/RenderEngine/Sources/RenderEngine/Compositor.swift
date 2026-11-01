@@ -979,7 +979,6 @@ public final class Compositor: @unchecked Sendable {
             return encoder
         }
         if item.maskedBy != nil, !item.maskOut, pass.maskPlan.missingMattes.contains(item.id) {
-
             return encoder
         }
         drawItem(
@@ -2452,7 +2451,6 @@ public final class Compositor: @unchecked Sendable {
 }
 
 extension MediaSurface {
-
     var contentSize: CGSize {
         switch self {
         case .ycbcrBiplanar(let luma, _, _, _): CGSize(width: luma.width, height: luma.height)

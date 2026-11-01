@@ -58,7 +58,6 @@ struct ScreenConfigurationView: View {
             if case .preset = newValue {} else { presetSelection = .init() }
         }
         .onChange(of: outputs.placeholderScreens.map(\.id)) { ensureSelection() }
-
         .onAppear { wake([], shownScreenIDs) }
         .onDisappear { wake(shownScreenIDs, []) }
         .onChange(of: shownScreenIDs) { old, new in wake(old, new) }
@@ -512,7 +511,6 @@ struct ScreenConfigurationView: View {
             selected ? Color.primary.opacity(0.08) : .clear,
             in: RoundedRectangle.standard(CornerStandard.element)
         )
-
         .contextMenu {
             Button("Remove Screen", role: .destructive) {
                 outputs.removePlaceholderScreen(id: screen.id)
@@ -662,7 +660,6 @@ private struct ScreenDetail: View {
     }
 
     private var identityBar: some View {
-
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 identityFacts
@@ -713,7 +710,6 @@ private struct ScreenDetail: View {
         .fixedSize()
         .help("Render cadence — match the venue or stream rate")
         if outputs.role(forScreen: screen.id) == .audience {
-
             Picker("", selection: Binding(
                 get: { outputs.scaleMode(forScreen: screen.id) },
                 set: { outputs.setScaleMode($0, forScreen: screen.id) }
@@ -846,7 +842,6 @@ struct OutputSourcePicker: View {
                 ForEach(DeckLinkDeviceCatalog.shared.devices) { device in deckLinkItem(device) }
                 if DeckLinkDeviceCatalog.shared.hasFetched,
                    DeckLinkDeviceCatalog.shared.devices.isEmpty {
-
                     Text(DeckLinkDeviceCatalog.shared.runtimeTooOld
                         ? "Desktop Video \(DeckLinkDeviceCatalog.shared.runtimeVersionLabel) — 16.0 or later required"
                         : "No devices found")
@@ -1073,7 +1068,6 @@ struct OutputSourcePicker: View {
     private func deckLinkRows(
         _ deckLinkBacking: DeckLinkScreenOutputs.Backing, _ device: DeckLinkHelperDevice
     ) -> some View {
-
         HStack(spacing: 8) {
             Text("ALPHA KEY")
                 .font(.system(size: 8, weight: .semibold))
@@ -1439,7 +1433,6 @@ private struct RoutingMatrix: View {
                 }
             }
             .frame(width: 9, height: 9)
-
             .overlay(Circle().strokeBorder(Color.yellow, lineWidth: placed ? 1.5 : 0).frame(width: 13, height: 13))
             .frame(width: width, height: 26)
             .contentShape(Rectangle())

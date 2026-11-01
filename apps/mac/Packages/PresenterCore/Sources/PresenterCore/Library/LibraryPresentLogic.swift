@@ -1,7 +1,6 @@
 import Foundation
 
 public enum LibraryPresentLogic {
-
     public static func fires(_ kind: DocumentKind) -> Bool {
         kind == .media || kind == .audio || kind == .overlay
     }

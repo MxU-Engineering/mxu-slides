@@ -451,7 +451,6 @@ final class OutputPresetsController {
     }
 
     func routedTargetNames(presetID: String, layerId: String) -> [String] {
-
         let targets = outputs.displays.filter { outputs.isLive($0.uuid) }.map { ($0.uuid, $0.name) }
             + outputs.placeholderScreens
                 .filter { outputs.role(forScreen: $0.id) != .confidence }

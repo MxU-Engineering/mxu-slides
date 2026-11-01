@@ -131,7 +131,7 @@ public struct BlobStore: Sendable {
         return hash
     }
 
-    static let knownTimeAttribute = "com.getmxu.slides.known-mtime"
+    static let knownTimeAttribute = "com.example.mxuslides.known-mtime"
 
     public static func stampKnown(_ url: URL) {
         guard let time = modificationTime(url) else { return }
@@ -171,7 +171,6 @@ public struct BlobStore: Sendable {
     }
 
     public static func isSettled(_ url: URL, settle: TimeInterval, now: Date = Date()) -> Bool {
-
         guard let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date else { return false }
         return now.timeIntervalSince(modified) >= settle
     }

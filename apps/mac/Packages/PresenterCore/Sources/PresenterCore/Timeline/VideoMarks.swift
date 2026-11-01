@@ -1,7 +1,6 @@
 import Foundation
 
 public enum VideoMarks {
-
     public struct Point: Sendable, Equatable {
         public var id: String
         public var name: String
@@ -42,7 +41,6 @@ public enum VideoMarks {
         var forward = to - from
         if looping, forward < -tolerance { forward += length }
         guard forward >= -tolerance, forward <= allowed else {
-
             return to < from && to < startGrace ? points.filter { $0.at <= to } : []
         }
         if to >= from {

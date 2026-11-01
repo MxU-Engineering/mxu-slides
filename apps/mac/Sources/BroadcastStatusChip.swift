@@ -265,7 +265,6 @@ struct BroadcastStatusChip: View {
         if let videoKbps = status.videoKbps, videoKbps < full * 9 / 10 {
             parts.append("quality lowered to \(Self.mbps(videoKbps)) of \(Self.mbps(full)) Mbps")
         } else if status.state == .publishing, status.uploadKbps != nil {
-
             parts.append("max \(Self.mbps(full)) Mbps")
         }
         return parts.joined(separator: " \u{B7} ")

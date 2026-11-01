@@ -3,7 +3,6 @@ import PresenterCore
 import SwiftUI
 
 extension MediaPreviewPlayer: TimelinePlayheadSource {
-
     var timelinePlayheadTime: Double { elapsed }
 }
 
@@ -35,6 +34,12 @@ struct VideoActionAddMenu: View {
 enum VideoMarkColor {
     static func color(_ hex: String?) -> Color {
         hex.flatMap(GroupColor.color) ?? .yellow
+    }
+
+    static func hex(of color: NSColor) -> String? {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return nil }
+        let r = Int((rgb.redComponent * 255).rounded()), g = Int((rgb.greenComponent * 255).rounded()), b = Int((rgb.blueComponent * 255).rounded())
+        return String(format: "#%02x%02x%02x", r, g, b)
     }
 }
 
@@ -242,7 +247,6 @@ struct VideoActionsCard: View {
             Divider()
             Button("Remove") { remove(mark.id) }
         }
-
         .alignmentGuide(.leading) { d in leading ? d.width - x : -x }
     }
 
@@ -322,7 +326,7 @@ struct VideoActionsSection: View {
                     ColorPicker("", selection: Binding(
                         get: { VideoMarkColor.color(mark.colorHex) },
                         set: { color in
-                            if let hex = NoteRunText.hex(of: NSColor(color)) { recolor(mark.id, hex) }
+                            if let hex = VideoMarkColor.hex(of: NSColor(color)) { recolor(mark.id, hex) }
                         }), supportsOpacity: false)
                         .labelsHidden()
                         .help("This action's color on the timeline and Present's transport strip")

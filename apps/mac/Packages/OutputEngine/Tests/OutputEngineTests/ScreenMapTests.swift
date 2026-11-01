@@ -20,7 +20,6 @@ final class ScreenMapTests: XCTestCase {
     }
 
     func testASpannedPlacementContinuesPastTheScreen() {
-
         let span = MapPlacement(rect: CGRect(x: 0, y: 0, width: 3840, height: 1080))
         let hits = ScreenMapResolver.resolve(placements: [span], screen: wall)
         XCTAssertEqual(hits, [ResolvedPlacement(frame: CGRect(x: -1, y: 0, width: 2, height: 1), fill: false)])

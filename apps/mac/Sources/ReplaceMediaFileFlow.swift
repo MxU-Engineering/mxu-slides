@@ -120,7 +120,6 @@ struct MediaUsesList: View {
 struct DeleteMediaRequest: Identifiable {
     let entry: LibraryIndex.Entry
     let groups: [MediaUsage.Group]
-    let inCloud: Bool
 
     var id: String { entry.id }
     var count: Int { groups.reduce(0) { $0 + $1.uses.count } }
@@ -134,10 +133,11 @@ struct DeleteMediaSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(SyncStatusLogic.deleteTitle(inCloud: request.inCloud))
+            Text("Delete \u{201C}\(request.entry.name)\u{201D}?")
                 .font(.headline)
-            Text(request.entry.name)
-            Text(SyncStatusLogic.deleteLead(count: 1, inCloud: request.inCloud) + " " + SyncStatusLogic.deleteUsedNote(usedIn: request.count, listed: true))
+            Text(request.count == 1
+                ? "This spot shows a missing-media warning until the file is restored or replaced."
+                : "These \(request.count) spots show a missing-media warning until the file is restored or replaced.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

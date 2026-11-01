@@ -857,7 +857,6 @@ struct SlideObjectInspector: View {
             }
             if let link {
                 if link.source == .videoCountdown || link.source == .videoMarkName {
-
                     let counting = link.source == .videoCountdown
                     InspectorPicker(
                         counting ? "Counts To" : "Action",
@@ -998,7 +997,6 @@ struct SlideObjectInspector: View {
     private func typographySection(_ object: SlideObject, forShape: Bool = false) -> some View {
         let onEdge = forShape && (current(object).shapeTextPlacement ?? .inside) != .inside
         InspectorSection("Typography") {
-
             let base = model.baseStyle(for: current(object))
             FontFaceRows(
                 fontName: styleWrite(object, \.fontName, default: base.fontName)
@@ -1310,7 +1308,6 @@ struct SlideObjectInspector: View {
                             get: { run?.strikethrough == true },
                             set: { on in model.applyStyleToSelection { $0.strikethrough = on ? true : nil } }
                         )),
-
                         (.allCaps, Binding(
                             get: { (run?.textTransform ?? base.textTransform) == .uppercase },
                             set: { on in model.applyStyleToSelection {

@@ -1,7 +1,6 @@
 import Foundation
 
 extension CueMedia {
-
     public var storedRoutingLayerId: String? {
         if let layerId, !layerId.isEmpty { layerId } else { layer?.rawValue }
     }
@@ -27,7 +26,6 @@ extension CueMedia {
 }
 
 extension OutputPreset {
-
     @discardableResult
     public mutating func addLayer(named name: String, id: String = UUID().uuidString) -> CustomLayer {
         let layer = CustomLayer(id: id, name: name, above: "slide")

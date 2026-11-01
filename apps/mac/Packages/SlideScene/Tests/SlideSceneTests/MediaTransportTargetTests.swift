@@ -161,7 +161,6 @@ final class MediaTransportTargetTests: XCTestCase {
     }
 
     func testACustomLayerSeedsItsVideoAndJoinsThePickerOnlyWhileCarryingOne() {
-
         var state = ShowState()
         state.setCustomLayers([CustomLayer(id: "lower", name: "Lower Third", above: "slide")])
         var cue = CueMedia(mediaId: "band", mode: nil, layer: .loopingVideos, loops: nil)

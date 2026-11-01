@@ -697,7 +697,6 @@ struct MediaEditorView: View {
                     .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
                 previewArea
                 if isVideo {
-
                     VideoActionsCard(
                         model: model, preview: preview, marks: cachedMedia?.marks ?? [],
                         trim: editorTrimWindow, filmstrip: filmstrip,

@@ -208,7 +208,6 @@ final class TextEngineTests: XCTestCase {
     }
 
     func testStyleRunUppercasesOnlyItsRange() throws {
-
         var text = StyledText(string: "grace\nand peace", fontSize: 300)
         text.styleRuns = [StyleRun(line: 0, column: 0, length: 5, transform: .uppercase)]
         XCTAssertEqual(text.displayString, "GRACE\nand peace")

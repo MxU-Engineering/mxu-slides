@@ -139,7 +139,6 @@ struct MediaTransportStrip: View {
                             media.seek(target.id, to: seconds, final: final)
                         }
                         HStack(spacing: 2) {
-
                             GoToTimeReadout(media: media, row: target, position: position)
                             Text("/ \(ScrubBar.timecode(target.state.duration))")
                                 .font(.caption2.monospacedDigit())

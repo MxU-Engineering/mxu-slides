@@ -194,7 +194,6 @@ private func fullyStyledObject(id: String = "obj-full") -> SlideObject {
 }
 
 @LibraryActor @Test func sameArrangementWrittenOnTwoComputersMergesOnce() throws {
-
     var song = sampleSong()
     song.arrangements = [Arrangement(id: "a", name: "Jordan", sectionIds: ["intro", "v1"])]
     let order = [Arrangement(id: "a", name: "Jordan", sectionIds: ["intro", "v1", "end"])]

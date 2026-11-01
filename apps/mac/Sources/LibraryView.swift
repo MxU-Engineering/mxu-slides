@@ -165,7 +165,9 @@ struct LibrarySidebar: View {
             Button("Cancel", role: .cancel) { renameTarget = nil }
         }
         .confirmationDialog(
-            SyncStatusLogic.deleteTitle(inCloud: deleteInCloud),
+            deleteBatch.count == 1
+                ? "Delete \u{201C}\(deleteBatch.first?.name ?? "")\u{201D}?"
+                : "Delete \(deleteBatch.count) items?",
             isPresented: deleteConfirmActive,
             titleVisibility: .visible
         ) {
@@ -175,9 +177,13 @@ struct LibrarySidebar: View {
             }
             Button("Cancel", role: .cancel) { deleteBatch = [] }
         } message: {
-
-            Text(SyncStatusLogic.deleteSubtitle(name: deleteBatch.first?.name, count: deleteBatch.count)).fontWeight(.semibold)
-                + Text("\n\n" + SyncStatusLogic.deleteMessage(count: deleteBatch.count, inCloud: deleteInCloud, usedIn: deleteUsedCount))
+            if deleteUsedCount > 0 {
+                Text(
+                    "Used in \(deleteUsedCount) place\(deleteUsedCount == 1 ? "" : "s"). Each spot shows a missing-media warning until the file is restored or replaced. This can't be undone."
+                )
+            } else {
+                Text("This can't be undone.")
+            }
         }
         .sheet(isPresented: $locatePanelShown) {
             LocateMissingMediaView(model: model)
@@ -195,8 +201,6 @@ struct LibrarySidebar: View {
 
     @State private var deleteBatch: [LibraryIndex.Entry] = []
     @State private var deleteUsedCount = 0
-    @State private var deleteInCloud = false
-
     @State private var deleteUsesRequest: DeleteMediaRequest?
 
     @State private var locatePanelShown = false
@@ -210,20 +214,16 @@ struct LibrarySidebar: View {
     }
 
     private func requestDelete(_ entries: [LibraryIndex.Entry]) {
-
         let mediaIds = Set(entries.filter { $0.kind == .media }.map(\.id))
         Task {
-            let inCloud = MxUAccountController.shared.isSignedIn && entries.contains { model.area($0.kind, $0.id) != .local }
-
             if entries.count == 1, let entry = entries.first, entry.kind == .media {
                 let groups = MediaUsage.groups(await model.mediaUses(of: entry.id))
                 if !groups.isEmpty {
-                    deleteUsesRequest = DeleteMediaRequest(entry: entry, groups: groups, inCloud: inCloud)
+                    deleteUsesRequest = DeleteMediaRequest(entry: entry, groups: groups)
                     return
                 }
             }
             deleteUsedCount = await model.mediaReferenceDocumentCount(of: mediaIds)
-            deleteInCloud = inCloud
             deleteBatch = entries
         }
     }
@@ -388,7 +388,6 @@ struct LibrarySidebar: View {
                 }
             }
         }
-
         .modifier(LibraryRowFireTrailing(actions: fireActions(hit.entry)))
         .tag(hit.entry.id)
         .draggablePayload(runOnly ? nil : hit.entry.id)
@@ -480,7 +479,6 @@ struct LibrarySidebar: View {
     }
 
     private var visibleTabs: [LibrarySection] {
-
         if let allowed = layout?.volunteerLibraryKinds {
             return orderedTabs.filter { allowed.contains($0.kind) }
         }
@@ -1008,7 +1006,6 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private func entryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
-
         if !runOnly {
             entryMenuItems(entry, menus: menus)
         }
@@ -1102,10 +1099,8 @@ struct LibrarySidebar: View {
             }
         }
         if entry.kind == .overlay, !runOnly, let overlay = model.overlay(entry.id) {
-
             let assigned = overlay.layer.flatMap(LayerKind.init(rawValue:)) ?? .overlays
             Menu("Layer") {
-
                 ForEach(Array(LayerKind.allCases.reversed()), id: \.self) { layer in
                     Toggle(layer.displayName, isOn: Binding(
                         get: { assigned == layer },

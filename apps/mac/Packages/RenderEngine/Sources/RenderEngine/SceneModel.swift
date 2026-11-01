@@ -243,7 +243,6 @@ public struct StyleRun: Hashable, Sendable {
 }
 
 extension StyledText {
-
     public var uppercaseFlags: [Bool] {
         var flags: [Bool] = []
         flags.reserveCapacity(string.count)

@@ -40,7 +40,6 @@ private func ids(_ points: [V.Point]) -> [String] { points.map(\.id) }
 }
 
 @Test func aJumpFiresNothing() {
-
     #expect(V.crossed(points, from: 10, to: 45, elapsed: 0.25, rate: 1, length: 60, looping: false).isEmpty)
 
     #expect(V.crossed(points, from: 45, to: 30, elapsed: 0.25, rate: 1, length: 60, looping: false).isEmpty)

@@ -189,7 +189,6 @@ public enum LinkedText {
         videoCountdown: VideoCountdown(
             name: "Announcements", duration: 300, position: 180,
             anchoredAt: Date(timeIntervalSince1970: 1_784_800_000), isPlaying: false,
-
             marks: [VideoMarks.Point(id: "sample.walk-on", name: "Band Walk-On", at: 222)]
         ),
 

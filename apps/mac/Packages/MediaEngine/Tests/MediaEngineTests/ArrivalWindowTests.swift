@@ -44,7 +44,6 @@ final class ArrivalWindowTests: XCTestCase {
 }
 
 final class LiveDropoutTests: XCTestCase {
-
     func testALiveInputWithNothingToDrawIsReported() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw XCTSkip("no Metal device on this machine")

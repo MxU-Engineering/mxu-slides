@@ -1656,9 +1656,6 @@
         "fileHash": {
           "type": "string"
         },
-        "previousFileHash": {
-          "type": "string"
-        },
         "fileName": {
           "type": "string"
         },
@@ -1798,9 +1795,6 @@
           "type": "string"
         },
         "fileHash": {
-          "type": "string"
-        },
-        "previousFileHash": {
           "type": "string"
         },
         "fileName": {

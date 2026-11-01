@@ -1,3 +1,4 @@
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -13,11 +14,8 @@ let package = Package(
             name: "Syphon",
             exclude: ["VendoredLICENSE.txt", "VENDORED.md"],
             cSettings: [
-
                 .headerSearchPath("include/Syphon"),
-
                 .define("SYPHONLOG(...)", to: ""),
-
                 .unsafeFlags(["-fno-objc-exceptions"]),
             ],
             linkerSettings: [

@@ -249,7 +249,6 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
             kCFAllocatorDefault, unsafeBitCast(surface, to: IOSurfaceRef.self), nil, &unmanaged)
         let now = CACurrentMediaTime()
         if let buffer = unmanaged?.takeRetainedValue() {
-
             let isBlack = SyncTestReader.gridLuma(buffer).map(SyncTestReader.isBlackAbove) ?? false
             let blackRun = lock.withLock { () -> (start: Double, seconds: Double)? in
                 guard generation == self.generation else { return nil }

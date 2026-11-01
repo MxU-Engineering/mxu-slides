@@ -20,7 +20,6 @@ final class SyphonScreenOutputs {
     }
 
     func enable(screenID: UUID, render: RenderContext) {
-
         guard let feed = render.outputs.networkCarryFeed(forSlice: screenID) else { return }
         disable(screenID: screenID)
 

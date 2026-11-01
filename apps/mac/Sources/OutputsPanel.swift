@@ -18,7 +18,6 @@ struct OutputsWindow: View {
                     .padding(40)
             }
         }
-
         .frame(minWidth: 1000, minHeight: 560)
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
     }

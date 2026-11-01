@@ -221,7 +221,6 @@ private func transformed(
 }
 
 @Test func baseStyleReadsThePlaceholderBeforeTheTheme() {
-
     var placeholder = SlideObject(id: "ph", objectKind: .text, name: "Default", text: "Sample")
     placeholder.textStyle = TextStyle(fontName: "Gotham-Black", fontSize: 70, colorHex: "#111111FF")
     placeholder.textStyle?.textTransform = .uppercase

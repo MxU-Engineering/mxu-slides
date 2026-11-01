@@ -119,7 +119,6 @@ struct LibraryWindowView: View {
         }
         .frame(minWidth: 300, minHeight: 360)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-
         .background(Color.cardSurface)
         .environment(\.runOnly, layout?.runOnly ?? false)
         .focusedSceneValue(\.serviceControls, controls)

@@ -79,7 +79,6 @@ struct LibraryCardFireControls: View {
     var body: some View {
         let live = actions.isLive
         if !LibraryPresentLogic.fires(actions.entry.kind) {
-
             if hovering, !runOnly {
                 LibraryFireChip(systemImage: "pencil", help: "Open in the editor", action: actions.edit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
@@ -202,7 +201,6 @@ struct LibraryRowFireTrailing: ViewModifier {
 }
 
 extension EnvironmentValues {
-
     @Entry var libraryRowFiring = false
 }
 

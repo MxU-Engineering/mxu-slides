@@ -1,7 +1,6 @@
 import Darwin
 
 public enum ProcessFootprint {
-
     public static func megabytes() -> (now: Double, peak: Double)? {
         var usage = rusage_info_current()
         let status = withUnsafeMutablePointer(to: &usage) {

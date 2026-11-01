@@ -2,8 +2,8 @@
 """Write Sources/Credits.rtf: the third-party notices MxU Slides ships with.
 
 Usage:
-  apps/mac/scripts/acknowledgements.py           # regenerate (dev Mac)
-  apps/mac/scripts/acknowledgements.py --check   # offline coverage check (CI)
+  apps/mac/scripts/acknowledgements.py
+  apps/mac/scripts/acknowledgements.py --check
 
 The standard About panel shows a bundle's Credits.rtf on its own, so the
 notices BSD/MIT/Apache/MPL ask for in "documentation or other materials
@@ -16,9 +16,9 @@ license files themselves, never retyped:
   SRTHaishinKit links as a binary.
 - Vendored code: every *LICENSE* file under Packages/, and the DeckLink
   SDK notice.
-- Rust: the crates statically linked into yffiFFI (YjsKit) and
-  automergeFFI (automerge-swift), at the pins those packages build from,
-  via cargo tree (normal deps, no proc-macros) and the crates' own files.
+- Rust: the crates statically linked into automergeFFI (automerge-swift),
+  at the pin that package builds from, via cargo tree (normal deps, no
+  proc-macros) and the crates' own files.
 - NDI: the redist's libndi_licenses.txt ("should be included with all
   distribution") and the About-box trademark line the NDI SDK requires.
 
@@ -39,7 +39,7 @@ import sys
 import tempfile
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # apps/mac
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "Sources", "Credits.rtf")
 NDI_SDK = "/Library/NDI SDK for Apple"
 NDI_TRADEMARK = "NDI® is a registered trademark of Vizrt NDI AB."
@@ -47,7 +47,6 @@ NDI_URL = "https://ndi.video/"
 DECKLINK_SOURCE = "Packages/DeckLinkKit/Sources/CDeckLink/Vendor/DeckLinkAPIDispatch.cpp"
 RUST_TARGET = "aarch64-apple-darwin"
 DECORATION = r"\s*[*=_-]{3,}\s*"
-# Names for vendored license files whose folder name says nothing.
 VENDORED_NAMES = {
     "Packages/StreamEngine/Sources/StreamEngine/HLS/Vendored/VendoredLICENSE.md": "HaishinKit (HLS writer vendored in StreamEngine)",
     "Packages/SyphonKit/Sources/Syphon/VendoredLICENSE.txt": "Syphon (vendored in SyphonKit)",
@@ -68,7 +67,6 @@ def run(args, cwd=None):
     return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True).stdout
 
 
-# What the binary ships, as the --check side sees it (offline).
 
 def remote_packages():
     """{repo name: URL} of every remote Swift package, direct or transitive."""
@@ -93,16 +91,13 @@ def decklink_notice():
 
 def rust_pins():
     """(name, git URL, tag, cargo -p) for each Rust library linked in."""
-    yffi = read(os.path.join(ROOT, "Packages/YjsKit/scripts/build-yffi-xcframework.sh"))
     automerge = read(os.path.join(ROOT, "Packages/automerge-swift/Package.swift"))
     return [
-        ("y-crdt", "https://github.com/y-crdt/y-crdt.git", re.search(r"^YCRDT_TAG=(\S+)", yffi, re.M).group(1), "yffi", ""),
         ("automerge-swift", "https://github.com/automerge/automerge-swift.git",
          re.search(r"automerge-swift/releases/download/([^/]+)/", automerge).group(1), "uniffi_automerge", "rust"),
     ]
 
 
-# Regeneration (dev Mac).
 
 def checkouts_dir():
     found = glob.glob(os.path.expanduser("~/Library/Developer/Xcode/DerivedData/MxUSlides-*/SourcePackages"))
@@ -128,7 +123,6 @@ def swift_package_entries(source_packages):
         if not files:
             sys.exit(f"{name} has no license file in {checkout}.")
         entries.append((f"{name} {version}".strip(), url, "\n\n".join(read(f).strip() for f in files)))
-    # SRTHaishinKit links libsrt.a, a binary target with OpenSSL built in.
     haishinkit = read(os.path.join(source_packages, "checkouts", "HaishinKit.swift", "Package.swift"))
     srt = re.search(r"libsrt-xcframework/releases/download/v([\d.]+)/", haishinkit).group(1)
     libsrt = glob.glob(os.path.join(source_packages, "artifacts", "haishinkit.swift", "libsrt", "*", "macos-*", "libsrt.a"))[0]
@@ -181,19 +175,17 @@ def rust_entries(work):
         linked = {tuple(line.split()[:2]) for line in tree.splitlines() if line.strip()}
         metadata = json.loads(run(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=manifest_dir))
         for crate in sorted(metadata["packages"], key=lambda c: (c["name"], c["version"])):
-            # The repo's own crates are the "{name} {tag}" entry below.
             if (crate["name"], "v" + crate["version"]) not in linked or crate["source"] is None:
                 continue
             files = pick_license_files(os.path.dirname(crate["manifest_path"]), crate.get("license") or "")
             if files:
                 text = "\n\n".join(read(f).strip() for f in files)
-            else:  # some crates publish without one: their repository's
+            else:
                 text = repository_license(crate)
             if crate.get("license") == "MPL-2.0":
                 text = f"Source code: {crate.get('repository') or 'https://crates.io/crates/' + crate['name']}\n\n" + text
             entries.append((f"{crate['name']} {crate['version']}", "", text))
         entries.append((f"{name} {tag}", re.sub(r"\.git$", "", url), read(os.path.join(source, "LICENSE")).strip()))
-    # Both static libraries carry their own copy of Rust's standard library.
     entries.append(("Rust standard library", "https://github.com/rust-lang/rust",
                     fetch("https://raw.githubusercontent.com/rust-lang/rust/master/LICENSE-MIT").strip()))
     return entries
@@ -209,7 +201,6 @@ def generate():
     with tempfile.TemporaryDirectory() as work:
         entries += rust_entries(work)
 
-    # One section per distinct text, naming everything that uses it.
     groups = collections.OrderedDict()
     for title, url, text in entries:
         key = normalized(text)
@@ -271,7 +262,7 @@ def rtf_text(text):
             out.append(ch)
         elif code < 0x10000:
             out.append("\\u%d?" % (code - 0x10000 if code > 0x7FFF else code))
-        else:  # UTF-16 surrogate pair
+        else:
             code -= 0x10000
             out.append("\\u%d?\\u%d?" % ((0xD800 + (code >> 10)) - 0x10000, (0xDC00 + (code & 0x3FF)) - 0x10000))
     return "".join(out)

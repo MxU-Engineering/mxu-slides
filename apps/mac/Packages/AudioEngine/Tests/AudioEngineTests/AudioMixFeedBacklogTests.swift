@@ -69,7 +69,6 @@ final class AudioMixFeedBacklogTests: XCTestCase {
         feed.tick(now: 500)
         XCTAssertNil(feed.emittedAgeMilliseconds)
         for tick in 1..<AudioMixFeed.ageWindowPulls {
-
             feed.push(member: "card", buffer: try buffer(frames: 480), captured: 500 + Double(tick) * 0.010 - 1.5)
             feed.tick(now: 500 + Double(tick) * 0.010)
         }

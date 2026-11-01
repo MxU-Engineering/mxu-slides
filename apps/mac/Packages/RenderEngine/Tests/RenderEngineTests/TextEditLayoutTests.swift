@@ -20,7 +20,6 @@ final class TextEditLayoutTests: XCTestCase {
     }
 
     func testPerRunUppercaseKeepsSourceIndexes() {
-
         var text = StyledText(string: "aßb", fontSize: 120, alignment: .left)
         text.styleRuns = [StyleRun(line: 0, column: 1, length: 1, transform: .uppercase)]
         let caps = TextEditLayout(text: text, sceneFrame: box)
