@@ -960,22 +960,24 @@ struct SlideObjectInspector: View {
     private func typographySection(_ object: SlideObject, forShape: Bool = false) -> some View {
         let onEdge = forShape && (current(object).shapeTextPlacement ?? .inside) != .inside
         InspectorSection("Typography") {
+
+            let base = model.baseStyle(for: current(object))
             FontFaceRows(
-                fontName: styleWrite(object, \.fontName, default: model.theme?.fontFamily ?? "HelveticaNeue-Bold")
+                fontName: styleWrite(object, \.fontName, default: base.fontName)
             )
-            .mixedValue(styleMixed(\.fontName, default: model.theme?.fontFamily ?? "HelveticaNeue-Bold"))
+            .mixedValue(styleMixed(\.fontName, default: base.fontName))
 
             HStack(spacing: 12) {
-                numberField("Size", styleWrite(object, \.fontSize, default: model.theme?.fontSize ?? 96), range: 1...500)
+                numberField("Size", styleWrite(object, \.fontSize, default: base.fontSize), range: 1...500)
                     .frame(width: 112)
-                    .mixedValue(styleMixed(\.fontSize, default: model.theme?.fontSize ?? 96))
+                    .mixedValue(styleMixed(\.fontSize, default: base.fontSize))
                 Spacer(minLength: 8)
                 HexColorRow(
                     label: "Color",
-                    hex: styleWrite(object, \.colorHex, default: model.theme?.textColorHex ?? "#FFFFFFFF"),
+                    hex: styleWrite(object, \.colorHex, default: base.colorHex),
                     labelHidden: true
                 )
-                .mixedValue(styleMixed(\.colorHex, default: model.theme?.textColorHex ?? "#FFFFFFFF"))
+                .mixedValue(styleMixed(\.colorHex, default: base.colorHex))
             }
             HStack(spacing: 6) {
                 Text("Alignment")
@@ -1228,21 +1230,21 @@ struct SlideObjectInspector: View {
     private func selectionSection(_ object: SlideObject) -> some View {
         if model.canvasTextEditID == object.id, (model.canvasTextSelection?.length ?? 0) > 0 {
             let run = model.canvasSelectionRun
-            let base = current(object).textStyle
+            let base = model.baseStyle(for: current(object))
             InspectorSection("Selection") {
                 FontFaceRows(fontName: Binding(
-                    get: { run?.fontName ?? base?.fontName ?? model.theme?.fontFamily ?? "HelveticaNeue-Bold" },
+                    get: { run?.fontName ?? base.fontName },
                     set: { name in model.applyStyleToSelection { $0.fontName = name.isEmpty ? nil : name } }
                 ))
                 HStack(spacing: 12) {
                     numberField("Size", Binding(
-                        get: { run?.fontSize ?? base?.fontSize ?? model.theme?.fontSize ?? 96 },
+                        get: { run?.fontSize ?? base.fontSize },
                         set: { size in model.applyStyleToSelection { $0.fontSize = size } }
                     ), range: 1...500)
                     .frame(width: 112)
                     Spacer(minLength: 8)
                     HexColorRow(label: "Color", hex: Binding(
-                        get: { run?.colorHex ?? base?.colorHex ?? model.theme?.textColorHex ?? "#FFFFFFFF" },
+                        get: { run?.colorHex ?? base.colorHex },
                         set: { hex in model.applyStyleToSelection { $0.colorHex = hex } }
                     ), labelHidden: true)
                 }
@@ -1257,7 +1259,7 @@ struct SlideObjectInspector: View {
                     ))
                 }
                 numberField("Tracking", Binding(
-                    get: { run?.tracking ?? base?.tracking ?? 0 },
+                    get: { run?.tracking ?? base.tracking },
                     set: { tracking in model.applyStyleToSelection { $0.tracking = tracking } }
                 ), range: -50...200)
                 LabeledContent("Style") {
@@ -1767,6 +1769,7 @@ struct SlideObjectInspector: View {
         let lines = current(object).text.components(separatedBy: "\n")
         if lines.count > 1 {
             let line = min(selectedLineIndex, lines.count - 1)
+            let base = model.baseStyle(for: current(object))
             InspectorSection("Line Styles") {
                 InspectorPicker("Line", selection: Binding(
                     get: { min(selectedLineIndex, lines.count - 1) },
@@ -1782,25 +1785,14 @@ struct SlideObjectInspector: View {
                 HStack(spacing: 12) {
                     numberField(
                         "Size",
-                        lineWrite(
-                            object, line: line, \.fontSize,
-                            default: current(object).textStyle?.fontSize ?? model.theme?.fontSize ?? 96
-                        ),
+                        lineWrite(object, line: line, \.fontSize, default: base.fontSize),
                         range: 1...500
                     )
                     .frame(width: 112)
                     Spacer(minLength: 8)
-                    HexColorRow(label: "Color", hex: lineWrite(
-                        object, line: line, \.colorHex,
-                        default: current(object).textStyle?.colorHex
-                            ?? model.theme?.textColorHex ?? "#FFFFFFFF"
-                    ), labelHidden: true)
+                    HexColorRow(label: "Color", hex: lineWrite(object, line: line, \.colorHex, default: base.colorHex), labelHidden: true)
                 }
-                numberField(
-                    "Tracking",
-                    lineWrite(object, line: line, \.tracking, default: 0),
-                    range: -50...200
-                )
+                numberField("Tracking", lineWrite(object, line: line, \.tracking, default: base.tracking), range: -50...200)
                 if lineOverride(object, line: line) != nil {
                     Button("Reset Line") { resetLineOverride(object, line: line) }
                 }

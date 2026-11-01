@@ -29,12 +29,13 @@ public enum ThemeOverride {
         }
     }
 
-    struct BaseStyle {
-        var fontName: String
-        var fontSize: Double
-        var tracking: Double
+    public struct BaseStyle {
+        public var fontName: String
+        public var fontSize: Double
+        public var colorHex: String
+        public var tracking: Double
 
-        init(object: SlideObject, placeholder: SlideObject?, theme: Theme?) {
+        public init(object: SlideObject, placeholder: SlideObject?, theme: Theme?) {
             let own = object.textStyle
 
             let base = (placeholder?.id == object.id) ? nil : placeholder?.textStyle
@@ -42,6 +43,7 @@ public enum ThemeOverride {
                 ?? theme?.fontFamily ?? ThemeOverride.defaultFontName
             fontSize = own?.fontSize ?? base?.fontSize
                 ?? theme?.fontSize ?? ThemeOverride.defaultFontSize
+            colorHex = own?.colorHex ?? base?.colorHex ?? theme?.textColorHex ?? "#FFFFFFFF"
             tracking = own?.tracking ?? base?.tracking ?? 0
         }
     }
