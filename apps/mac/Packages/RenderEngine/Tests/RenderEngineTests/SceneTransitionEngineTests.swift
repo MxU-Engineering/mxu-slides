@@ -1,4 +1,5 @@
 import CoreGraphics
+import Metal
 import XCTest
 @testable import RenderEngine
 
@@ -32,18 +33,77 @@ final class SceneTransitionEngineTests: XCTestCase {
         )
     }
 
-    func testDissolveFadesLeavingAndArrivingButNeverStaying() {
+    func testAlphaLayerDissolveFadesWholeStacks() {
         let composite = SceneTransitionEngine.composite(
             previous: scene(["stay", "leave"]), target: scene(["stay", "arrive"]),
             transition: SceneTransition(kind: .dissolve, duration: 1),
             progress: 0.25, layers: [.slide]
         )
-        let items = composite.layers.first { $0.kind == .slide }!.items
+        let layer = composite.layers.first { $0.kind == .slide }!
 
-        XCTAssertEqual(items.first { $0.id == "leave::leaving" }?.opacity ?? -1, 0.75, accuracy: 0.001)
-        XCTAssertEqual(items.first { $0.id == "arrive" }?.opacity ?? -1, 0.25, accuracy: 0.001)
-        XCTAssertEqual(items.first { $0.id == "stay" }?.opacity ?? -1, 1, accuracy: 0.001)
-        XCTAssertEqual(items.filter { $0.id == "stay" }.count, 1, "no colliding twins")
+        XCTAssertEqual(layer.crossfadeProgress ?? -1, 0.25, accuracy: 0.001)
+        XCTAssertEqual(layer.items.filter(\.crossfadeLeaving).map(\.id), ["stay::leaving", "leave::leaving"])
+        XCTAssertEqual(layer.items.filter { !$0.crossfadeLeaving }.map(\.id), ["stay", "arrive"])
+        XCTAssertTrue(layer.items.allSatisfy { $0.opacity == 1 }, "the compositor mixes; items stay full")
+
+        let flat = SceneTransitionEngine.flattened(composite).layers.first { $0.kind == .slide }!
+        XCTAssertNil(flat.crossfadeProgress)
+        XCTAssertEqual(flat.items.first { $0.id == "leave::leaving" }?.opacity ?? -1, 0.75, accuracy: 0.001)
+        XCTAssertEqual(flat.items.first { $0.id == "arrive" }?.opacity ?? -1, 0.25, accuracy: 0.001)
+        XCTAssertEqual(flat.items.filter { $0.id.hasPrefix("stay") }.map(\.id), ["stay"], "staying once")
+        XCTAssertEqual(flat.items.first { $0.id == "stay" }?.opacity ?? -1, 1, accuracy: 0.001)
+        XCTAssertFalse(flat.items.contains { $0.crossfadeLeaving })
+    }
+
+    func testEachLayerRunsOnItsOwnLength() {
+        func both(_ id: String) -> RenderScene {
+            var scene = scene([id])
+            scene.addItem(
+                RenderItem(id: "live-media-loopingVideos", frame: CGRect(x: 0, y: 0, width: 10, height: 10),
+                           content: .media(id: "bg-\(id)")),
+                to: .loopingVideos
+            )
+            return scene
+        }
+        let mid = SceneTransitionEngine.composite(
+            previous: both("a"), target: both("b"),
+            transitions: [
+                .slide: SceneTransition(kind: .dissolve, duration: 1),
+                .loopingVideos: SceneTransition(kind: .dissolve, duration: 0.25),
+            ],
+            elapsed: 0.5
+        )
+        XCTAssertEqual(mid.layers.first { $0.kind == .loopingVideos }?.items.map(\.id), ["live-media-loopingVideos"])
+        XCTAssertEqual(mid.layers.first { $0.kind == .slide }?.crossfadeProgress ?? -1, 0.5, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testDissolvingAwayAnOpaqueStackNeverShowsWhatItCovers() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            throw XCTSkip("No Metal device available on this machine")
+        }
+        let compositor = try Compositor()
+        let canvas = CGRect(x: 0, y: 0, width: 192, height: 108)
+        var old = RenderScene(canvasSize: canvas.size)
+        old.background = .black
+        old.addItem(RenderItem(id: "backdrop", frame: canvas, content: .solid(.white)), to: .slide)
+        old.addItem(RenderItem(id: "picture", frame: canvas, content: .solid(SceneColor(red: 1, green: 0, blue: 0))), to: .slide)
+        var empty = RenderScene(canvasSize: canvas.size)
+        empty.background = .black
+        let mid = SceneTransitionEngine.composite(
+            previous: old, target: empty,
+            transition: SceneTransition(kind: .dissolve, duration: 1),
+            progress: 0.5, layers: [.slide]
+        )
+        let frame = try compositor.renderFrame(scene: mid, width: 192, height: 108)
+        var pixel = SIMD4<Float>()
+        frame.data.withUnsafeBytes { raw in
+            let halves = (raw.baseAddress! + 54 * frame.bytesPerRow + 96 * 8).assumingMemoryBound(to: Float16.self)
+            pixel = SIMD4(Float(halves[0]), Float(halves[1]), Float(halves[2]), Float(halves[3]))
+        }
+        XCTAssertEqual(pixel.x, 0.5, accuracy: 0.02, "half the picture")
+        XCTAssertEqual(pixel.y, 0, accuracy: 0.01, "no white backdrop bleeding through")
+        XCTAssertEqual(pixel.z, 0, accuracy: 0.01)
     }
 
     func testFadeShowsOldThenPlateThenNew() {

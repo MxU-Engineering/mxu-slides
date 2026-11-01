@@ -30,6 +30,15 @@ enum ShaderSource {
         return tex.sample(s, in.uv) * opacity;
     }
 
+    fragment float4 compositor_crossfade(VertexOut in [[stage_in]],
+                                         texture2d<float> from [[texture(0)]],
+                                         texture2d<float> to [[texture(1)]],
+                                         constant float &progress [[buffer(0)]]) {
+        constexpr sampler s(coord::normalized, address::clamp_to_edge,
+                            mag_filter::nearest, min_filter::nearest);
+        return mix(from.sample(s, in.uv), to.sample(s, in.uv), progress);
+    }
+
     struct VideoUniforms {
         float3x3 ycbcrMatrix;
         float3 ycbcrOffset;

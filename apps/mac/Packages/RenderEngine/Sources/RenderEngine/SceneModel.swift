@@ -759,6 +759,8 @@ public struct RenderItem: Identifiable, Equatable, Sendable {
 
     public var animationContext: AnimationContext?
 
+    public var crossfadeLeaving = false
+
     public init(
         id: String,
         frame: CGRect,
@@ -821,6 +823,8 @@ public struct RenderLayer: Identifiable, Equatable, Sendable {
     public var name: String
     public var isHidden: Bool
     public var items: [RenderItem]
+
+    public var crossfadeProgress: Double?
 
     public init(kind: LayerKind, name: String? = nil, isHidden: Bool = false, items: [RenderItem] = []) {
         self.id = kind.rawValue

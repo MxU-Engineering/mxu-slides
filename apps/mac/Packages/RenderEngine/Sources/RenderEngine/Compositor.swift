@@ -104,6 +104,8 @@ public final class Compositor: @unchecked Sendable {
         case burn = "compositor_burn"
 
         case tint = "compositor_tint"
+
+        case crossfade = "compositor_crossfade"
     }
 
     private struct PipelineKey: Hashable {
@@ -804,46 +806,116 @@ public final class Compositor: @unchecked Sendable {
             )
         }
 
+        let pass = ScenePass(
+            maskPlan: maskPlan, motions: motions, transform: transform,
+            targetSize: targetSize, commandBuffer: commandBuffer, hostTime: hostTime
+        )
         for layer in scene.layers where !layer.isHidden {
+            if let progress = layer.crossfadeProgress {
+                encoder.endEncoding()
+                let mixed = crossfadeStacks(layer.items, pass: pass)
+                guard let resumed = resumeScenePass(into: texture, commandBuffer: commandBuffer) else {
+                    recycleScratch()
+                    return
+                }
+                encoder = resumed
+                if let mixed {
+                    var vertices = Self.quadVertices(
+                        pixelRect: CGRect(origin: .zero, size: targetSize), targetSize: targetSize
+                    )
+                    var mix = Float(progress)
+                    encoder.setRenderPipelineState(pipeline(.crossfade, .normal))
+                    encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
+                    encoder.setFragmentBytes(&mix, length: MemoryLayout<Float>.stride, index: 0)
+                    encoder.setFragmentTexture(mixed.from, index: 0)
+                    encoder.setFragmentTexture(mixed.to, index: 1)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+                }
+                continue
+            }
             for item in layer.items {
-
-                if item.matteGroup != nil { continue }
-
-                if item.effectsApplyBelow, !item.effects.isEmpty {
-                    guard let resumed = applyAdjustmentLayer(
-                        item, target: texture, transform: transform,
-                        targetSize: targetSize, commandBuffer: commandBuffer,
-                        hostTime: hostTime, ending: encoder
-                    ) else {
-                        recycleScratch()
-                        return
-                    }
-                    encoder = resumed
+                guard let next = drawSceneItem(item, target: texture, pass: pass, encoder: encoder) else {
+                    recycleScratch()
+                    return
                 }
-                if let prepared = maskPlan.composites[item.id] {
-                    if let motion = motions[item.id] {
-                        drawBuildComposite(
-                            prepared, item: item, motion: motion, transform: transform,
-                            targetSize: targetSize, encoder: encoder
-                        )
-                    } else {
-                        drawMaskedComposite(
-                            prepared, item: item, targetSize: targetSize, encoder: encoder
-                        )
-                    }
-                    continue
-                }
-                if item.maskedBy != nil, !item.maskOut, maskPlan.missingMattes.contains(item.id) {
-
-                    continue
-                }
-                drawItem(item, transform: transform, targetSize: targetSize, encoder: encoder, hostTime: hostTime)
+                encoder = next
             }
         }
 
         encoder.endEncoding()
         recycleScratch()
         sweepCachesIfDue()
+    }
+
+    private struct ScenePass {
+        let maskPlan: MaskPlan
+        let motions: [String: AnimationMotion]
+        let transform: SceneTransform
+        let targetSize: CGSize
+        let commandBuffer: MTLCommandBuffer
+        let hostTime: CFTimeInterval
+    }
+
+    private func drawSceneItem(
+        _ item: RenderItem, target: MTLTexture, pass: ScenePass, encoder: MTLRenderCommandEncoder
+    ) -> MTLRenderCommandEncoder? {
+        var encoder = encoder
+
+        if item.matteGroup != nil { return encoder }
+
+        if item.effectsApplyBelow, !item.effects.isEmpty {
+            guard let resumed = applyAdjustmentLayer(
+                item, target: target, transform: pass.transform,
+                targetSize: pass.targetSize, commandBuffer: pass.commandBuffer,
+                hostTime: pass.hostTime, ending: encoder
+            ) else { return nil }
+            encoder = resumed
+        }
+        if let prepared = pass.maskPlan.composites[item.id] {
+            if let motion = pass.motions[item.id] {
+                drawBuildComposite(
+                    prepared, item: item, motion: motion, transform: pass.transform,
+                    targetSize: pass.targetSize, encoder: encoder
+                )
+            } else {
+                drawMaskedComposite(
+                    prepared, item: item, targetSize: pass.targetSize, encoder: encoder
+                )
+            }
+            return encoder
+        }
+        if item.maskedBy != nil, !item.maskOut, pass.maskPlan.missingMattes.contains(item.id) {
+
+            return encoder
+        }
+        drawItem(
+            item, transform: pass.transform, targetSize: pass.targetSize,
+            encoder: encoder, hostTime: pass.hostTime
+        )
+        return encoder
+    }
+
+    private func crossfadeStacks(
+        _ items: [RenderItem], pass: ScenePass
+    ) -> (from: MTLTexture, to: MTLTexture)? {
+        func flatten(_ stack: [RenderItem], label: String) -> MTLTexture? {
+            guard let scratch = acquireScratch(
+                      width: Int(pass.targetSize.width), height: Int(pass.targetSize.height)),
+                  var encoder = makeIntermediatePass(
+                      into: scratch, commandBuffer: pass.commandBuffer, label: label)
+            else { return nil }
+            for item in stack {
+                guard let next = drawSceneItem(item, target: scratch, pass: pass, encoder: encoder)
+                else { return nil }
+                encoder = next
+            }
+            encoder.endEncoding()
+            return scratch
+        }
+        guard let from = flatten(items.filter(\.crossfadeLeaving), label: "compositor.crossfade.from"),
+              let to = flatten(items.filter { !$0.crossfadeLeaving }, label: "compositor.crossfade.to")
+        else { return nil }
+        return (from, to)
     }
 
     private func drawItem(
