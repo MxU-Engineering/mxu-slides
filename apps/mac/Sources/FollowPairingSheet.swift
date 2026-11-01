@@ -34,7 +34,7 @@ struct FollowPairingCodeControl: View {
 
     var body: some View {
         if FollowController.shared.pairing != nil {
-            EmptyView()
+            Text("Not while this computer is a backup.").foregroundStyle(.secondary)
         } else if let api, api.running {
             HStack(spacing: 8) {
                 Text(api.pairingCode).font(.title3.monospacedDigit().weight(.semibold))
