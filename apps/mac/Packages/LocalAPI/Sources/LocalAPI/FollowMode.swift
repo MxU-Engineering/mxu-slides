@@ -2,7 +2,7 @@ import Foundation
 
 public enum FollowReplay {
     public static func replays(_ event: APIFireEvent) -> Bool {
-        event.cause == nil
+        event.cause == nil && event.kind != .role
     }
 
     public static func command(for slide: APIFireSlideCommand) -> APIFireSlideCommand {
@@ -36,6 +36,7 @@ public enum FollowReplay {
         case .audioTransport: if let transport = event.audioTransport { try bridge.audioTransport(transport) }
         case .mediaTransport:
             if let id = event.id, let transport = event.mediaTransport { try bridge.mediaTransport(id: id, command: transport) }
+        case .role: break
         }
     }
 }
@@ -108,9 +109,42 @@ public struct APIFollowPairResponse: Codable, Sendable, Equatable {
 }
 
 public enum FollowHold {
+
+    public static let prefix = "/v1/follow"
+
     public static func error(for route: APIRoute, following name: String) -> APIError? {
-        route.scope == .view ? nil : APIError(
+        route.scope == .view || route.path.hasPrefix(prefix) ? nil : APIError(
             status: 409, code: "backing_up",
-            message: "This computer is backing up \(name). It answers again once it takes over.")
+            message: "\(name) is in charge. This computer answers again once it takes over.")
+    }
+}
+
+public struct APIFollowRoleCommand: Codable, Sendable, Equatable {
+    public var term: Int
+    public var inCharge: String
+
+    public var name: String
+
+    public init(term: Int, inCharge: String, name: String) {
+        self.term = term
+        self.inCharge = inCharge
+        self.name = name
+    }
+}
+
+public struct APIFollowStatus: Codable, Sendable, Equatable {
+
+    public var role: String
+
+    public var name: String?
+
+    public var health: String?
+    public var term: Int?
+
+    public init(role: String, name: String? = nil, health: String? = nil, term: Int? = nil) {
+        self.role = role
+        self.name = name
+        self.health = health
+        self.term = term
     }
 }

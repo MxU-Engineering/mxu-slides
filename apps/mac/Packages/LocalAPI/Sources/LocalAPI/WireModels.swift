@@ -826,6 +826,8 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         case dismissAlert
 
         case audioItem, audioPlaylist, stopAudio, audioTransport, mediaTransport
+
+        case role
     }
 
     public var seq: Int
@@ -849,6 +851,8 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
     public var audioStop: APIAudioStopCommand?
     public var audioTransport: APIAudioTransportCommand?
     public var mediaTransport: APIMediaTransportCommand?
+    public var term: Int?
+    public var inCharge: String?
 
     public init(
         kind: Kind, id: String? = nil, slide: APIFireSlideCommand? = nil, settled: Bool? = nil,
@@ -856,7 +860,8 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         alert: APIFireAlertCommand? = nil, layer: String? = nil, serviceItemId: String? = nil,
         loops: Bool? = nil, timer: APITimerAction? = nil, locked: Bool? = nil,
         entryId: String? = nil, audioStop: APIAudioStopCommand? = nil,
-        audioTransport: APIAudioTransportCommand? = nil, mediaTransport: APIMediaTransportCommand? = nil
+        audioTransport: APIAudioTransportCommand? = nil, mediaTransport: APIMediaTransportCommand? = nil,
+        term: Int? = nil, inCharge: String? = nil
     ) {
         self.seq = 0
         self.at = 0
@@ -878,6 +883,8 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         self.audioStop = audioStop
         self.audioTransport = audioTransport
         self.mediaTransport = mediaTransport
+        self.term = term
+        self.inCharge = inCharge
     }
 }
 

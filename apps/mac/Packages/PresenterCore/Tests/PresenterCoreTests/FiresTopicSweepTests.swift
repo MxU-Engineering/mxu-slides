@@ -49,6 +49,8 @@ import Testing
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: row.state.isPlaying ? \"pause\" : \"resume\")"),
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"seek\", position: seconds)"),
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"reset\")"),
+
+        ("FollowController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .role, term: role.term, inCharge: me))"),
     ]
 
     @Test func everyFireKindPublishesOnceFromWhereItRuns() throws {
