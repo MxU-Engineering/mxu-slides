@@ -196,7 +196,8 @@ struct AppSettingsView: View {
                 title: "Back up every night",
                 caption: ScheduledBackupController.shared.caption,
                 keywords: "backup nightly schedule automatic disk drive folder time machine mxubackup local keep 7",
-                control: AnyView(ScheduledBackupControl(backup: ScheduledBackupController.shared))
+                control: AnyView(ScheduledBackupControl(backup: ScheduledBackupController.shared)),
+                stacked: true
             ),
             SettingsRowSpec(
                 id: "present.mediaTransition",
