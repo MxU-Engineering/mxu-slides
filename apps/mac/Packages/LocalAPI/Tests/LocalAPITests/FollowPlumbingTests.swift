@@ -202,6 +202,11 @@ final class LocalAPIClientTests: XCTestCase {
         XCTAssertEqual(monitor.reading(at: 2.7), .live)
         XCTAssertEqual(monitor.reading(at: 5.8), .noAnswer, "no pong for over 3 s")
 
+        var cut = HeartbeatMonitor(now: 0)
+        cut.pong(beat: 1, at: 0.5)
+        XCTAssertEqual(cut.reading(at: 3.4), .live, "silence with a moving beat is a link going quiet, not a freeze")
+        XCTAssertEqual(cut.reading(at: 3.6), .noAnswer)
+
         var beatless = HeartbeatMonitor(now: 0)
         beatless.pong(beat: nil, at: 2.9)
         XCTAssertEqual(beatless.reading(at: 2.9), .live, "a sender without beats never reads frozen")
@@ -209,9 +214,10 @@ final class LocalAPIClientTests: XCTestCase {
 
     func testEndToEndFiresAndBeat() async throws {
         let beat = OSAllocatedUnfairLock<UInt64>(initialState: 1)
+        let heard = OSAllocatedUnfairLock<[String]>(initialState: [])
         let running = try await RunningServer.start(
             info: APIServerInfo(name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1),
-            beat: { beat.withLock { $0 } })
+            beat: { beat.withLock { $0 } }, heard: { name in heard.withLock { $0.append(name) } })
         defer { running.stop() }
         var policy = LocalAPIClient.Policy()
         policy.pingInterval = .milliseconds(50)
@@ -236,6 +242,8 @@ final class LocalAPIClientTests: XCTestCase {
         }
         let live = await index { if case .health(.live) = $0 { true } else { false } }
         XCTAssertNotNil(live)
+        for _ in 0 ..< 50 where heard.withLock({ $0.isEmpty }) { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(heard.withLock { $0.first }, "Backup Mac", "each ping names its key to the booth")
 
         var fire = APIFireEvent(kind: .media, id: "bumper", serviceItemId: "item-3")
         fire.seq = 11
@@ -322,14 +330,15 @@ private struct RunningServer {
     let secret: String
 
     static func start(
-        info: APIServerInfo, advertise: Bool = false, beat: (@Sendable () -> UInt64)? = nil
+        info: APIServerInfo, advertise: Bool = false, beat: (@Sendable () -> UInt64)? = nil,
+        heard: (@Sendable (String) -> Void)? = nil
     ) async throws -> RunningServer {
         let tokens = APITokenStore(fileURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("tokens-\(UUID().uuidString).json"))
         let secret = tokens.create(name: "Backup Mac", scope: .control).secret
         let port = UInt16.random(in: 41000 ... 59000)
         let server = LocalAPIServer(
-            configuration: .init(port: port, serviceName: info.name, advertise: advertise, info: info, beat: beat),
+            configuration: .init(port: port, serviceName: info.name, advertise: advertise, info: info, beat: beat, heard: heard),
             routes: [], tokens: tokens)
         let task = Task { try await server.run() }
         try await server.waitUntilListening()

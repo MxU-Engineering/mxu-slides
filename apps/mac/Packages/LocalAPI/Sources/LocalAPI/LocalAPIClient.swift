@@ -239,7 +239,7 @@ public struct HeartbeatMonitor: Sendable, Equatable {
 
     public func reading(at now: Double) -> Reading {
         if now - lastPongAt > limits.lostAfter { return .noAnswer }
-        if beat != nil, now - beatMovedAt > limits.frozenAfter { return .frozen }
+        if beat != nil, lastPongAt - beatMovedAt > limits.frozenAfter { return .frozen }
         return .live
     }
 }

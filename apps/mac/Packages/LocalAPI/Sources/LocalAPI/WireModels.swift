@@ -832,6 +832,8 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         case role
 
         case capture
+
+        case quit
     }
 
     public var seq: Int

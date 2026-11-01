@@ -475,6 +475,10 @@ struct ShellView: View {
 
                 HStack(spacing: 0) {
 
+                    if FollowController.shared.pairing == nil, !FollowController.shared.backups.isEmpty {
+                        BackupStatusChip(follow: FollowController.shared)
+                        Spacer().frame(width: 4)
+                    }
                     BroadcastStatusChip(controls: controls)
 
                     if let presets {

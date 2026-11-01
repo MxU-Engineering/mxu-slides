@@ -88,24 +88,35 @@ struct FollowPairingSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Picker("Computer", selection: $picked) {
-                    ForEach(peers, id: \.stationHexId) { peer in
-                        Text(displayName(peer)).tag(Optional(peer.stationHexId))
+
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
+                    GridRow {
+                        Text("Computer").gridColumnAlignment(.trailing)
+                        Picker("Computer", selection: $picked) {
+                            ForEach(peers, id: \.stationHexId) { peer in
+                                Text(displayName(peer)).tag(Optional(peer.stationHexId))
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    GridRow {
+                        Text("Code \(name) shows")
+                        TextField("0000", text: $code)
+                            .frame(width: 70)
+                            .font(.body.monospacedDigit())
+                    }
+                    GridRow {
+                        Text("If \(name) stops")
+                        Picker("If \(name) stops", selection: $automatic) {
+                            Text("Take over after 3 seconds").tag(true)
+                            Text("Wait for Take Over").tag(false)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
                     }
                 }
-                .frame(maxWidth: 300)
-                HStack(spacing: 8) {
-                    Text("Code \(name) shows")
-                    TextField("0000", text: $code)
-                        .frame(width: 70)
-                        .font(.body.monospacedDigit())
-                }
                 checks
-                Picker("If \(name) stops", selection: $automatic) {
-                    Text("Take over after 3 seconds").tag(true)
-                    Text("Wait for Take Over").tag(false)
-                }
-                .frame(maxWidth: 380)
             }
             if let problem {
                 Text(problem).font(.caption).foregroundStyle(.red)

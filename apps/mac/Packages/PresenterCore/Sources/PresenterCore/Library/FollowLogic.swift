@@ -33,8 +33,11 @@ public enum Follow {
         case gaveUp
     }
 
-    public static func banner(following name: String, state: State, lastFire: Date?, calendar: Calendar = .current) -> (title: String, detail: String) {
-        switch state {
+    public static func banner(following name: String, state: State, lastFire: Date?, boothQuit: Bool = false, calendar: Calendar = .current) -> (title: String, detail: String) {
+        if boothQuit, state != .live, state != .connecting {
+            return ("\(name) quit.", "This computer keeps showing the last thing it fired, and follows again when \(name) opens.")
+        }
+        return switch state {
         case .connecting:
             ("Connecting to \(name)\u{2026}", "This computer's triggers wait until it takes over.")
         case .live:
@@ -75,18 +78,21 @@ public struct FollowRole: Codable, Equatable, Sendable {
 
 public extension Follow {
 
-    static func takesOverOnItsOwn(automatic: Bool, backingUp: Bool, wasLive: Bool, now state: State) -> Bool {
-        guard automatic, backingUp, wasLive else { return false }
+    static func takesOverOnItsOwn(automatic: Bool, backingUp: Bool, wasLive: Bool, boothQuit: Bool = false, now state: State) -> Bool {
+        guard automatic, backingUp, wasLive, !boothQuit else { return false }
         if case .lost = state { return true }
         return false
     }
 
-    static func inChargeBanner(over booth: String, since: Date, boothStreamed: Bool = false, calendar: Calendar = .current) -> (title: String, detail: String) {
+    static func inChargeBanner(over booth: String, since: Date, onItsOwn: Bool = false, boothStreamed: Bool = false, calendar: Calendar = .current) -> (title: String, detail: String) {
         let time = since.formatted(Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).hour().minute())
         let detail = boothStreamed
             ? "\(booth) was streaming. Start Stream Here to send it from this computer."
             : "It answers MIDI, Companion and the Scheduler now."
-        return ("This computer took over from \(booth) at \(time).", detail)
+        let title = onItsOwn
+            ? "\(booth) stopped answering, so this computer took over at \(time)."
+            : "This computer took over from \(booth) at \(time)."
+        return (title, detail)
     }
 
     static func copiedLine(_ items: Int) -> String {
@@ -95,6 +101,28 @@ public extension Follow {
         case 1: " 1 This Mac only item copied here."
         default: " \(items) This Mac only items copied here."
         }
+    }
+
+    static let handBackWindow: TimeInterval = 60
+
+    static func handsBackOnReturn(onItsOwn: Bool, frozen: Bool, since: Date, now: Date, launchThen: String?, launchNow: String?) -> Bool {
+        guard onItsOwn, !frozen, let launchThen, launchThen == launchNow else { return false }
+        return now.timeIntervalSince(since) <= handBackWindow
+    }
+
+    static func cameBackLine(_ booth: String, after seconds: TimeInterval) -> String {
+        "\(booth) came back after \(max(1, Int(seconds.rounded()))) seconds, so it answers again."
+    }
+
+    static func boothBackupLine(_ backup: String, connected: Bool, inCharge: Bool = false) -> String {
+        if inCharge { return "\(backup) took over, so it answers MIDI, Companion and the Scheduler. Take Back when this computer should again." }
+        return connected
+            ? "\(backup) is backing up this computer, fire for fire. If this computer stops answering, it takes over."
+            : "\(backup) isn't connected. It follows again when MxU Slides opens on it, on this network."
+    }
+
+    static func backupDroppedBanner(_ backup: String) -> (title: String, detail: String) {
+        ("\(backup) stopped following.", "This computer keeps running the service. \(backup) follows again when it reconnects.")
     }
 
     static func steppedDownBanner(backup: String) -> (title: String, detail: String) {

@@ -40,6 +40,8 @@ import Testing
         #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: true), lastFire: nil).title == "Booth Mac froze.")
         #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: false), lastFire: nil).title == "Booth Mac stopped answering.")
         #expect(Follow.banner(following: "Booth Mac", state: .gaveUp, lastFire: nil).title == "Can't reach Booth Mac.")
+        #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: false), lastFire: nil, boothQuit: true).title == "Booth Mac quit.")
+        #expect(Follow.banner(following: "Booth Mac", state: .gaveUp, lastFire: nil, boothQuit: true).title == "Booth Mac quit.", "still waiting after the retries ran out")
     }
 
     @Test func theHigherTakeoverNumberStands() {
@@ -58,6 +60,7 @@ import Testing
         #expect(!Follow.takesOverOnItsOwn(automatic: false, backingUp: true, wasLive: true, now: .lost(frozen: false)), "Wait for Take Over")
         #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: false, now: .lost(frozen: false)), "never reached it")
         #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: false, wasLive: true, now: .lost(frozen: false)), "already in charge")
+        #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: true, boothQuit: true, now: .lost(frozen: false)), "a Quit isn't a failure")
         #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: true, now: .connecting))
     }
 
@@ -67,6 +70,7 @@ import Testing
         calendar.locale = Locale(identifier: "en_US")
         let at = Date(timeIntervalSince1970: 1_793_375_520)
         #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, calendar: calendar).title == "This computer took over from Booth Mac at 11:52\u{202F}AM.")
+        #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, onItsOwn: true, calendar: calendar).title == "Booth Mac stopped answering, so this computer took over at 11:52\u{202F}AM.")
         #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, boothStreamed: true, calendar: calendar).detail == "Booth Mac was streaming. Start Stream Here to send it from this computer.")
         #expect(Follow.steppedDownBanner(backup: "Backup Mac").title == "Backup Mac took over.")
         #expect(Follow.copiedLine(0) == "")
@@ -83,5 +87,26 @@ import Testing
         #expect(joined.term == 4)
         #expect(joined.handed(to: "backup").newer(booth) == nil, "the booth's old number never wins back a takeover")
         #expect(booth.newer(joined.handed(to: "backup"))?.inCharge == "backup")
+    }
+}
+
+@Suite struct FollowHandBackTests {
+    let took = Date(timeIntervalSince1970: 1000)
+
+    @Test func aDroppedLinkGivesWayToTheSameBooth() {
+        #expect(Follow.handsBackOnReturn(onItsOwn: true, frozen: false, since: took, now: took + 12, launchThen: "a", launchNow: "a"))
+        #expect(!Follow.handsBackOnReturn(onItsOwn: true, frozen: false, since: took, now: took + 12, launchThen: "a", launchNow: "b"), "it relaunched: a crash")
+        #expect(!Follow.handsBackOnReturn(onItsOwn: true, frozen: true, since: took, now: took + 12, launchThen: "a", launchNow: "a"), "it froze")
+        #expect(!Follow.handsBackOnReturn(onItsOwn: false, frozen: false, since: took, now: took + 12, launchThen: "a", launchNow: "a"), "Take Over by hand")
+        #expect(!Follow.handsBackOnReturn(onItsOwn: true, frozen: false, since: took, now: took + 61, launchThen: "a", launchNow: "a"), "gone over a minute")
+        #expect(!Follow.handsBackOnReturn(onItsOwn: true, frozen: false, since: took, now: took + 12, launchThen: nil, launchNow: "a"), "never heard its launch")
+        #expect(Follow.cameBackLine("Booth Mac", after: 12.4) == "Booth Mac came back after 12 seconds, so it answers again.")
+    }
+
+    @Test func theBoothNamesItsBackup() {
+        #expect(Follow.boothBackupLine("Backup Mac", connected: true).hasPrefix("Backup Mac is backing up this computer"))
+        #expect(Follow.boothBackupLine("Backup Mac", connected: false).hasPrefix("Backup Mac isn't connected."))
+        #expect(Follow.backupDroppedBanner("Backup Mac").title == "Backup Mac stopped following.")
+        #expect(Follow.boothBackupLine("Backup Mac", connected: true, inCharge: true).hasPrefix("Backup Mac took over"))
     }
 }

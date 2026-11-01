@@ -238,7 +238,13 @@ final class LocalAPIController {
                 pair: { [followPairing, tokens, teamHexId] body in
                     followPairing.answer(body, teamHexId: teamHexId.withLock { $0 }, tokens: tokens)
                 },
-                blob: { [blobs = appModel.blobs] hash in blobs?.url(forHash: hash) }
+                blob: { [blobs = appModel.blobs] hash in blobs?.url(forHash: hash) },
+                heard: { FollowController.presence.heard(tokenName: $0) },
+                unpair: { [tokens] token in
+                    guard FollowPresence.backupName(token.name) != nil else { return }
+                    tokens.revoke(id: token.id)
+                    Task { @MainActor in FollowController.shared.refreshBackups() }
+                }
             ),
             routes: APIRouteTable.build(bridge: bridge) + Self.followRoutes(model: appModel),
             tokens: tokens

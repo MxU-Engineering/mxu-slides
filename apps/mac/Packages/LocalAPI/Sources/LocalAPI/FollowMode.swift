@@ -2,7 +2,7 @@ import Foundation
 
 public enum FollowReplay {
     public static func replays(_ event: APIFireEvent) -> Bool {
-        event.cause == nil && event.kind != .role && event.kind != .capture
+        event.cause == nil && ![.role, .capture, .quit].contains(event.kind)
     }
 
     public static func command(for slide: APIFireSlideCommand) -> APIFireSlideCommand {
@@ -11,6 +11,28 @@ public enum FollowReplay {
             slide.serviceItemId = nil
         }
         return slide
+    }
+
+    public static func catchUp(booth: APIShowStatus, here: APIShowStatus) -> [APIFireEvent] {
+        var events: [APIFireEvent] = []
+        if booth.liveSlide == nil, here.liveSlide != nil {
+            events.append(APIFireEvent(kind: .clear, clear: APIClearCommand(function: "slides")))
+        }
+        for layer in here.mediaLayers.keys.sorted() where booth.mediaLayers[layer] == nil {
+            events.append(APIFireEvent(kind: .clear, clear: APIClearCommand(layer: layer)))
+        }
+        let boothOverlays = Set(booth.overlays.map(\.id))
+        let hereOverlays = Set(here.overlays.map(\.id))
+        for id in hereOverlays.subtracting(boothOverlays).sorted() {
+            events.append(APIFireEvent(kind: .dismissOverlay, id: id))
+        }
+        for (layer, content) in booth.mediaLayers.sorted(by: { $0.key < $1.key }) where here.mediaLayers[layer]?.mediaId != content.mediaId {
+            events.append(APIFireEvent(kind: .media, id: content.mediaId))
+        }
+        for overlay in booth.overlays where !hereOverlays.contains(overlay.id) {
+            events.append(APIFireEvent(kind: .overlay, id: overlay.id))
+        }
+        return events
     }
 
     @MainActor
@@ -36,7 +58,7 @@ public enum FollowReplay {
         case .audioTransport: if let transport = event.audioTransport { try bridge.audioTransport(transport) }
         case .mediaTransport:
             if let id = event.id, let transport = event.mediaTransport { try bridge.mediaTransport(id: id, command: transport) }
-        case .role, .capture: break
+        case .role, .capture, .quit: break
         }
     }
 }
@@ -85,8 +107,54 @@ public final class FollowPairing: @unchecked Sendable {
         guard matched else {
             return .json(APIError(status: 403, code: "wrong_code", message: "That code doesn't match. Check the code this computer shows."), status: 403)
         }
-        let minted = tokens.create(name: "Backup: \(request.name)", scope: .control)
+
+        let name = FollowPresence.prefix + request.name
+        for old in tokens.all where old.name == name { tokens.revoke(id: old.id) }
+        let minted = tokens.create(name: name, scope: .control)
         return .json(APIFollowPairResponse(token: minted.secret))
+    }
+}
+
+public final class FollowPresence: @unchecked Sendable {
+
+    public static let prefix = "Backup: "
+
+    public static func backupName(_ tokenName: String) -> String? {
+        tokenName.hasPrefix(prefix) ? String(tokenName.dropFirst(prefix.count)) : nil
+    }
+
+    private let lostAfter: Duration
+    private let changed: @Sendable (Set<String>) -> Void
+    private let lock = NSLock()
+    private var heard: [String: UUID] = [:]
+
+    public init(lostAfter: Duration = .seconds(4), changed: @escaping @Sendable (Set<String>) -> Void) {
+        self.lostAfter = lostAfter
+        self.changed = changed
+    }
+
+    public func heard(tokenName: String) {
+        guard let name = Self.backupName(tokenName) else { return }
+        let mark = UUID()
+        lock.lock()
+        let isNew = heard[name] == nil
+        heard[name] = mark
+        let names = Set(heard.keys)
+        lock.unlock()
+        if isNew { changed(names) }
+        Task { [weak self, lostAfter] in
+            try? await Task.sleep(for: lostAfter)
+            self?.expire(name, mark)
+        }
+    }
+
+    private func expire(_ name: String, _ mark: UUID) {
+        lock.lock()
+        guard heard[name] == mark else { return lock.unlock() }
+        heard[name] = nil
+        let names = Set(heard.keys)
+        lock.unlock()
+        changed(names)
     }
 }
 
@@ -143,7 +211,10 @@ public struct APIFollowStatus: Codable, Sendable, Equatable {
 
     public var streamPresetId: String?
 
-    public init(role: String, name: String? = nil, health: String? = nil, term: Int? = nil, streamPresetId: String? = nil) {
+    public var launch: String?
+
+    public init(role: String, name: String? = nil, health: String? = nil, term: Int? = nil, streamPresetId: String? = nil, launch: String? = nil) {
+        self.launch = launch
         self.role = role
         self.name = name
         self.health = health
