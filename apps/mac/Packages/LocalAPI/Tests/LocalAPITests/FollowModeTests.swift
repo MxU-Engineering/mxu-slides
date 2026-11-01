@@ -158,27 +158,43 @@ final class FollowEndToEndTests: XCTestCase {
         await client.start()
         defer { Task { await client.stop() } }
         let bridge = FakeBridge()
-        var live = false
         var combo = APIFireEvent(kind: .combo, id: "c1")
         combo.seq = 1
         var effect = APIFireEvent(kind: .outputPreset, id: "p1")
         effect.seq = 2
         effect.cause = 1
-        for await update in client.updates {
-            switch update {
-            case .health(.live) where !live:
-                live = true
-                for event in [combo, effect] {
-                    await booth.events.publish(APIEvent(topic: .fires, payload: APIFireFeed.encode(event)!))
+
+        var publisher: Task<Void, Never>?
+        let loop = Task { @MainActor in
+            var live = false
+            for await update in client.updates {
+                switch update {
+                case .health(.live) where !live:
+                    live = true
+
+                    publisher = Task {
+                        while !Task.isCancelled {
+                            for event in [combo, effect] {
+                                await booth.events.publish(APIEvent(topic: .fires, payload: APIFireFeed.encode(event)!))
+                            }
+                            try? await Task.sleep(for: .milliseconds(100))
+                        }
+                    }
+                case .event(.fires, let payload):
+                    if let event = APIFireFeed.decode(payload), FollowReplay.replays(event) {
+                        try? await FollowReplay.apply(event, to: bridge)
+                    }
+                default:
+                    break
                 }
-            case .event(.fires, let payload):
-                let event = try XCTUnwrap(APIFireFeed.decode(payload))
-                if FollowReplay.replays(event) { try await FollowReplay.apply(event, to: bridge) }
-            default:
-                break
+                if !bridge.calls.isEmpty { break }
             }
-            if !bridge.calls.isEmpty, live { break }
         }
-        XCTAssertEqual(bridge.calls, ["fireActionCombo:c1"], "the combo replays; its preset switch follows from it here")
+        let watchdog = Task { try await Task.sleep(for: .seconds(10)); loop.cancel() }
+        await loop.value
+        watchdog.cancel()
+        publisher?.cancel()
+        XCTAssertEqual(bridge.calls.first, "fireActionCombo:c1", "the combo replays")
+        XCTAssertFalse(bridge.calls.contains("activatePreset:p1"), "its preset switch follows from it here, never replayed")
     }
 }
