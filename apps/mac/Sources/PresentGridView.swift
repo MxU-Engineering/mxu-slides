@@ -1617,13 +1617,15 @@ struct SlideGridBody: View {
         let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : slides.last?.sectionId
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
+
+        let beforeID = index == 0 ? slides.first?.id : nil
         if items.isEmpty {
             return false
         } else {
             model.insertSlides(
                 presentation.id,
                 slides: items.map { Slide.droppedMedia($0, sectionId: anchorSection) },
-                afterSlideID: afterID)
+                afterSlideID: afterID, beforeSlideID: beforeID)
             return true
         }
     }

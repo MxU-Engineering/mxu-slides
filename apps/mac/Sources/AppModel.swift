@@ -1769,11 +1769,20 @@ final class AppModel {
         insertSlides(presentationID, slides: [slide], afterSlideID: afterSlideID)
     }
 
-    func insertSlides(_ presentationID: String, slides: [Slide], afterSlideID: String?) {
+    func insertSlides(
+        _ presentationID: String, slides: [Slide], afterSlideID: String?, beforeSlideID: String? = nil
+    ) {
         DropLatency.awaitingPaint = Set(slides.map(\.id))
-        updatePresentation(presentationID, value: { SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &$0) }) { document in
+        let place: @Sendable (inout Presentation) -> Void = { deck in
+            if let beforeSlideID {
+                SlideBulkEdit.insertSlides(slides, before: beforeSlideID, in: &deck)
+            } else {
+                SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &deck)
+            }
+        }
+        updatePresentation(presentationID, value: place) { document in
             var next = document.value
-            SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &next)
+            place(&next)
             try Self.commitSlideInsert(slides.map(\.id), next: next, on: document)
         }
     }
