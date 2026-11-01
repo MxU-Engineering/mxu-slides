@@ -237,9 +237,10 @@ final class LocalAPIController {
                 hold: { route in FollowController.followedName.flatMap { FollowHold.error(for: route, following: $0) } },
                 pair: { [followPairing, tokens, teamHexId] body in
                     followPairing.answer(body, teamHexId: teamHexId.withLock { $0 }, tokens: tokens)
-                }
+                },
+                blob: { [blobs = appModel.blobs] hash in blobs?.url(forHash: hash) }
             ),
-            routes: APIRouteTable.build(bridge: bridge) + Self.followRoutes(),
+            routes: APIRouteTable.build(bridge: bridge) + Self.followRoutes(model: appModel),
             tokens: tokens
         )
         self.server = server
@@ -318,7 +319,7 @@ final class LocalAPIController {
         if pairingCode.isEmpty { pairingCode = followPairing.current ?? followPairing.refresh() }
     }
 
-    private static func followRoutes() -> [APIRoute] {
+    private static func followRoutes(model: AppModel) -> [APIRoute] {
         let object: JSONValue = .object(["type": .string("object")])
         func act(_ path: String, _ id: String, _ summary: String, _ run: @escaping @Sendable @MainActor () async -> String?) -> APIRoute {
             APIRoute("POST", path, scope: .control, operationId: id, summary: summary, tag: "Follow", responseSchema: .ref("OK")) { _ in
@@ -334,6 +335,15 @@ final class LocalAPIController {
             act("/v1/follow/takeover", "followTakeOver", "A backup takes over.") { await FollowController.shared.takeOver(reason: "API") },
             act("/v1/follow/handback", "followHandBack", "A backup in charge hands back.") { await FollowController.shared.handBack() },
             act("/v1/follow/takeback", "followTakeBack", "A booth that stepped down takes back.") { FollowController.shared.takeBack() },
+
+            APIRoute("GET", "/v1/follow/files", scope: .control, operationId: "followFiles",
+                     summary: "This computer's This Mac only items, for its backup.", tag: "Follow", responseSchema: object) { _ in
+                .json(try await FollowFileCopy.offered(model))
+            },
+            APIRoute("GET", "/v1/follow/files/{kind}/{id}", scope: .control, operationId: "followFile",
+                     summary: "One This Mac only item's whole save.", tag: "Follow", responseSchema: object) { context in
+                .json(try await FollowFileCopy.document(model, kind: context.pathParameters["kind"] ?? "", id: context.pathParameters["id"] ?? ""))
+            },
             APIRoute("POST", "/v1/follow/role", scope: .control, operationId: "followRole",
                      summary: "A backup tells its booth who is in charge.", tag: "Follow", responseSchema: object) { context in
                 let command = try context.decode(APIFollowRoleCommand.self)

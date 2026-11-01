@@ -1,6 +1,8 @@
 import Foundation
 
-public struct APIError: Error, Codable, Sendable {
+public struct APIError: Error, LocalizedError, Codable, Sendable {
+    public var errorDescription: String? { message }
+
     public var status: Int
     public var code: String
     public var message: String
@@ -828,6 +830,8 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         case audioItem, audioPlaylist, stopAudio, audioTransport, mediaTransport
 
         case role
+
+        case capture
     }
 
     public var seq: Int

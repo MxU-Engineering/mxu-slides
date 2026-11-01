@@ -51,6 +51,7 @@ import Testing
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"reset\")"),
 
         ("FollowController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .role, term: role.term, inCharge: me))"),
+        ("StreamingController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .capture, id: live?.presetID))"),
     ]
 
     @Test func everyFireKindPublishesOnceFromWhereItRuns() throws {

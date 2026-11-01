@@ -67,6 +67,21 @@ import Testing
         calendar.locale = Locale(identifier: "en_US")
         let at = Date(timeIntervalSince1970: 1_793_375_520)
         #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, calendar: calendar).title == "This computer took over from Booth Mac at 11:52\u{202F}AM.")
+        #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, boothStreamed: true, calendar: calendar).detail == "Booth Mac was streaming. Start Stream Here to send it from this computer.")
         #expect(Follow.steppedDownBanner(backup: "Backup Mac").title == "Backup Mac took over.")
+        #expect(Follow.copiedLine(0) == "")
+        #expect(Follow.copiedLine(1) == " 1 This Mac only item copied here.")
+        #expect(Follow.copiedLine(3) == " 3 This Mac only items copied here.")
+    }
+}
+
+@Suite struct FollowRoleStartTests {
+    @Test func aFreshBackupTakesTheBoothsNumberSoItsTakeoverStands() {
+        let fresh = FollowRole.start(booth: "booth")
+        let booth = FollowRole(term: 4, inCharge: "booth")
+        let joined = fresh.newer(booth) ?? fresh
+        #expect(joined.term == 4)
+        #expect(joined.handed(to: "backup").newer(booth) == nil, "the booth's old number never wins back a takeover")
+        #expect(booth.newer(joined.handed(to: "backup"))?.inCharge == "backup")
     }
 }

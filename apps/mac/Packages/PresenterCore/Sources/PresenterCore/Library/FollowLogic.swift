@@ -67,6 +67,10 @@ public struct FollowRole: Codable, Equatable, Sendable {
     public func newer(_ other: FollowRole) -> FollowRole? {
         other.term > term ? other : nil
     }
+
+    public static func start(booth: String) -> FollowRole {
+        FollowRole(term: 0, inCharge: booth)
+    }
 }
 
 public extension Follow {
@@ -77,9 +81,20 @@ public extension Follow {
         return false
     }
 
-    static func inChargeBanner(over booth: String, since: Date, calendar: Calendar = .current) -> (title: String, detail: String) {
+    static func inChargeBanner(over booth: String, since: Date, boothStreamed: Bool = false, calendar: Calendar = .current) -> (title: String, detail: String) {
         let time = since.formatted(Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).hour().minute())
-        return ("This computer took over from \(booth) at \(time).", "It answers MIDI, Companion and the Scheduler now.")
+        let detail = boothStreamed
+            ? "\(booth) was streaming. Start Stream Here to send it from this computer."
+            : "It answers MIDI, Companion and the Scheduler now."
+        return ("This computer took over from \(booth) at \(time).", detail)
+    }
+
+    static func copiedLine(_ items: Int) -> String {
+        switch items {
+        case 0: ""
+        case 1: " 1 This Mac only item copied here."
+        default: " \(items) This Mac only items copied here."
+        }
     }
 
     static func steppedDownBanner(backup: String) -> (title: String, detail: String) {
