@@ -53,6 +53,17 @@ final class StreamSessionTests: XCTestCase {
         XCTAssertEqual(session.status.state, .stopped)
     }
 
+    func testRetargetPublishesToTheNewDestination() {
+        let session = StreamSession(
+            destination: StreamEndpoint(
+                id: "yt", name: "Renew", kind: .rtmps, url: "rtmps://a/live2", streamKey: "old"),
+            video: StreamVideoConfiguration(width: 320, height: 180))
+        session.retarget(to: StreamEndpoint(
+            id: "yt", name: "Renew", kind: .rtmps, url: "rtmps://a/live2", streamKey: "new"))
+        XCTAssertEqual(session.destination.streamKey, "new")
+        XCTAssertEqual(session.destination.id, "yt")
+    }
+
     func testPublishesToLocalRTMPServer() async throws {
         guard let apiURL = URL(string: "http://127.0.0.1:8000/api/streams"),
               (try? await URLSession.shared.data(from: apiURL)) != nil

@@ -248,6 +248,9 @@ struct BroadcastStatusChip: View {
         if status.framesDropped > 0 {
             parts.append("\(status.framesDropped) dropped")
         }
+        if let videoKbps = status.videoKbps, videoKbps < session.video.bitrateKbps * 9 / 10 {
+            parts.append(String(format: "quality lowered to %.1f Mbps for the upload", Double(videoKbps) / 1000))
+        }
         return parts.joined(separator: " \u{B7} ")
     }
 

@@ -1718,6 +1718,8 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
     public var height: Int?
     public var frameRate: Int?
     public var videoBitrateKbps: Int?
+    public var adaptBitrate: Bool?
+    public var minBitrateKbps: Int?
     public var canvasScreenId: String?
     public var recordWhileStreaming: Bool?
     public var recordCodec: String?
@@ -1736,7 +1738,7 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
     public var recordLibraryFolder: String?
     public var recordExportFolder: String?
 
-    public init(id: String, name: String, destinations: [StreamPresetDestination], destinationIds: [String]? = nil, presetKind: StreamPresetKind? = nil, width: Int? = nil, height: Int? = nil, frameRate: Int? = nil, videoBitrateKbps: Int? = nil, canvasScreenId: String? = nil, recordWhileStreaming: Bool? = nil, recordCodec: String? = nil, title: String? = nil, streamDescription: String? = nil, recordFolder: String? = nil, audioInputUid: String? = nil, audioIncludesProgram: Bool? = nil, audioInputId: String? = nil, audioMixId: String? = nil, audioDelayMs: Int? = nil, sourceKind: StreamSourceKind? = nil, sourceMediaId: String? = nil, sourceFolder: String? = nil, sourceMaxAgeHours: Int? = nil, recordLibraryFolder: String? = nil, recordExportFolder: String? = nil) {
+    public init(id: String, name: String, destinations: [StreamPresetDestination], destinationIds: [String]? = nil, presetKind: StreamPresetKind? = nil, width: Int? = nil, height: Int? = nil, frameRate: Int? = nil, videoBitrateKbps: Int? = nil, adaptBitrate: Bool? = nil, minBitrateKbps: Int? = nil, canvasScreenId: String? = nil, recordWhileStreaming: Bool? = nil, recordCodec: String? = nil, title: String? = nil, streamDescription: String? = nil, recordFolder: String? = nil, audioInputUid: String? = nil, audioIncludesProgram: Bool? = nil, audioInputId: String? = nil, audioMixId: String? = nil, audioDelayMs: Int? = nil, sourceKind: StreamSourceKind? = nil, sourceMediaId: String? = nil, sourceFolder: String? = nil, sourceMaxAgeHours: Int? = nil, recordLibraryFolder: String? = nil, recordExportFolder: String? = nil) {
         self.id = id
         self.name = name
         self.destinations = destinations
@@ -1746,6 +1748,8 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
         self.height = height
         self.frameRate = frameRate
         self.videoBitrateKbps = videoBitrateKbps
+        self.adaptBitrate = adaptBitrate
+        self.minBitrateKbps = minBitrateKbps
         self.canvasScreenId = canvasScreenId
         self.recordWhileStreaming = recordWhileStreaming
         self.recordCodec = recordCodec

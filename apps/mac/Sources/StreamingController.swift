@@ -254,7 +254,10 @@ final class StreamingController {
                     video: StreamVideoConfiguration(
                         width: sessionWidth, height: sessionHeight,
                         frameRate: sessionRate, bitrateKbps: sessionBitrate,
-                        codec: plan.codec, hdr: plan.hdr)),
+                        codec: plan.codec, hdr: plan.hdr,
+                        adaptiveFloorKbps: StreamVideoConfiguration.adaptiveFloor(
+                            adapt: preset.adaptBitrate, minKbps: preset.minBitrateKbps,
+                            bitrateKbps: sessionBitrate))),
                 screenID: plan.canvasScreenId?.isEmpty == false ? plan.canvasScreenId! : defaultScreenID,
                 width: sessionWidth, height: sessionHeight,
                 frameRate: sessionRate, hdr: plan.hdr)
@@ -385,6 +388,9 @@ final class StreamingController {
                             + "frames=\(status.framesSubmitted) dropped=\(status.framesDropped) "
                             + String(format: "elapsed=%.2fs audio=%.2fs ", Date().timeIntervalSince(live.startedAt), status.audioSecondsSent)
                             + "audioDropped=\(status.audioBuffersDropped) "
+                            + (status.uploadKbps.map { "upload=\($0)kbps " } ?? "")
+                            + (status.videoKbps.map { "video=\($0)/\(session.video.bitrateKbps)kbps " } ?? "")
+                            + (status.lastDrop.map { "lastDrop=\($0) " } ?? "")
                             + (AudioMixerController.current?.feedLossSummary ?? "")
                             + DeckLinkDirectInputs.shared.ageSummary)
                 }
