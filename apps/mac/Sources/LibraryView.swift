@@ -992,6 +992,12 @@ struct LibrarySidebar: View {
                 for entry in addable { model.addToCurrentService(entry) }
             }
         }
+        let media = batch.filter { $0.kind == .media }
+        if !media.isEmpty {
+            Section("Cue") {
+                LibraryMediaPlaybackRows(model: model, ids: media.map(\.id))
+            }
+        }
         let tracks = batch.filter { $0.kind == .media || $0.kind == .audio }
         let folderable = batch.filter { entry in
             AppModel.folderableSections.contains { $0.kind == entry.kind }
@@ -1054,6 +1060,7 @@ struct LibrarySidebar: View {
         if entry.kind == .media {
 
             Section("Cue") {
+                LibraryMediaPlaybackRows(model: model, ids: [entry.id])
                 MediaCueGrammarItems(
                     model: model, actionRouter: nil,
                     mediaID: entry.id, state: mediaMenuState

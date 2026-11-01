@@ -336,3 +336,46 @@ private struct MediaCueSheets: ViewModifier {
         model.indexEntry(mediaID)?.name ?? "Media"
     }
 }
+
+struct LibraryMediaPlaybackRows: View {
+    let model: AppModel
+    let ids: [String]
+
+    var body: some View {
+        let items = ids.compactMap { model.media($0) }
+        let videos = items.filter { $0.mediaKind == .video }
+        if !items.isEmpty {
+            Picker("Classification", selection: Binding(
+                get: { Self.shared(items.map(\.classification)) },
+                set: { value in
+                    guard let value else { return }
+                    for item in items where item.classification != value {
+                        model.updateMedia(item.id) { $0.classification = value }
+                    }
+                }
+            )) {
+                Text("Foreground").tag(MediaClassification?.some(.foreground))
+                Text("Background").tag(MediaClassification?.some(.background))
+            }
+        }
+        if !videos.isEmpty {
+
+            Picker("Loop", selection: Binding(
+                get: { Self.shared(videos.map(\.loops)) },
+                set: { value in
+                    guard let value else { return }
+                    for item in videos where item.loops != value {
+                        model.updateMedia(item.id) { $0.loops = value }
+                    }
+                }
+            )) {
+                Text("On").tag(Bool?.some(true))
+                Text("Off").tag(Bool?.some(false))
+            }
+        }
+    }
+
+    private static func shared<Value: Hashable>(_ values: [Value]) -> Value? {
+        Set(values).count == 1 ? values.first : nil
+    }
+}
