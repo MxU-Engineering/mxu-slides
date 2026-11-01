@@ -41,4 +41,32 @@ import Testing
         #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: false), lastFire: nil).title == "Booth Mac stopped answering.")
         #expect(Follow.banner(following: "Booth Mac", state: .gaveUp, lastFire: nil).title == "Can't reach Booth Mac.")
     }
+
+    @Test func theHigherTakeoverNumberStands() {
+        let start = FollowRole(term: 0, inCharge: "booth")
+        let tookOver = start.handed(to: "backup")
+        #expect(tookOver == FollowRole(term: 1, inCharge: "backup"))
+        #expect(start.newer(tookOver) == tookOver, "a booth that unfreezes hears it and steps down")
+        #expect(tookOver.newer(start) == nil, "an older word never wins")
+        let handedBack = tookOver.handed(to: "booth")
+        #expect(handedBack.term == 2 && handedBack.inCharge == "booth")
+    }
+
+    @Test func aBackupTakesOverOnItsOwnOnlyAfterLosingALiveBooth() {
+        #expect(Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: true, now: .lost(frozen: true)))
+        #expect(Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: true, now: .lost(frozen: false)))
+        #expect(!Follow.takesOverOnItsOwn(automatic: false, backingUp: true, wasLive: true, now: .lost(frozen: false)), "Wait for Take Over")
+        #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: false, now: .lost(frozen: false)), "never reached it")
+        #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: false, wasLive: true, now: .lost(frozen: false)), "already in charge")
+        #expect(!Follow.takesOverOnItsOwn(automatic: true, backingUp: true, wasLive: true, now: .connecting))
+    }
+
+    @Test func theInChargeAndSteppedDownBannersNameTheOtherComputer() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        calendar.locale = Locale(identifier: "en_US")
+        let at = Date(timeIntervalSince1970: 1_793_375_520)
+        #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, calendar: calendar).title == "This computer took over from Booth Mac at 11:52\u{202F}AM.")
+        #expect(Follow.steppedDownBanner(backup: "Backup Mac").title == "Backup Mac took over.")
+    }
 }

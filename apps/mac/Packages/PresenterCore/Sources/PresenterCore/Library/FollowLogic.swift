@@ -48,3 +48,41 @@ public enum Follow {
         }
     }
 }
+
+public struct FollowRole: Codable, Equatable, Sendable {
+
+    public var term: Int
+
+    public var inCharge: String
+
+    public init(term: Int, inCharge: String) {
+        self.term = term
+        self.inCharge = inCharge
+    }
+
+    public func handed(to station: String) -> FollowRole {
+        FollowRole(term: term + 1, inCharge: station)
+    }
+
+    public func newer(_ other: FollowRole) -> FollowRole? {
+        other.term > term ? other : nil
+    }
+}
+
+public extension Follow {
+
+    static func takesOverOnItsOwn(automatic: Bool, backingUp: Bool, wasLive: Bool, now state: State) -> Bool {
+        guard automatic, backingUp, wasLive else { return false }
+        if case .lost = state { return true }
+        return false
+    }
+
+    static func inChargeBanner(over booth: String, since: Date, calendar: Calendar = .current) -> (title: String, detail: String) {
+        let time = since.formatted(Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).hour().minute())
+        return ("This computer took over from \(booth) at \(time).", "It answers MIDI, Companion and the Scheduler now.")
+    }
+
+    static func steppedDownBanner(backup: String) -> (title: String, detail: String) {
+        ("\(backup) took over.", "This computer's triggers wait until it takes back.")
+    }
+}

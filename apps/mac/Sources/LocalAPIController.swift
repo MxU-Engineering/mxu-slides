@@ -239,7 +239,7 @@ final class LocalAPIController {
                     followPairing.answer(body, teamHexId: teamHexId.withLock { $0 }, tokens: tokens)
                 }
             ),
-            routes: APIRouteTable.build(bridge: bridge),
+            routes: APIRouteTable.build(bridge: bridge) + Self.followRoutes(),
             tokens: tokens
         )
         self.server = server
@@ -316,6 +316,30 @@ final class LocalAPIController {
         server.update(stationHexId: ids.stationHexId, teamHexId: ids.teamHexId)
         teamHexId.withLock { $0 = ids.teamHexId }
         if pairingCode.isEmpty { pairingCode = followPairing.current ?? followPairing.refresh() }
+    }
+
+    private static func followRoutes() -> [APIRoute] {
+        let object: JSONValue = .object(["type": .string("object")])
+        func act(_ path: String, _ id: String, _ summary: String, _ run: @escaping @Sendable @MainActor () async -> String?) -> APIRoute {
+            APIRoute("POST", path, scope: .control, operationId: id, summary: summary, tag: "Follow", responseSchema: .ref("OK")) { _ in
+                if let refused = await run() { throw APIError(status: 409, code: "follow", message: refused) }
+                return .ok
+            }
+        }
+        return [
+            APIRoute("GET", "/v1/follow", scope: .view, operationId: "followStatus",
+                     summary: "Follow mode: backing up, in charge or stepped down.", tag: "Follow", responseSchema: object) { _ in
+                .json(await FollowController.shared.status)
+            },
+            act("/v1/follow/takeover", "followTakeOver", "A backup takes over.") { await FollowController.shared.takeOver(reason: "API") },
+            act("/v1/follow/handback", "followHandBack", "A backup in charge hands back.") { await FollowController.shared.handBack() },
+            act("/v1/follow/takeback", "followTakeBack", "A booth that stepped down takes back.") { FollowController.shared.takeBack() },
+            APIRoute("POST", "/v1/follow/role", scope: .control, operationId: "followRole",
+                     summary: "A backup tells its booth who is in charge.", tag: "Follow", responseSchema: object) { context in
+                let command = try context.decode(APIFollowRoleCommand.self)
+                return .json(await FollowController.shared.receiveRole(command))
+            },
+        ]
     }
 
     func newPairingCode() {

@@ -52,6 +52,8 @@ struct FollowPairingSheet: View {
     @State private var problem: String?
     @State private var unconnected: [String] = []
 
+    @State private var automatic = true
+
     private static var qaCode: String {
         #if DEBUG
         ProcessInfo.processInfo.environment["MXU_QA_FOLLOW_CODE"] ?? ""
@@ -97,6 +99,11 @@ struct FollowPairingSheet: View {
                         .font(.body.monospacedDigit())
                 }
                 checks
+                Picker("If \(name) stops", selection: $automatic) {
+                    Text("Take over after 3 seconds").tag(true)
+                    Text("Wait for Take Over").tag(false)
+                }
+                .frame(maxWidth: 380)
             }
             if let problem {
                 Text(problem).font(.caption).foregroundStyle(.red)
@@ -166,7 +173,7 @@ struct FollowPairingSheet: View {
         problem = nil
         Task {
             defer { working = false }
-            if let refused = await FollowController.shared.pair(with: peer, name: displayName(peer), code: code, teamHexId: team, station: station) {
+            if let refused = await FollowController.shared.pair(with: peer, name: displayName(peer), code: code, automatic: automatic, teamHexId: team, station: station) {
                 problem = refused
                 return
             }

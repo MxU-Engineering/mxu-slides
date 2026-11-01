@@ -152,6 +152,11 @@ final class MIDIInController {
     }
 
     func handle(_ command: MIDICommand, velocity: Int) {
+
+        if command == .followTakeOver {
+            Task { await FollowController.shared.takeOver(reason: "MIDI") }
+            return
+        }
         if FollowController.isBackingUp {
             DiagnosticsStore.shared.note("follow.held", detail: "MIDI \(command.rawValue)")
             return
@@ -313,6 +318,8 @@ final class MIDIInController {
             }
         case .stopTimeline:
             controls.timeline.stop()
+        case .followTakeOver:
+            break
         }
     }
 

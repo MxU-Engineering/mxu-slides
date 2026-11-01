@@ -39,7 +39,8 @@ final class FollowReplayTests: XCTestCase {
             event(.audioTransport) { $0.audioTransport = APIAudioTransportCommand(action: "next") },
             event(.mediaTransport) { $0.id = "m1"; $0.mediaTransport = APIMediaTransportCommand(action: "pause") },
         ]
-        XCTAssertEqual(Set(fires.map(\.kind)), Set(APIFireEvent.Kind.allCases), "every kind replays")
+        XCTAssertEqual(Set(fires.map(\.kind)), Set(APIFireEvent.Kind.allCases).subtracting([.role]), "every fire kind replays")
+        XCTAssertFalse(FollowReplay.replays(event(.role) { $0.term = 2; $0.inCharge = "booth" }), "who is in charge is never a fire")
         for fire in fires { try await FollowReplay.apply(fire, to: bridge) }
         XCTAssertEqual(bridge.calls, [
             "fireSlide:p1", "advance:-1", "clear:media", "clearAll", "fireMedia:m1", "fireOverlay:o1", "dismissOverlay:o1",
@@ -125,6 +126,7 @@ final class FollowHoldTests: XCTestCase {
         XCTAssertEqual(read.0, 200)
         let next = try await call("POST", "/v1/show/next")
         XCTAssertEqual(next.0, 409)
+        XCTAssertNil(FollowHold.error(for: APIRoute("POST", "/v1/follow/takeover", scope: .control, operationId: "t", summary: "", tag: "", responseSchema: .object([:])) { _ in .ok }, following: "Booth Mac"), "Companion can still take over")
         XCTAssertEqual(try JSONDecoder().decode(APIError.self, from: next.1).code, "backing_up")
         let paired = try await call(
             "POST", "/v1/follow/pair",
