@@ -28,7 +28,9 @@ struct FollowPairingCodeControl: View {
     let api: LocalAPIController?
 
     var body: some View {
-        if let api, api.running {
+        if FollowController.shared.pairing != nil {
+            EmptyView()
+        } else if let api, api.running {
             HStack(spacing: 8) {
                 Text(api.pairingCode).font(.title3.monospacedDigit().weight(.semibold))
                 Button("New Code") { api.newPairingCode() }

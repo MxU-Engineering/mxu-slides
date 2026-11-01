@@ -43,8 +43,16 @@ final class FollowController {
     private(set) var lastFire: Date?
     private(set) var problem: String?
 
+    private(set) var boothStream: String?
+
+    private(set) var copiedItems = 0
+    private(set) var copyProblem: String?
+    private var copyTask: Task<Void, Never>?
+    private var copyRun = UUID()
+
     private var bridge: (any LocalAPIBridge)?
     private weak var station: StationSyncController?
+    private weak var controls: ServiceControls?
     private var client: LocalAPIClient?
     private var endpoint: LocalAPIClient.Endpoint?
     private var task: Task<Void, Never>?
@@ -60,9 +68,10 @@ final class FollowController {
 
     var inCharge: Bool { pairing?.role.map { $0.inCharge != pairing?.stationHexId } ?? false }
 
-    func configure(bridge: any LocalAPIBridge, station: StationSyncController) {
+    func configure(bridge: any LocalAPIBridge, station: StationSyncController, controls: ServiceControls?) {
         self.bridge = bridge
         self.station = station
+        self.controls = controls
         if let steppedDown { Self.held.withLock { $0 = steppedDown.backupName } }
         if let pairing {
             if let key = FollowKeyKeychain.load(account: pairing.stationHexId) {
@@ -87,7 +96,7 @@ final class FollowController {
         }
         let pairing = Pairing(
             stationHexId: peer.stationHexId, name: name, host: peer.host, port: peer.port,
-            automatic: automatic, role: FollowRole(term: 0, inCharge: peer.stationHexId))
+            automatic: automatic, role: .start(booth: peer.stationHexId))
         FollowKeyKeychain.save(key, account: pairing.stationHexId)
         save(pairing)
         _ = try? await client.setFollow(hexId: stationHexId, followsStationHexId: pairing.stationHexId)
@@ -110,7 +119,7 @@ final class FollowController {
     @discardableResult
     func takeOver(reason: String = "by hand") async -> String? {
         guard var pairing, let me, !inCharge else { return pairing == nil ? "This computer isn't backing up another." : nil }
-        let role = (pairing.role ?? FollowRole(term: 0, inCharge: pairing.stationHexId)).handed(to: me)
+        let role = (pairing.role ?? .start(booth: pairing.stationHexId)).handed(to: me)
         pairing.role = role
         pairing.tookOverAt = .now
         save(pairing)
@@ -137,6 +146,14 @@ final class FollowController {
         DiagnosticsStore.shared.note("follow.handedBack", detail: "term \(handed.term)")
         if let endpoint { await catchUp(endpoint) }
         return nil
+    }
+
+    var offersStream: Bool { inCharge && boothStream != nil && controls?.streaming.isLive == false }
+
+    func startStreamHere() {
+        guard offersStream, let boothStream else { return }
+        controls?.startCapture(presetID: boothStream)
+        DiagnosticsStore.shared.note("follow.streamHere", detail: boothStream)
     }
 
     private func tellBooth() async {
@@ -203,14 +220,15 @@ final class FollowController {
         if let steppedDown {
             return APIFollowStatus(role: "steppedDown", name: steppedDown.backupName, term: steppedDown.role.term)
         }
-        guard let pairing else { return APIFollowStatus(role: "none", term: boothRole.term) }
+        let stream = controls?.streaming.live?.presetID
+        guard let pairing else { return APIFollowStatus(role: "none", term: boothRole.term, streamPresetId: stream) }
         let health = switch state {
         case .connecting: "connecting"
         case .live: "live"
         case .lost(let frozen): frozen ? "frozen" : "lost"
         case .gaveUp: "gaveUp"
         }
-        return APIFollowStatus(role: inCharge ? "inCharge" : "backingUp", name: pairing.name, health: health, term: pairing.role?.term)
+        return APIFollowStatus(role: inCharge ? "inCharge" : "backingUp", name: pairing.name, health: health, term: pairing.role?.term, streamPresetId: stream)
     }
 
     private func start(_ pairing: Pairing, key: String) {
@@ -234,6 +252,8 @@ final class FollowController {
     private func stopClient() {
         task?.cancel()
         task = nil
+        copyTask?.cancel()
+        copyTask = nil
         if let client { Task { await client.stop() } }
         client = nil
         endpoint = nil
@@ -256,18 +276,40 @@ final class FollowController {
                 await takeOver(reason: "the booth stopped answering")
             } else if state == .live, !wasLive {
                 if inCharge { await tellBooth() } else { await catchUp(endpoint) }
+                copyFiles(from: endpoint)
             }
         case .event(.fires, let data):
             guard let event = APIFireFeed.decode(data) else { return }
-            if event.kind == .role, let term = event.term, let inChargeID = event.inCharge,
-               let newer = pairing?.role?.newer(FollowRole(term: term, inCharge: inChargeID)) {
+            if event.kind == .role, let term = event.term, let inChargeID = event.inCharge, let pairing,
+               let newer = (pairing.role ?? .start(booth: pairing.stationHexId)).newer(FollowRole(term: term, inCharge: inChargeID)) {
                 adopt(newer)
                 if backingUp { await catchUp(endpoint) }
+            } else if event.kind == .capture {
+                if backingUp { boothStream = event.id }
             } else if backingUp, FollowReplay.replays(event) {
                 await replay(event)
             }
         case .event:
             break
+        }
+    }
+
+    private func copyFiles(from endpoint: LocalAPIClient.Endpoint) {
+        guard copyTask == nil, let model = controls?.appModel else { return }
+        let run = UUID()
+        copyRun = run
+        copyTask = Task { [weak self] in
+            while let self, self.endpoint == endpoint, self.state == .live, !Task.isCancelled {
+                do {
+                    self.copiedItems += try await FollowFileCopy.copy(from: endpoint, model: model)
+                    self.copyProblem = nil
+                } catch {
+                    self.copyProblem = "Couldn't copy \(self.pairing?.name ?? "the other computer")'s This Mac only items: \(error.localizedDescription)"
+                    DiagnosticsStore.shared.note("follow.copyFailed", detail: "\(error)")
+                }
+                try? await Task.sleep(for: .seconds(300))
+            }
+            if self?.copyRun == run { self?.copyTask = nil }
         }
     }
 
@@ -286,6 +328,14 @@ final class FollowController {
     }
 
     private func catchUp(_ endpoint: LocalAPIClient.Endpoint) async {
+        if let status = await Self.followStatus(endpoint) {
+            boothStream = status.streamPresetId
+
+            if status.role == "none", let term = status.term, let pairing,
+               let newer = (pairing.role ?? .start(booth: pairing.stationHexId)).newer(FollowRole(term: term, inCharge: pairing.stationHexId)) {
+                adopt(newer)
+            }
+        }
         guard let bridge, let live = await Self.liveSlide(endpoint) else { return }
         let command = FollowReplay.command(for: APIFireSlideCommand(
             presentationId: live.presentationId, slideId: live.slideId,
@@ -335,6 +385,13 @@ final class FollowController {
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return try? JSONDecoder().decode(APIFollowRoleCommand.self, from: data)
+    }
+
+    private nonisolated static func followStatus(_ endpoint: LocalAPIClient.Endpoint) async -> APIFollowStatus? {
+        var request = URLRequest(url: URL(string: "http://\(endpoint.host):\(endpoint.port)/v1/follow")!, timeoutInterval: 5)
+        request.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+        return try? JSONDecoder().decode(APIFollowStatus.self, from: data)
     }
 
     private nonisolated static func liveSlide(_ endpoint: LocalAPIClient.Endpoint) async -> APIShowStatus.LiveSlide? {
@@ -402,13 +459,16 @@ struct FollowBanner: View {
             }
         } else if let pairing = follow.pairing {
             if follow.inCharge {
-                let line = Follow.inChargeBanner(over: pairing.name, since: pairing.tookOverAt ?? .now)
+                let line = Follow.inChargeBanner(over: pairing.name, since: pairing.tookOverAt ?? .now, boothStreamed: follow.offersStream)
                 bar(color: .blue, title: line.title, detail: follow.problem ?? line.detail) {
+                    if follow.offersStream {
+                        Button("Start Stream Here") { follow.startStreamHere() }
+                    }
                     Button("Hand Back to \(pairing.name)") { Task { await follow.handBack() } }
                 }
             } else {
                 let line = Follow.banner(following: pairing.name, state: follow.state, lastFire: follow.lastFire)
-                bar(color: color, title: line.title, detail: follow.problem ?? line.detail) {
+                bar(color: color, title: line.title, detail: follow.problem ?? follow.copyProblem ?? line.detail) {
                     Button("Take Over") { Task { await follow.takeOver() } }
                     if let station {
                         Button("Stop Backing Up") { Task { await follow.unpair(station: station) } }

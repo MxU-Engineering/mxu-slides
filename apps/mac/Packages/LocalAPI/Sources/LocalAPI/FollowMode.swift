@@ -2,7 +2,7 @@ import Foundation
 
 public enum FollowReplay {
     public static func replays(_ event: APIFireEvent) -> Bool {
-        event.cause == nil && event.kind != .role
+        event.cause == nil && event.kind != .role && event.kind != .capture
     }
 
     public static func command(for slide: APIFireSlideCommand) -> APIFireSlideCommand {
@@ -36,7 +36,7 @@ public enum FollowReplay {
         case .audioTransport: if let transport = event.audioTransport { try bridge.audioTransport(transport) }
         case .mediaTransport:
             if let id = event.id, let transport = event.mediaTransport { try bridge.mediaTransport(id: id, command: transport) }
-        case .role: break
+        case .role, .capture: break
         }
     }
 }
@@ -141,10 +141,52 @@ public struct APIFollowStatus: Codable, Sendable, Equatable {
     public var health: String?
     public var term: Int?
 
-    public init(role: String, name: String? = nil, health: String? = nil, term: Int? = nil) {
+    public var streamPresetId: String?
+
+    public init(role: String, name: String? = nil, health: String? = nil, term: Int? = nil, streamPresetId: String? = nil) {
         self.role = role
         self.name = name
         self.health = health
         self.term = term
+        self.streamPresetId = streamPresetId
+    }
+}
+
+public enum FollowFiles {
+
+    public struct Item: Codable, Sendable, Equatable {
+        public var kind: String
+        public var id: String
+        public var heads: [String]
+        public var file: String?
+        public var ext: String?
+
+        public init(kind: String, id: String, heads: [String], file: String? = nil, ext: String? = nil) {
+            self.kind = kind
+            self.id = id
+            self.heads = heads
+            self.file = file
+            self.ext = ext
+        }
+    }
+
+    public struct List: Codable, Sendable, Equatable {
+        public var items: [Item]
+        public init(items: [Item]) { self.items = items }
+    }
+
+    public struct Document: Codable, Sendable, Equatable {
+
+        public var bytes: Data
+        public init(bytes: Data) { self.bytes = bytes }
+    }
+
+    public static func wanted(_ items: [Item], heads: [String: [String]], filesHere: Set<String>) -> (documents: [Item], files: [String]) {
+        let documents = items.filter { heads["\($0.kind)/\($0.id)"] != $0.heads }
+        return (documents, Set(items.compactMap(\.file)).subtracting(filesHere).sorted())
+    }
+
+    public static func isHash(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
     }
 }

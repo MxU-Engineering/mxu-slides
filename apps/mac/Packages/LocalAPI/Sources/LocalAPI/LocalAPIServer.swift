@@ -16,10 +16,13 @@ public final class LocalAPIServer: @unchecked Sendable {
 
         public var pair: (@Sendable (Data) async -> APIHandlerResponse)?
 
+        public var blob: (@Sendable (String) -> URL?)?
+
         public init(
             port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo,
             beat: (@Sendable () -> UInt64)? = nil, hold: (@Sendable (APIRoute) -> APIError?)? = nil,
-            pair: (@Sendable (Data) async -> APIHandlerResponse)? = nil
+            pair: (@Sendable (Data) async -> APIHandlerResponse)? = nil,
+            blob: (@Sendable (String) -> URL?)? = nil
         ) {
             self.port = port
             self.serviceName = serviceName
@@ -28,6 +31,7 @@ public final class LocalAPIServer: @unchecked Sendable {
             self.beat = beat
             self.hold = hold
             self.pair = pair
+            self.blob = blob
         }
     }
 
@@ -113,6 +117,23 @@ public final class LocalAPIServer: @unchecked Sendable {
             await http.appendRoute(HTTPRoute("POST /v1/follow/pair")) { request in
                 let body = (try? await request.bodyData) ?? Data()
                 return Self.jsonResponse(await pair(body))
+            }
+        }
+
+        if let blob = configuration.blob {
+            let tokens = self.tokens
+            await http.appendRoute(HTTPRoute("GET /v1/follow/blobs/*")) { request in
+                guard let token = Self.authenticate(request, tokens: tokens) else {
+                    return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
+                }
+                guard token.scope.allows(.control) else {
+                    return Self.jsonResponse(.json(APIError.forbidden(.control), status: 403))
+                }
+                let hash = String(request.path.split(separator: "/").last ?? "")
+                guard FollowFiles.isHash(hash), let url = blob(hash), let body = try? HTTPBodySequence(file: url) else {
+                    return Self.jsonResponse(.json(APIError.notFound("No such file here."), status: 404))
+                }
+                return HTTPResponse(statusCode: .ok, headers: [.contentType: "application/octet-stream"], body: body)
             }
         }
 

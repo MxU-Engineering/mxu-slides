@@ -39,8 +39,9 @@ final class FollowReplayTests: XCTestCase {
             event(.audioTransport) { $0.audioTransport = APIAudioTransportCommand(action: "next") },
             event(.mediaTransport) { $0.id = "m1"; $0.mediaTransport = APIMediaTransportCommand(action: "pause") },
         ]
-        XCTAssertEqual(Set(fires.map(\.kind)), Set(APIFireEvent.Kind.allCases).subtracting([.role]), "every fire kind replays")
+        XCTAssertEqual(Set(fires.map(\.kind)), Set(APIFireEvent.Kind.allCases).subtracting([.role, .capture]), "every fire kind replays")
         XCTAssertFalse(FollowReplay.replays(event(.role) { $0.term = 2; $0.inCharge = "booth" }), "who is in charge is never a fire")
+        XCTAssertFalse(FollowReplay.replays(event(.capture) { $0.id = "stream1" }), "a backup never starts the booth's stream on its own")
         for fire in fires { try await FollowReplay.apply(fire, to: bridge) }
         XCTAssertEqual(bridge.calls, [
             "fireSlide:p1", "advance:-1", "clear:media", "clearAll", "fireMedia:m1", "fireOverlay:o1", "dismissOverlay:o1",
@@ -198,5 +199,63 @@ final class FollowEndToEndTests: XCTestCase {
         publisher?.cancel()
         XCTAssertEqual(bridge.calls.first, "fireActionCombo:c1", "the combo replays")
         XCTAssertFalse(bridge.calls.contains("activatePreset:p1"), "its preset switch follows from it here, never replayed")
+    }
+}
+
+final class FollowFilesTests: XCTestCase {
+    private let sha = String(repeating: "ab", count: 32)
+
+    func testTheBackupFetchesChangedItemsAndMissingFilesOnly() {
+        let items = [
+            FollowFiles.Item(kind: "presentation", id: "same", heads: ["h1"]),
+            FollowFiles.Item(kind: "presentation", id: "changed", heads: ["h2"]),
+            FollowFiles.Item(kind: "media", id: "new", heads: ["h3"], file: sha, ext: "mp4"),
+            FollowFiles.Item(kind: "media", id: "fileHere", heads: ["h4"], file: "cd", ext: "mov"),
+        ]
+        let wanted = FollowFiles.wanted(items, heads: ["presentation/same": ["h1"], "presentation/changed": ["h1"], "media/fileHere": ["h4"]], filesHere: ["cd"])
+        XCTAssertEqual(wanted.documents.map(\.id), ["changed", "new"])
+        XCTAssertEqual(wanted.files, [sha])
+    }
+
+    func testARefusalReadsAsItsMessage() {
+        XCTAssertEqual(APIError(status: 403, code: "wrong_code", message: "That code doesn't match.").localizedDescription, "That code doesn't match.")
+    }
+
+    func testAFileNameIsAHashNeverAPath() {
+        XCTAssertTrue(FollowFiles.isHash(sha))
+        XCTAssertFalse(FollowFiles.isHash("../../secrets"))
+        XCTAssertFalse(FollowFiles.isHash(sha.uppercased()))
+    }
+
+    func testTheBoothStreamsAFileToAnOperateKeyOnly() async throws {
+        let tokens = APITokenStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("tokens-\(UUID().uuidString).json"))
+        let operate = tokens.create(name: "Backup Mac", scope: .control).secret
+        let watch = tokens.create(name: "Viewer", scope: .view).secret
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(sha).mp4")
+        try Data("clip".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let port = UInt16.random(in: 41000 ... 59000)
+        let info = APIServerInfo(name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1)
+        let sha = self.sha
+        let booth = LocalAPIServer(
+            configuration: .init(port: port, serviceName: "Booth Mac", advertise: false, info: info, blob: { $0 == sha ? file : nil }),
+            routes: [], tokens: tokens)
+        let task = Task { try await booth.run() }
+        defer { task.cancel(); Task { await booth.stop() } }
+        try await booth.waitUntilListening()
+
+        func get(_ name: String, key: String) async throws -> (Int, Data) {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/follow/blobs/\(name)")!)
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return ((response as! HTTPURLResponse).statusCode, data)
+        }
+        let (status, data) = try await get(sha, key: operate)
+        XCTAssertEqual(status, 200)
+        XCTAssertEqual(String(decoding: data, as: UTF8.self), "clip")
+        let (watched, _) = try await get(sha, key: watch)
+        XCTAssertEqual(watched, 403, "a Watch key never downloads media")
+        let (missing, _) = try await get(String(repeating: "0", count: 64), key: operate)
+        XCTAssertEqual(missing, 404)
     }
 }
