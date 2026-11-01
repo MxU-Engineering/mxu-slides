@@ -10,8 +10,18 @@ struct FollowSettingsControl: View {
 
     var body: some View {
         let follow = FollowController.shared
-        if follow.pairing != nil, let station {
-            Button("Stop Backing Up") { Task { await follow.unpair(station: station) } }
+        if let pairing = follow.pairing, let station {
+            HStack(spacing: 8) {
+                Picker("While \(pairing.name) runs", selection: Binding(
+                    get: { pairing.mirrors ?? true },
+                    set: { mirrors in Task { await follow.setMirrors(mirrors) } })) {
+                    Text("Show it live").tag(true)
+                    Text("Stay ready").tag(false)
+                }
+                .labelsHidden()
+                .fixedSize()
+                Button("Stop Backing Up") { Task { await follow.unpair(station: station) } }
+            }
         } else {
             Button("Back Up Another Computer\u{2026}") { choosing = true }
                 .disabled(station?.lanStationHexId == nil || documentSync == nil || EmulationController.isEmulating)
@@ -56,6 +66,8 @@ struct FollowPairingSheet: View {
 
     @State private var automatic = true
 
+    @State private var mirrors = true
+
     private static var qaCode: String {
         #if DEBUG
         ProcessInfo.processInfo.environment["MXU_QA_FOLLOW_CODE"] ?? ""
@@ -77,7 +89,7 @@ struct FollowPairingSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Back up another computer").font(.headline)
-            Text("This computer shows everything the other one shows, fire for fire, on its own screens. Its own triggers wait until it takes over.")
+            Text("This computer follows the other one fire for fire: live on its own screens, or ready with clear screens until it takes over. Its own triggers wait until then.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
@@ -105,6 +117,15 @@ struct FollowPairingSheet: View {
                         TextField("0000", text: $code)
                             .frame(width: 70)
                             .font(.body.monospacedDigit())
+                    }
+                    GridRow {
+                        Text("While \(name) runs")
+                        Picker("While \(name) runs", selection: $mirrors) {
+                            Text("Show the same thing live").tag(true)
+                            Text("Stay ready, show nothing").tag(false)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
                     }
                     GridRow {
                         Text("If \(name) stops")
@@ -186,7 +207,7 @@ struct FollowPairingSheet: View {
         problem = nil
         Task {
             defer { working = false }
-            if let refused = await FollowController.shared.pair(with: peer, name: displayName(peer), code: code, automatic: automatic, teamHexId: team, station: station) {
+            if let refused = await FollowController.shared.pair(with: peer, name: displayName(peer), code: code, automatic: automatic, mirrors: mirrors, teamHexId: team, station: station) {
                 problem = refused
                 return
             }

@@ -42,6 +42,11 @@ import Testing
         #expect(Follow.banner(following: "Booth Mac", state: .gaveUp, lastFire: nil).title == "Can't reach Booth Mac.")
         #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: false), lastFire: nil, boothQuit: true).title == "Booth Mac quit.")
         #expect(Follow.banner(following: "Booth Mac", state: .gaveUp, lastFire: nil, boothQuit: true).title == "Booth Mac quit.", "still waiting after the retries ran out")
+        let ready = Follow.banner(following: "Booth Mac", state: .live, lastFire: nil, standby: true)
+        #expect(ready.title == "Ready to take over from Booth Mac.")
+        #expect(ready.detail == "Nothing shows here until this computer takes over.")
+        #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: false), lastFire: nil, standby: true).detail == "Take Over puts up what Booth Mac last showed.")
+        #expect(Follow.banner(following: "Booth Mac", state: .lost(frozen: false), lastFire: nil, boothQuit: true, standby: true).detail.hasPrefix("Nothing shows here"))
     }
 
     @Test func theHigherTakeoverNumberStands() {

@@ -69,6 +69,50 @@ final class FollowReplayTests: XCTestCase {
         XCTAssertTrue(FollowReplay.catchUp(booth: here, here: here).isEmpty, "in step: nothing runs")
     }
 
+    func testAStandbyTakeoverPutsUpWhatTheBoothShowedWhereItIsNow() throws {
+        let booth = try JSONDecoder().decode(APIShowStatus.self, from: Data(
+            #"{"liveSlide":{"presentationId":"p1","slideId":"s2","serviceItemId":"item-9","occurrence":1},"mediaLayers":{"background":{"mediaId":"loop"}},"overlays":[{"id":"lower","name":"Lower third"}]}"#.utf8))
+        let clear = try JSONDecoder().decode(APIShowStatus.self, from: Data(#"{"mediaLayers":{},"overlays":[]}"#.utf8))
+        let read = Date(timeIntervalSince1970: 1000)
+        let standby = FollowStandby(
+            show: booth,
+            transport: [
+                APITransportRow(mediaId: "loop", name: "Loop", layer: "background", playing: true, looping: true, position: 8, duration: 10),
+                APITransportRow(mediaId: "held", name: "Held", layer: "foreground", playing: false, looping: false, position: 30, duration: 60),
+            ],
+            audio: APIAudioStatus(buses: [
+                APIAudioStatus.Bus(playlistId: nil, audioItemId: "song", trackName: "Song", playing: true, position: 40, duration: 200),
+                APIAudioStatus.Bus(playlistId: "list", audioItemId: nil, trackName: "Track 3", playing: true, position: 5, duration: 90),
+            ]),
+            at: read)
+        let events = standby.takeover(here: clear, now: read + 5)
+        XCTAssertEqual(events.map(\.kind), [.media, .overlay, .slide, .mediaTransport, .mediaTransport, .mediaTransport, .audioItem, .audioTransport])
+        XCTAssertEqual(events[2].slide?.slideId, "s2")
+        XCTAssertEqual(events[2].slide?.serviceItemId, "item-9")
+        XCTAssertEqual(events[3].mediaTransport, APIMediaTransportCommand(action: "seek", position: 3), "8 s + 5 s round a 10 s loop")
+        XCTAssertEqual(events[4].mediaTransport, APIMediaTransportCommand(action: "seek", position: 30), "a paused video stays where it was")
+        XCTAssertEqual(events[5].mediaTransport?.action, "pause")
+        XCTAssertEqual(events[6].id, "song")
+        XCTAssertEqual(events[7].audioTransport, APIAudioTransportCommand(action: "seek", position: 45))
+        XCTAssertFalse(events.contains { $0.id == "list" }, "the booth doesn't say which of a playlist's songs was on")
+    }
+
+    func testAVideoNeverRunsPastItsEnd() {
+        let read = Date(timeIntervalSince1970: 1000)
+        XCTAssertEqual(FollowStandby.position(50, duration: 60, playing: true, looping: false, from: read, to: read + 30), 60)
+        XCTAssertEqual(FollowStandby.position(50, duration: nil, playing: true, looping: false, from: read, to: read + 30), 80)
+        XCTAssertEqual(FollowStandby.position(50, duration: 60, playing: true, looping: false, from: read, to: read - 3), 50, "a clock that stepped back")
+    }
+
+    func testAStandbyClearsOnlyWhenSomethingShows() throws {
+        let clear = try JSONDecoder().decode(APIShowStatus.self, from: Data(#"{"mediaLayers":{},"overlays":[]}"#.utf8))
+        let silent = APIAudioStatus(buses: [APIAudioStatus.Bus(playlistId: nil, audioItemId: nil, trackName: nil, playing: false, position: nil, duration: nil)])
+        XCTAssertFalse(FollowStandby.showsAnything(clear, audio: silent))
+        var playing = silent
+        playing.buses[0].playing = true
+        XCTAssertTrue(FollowStandby.showsAnything(clear, audio: playing), "music playing")
+    }
+
     func testALibraryFireReplaysBySlideNotAsAServiceItem() {
         let library = FollowReplay.command(for: APIFireSlideCommand(presentationId: "p1", slideId: "s2", serviceItemId: "p1", occurrence: 3))
         XCTAssertNil(library.serviceItemId)
