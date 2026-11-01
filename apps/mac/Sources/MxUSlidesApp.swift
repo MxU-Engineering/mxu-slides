@@ -179,6 +179,7 @@ struct MxUSlidesApp: App {
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)
             controls.serviceTracking = tracking
             _serviceTracking = State(initialValue: tracking)
+            FollowController.shared.configure(bridge: api.bridge)
         }
     }
 

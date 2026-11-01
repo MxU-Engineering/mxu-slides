@@ -1226,6 +1226,7 @@ final class ServiceControls {
     }
 
     func fire(playlist: Playlist, startAt entryID: String? = nil, repeatOverride: Bool? = nil) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioPlaylist, id: playlist.id, entryId: entryID))
         let replaced = audio.play(
             playlist: playlist, startAt: entryID, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }
@@ -1235,11 +1236,13 @@ final class ServiceControls {
     }
 
     func stopAudio(playlistID: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(playlistId: playlistID)))
         if let cue = audio.stop(playlistID: playlistID) { state.dismissAudio(cue) }
         apply()
     }
 
     func stopAudio(audioItemID: String, fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(audioItemId: audioItemID)))
         if let cue = audio.stop(audioItemID: audioItemID, fade: fade, curve: curve) { state.dismissAudio(cue) }
         apply()
     }
@@ -1252,6 +1255,7 @@ final class ServiceControls {
     }
 
     func fire(audioItem: AudioItem, repeatOverride: Bool? = nil) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioItem, id: audioItem.id))
         let replaced = audio.play(audioItem: audioItem, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }
         state.fire(audio: CueAudio(audioItemId: audioItem.id))

@@ -349,7 +349,11 @@ final class SchedulerController {
     }
 
     private func fire(_ trigger: ScheduleTrigger, source: RunRecord.Source, late: Bool) {
-        fireNow(trigger, source: source, late: late)
+        if FollowController.isBackingUp {
+            DiagnosticsStore.shared.note("follow.held", detail: "trigger \(trigger.name)")
+        } else {
+            fireNow(trigger, source: source, late: late)
+        }
     }
 
     private func fireNow(_ trigger: ScheduleTrigger, source: RunRecord.Source, late: Bool) {

@@ -1,6 +1,7 @@
 import Foundation
 import LocalAPI
 import Observation
+import os
 import Security
 
 enum NetworkInfo {
@@ -100,6 +101,10 @@ final class LocalAPIController {
     private var defaultKeyTask: Task<Void, Never>?
 
     private var firesTask: Task<Void, Never>?
+
+    let followPairing = FollowPairing()
+    private(set) var pairingCode = ""
+    @ObservationIgnored private nonisolated let teamHexId = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     @ObservationIgnored var identity: () -> (stationHexId: String?, teamHexId: String?) = { (nil, nil) } {
         didSet { observeIdentity() }
@@ -228,7 +233,11 @@ final class LocalAPIController {
                 serviceName: info.name,
                 advertise: true,
                 info: info,
-                beat: { DiagnosticsStore.shared.mainBeat }
+                beat: { DiagnosticsStore.shared.mainBeat },
+                hold: { route in FollowController.followedName.flatMap { FollowHold.error(for: route, following: $0) } },
+                pair: { [followPairing, tokens, teamHexId] body in
+                    followPairing.answer(body, teamHexId: teamHexId.withLock { $0 }, tokens: tokens)
+                }
             ),
             routes: APIRouteTable.build(bridge: bridge),
             tokens: tokens
@@ -305,6 +314,12 @@ final class LocalAPIController {
             }
         }
         server.update(stationHexId: ids.stationHexId, teamHexId: ids.teamHexId)
+        teamHexId.withLock { $0 = ids.teamHexId }
+        if pairingCode.isEmpty { pairingCode = followPairing.current ?? followPairing.refresh() }
+    }
+
+    func newPairingCode() {
+        pairingCode = followPairing.refresh()
     }
 
     private static func encode(_ value: some Encodable) throws -> Data {

@@ -81,6 +81,27 @@ public struct APIOKResponse: Codable, Sendable {
     }
 }
 
+public struct APIFireSource: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable {
+        case ui, keyboard, midi, scheduler, auto, api
+
+        case timecode, timeline
+
+        case follow
+    }
+
+    public var kind: Kind
+
+    public var name: String?
+
+    public init(kind: Kind, name: String? = nil) {
+        self.kind = kind
+        self.name = name
+    }
+
+    @TaskLocal public static var current: APIFireSource?
+}
+
 public struct APIShowStatus: Codable, Sendable {
     public struct LiveSlide: Codable, Sendable {
         public var presentationId: String
@@ -801,6 +822,10 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         case outputPreset
 
         case lock
+
+        case dismissAlert
+
+        case audioItem, audioPlaylist, stopAudio, audioTransport, mediaTransport
     }
 
     public var seq: Int
@@ -820,12 +845,18 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
     public var loops: Bool?
     public var timer: APITimerAction?
     public var locked: Bool?
+    public var entryId: String?
+    public var audioStop: APIAudioStopCommand?
+    public var audioTransport: APIAudioTransportCommand?
+    public var mediaTransport: APIMediaTransportCommand?
 
     public init(
         kind: Kind, id: String? = nil, slide: APIFireSlideCommand? = nil, settled: Bool? = nil,
         slideActions: Bool? = nil, steps: Int? = nil, clear: APIClearCommand? = nil,
         alert: APIFireAlertCommand? = nil, layer: String? = nil, serviceItemId: String? = nil,
-        loops: Bool? = nil, timer: APITimerAction? = nil, locked: Bool? = nil
+        loops: Bool? = nil, timer: APITimerAction? = nil, locked: Bool? = nil,
+        entryId: String? = nil, audioStop: APIAudioStopCommand? = nil,
+        audioTransport: APIAudioTransportCommand? = nil, mediaTransport: APIMediaTransportCommand? = nil
     ) {
         self.seq = 0
         self.at = 0
@@ -843,6 +874,10 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         self.loops = loops
         self.timer = timer
         self.locked = locked
+        self.entryId = entryId
+        self.audioStop = audioStop
+        self.audioTransport = audioTransport
+        self.mediaTransport = mediaTransport
     }
 }
 
@@ -925,7 +960,7 @@ public struct APIAudioFireCommand: Codable, Sendable {
     }
 }
 
-public struct APIAudioStopCommand: Codable, Sendable {
+public struct APIAudioStopCommand: Codable, Sendable, Equatable {
     public var playlistId: String?
     public var audioItemId: String?
 
@@ -935,7 +970,7 @@ public struct APIAudioStopCommand: Codable, Sendable {
     }
 }
 
-public struct APIAudioTransportCommand: Codable, Sendable {
+public struct APIAudioTransportCommand: Codable, Sendable, Equatable {
 
     public var action: String
     public var position: Double?
@@ -946,7 +981,7 @@ public struct APIAudioTransportCommand: Codable, Sendable {
     }
 }
 
-public struct APIMediaTransportCommand: Codable, Sendable {
+public struct APIMediaTransportCommand: Codable, Sendable, Equatable {
 
     public var action: String
     public var position: Double?

@@ -15,6 +15,8 @@ struct APIWebSocketHandler: WSMessageHandler {
 
     var beat: (@Sendable () -> UInt64)? = nil
 
+    var hold: (@Sendable (APIRoute) -> APIError?)? = nil
+
     struct Inbound: Decodable {
         var type: String
         var topics: [String]?
@@ -128,6 +130,10 @@ struct APIWebSocketHandler: WSMessageHandler {
         guard scope.allows(match.route.scope) else {
             let error = APIError.forbidden(match.route.scope)
             reply(status: error.status, data: encode(error))
+            return
+        }
+        if let held = hold?(match.route) {
+            reply(status: held.status, data: encode(held))
             return
         }
         let body = inbound.body.map { $0.encoded() } ?? Data()

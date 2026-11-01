@@ -200,6 +200,21 @@ struct AppSettingsView: View {
                 stacked: true
             ),
             SettingsRowSpec(
+                id: "station.backup",
+                title: "Back up another computer",
+                caption: FollowController.shared.pairing.map { "Backing up \($0.name). Its fires run here; this computer's triggers wait." }
+                    ?? "Shows everything another computer shows, fire for fire.",
+                keywords: "follow failover backup standby mirror pair take over booth redundant",
+                control: AnyView(FollowSettingsControl())
+            ),
+            SettingsRowSpec(
+                id: "station.pairingCode",
+                title: "Let a backup follow this computer",
+                caption: "The backup computer asks for this code.",
+                keywords: "follow failover backup pairing code pair standby",
+                control: AnyView(FollowPairingCodeControl(api: api))
+            ),
+            SettingsRowSpec(
                 id: "present.mediaTransition",
                 title: "Media transition",
                 caption: "How backgrounds and media come in.",

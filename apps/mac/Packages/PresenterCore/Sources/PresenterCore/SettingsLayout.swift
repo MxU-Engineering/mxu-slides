@@ -23,7 +23,7 @@ public enum SettingsLayout {
     public static let pages: [Page] = [
         Page(id: "general", sections: [
             Section(nil, ["appearance.scheme"]),
-            Section("Backup", ["library.scheduledBackup"]),
+            Section("Backup", ["library.scheduledBackup", "station.backup", "station.pairingCode"]),
         ]),
         Page(id: "present", sections: [
             Section("Transitions", ["present.slideTransition", "present.mediaTransition"]),

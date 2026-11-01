@@ -12,15 +12,22 @@ public final class LocalAPIServer: @unchecked Sendable {
 
         public var beat: (@Sendable () -> UInt64)?
 
+        public var hold: (@Sendable (APIRoute) -> APIError?)?
+
+        public var pair: (@Sendable (Data) async -> APIHandlerResponse)?
+
         public init(
             port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo,
-            beat: (@Sendable () -> UInt64)? = nil
+            beat: (@Sendable () -> UInt64)? = nil, hold: (@Sendable (APIRoute) -> APIError?)? = nil,
+            pair: (@Sendable (Data) async -> APIHandlerResponse)? = nil
         ) {
             self.port = port
             self.serviceName = serviceName
             self.advertise = advertise
             self.info = info
             self.beat = beat
+            self.hold = hold
+            self.pair = pair
         }
     }
 
@@ -102,15 +109,23 @@ public final class LocalAPIServer: @unchecked Sendable {
             )
         }
 
+        if let pair = configuration.pair {
+            await http.appendRoute(HTTPRoute("POST /v1/follow/pair")) { request in
+                let body = (try? await request.bodyData) ?? Data()
+                return Self.jsonResponse(await pair(body))
+            }
+        }
+
         let router = self.router
         let events = self.events
         let tokens = self.tokens
         let beat = configuration.beat
+        let hold = configuration.hold
         await http.appendRoute(HTTPRoute("GET /v1/ws")) { request in
             guard let token = Self.authenticate(request, tokens: tokens) else {
                 return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
             }
-            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens, beat: beat)
+            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens, beat: beat, hold: hold)
             let webSocket = WebSocketHTTPHandler(handler: MessageFrameWSHandler(handler: handler))
             return try await webSocket.handleRequest(request)
         }
@@ -140,6 +155,9 @@ public final class LocalAPIServer: @unchecked Sendable {
         guard token.scope.allows(match.route.scope) else {
             let error = APIError.forbidden(match.route.scope)
             return Self.jsonResponse(.json(error, status: error.status))
+        }
+        if let held = configuration.hold?(match.route) {
+            return Self.jsonResponse(.json(held, status: held.status))
         }
         var query: [String: String] = [:]
         for item in request.query {
