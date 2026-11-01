@@ -14,6 +14,9 @@ final class PresentLayoutController {
 
     private(set) var serviceControlsWindowOpen = false
     static let serviceControlsAutosaveName = "serviceControls.panel"
+
+    private(set) var libraryWindowOpen = false
+    static let libraryAutosaveName = "library.panel"
     static let rightRailHiddenKey = "shell.rightRailHidden"
 
     private(set) var layouts: [PresentLayout] = []
@@ -24,14 +27,18 @@ final class PresentLayoutController {
 
     private(set) var runOnlyModules: [ServiceControlsModule]?
 
+    private(set) var runOnlyLibraryKinds = LibraryPresentLogic.volunteerDefaultKinds
+
     private static let poppedKey = "serviceControls.poppedOut"
     private static let previewKey = "present.previewPopped"  
     private static let previewsKey = "present.openPreviewTargets"
     private static let serviceControlsWindowKey = "present.serviceControlsWindow"
+    private static let libraryWindowKey = "present.libraryWindow"
     private static let layoutsKey = "present.layouts"
     private static let activeKey = "present.activeLayoutID"
     static let lockedKey = "present.runOnly"
     private static let runOnlyModulesKey = "present.runOnlyModules"
+    private static let runOnlyLibrariesKey = "present.runOnlyLibraries"
 
     private static let retiredPINKey = "present.runOnlyPIN"
     private static let preRunOnlyKey = "present.preRunOnly"
@@ -77,10 +84,25 @@ final class PresentLayoutController {
         }
     }
 
+    func libraryWindowOpened() {
+        if !libraryWindowOpen {
+            libraryWindowOpen = true
+            save()
+        }
+    }
+
+    func libraryWindowClosed() {
+        if libraryWindowOpen {
+            libraryWindowOpen = false
+            save()
+        }
+    }
+
     private func save() {
         UserDefaults.standard.set(poppedOut.map(\.rawValue).sorted(), forKey: Self.poppedKey)
         UserDefaults.standard.set(openPreviews.sorted(), forKey: Self.previewsKey)
         UserDefaults.standard.set(serviceControlsWindowOpen, forKey: Self.serviceControlsWindowKey)
+        UserDefaults.standard.set(libraryWindowOpen, forKey: Self.libraryWindowKey)
     }
 
     private func restore() {
@@ -88,6 +110,7 @@ final class PresentLayoutController {
         poppedOut = Set(raw.compactMap(ServiceControlsModule.init(rawValue:)))
         openPreviews = Set(UserDefaults.standard.stringArray(forKey: Self.previewsKey) ?? [])
         serviceControlsWindowOpen = UserDefaults.standard.bool(forKey: Self.serviceControlsWindowKey)
+        libraryWindowOpen = UserDefaults.standard.bool(forKey: Self.libraryWindowKey)
 
         if openPreviews.isEmpty, UserDefaults.standard.bool(forKey: Self.previewKey) {
             openPreviews = [""]
@@ -102,6 +125,8 @@ final class PresentLayoutController {
         UserDefaults.standard.removeObject(forKey: Self.retiredPINKey)
         runOnlyModules = UserDefaults.standard.string(forKey: Self.runOnlyModulesKey)
             .map(Self.modules(from:))
+        runOnlyLibraryKinds = LibraryPresentLogic.volunteerKinds(
+            stored: UserDefaults.standard.string(forKey: Self.runOnlyLibrariesKey))
     }
 
     func enterRunOnly(applying apply: (() -> Void)? = nil) {
@@ -122,6 +147,15 @@ final class PresentLayoutController {
         let hidden = Self.modules(from: UserDefaults.standard.string(forKey: "serviceControls.hiddenModules") ?? "")
         return runOnlyModules
             ?? ServiceControlsModule.defaultOrder.filter { !hidden.contains($0) }
+    }
+
+    var volunteerLibraryKinds: Set<DocumentKind>? {
+        runOnly ? Set(runOnlyLibraryKinds) : nil
+    }
+
+    func setRunOnlyLibraryKinds(_ kinds: [DocumentKind]) {
+        runOnlyLibraryKinds = kinds
+        UserDefaults.standard.set(kinds.map(\.rawValue).joined(separator: ","), forKey: Self.runOnlyLibrariesKey)
     }
 
     func setRunOnlyModules(_ modules: [ServiceControlsModule]) {

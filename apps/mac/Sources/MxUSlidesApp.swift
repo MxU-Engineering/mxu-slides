@@ -287,6 +287,17 @@ struct MxUSlidesApp: App {
         }
         .defaultSize(width: 420, height: 520)
 
+        Window("Library", id: "library") {
+            if let appModel, appModel.isLibraryReady {
+                LibraryWindowView(
+                    model: appModel, render: renderContext,
+                    controls: controls, layout: presentLayout
+                )
+                .environment(\.actionRouter, actionRouter)
+            }
+        }
+        .defaultSize(width: 360, height: 640)
+
         WindowGroup(id: "preview", for: String.self) { $target in
             PreviewWindowView(
                 render: renderContext, controls: controls, layout: presentLayout,

@@ -72,17 +72,3 @@ import Testing
     ])
     #expect(FolderTreeLogic.tree(paths: []).isEmpty)
 }
-
-@Test func rackGroupingRootFirstThenFoldersByName() {
-    let items = [
-        (id: "1", path: "Lower Thirds"),
-        (id: "2", path: ""),
-        (id: "3", path: "announcements"),
-        (id: "4", path: "Lower Thirds"),
-        (id: "5", path: "Lower Thirds/Sermon"),
-    ]
-    let groups = ControlRackLogic.groupedByFolder(items) { $0.path }
-    #expect(groups.map(\.folder) == ["", "announcements", "Lower Thirds", "Lower Thirds/Sermon"])
-    #expect(groups[0].items.map(\.id) == ["2"])
-    #expect(groups[2].items.map(\.id) == ["1", "4"])
-}

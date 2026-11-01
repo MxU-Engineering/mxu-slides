@@ -46,24 +46,3 @@ public enum TabRowLogic {
         return max(minimumSpacing, leftover / Double(itemCount - 1))
     }
 }
-
-public enum ControlRackLogic {
-    public static func groupedByFolder<T>(
-        _ items: [T], path: (T) -> String
-    ) -> [(folder: String, items: [T])] {
-        var groups: [String: [T]] = [:]
-        for item in items {
-            groups[path(item), default: []].append(item)
-        }
-        var result: [(folder: String, items: [T])] = []
-        if let root = groups[""] {
-            result.append((folder: "", items: root))
-        }
-        for folder in groups.keys.filter({ !$0.isEmpty }).sorted(by: {
-            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
-        }) {
-            result.append((folder: folder, items: groups[folder]!))
-        }
-        return result
-    }
-}

@@ -1,6 +1,7 @@
 import PPTXImport
 import PresenterCore
 import ProImport
+import RenderEngine
 import SlideScene
 import SwiftUI
 import UniformTypeIdentifiers
@@ -82,8 +83,10 @@ struct LibrarySidebar: View {
             } else {
                 searchResults
             }
-            Divider()
-            footer
+            if !runOnly {
+                Divider()
+                footer
+            }
         }
         .onChange(of: viewedFolder, initial: true) { _, viewed in
             model.viewedLibraryFolder = viewed
@@ -306,6 +309,20 @@ struct LibrarySidebar: View {
             } else {
                 filterMenu
             }
+
+            if let layout, !layout.libraryWindowOpen, !runOnly {
+                Button {
+                    openWindow(id: "library")
+                } label: {
+                    Image(systemName: "arrow.up.forward.square")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open the library in its own window")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
@@ -357,20 +374,24 @@ struct LibrarySidebar: View {
                 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(section(for: hit.entry)?.displayName ?? hit.entry.kind.rawValue)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HiddenWhileRowFires {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(section(for: hit.entry)?.displayName ?? hit.entry.kind.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                if let used = hit.entry.lastUsedAt {
-                    Text("Used \(used, format: .relative(presentation: .named))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    if let used = hit.entry.lastUsedAt {
+                        Text("Used \(used, format: .relative(presentation: .named))")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
         }
+
+        .modifier(LibraryRowFireTrailing(actions: fireActions(hit.entry)))
         .tag(hit.entry.id)
-        .draggable(hit.entry.id)
+        .draggablePayload(runOnly ? nil : hit.entry.id)
         .contextMenu {
             Button("Show in Library") { showInLibrary(hit.entry) }
             Divider()
@@ -459,6 +480,10 @@ struct LibrarySidebar: View {
     }
 
     private var visibleTabs: [LibrarySection] {
+
+        if let allowed = layout?.volunteerLibraryKinds {
+            return orderedTabs.filter { allowed.contains($0.kind) }
+        }
         let visible = orderedTabs.filter { !hiddenTabs.contains($0) }
         return visible.isEmpty ? orderedTabs : visible
     }
@@ -481,29 +506,30 @@ struct LibrarySidebar: View {
                 }
             },
             onReorder: { movedID, beforeID in
-                guard let moved = LibrarySection(rawValue: movedID) else { return }
+                guard !runOnly, let moved = LibrarySection(rawValue: movedID) else { return }
                 reorderTab(moved, before: beforeID.flatMap(LibrarySection.init(rawValue:)))
             }
         ) { _ in
-            Section("Libraries") {
-                ForEach(orderedTabs) { candidate in
-                    Toggle(candidate.displayName, isOn: Binding(
-                        get: { !hiddenTabs.contains(candidate) },
-                        set: { show in setTab(candidate, visible: show) }
-                    ))
+            if !runOnly {
+                Section("Libraries") {
+                    ForEach(orderedTabs) { candidate in
+                        Toggle(candidate.displayName, isOn: Binding(
+                            get: { !hiddenTabs.contains(candidate) },
+                            set: { show in setTab(candidate, visible: show) }
+                        ))
+                    }
                 }
-            }
-            Divider()
-            Button("Reset Tabs") {
-                tabOrderRaw = ""
-                hiddenTabsRaw = ""
+                Divider()
+                Button("Reset Tabs") {
+                    tabOrderRaw = ""
+                    hiddenTabsRaw = ""
+                }
             }
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 5)
-        .onChange(of: hiddenTabsRaw) { _, _ in
-            if hiddenTabs.contains(model.selectedSection),
-               let first = visibleTabs.first {
+        .onChange(of: visibleTabs, initial: true) { _, tabs in
+            if !tabs.contains(model.selectedSection), let first = tabs.first {
                 model.switchLibrarySection(first)
             }
         }
@@ -700,7 +726,7 @@ struct LibrarySidebar: View {
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .onDeleteCommand {
-            requestDelete(model.selectedEntries())
+            if !runOnly { requestDelete(model.selectedEntries()) }
         }
         .overlay {
             if contents.items.isEmpty, contents.cloud.isEmpty, contents.folders.isEmpty {
@@ -750,7 +776,7 @@ struct LibrarySidebar: View {
             .accessibilityAddTraits(.isButton)
         }
         .contextMenu { folderMenu(path) }
-        .draggable(isUnfiled(path) ? "" : TeamDriveLogic.folderPayload(path: path, area: shownArea))
+        .draggablePayload(runOnly || isUnfiled(path) ? nil : TeamDriveLogic.folderPayload(path: path, area: shownArea))
         .dropDestination(for: String.self) { payloads, _ in
             handleDrop(payloads, into: path)
         }
@@ -787,6 +813,7 @@ struct LibrarySidebar: View {
     }
 
     private func handleDrop(_ payloads: [String], into path: [String]) -> Bool {
+        guard !runOnly else { return false }
         let destination = realPath(path)
         var handled = false
         for payload in payloads where !payload.isEmpty {
@@ -844,7 +871,7 @@ struct LibrarySidebar: View {
                         folderPath = folderFull
                     }
                     .contextMenu { folderMenu(folderFull) }
-                    .draggable(TeamDriveLogic.folderPayload(path: folderFull, area: shownArea))
+                    .draggablePayload(runOnly ? nil : TeamDriveLogic.folderPayload(path: folderFull, area: shownArea))
                     .dropDestination(for: String.self) { payloads, _ in
                         handleDrop(payloads, into: folderFull)
                     }
@@ -901,8 +928,9 @@ struct LibrarySidebar: View {
             }
         } content: {
             LibraryItemCard(model: model, render: render, entry: entry)
+                .modifier(LibraryCardFireOverlay(actions: fireActions(entry)))
         }
-        .draggable(entry.id)
+        .draggablePayload(runOnly ? nil : entry.id)
         .contextMenu { entryMenu(entry, menus: menus) }
         .modifier(slideDropTarget(entry))
     }
@@ -924,11 +952,19 @@ struct LibrarySidebar: View {
     }
 
     private func entryRow(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
-        EntryRow(model: model, entry: entry)
+        EntryRow(model: model, render: render, entry: entry, fire: fireActions(entry))
             .tag(entry.id)
-            .draggable(entry.id)
+            .draggablePayload(runOnly ? nil : entry.id)
             .contextMenu { entryMenu(entry, menus: menus) }
             .modifier(slideDropTarget(entry))
+    }
+
+    private func fireActions(_ entry: LibraryIndex.Entry) -> LibraryFireActions? {
+        guard appModeRaw == AppMode.present.rawValue, LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }
+        return LibraryFireActions(model: model, controls: controls, entry: entry) {
+            model.openInEditor(entryID: entry.id)
+            appModeRaw = AppMode.edit.rawValue
+        }
     }
 
     private func slideDropTarget(_ entry: LibraryIndex.Entry) -> SlideDropTarget {
@@ -972,6 +1008,14 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private func entryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
+
+        if !runOnly {
+            entryMenuItems(entry, menus: menus)
+        }
+    }
+
+    @ViewBuilder
+    private func entryMenuItems(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
         let batch = selectionBatch(for: entry, selection: menus.selection)
         if batch.count > 1 {
             massEntryMenu(batch, menus: menus)
@@ -1055,6 +1099,23 @@ struct LibrarySidebar: View {
             Button("Edit…") {
                 model.openInEditor(entryID: entry.id)
                 appModeRaw = AppMode.edit.rawValue
+            }
+        }
+        if entry.kind == .overlay, !runOnly, let overlay = model.overlay(entry.id) {
+
+            let assigned = overlay.layer.flatMap(LayerKind.init(rawValue:)) ?? .overlays
+            Menu("Layer") {
+
+                ForEach(Array(LayerKind.allCases.reversed()), id: \.self) { layer in
+                    Toggle(layer.displayName, isOn: Binding(
+                        get: { assigned == layer },
+                        set: { _ in
+                            model.updateOverlay(entry.id) {
+                                $0.layer = layer == .overlays ? nil : layer.rawValue
+                            }
+                        }
+                    ))
+                }
             }
         }
         if entry.kind == .media {
@@ -1183,7 +1244,7 @@ struct LibrarySidebar: View {
     }
 
     private var acceptsImport: Bool {
-        model.selectedSection == .media || model.selectedSection == .audio
+        !runOnly && (model.selectedSection == .media || model.selectedSection == .audio)
     }
 
     private var emptyDescription: String {
@@ -1620,12 +1681,40 @@ struct MultiViewBadge: View {
 
 private struct EntryRow: View {
     let model: AppModel
+    let render: RenderContext?
     let entry: LibraryIndex.Entry
 
+    let fire: LibraryFireActions?
+    @State private var hovering = false
+
     var body: some View {
-        HStack {
-            Text(entry.name)
-            Spacer()
+        HStack(spacing: 8) {
+            if LibraryPresentLogic.showsThumbnail(entry.kind) {
+                ZStack {
+                    Color.black.opacity(0.35)
+                    LibraryItemFace(model: model, render: render, entry: entry)
+                }
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .frame(width: 46)
+                .clipShape(RoundedRectangle.standard(CornerStandard.element))
+                .overlay(
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(fire?.isLive == true ? Color.green : Color.separator.opacity(0.5),
+                                      lineWidth: fire?.isLive == true ? 1.5 : 1)
+                )
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(entry.name)
+                        .lineLimit(1)
+                }
+                if LibraryPresentLogic.showsLastUsed(entry.kind) {
+                    Text(LibraryPresentLogic.lastUsedText(entry.lastUsedAt))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer(minLength: 4)
             switch entry.kind {
             case .media:
                 if let item = model.media(entry.id) {
@@ -1648,7 +1737,11 @@ private struct EntryRow: View {
             default:
                 EmptyView()
             }
+            if let fire {
+                LibraryRowFireControls(actions: fire, hovering: hovering)
+            }
         }
+        .onHover { hovering = $0 }
     }
 
     private var star: some View {
@@ -2029,8 +2122,10 @@ struct SlideDropTarget: ViewModifier {
     let perform: ([String]) -> Bool
     @Binding var targeted: Bool
 
+    @Environment(\.runOnly) private var runOnly
+
     func body(content: Content) -> some View {
-        if enabled {
+        if enabled, !runOnly {
             content
                 .dropDestination(for: String.self) { payloads, _ in
                     perform(payloads)

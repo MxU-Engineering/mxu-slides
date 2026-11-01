@@ -1433,6 +1433,12 @@ final class ServiceControls {
         state.liveMedia.values.contains { $0.mediaId == mediaID }
     }
 
+    func stopMedia(id mediaID: String) {
+        for (layer, cue) in state.liveMedia where cue.mediaId == mediaID {
+            if let kind = LayerKind(rawValue: layer) { clear(layer: kind) }
+        }
+    }
+
     private(set) var nextSlideInfo: ConfidenceInfo.SlideText?
 
     var nextSlideText: String? { nextSlideInfo?.body }
