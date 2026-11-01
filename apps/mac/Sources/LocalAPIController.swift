@@ -99,6 +99,12 @@ final class LocalAPIController {
     private var cachedDefaultKeySecret: String?
     private var defaultKeyTask: Task<Void, Never>?
 
+    private var firesTask: Task<Void, Never>?
+
+    @ObservationIgnored var identity: () -> (stationHexId: String?, teamHexId: String?) = { (nil, nil) } {
+        didSet { observeIdentity() }
+    }
+
     init(
         appModel: AppModel, controls: ServiceControls,
         outputPresets: OutputPresetsController, render: RenderContext,
@@ -207,18 +213,22 @@ final class LocalAPIController {
         generation += 1
 
         resolveDefaultKey()
+        let ids = identity()
         let info = APIServerInfo(
             name: Host.current().localizedName ?? "MxU Slides",
             product: "MxU Slides",
             apiVersion: OpenAPIDocument.apiVersion,
-            schemaVersion: OpenAPIDocument.documentSchemaVersion()
+            schemaVersion: OpenAPIDocument.documentSchemaVersion(),
+            stationHexId: ids.stationHexId,
+            teamHexId: ids.teamHexId
         )
         let server = LocalAPIServer(
             configuration: .init(
                 port: port,
                 serviceName: info.name,
                 advertise: true,
-                info: info
+                info: info,
+                beat: { DiagnosticsStore.shared.mainBeat }
             ),
             routes: APIRouteTable.build(bridge: bridge),
             tokens: tokens
@@ -239,9 +249,14 @@ final class LocalAPIController {
             }
         }
         armPublishers()
+        pumpFires(to: server)
+        observeIdentity()
     }
 
     func stop() {
+        APIFireFeed.shared.sink = nil
+        firesTask?.cancel()
+        firesTask = nil
         serverTask?.cancel()
         serverTask = nil
         if let server {
@@ -266,6 +281,30 @@ final class LocalAPIController {
         observe(.library) { bridge in try? Self.encode(bridge.librarySummary()) }
         observe(.scheduler) { bridge in try? Self.encode(bridge.schedulerStatus()) }
         observe(.timecode) { bridge in try? Self.encode(bridge.timecodeStatus()) }
+    }
+
+    private func pumpFires(to server: LocalAPIServer) {
+        let (stream, continuation) = AsyncStream<APIFireEvent>.makeStream(bufferingPolicy: .bufferingNewest(256))
+        APIFireFeed.shared.sink = { continuation.yield($0) }
+        firesTask = Task.detached(priority: .userInitiated) {
+            for await event in stream {
+                if let payload = APIFireFeed.encode(event) {
+                    await server.events.publish(APIEvent(topic: .fires, payload: payload))
+                }
+            }
+        }
+    }
+
+    private func observeIdentity() {
+        guard running, let server else { return }
+        let armedGeneration = generation
+        let ids = withObservationTracking { identity() } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.running, self.generation == armedGeneration else { return }
+                self.observeIdentity()
+            }
+        }
+        server.update(stationHexId: ids.stationHexId, teamHexId: ids.teamHexId)
     }
 
     private static func encode(_ value: some Encodable) throws -> Data {

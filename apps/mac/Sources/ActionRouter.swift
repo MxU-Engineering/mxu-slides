@@ -1,4 +1,5 @@
 import CoreMIDI
+import LocalAPI
 import PresenterCore
 import RenderEngine
 import SlideScene
@@ -208,7 +209,8 @@ final class ActionRouter {
             return
         }
         model.markUsed(comboID)
-        execute(combo.actions, depth: 1, visited: [comboID])
+        let seq = APIFireFeed.shared.publish(APIFireEvent(kind: .combo, id: comboID))
+        APIFireFeed.$cause.withValue(seq) { execute(combo.actions, depth: 1, visited: [comboID]) }
     }
 
     func execute(_ actions: [SlideAction]) {

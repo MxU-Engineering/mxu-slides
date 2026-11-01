@@ -1,4 +1,5 @@
 import Foundation
+import LocalAPI
 import Observation
 import OutputEngine
 import PresenterCore
@@ -89,6 +90,7 @@ final class OutputPresetsController {
     }
 
     func activate(_ id: String?) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .outputPreset, id: id))
         activePresetID = id
         UserDefaults.standard.set(id, forKey: Self.activeKey)
         applyActivePreset()

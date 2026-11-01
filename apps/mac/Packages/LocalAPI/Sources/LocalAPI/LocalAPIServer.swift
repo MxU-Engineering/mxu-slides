@@ -1,5 +1,6 @@
 import FlyingFox
 import Foundation
+import os
 
 public final class LocalAPIServer: @unchecked Sendable {
     public struct Configuration: Sendable {
@@ -9,11 +10,17 @@ public final class LocalAPIServer: @unchecked Sendable {
         public var advertise: Bool
         public var info: APIServerInfo
 
-        public init(port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo) {
+        public var beat: (@Sendable () -> UInt64)?
+
+        public init(
+            port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo,
+            beat: (@Sendable () -> UInt64)? = nil
+        ) {
             self.port = port
             self.serviceName = serviceName
             self.advertise = advertise
             self.info = info
+            self.beat = beat
         }
     }
 
@@ -25,17 +32,34 @@ public final class LocalAPIServer: @unchecked Sendable {
     private let http: HTTPServer
     private let bonjour = BonjourAdvertiser()
 
+    private let info: OSAllocatedUnfairLock<APIServerInfo>
+
     public init(configuration: Configuration, routes: [APIRoute], tokens: APITokenStore) {
         self.configuration = configuration
         self.router = APIRouter(routes: routes)
         self.tokens = tokens
         self.http = HTTPServer(port: configuration.port)
+        self.info = OSAllocatedUnfairLock(initialState: configuration.info)
+    }
+
+    public func update(stationHexId: String?, teamHexId: String?) {
+        let changed = info.withLock { info -> APIServerInfo? in
+            guard info.stationHexId != stationHexId || info.teamHexId != teamHexId else { return nil }
+            info.stationHexId = stationHexId
+            info.teamHexId = teamHexId
+            return info
+        }
+        if let changed, configuration.advertise {
+            bonjour.update(txt: BonjourAdvertiser.txt(for: changed))
+        }
     }
 
     public func run() async throws {
         await registerRoutes()
         if configuration.advertise {
-            bonjour.start(name: configuration.serviceName, port: configuration.port)
+            bonjour.start(
+                name: configuration.serviceName, port: configuration.port,
+                txt: BonjourAdvertiser.txt(for: info.withLock { $0 }))
         }
         defer { bonjour.stop() }
         try await http.run()
@@ -51,11 +75,11 @@ public final class LocalAPIServer: @unchecked Sendable {
     }
 
     private func registerRoutes() async {
-        let info = configuration.info
+        let info = self.info
         let specVersion = OpenAPIDocument.documentSchemaVersion()
 
         await http.appendRoute(HTTPRoute("GET /v1/ping")) { _ in
-            Self.jsonResponse(APIHandlerResponse.json(info))
+            Self.jsonResponse(APIHandlerResponse.json(info.withLock { $0 }))
         }
         let openAPIRoutes = router.routes
         await http.appendRoute(HTTPRoute("GET /openapi.json")) { _ in
@@ -81,13 +105,12 @@ public final class LocalAPIServer: @unchecked Sendable {
         let router = self.router
         let events = self.events
         let tokens = self.tokens
+        let beat = configuration.beat
         await http.appendRoute(HTTPRoute("GET /v1/ws")) { request in
-            guard let secret = request.query["token"],
-                  let token = tokens.verify(secret: secret)
-            else {
+            guard let token = Self.authenticate(request, tokens: tokens) else {
                 return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
             }
-            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens)
+            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens, beat: beat)
             let webSocket = WebSocketHTTPHandler(handler: MessageFrameWSHandler(handler: handler))
             return try await webSocket.handleRequest(request)
         }
@@ -111,7 +134,7 @@ public final class LocalAPIServer: @unchecked Sendable {
                 : APIError.notFound("No such endpoint. The contract is served at /openapi.json.")
             return Self.jsonResponse(.json(error, status: error.status))
         }
-        guard let token = authenticate(request) else {
+        guard let token = Self.authenticate(request, tokens: tokens) else {
             return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
         }
         guard token.scope.allows(match.route.scope) else {
@@ -136,7 +159,7 @@ public final class LocalAPIServer: @unchecked Sendable {
         }
     }
 
-    private func authenticate(_ request: HTTPRequest) -> APIToken? {
+    private static func authenticate(_ request: HTTPRequest, tokens: APITokenStore) -> APIToken? {
         if let header = request.headers[.authorization], header.hasPrefix("Bearer ") {
             return tokens.verify(secret: String(header.dropFirst("Bearer ".count)))
         }
