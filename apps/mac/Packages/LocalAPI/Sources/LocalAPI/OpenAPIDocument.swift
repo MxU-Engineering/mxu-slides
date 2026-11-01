@@ -328,7 +328,7 @@ public enum OpenAPIDocument {
         "AddServiceItemCommand": obj(["refId": str, "index": int], required: ["refId"]),
         "ServerInfo": obj([
             "name": str, "product": str, "apiVersion": str, "schemaVersion": int,
-            "stationHexId": str, "teamHexId": str,
+            "stationHexId": str, "stationName": str,
         ], required: ["name", "product", "apiVersion", "schemaVersion"]),
         "FireEvent": obj([
             "seq": int, "at": num,
@@ -342,7 +342,7 @@ public enum OpenAPIDocument {
             "clear": clearCommand,
             "alert": fireAlertCommand,
             "layer": str, "serviceItemId": str, "loops": .object(["type": "boolean"]),
-            "timer": str, "locked": .object(["type": "boolean"]),
+            "timer": str,
         ], required: ["seq", "at", "source", "kind"]),
     ]
 

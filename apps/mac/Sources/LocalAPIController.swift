@@ -104,9 +104,7 @@ final class LocalAPIController {
 
     let followPairing = FollowPairing()
     private(set) var pairingCode = ""
-    @ObservationIgnored private nonisolated let teamHexId = OSAllocatedUnfairLock<String?>(initialState: nil)
-
-    @ObservationIgnored var identity: () -> (stationHexId: String?, teamHexId: String?, stationName: String?) = { (nil, nil, nil) } {
+    @ObservationIgnored var identity: () -> (stationHexId: String?, stationName: String?) = { (nil, nil) } {
         didSet { observeIdentity() }
     }
 
@@ -225,7 +223,6 @@ final class LocalAPIController {
             apiVersion: OpenAPIDocument.apiVersion,
             schemaVersion: OpenAPIDocument.documentSchemaVersion(),
             stationHexId: ids.stationHexId,
-            teamHexId: ids.teamHexId,
             stationName: ids.stationName
         )
         let server = LocalAPIServer(
@@ -236,9 +233,7 @@ final class LocalAPIController {
                 info: info,
                 beat: { DiagnosticsStore.shared.mainBeat },
                 hold: { route in FollowController.followedName.flatMap { FollowHold.error(for: route, following: $0) } },
-                pair: { [followPairing, tokens, teamHexId] body in
-                    followPairing.answer(body, teamHexId: teamHexId.withLock { $0 }, tokens: tokens)
-                },
+                pair: { [followPairing, tokens] body in followPairing.answer(body, tokens: tokens) },
                 blob: { [blobs = appModel.blobs] hash in blobs?.url(forHash: hash) },
                 heard: { FollowController.presence.heard(tokenName: $0) },
                 unpair: { [tokens] token in
@@ -321,8 +316,7 @@ final class LocalAPIController {
                 self.observeIdentity()
             }
         }
-        server.update(stationHexId: ids.stationHexId, teamHexId: ids.teamHexId, stationName: ids.stationName)
-        teamHexId.withLock { $0 = ids.teamHexId }
+        server.update(stationHexId: ids.stationHexId, stationName: ids.stationName)
         if pairingCode.isEmpty { pairingCode = followPairing.current ?? followPairing.refresh() }
     }
 

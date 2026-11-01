@@ -54,7 +54,7 @@ enum FollowFileCopy {
 
         for hash in wanted.files {
             try await download(hash, ext: exts[hash] ?? "", from: endpoint, into: blobs)
-            model.noteBlobsChanged(arrived: hash)
+            model.noteBlobsChanged()
         }
         for item in wanted.documents {
             guard let kind = DocumentKind(rawValue: item.kind), FollowCopy.kinds.contains(kind) else { continue }

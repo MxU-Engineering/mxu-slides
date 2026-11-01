@@ -826,8 +826,6 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
 
         case outputPreset
 
-        case lock
-
         case dismissAlert
 
         case audioItem, audioPlaylist, stopAudio, audioTransport, mediaTransport
@@ -855,7 +853,6 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
     public var serviceItemId: String?
     public var loops: Bool?
     public var timer: APITimerAction?
-    public var locked: Bool?
     public var entryId: String?
     public var audioStop: APIAudioStopCommand?
     public var audioTransport: APIAudioTransportCommand?
@@ -867,7 +864,7 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         kind: Kind, id: String? = nil, slide: APIFireSlideCommand? = nil, settled: Bool? = nil,
         slideActions: Bool? = nil, steps: Int? = nil, clear: APIClearCommand? = nil,
         alert: APIFireAlertCommand? = nil, layer: String? = nil, serviceItemId: String? = nil,
-        loops: Bool? = nil, timer: APITimerAction? = nil, locked: Bool? = nil,
+        loops: Bool? = nil, timer: APITimerAction? = nil,
         entryId: String? = nil, audioStop: APIAudioStopCommand? = nil,
         audioTransport: APIAudioTransportCommand? = nil, mediaTransport: APIMediaTransportCommand? = nil,
         term: Int? = nil, inCharge: String? = nil
@@ -887,7 +884,6 @@ public struct APIFireEvent: Codable, Sendable, Equatable {
         self.serviceItemId = serviceItemId
         self.loops = loops
         self.timer = timer
-        self.locked = locked
         self.entryId = entryId
         self.audioStop = audioStop
         self.audioTransport = audioTransport
@@ -1063,20 +1059,18 @@ public struct APIServerInfo: Codable, Sendable, Equatable {
     public var schemaVersion: Int
 
     public var stationHexId: String?
-    public var teamHexId: String?
 
     public var stationName: String?
 
     public init(
         name: String, product: String, apiVersion: String, schemaVersion: Int,
-        stationHexId: String? = nil, teamHexId: String? = nil, stationName: String? = nil
+        stationHexId: String? = nil, stationName: String? = nil
     ) {
         self.name = name
         self.product = product
         self.apiVersion = apiVersion
         self.schemaVersion = schemaVersion
         self.stationHexId = stationHexId
-        self.teamHexId = teamHexId
         self.stationName = stationName
     }
 }

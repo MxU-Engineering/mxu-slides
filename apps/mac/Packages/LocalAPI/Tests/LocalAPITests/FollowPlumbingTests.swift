@@ -29,12 +29,12 @@ final class APIFireFeedTests: XCTestCase {
     func testTheEntryPointsSourceRidesTheFire() {
         let events = OSAllocatedUnfairLock<[APIFireEvent]>(initialState: [])
         let feed = feed(events)
-        for kind in [APIFireSource.Kind.scheduler, .midi, .api, .mxu, .timeline, .timecode, .keyboard] {
+        for kind in [APIFireSource.Kind.scheduler, .midi, .api, .timeline, .timecode, .keyboard] {
             APIFireSource.$current.withValue(APIFireSource(kind: kind, name: "Companion")) {
                 feed.publish(APIFireEvent(kind: .slide))
             }
         }
-        XCTAssertEqual(events.withLock { $0.map(\.source.kind) }, [.scheduler, .midi, .api, .mxu, .timeline, .timecode, .keyboard])
+        XCTAssertEqual(events.withLock { $0.map(\.source.kind) }, [.scheduler, .midi, .api, .timeline, .timecode, .keyboard])
         XCTAssertEqual(events.withLock { $0.first?.source.name }, "Companion")
     }
 
@@ -85,11 +85,11 @@ final class DiscoveryTests: XCTestCase {
     func testTXTCarriesTheIds() {
         let info = APIServerInfo(
             name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1,
-            stationHexId: "st1", teamHexId: "tm9", stationName: "Booth")
-        XCTAssertEqual(BonjourAdvertiser.txt(for: info), ["stationHexId": "st1", "teamHexId": "tm9", "stationName": "Booth"])
+            stationHexId: "st1", stationName: "Booth")
+        XCTAssertEqual(BonjourAdvertiser.txt(for: info), ["stationHexId": "st1", "stationName": "Booth"])
         XCTAssertEqual(
-            BonjourAdvertiser.txtRecord(["teamHexId": "tm9", "stationHexId": "st1"]),
-            Data([16]) + Data("stationHexId=st1".utf8) + Data([13]) + Data("teamHexId=tm9".utf8))
+            BonjourAdvertiser.txtRecord(["stationHexId": "st1"]),
+            Data([16]) + Data("stationHexId=st1".utf8))
         let signedOut = APIServerInfo(name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1)
         XCTAssertEqual(BonjourAdvertiser.txt(for: signedOut), [:])
         XCTAssertEqual(BonjourAdvertiser.txtRecord([:]), Data([0]))
@@ -101,37 +101,32 @@ final class DiscoveryTests: XCTestCase {
         defer { running.stop() }
         var info = try await running.ping()
         XCTAssertNil(info.stationHexId)
-        XCTAssertNil(info.teamHexId)
-        running.server.update(stationHexId: "st1", teamHexId: "tm9", stationName: "Booth")
+        running.server.update(stationHexId: "st1", stationName: "Booth")
         info = try await running.ping()
         XCTAssertEqual(info.stationHexId, "st1")
-        XCTAssertEqual(info.teamHexId, "tm9")
         XCTAssertEqual(info.stationName, "Booth")
     }
 
-    func testTheBrowserListsOnlyTheTeamsOtherComputers() {
+    func testTheBrowserListsOnlyOtherComputers() {
         func candidate(_ txt: [String: String]) -> BonjourBrowser.Candidate? {
-            BonjourBrowser.candidate(name: "Booth Mac", txt: txt, teamHexId: "tm9", ownStationHexId: "me")
+            BonjourBrowser.candidate(name: "Booth Mac", txt: txt, ownStationHexId: "me")
         }
         XCTAssertEqual(
-            candidate(["teamHexId": "tm9", "stationHexId": "booth"]),
+            candidate(["stationHexId": "booth"]),
             BonjourBrowser.Candidate(name: "Booth Mac", stationHexId: "booth"))
         XCTAssertEqual(
-            candidate(["teamHexId": "tm9", "stationHexId": "booth", "stationName": "Booth"])?.stationName, "Booth",
-            "its MxU name, for a backup pairing with the internet down")
-        XCTAssertNil(candidate(["teamHexId": "other", "stationHexId": "booth"]), "another team's computer")
-        XCTAssertNil(candidate(["teamHexId": "tm9", "stationHexId": "me"]), "this computer")
-        XCTAssertNil(candidate(["stationHexId": "booth"]), "signed out")
-        XCTAssertNil(candidate(["teamHexId": "tm9"]), "not registered yet")
+            candidate(["stationHexId": "booth", "stationName": "Booth"])?.stationName, "Booth")
+        XCTAssertNil(candidate(["stationHexId": "me"]), "this computer")
+        XCTAssertNil(candidate([:]), "no id yet")
     }
 
-    func testLiveBrowseFindsAnAdvertisedTeammate() async throws {
+    func testLiveBrowseFindsAnAdvertisedComputer() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["LOCALAPI_LIVE_BONJOUR"] == "1")
         let running = try await RunningServer.start(info: APIServerInfo(
             name: "F1 Booth \(UUID().uuidString.prefix(4))", product: "MxU Slides", apiVersion: "1", schemaVersion: 1,
-            stationHexId: "booth", teamHexId: "tm-live"), advertise: true)
+            stationHexId: "booth"), advertise: true)
         defer { running.stop() }
-        let browser = BonjourBrowser(teamHexId: "tm-live", ownStationHexId: "backup")
+        let browser = BonjourBrowser(ownStationHexId: "backup")
         let peers = browser.start()
         let found = await first(within: 10) {
             for await list in peers where !list.isEmpty { return list.first }

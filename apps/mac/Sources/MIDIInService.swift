@@ -1,5 +1,6 @@
 import CoreMIDI
 import Foundation
+import LocalAPI
 import PresenterCore
 import SlideScene
 

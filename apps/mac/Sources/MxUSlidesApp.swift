@@ -162,7 +162,7 @@ struct MxUSlidesApp: App {
                 scheduler: schedulerController
             )
             _localAPI = State(initialValue: api)
-            api.identity = { [machineID = model.machineID] in (machineID, nil) }
+            api.identity = { [machineID = model.machineID, computerName = model.computerName] in (machineID, computerName()) }
             MIDIDeviceInventory.shared.configure(model: model)
 
             let midiIn = MIDIInController(
@@ -179,7 +179,8 @@ struct MxUSlidesApp: App {
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)
             controls.serviceTracking = tracking
             _serviceTracking = State(initialValue: tracking)
-            FollowController.shared.configure(bridge: api.bridge)
+            FollowController.shared.useKeys(of: api)
+            FollowController.shared.configure(bridge: api.bridge, controls: controls)
         }
     }
 
