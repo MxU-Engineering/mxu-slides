@@ -677,6 +677,9 @@ struct SlideEditorView: View {
                     Button("Copy \(batch.count) Slides") { model.copySlides(batch) }
                     moveToThemeMenu(model, batch: batch)
                     Button("Duplicate \(batch.count) Slides") { model.duplicateSlides(batch) }
+                    if !model.isThemeEditor {
+                        Button("Merge \(batch.count) Slides") { model.mergeSlides(batch) }
+                    }
                 }
                 Divider()
                 Button("Delete \(batch.count) Slides", role: .destructive) {

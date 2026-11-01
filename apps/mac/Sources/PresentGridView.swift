@@ -1040,6 +1040,14 @@ struct SlideGridBody: View {
                 }
             }
             Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
+            Button("Merge \(slideIDs.count) Slides") {
+                confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
+                    model.updateSlides(presentationID: presentation.id, undoLabel: "Merge Slides") {
+                        SlideBulkEdit.mergeSlides(slideIDs, in: &$0)
+                    }
+                    clearSelection()
+                }
+            }
         }
         Divider()
         deleteButton(slideIDs, inSelection: true)

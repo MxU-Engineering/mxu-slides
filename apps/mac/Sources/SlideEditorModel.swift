@@ -1111,6 +1111,12 @@ final class SlideEditorModel {
         }
     }
 
+    func mergeSlides(_ ids: [String]) {
+        var survivor: String?
+        updateDocument { survivor = SlideBulkEdit.mergeSlides(ids, in: &$0) }
+        if let survivor { selectSlide(survivor) }
+    }
+
     func moveSlides(_ ids: [String], beforeSlideID: String?) {
         let anchorInBatch = beforeSlideID.map { ids.contains($0) } ?? false
         if !anchorInBatch {
