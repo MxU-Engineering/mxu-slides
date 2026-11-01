@@ -230,7 +230,8 @@ final class AppAPIBridge: LocalAPIBridge {
                 trackName: player.currentTrackName,
                 playing: player.isPlaying,
                 position: player.elapsed,
-                duration: player.duration
+                duration: player.duration,
+                entryId: player.currentEntryID
             )
         })
     }

@@ -274,7 +274,7 @@ public enum OpenAPIDocument {
             "buses": .object([
                 "type": "array",
                 "items": obj([
-                    "playlistId": str, "audioItemId": str, "trackName": str,
+                    "playlistId": str, "audioItemId": str, "trackName": str, "entryId": str,
                     "playing": .object(["type": "boolean"]),
                     "position": num, "duration": num,
                 ], required: ["playing"]),
