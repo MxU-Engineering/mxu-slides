@@ -167,9 +167,6 @@ struct OutputPicture: View {
     @State private var moveOffset: CGSize = .zero
     @State private var resizeOffset: CGSize = .zero
 
-    private static let rulerWidth = 22.0
-    private static let rulerHeight = 14.0
-
     private var snap: Double { snapOn ? 8 : 1 }
     private var placement: OutputPlacement? { outputs.placement(forSlice: sliceID) }
     private var frame: (width: Int, height: Int) {
@@ -190,18 +187,7 @@ struct OutputPicture: View {
                     Spacer()
                 }
             }
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    Color.clear.frame(width: Self.rulerWidth, height: Self.rulerHeight)
-                    topRuler
-                }
-                HStack(spacing: 0) {
-                    leftRuler
-                    picture
-                }
-            }
-            .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+            PictureChrome.framed(width: frame.width, height: frame.height) { picture }
             HStack(spacing: 12) {
                 Text("Processor reads \(String(frame.width)) × \(String(frame.height))")
                 Text(members.count == 1 ? "1 slice" : "\(members.count) slices")
@@ -221,7 +207,7 @@ struct OutputPicture: View {
         GeometryReader { proxy in
             let size = proxy.size
             ZStack(alignment: .topLeading) {
-                checkerboard
+                PictureChrome.checkerboard
                 ForEach(members, id: \.self) { member in
                     region(member, in: size)
                 }
@@ -230,62 +216,6 @@ struct OutputPicture: View {
         }
         .aspectRatio(CGFloat(frame.width) / CGFloat(max(frame.height, 1)), contentMode: .fit)
         .frame(maxHeight: 420)
-    }
-
-    private var checkerboard: some View {
-        Canvas { context, size in
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.07)))
-            let step = 10.0
-            var path = Path()
-            var y = 0.0
-            var row = 0
-            while y < size.height {
-                var x = row.isMultiple(of: 2) ? 0.0 : step
-                while x < size.width {
-                    path.addRect(CGRect(x: x, y: y, width: step, height: step))
-                    x += step * 2
-                }
-                y += step
-                row += 1
-            }
-            context.fill(path, with: .color(Color(white: 0.11)))
-        }
-    }
-
-    private var topRuler: some View {
-        Canvas { context, size in
-            for step in 0...8 {
-                let x = size.width * Double(step) / 8
-                let major = step.isMultiple(of: 2)
-                context.stroke(
-                    Path { $0.move(to: CGPoint(x: x, y: size.height)); $0.addLine(to: CGPoint(x: x, y: size.height - (major ? 6 : 3))) },
-                    with: .color(.secondary.opacity(0.6)), lineWidth: 1)
-                if major, step < 8 {
-                    context.draw(
-                        Text(String(frame.width * step / 8)).font(.system(size: 8)).foregroundStyle(.secondary),
-                        at: CGPoint(x: x + 3, y: 4), anchor: .topLeading)
-                }
-            }
-        }
-        .frame(height: Self.rulerHeight)
-    }
-
-    private var leftRuler: some View {
-        Canvas { context, size in
-            for step in 0...8 {
-                let y = size.height * Double(step) / 8
-                let major = step.isMultiple(of: 2)
-                context.stroke(
-                    Path { $0.move(to: CGPoint(x: size.width, y: y)); $0.addLine(to: CGPoint(x: size.width - (major ? 6 : 3), y: y)) },
-                    with: .color(.secondary.opacity(0.6)), lineWidth: 1)
-                if major, step < 8 {
-                    context.draw(
-                        Text(String(frame.height * step / 8)).font(.system(size: 7)).foregroundStyle(.secondary),
-                        at: CGPoint(x: 1, y: y + 2), anchor: .topLeading)
-                }
-            }
-        }
-        .frame(width: Self.rulerWidth)
     }
 
     private var carryName: String {
@@ -480,13 +410,13 @@ struct PlacementFields: View {
                 Text("At")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                field(placement.x) { value in update(placement) { $0.x = value } }
-                field(placement.y) { value in update(placement) { $0.y = value } }
+                PixelField(value: placement.x) { value in update(placement) { $0.x = value } }
+                PixelField(value: placement.y) { value in update(placement) { $0.y = value } }
                 Text("Size")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                field(placement.width) { value in update(placement) { $0.width = max(value, 8) } }
-                field(placement.height) { value in update(placement) { $0.height = max(value, 8) } }
+                PixelField(value: placement.width) { value in update(placement) { $0.width = max(value, 8) } }
+                PixelField(value: placement.height) { value in update(placement) { $0.height = max(value, 8) } }
                 Text("px")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -502,10 +432,15 @@ struct PlacementFields: View {
 
         DeckLinkScreenOutputs.shared.refreshCarry(for: sliceID, render: render)
     }
+}
 
-    private func field(_ value: Double, commit: @escaping (Double) -> Void) -> some View {
-        let step = 8.0
-        return HStack(spacing: 0) {
+struct PixelField: View {
+    let value: Double
+    var step = 8.0
+    let commit: (Double) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
             TextField(
                 "0",
                 text: Binding(
@@ -526,5 +461,81 @@ struct PlacementFields: View {
             .labelsHidden()
             .controlSize(.mini)
         }
+    }
+}
+
+enum PictureChrome {
+    static let rulerWidth = 22.0
+    static let rulerHeight = 14.0
+
+    static func framed(width: Int, height: Int, @ViewBuilder picture: () -> some View) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Color.clear.frame(width: rulerWidth, height: rulerHeight)
+                topRuler(width)
+            }
+            HStack(spacing: 0) {
+                leftRuler(height)
+                picture()
+            }
+        }
+        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+    }
+
+    static var checkerboard: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.07)))
+            let step = 10.0
+            var path = Path()
+            var y = 0.0
+            var row = 0
+            while y < size.height {
+                var x = row.isMultiple(of: 2) ? 0.0 : step
+                while x < size.width {
+                    path.addRect(CGRect(x: x, y: y, width: step, height: step))
+                    x += step * 2
+                }
+                y += step
+                row += 1
+            }
+            context.fill(path, with: .color(Color(white: 0.11)))
+        }
+    }
+
+    static func topRuler(_ frameWidth: Int) -> some View {
+        Canvas { context, size in
+            for step in 0...8 {
+                let x = size.width * Double(step) / 8
+                let major = step.isMultiple(of: 2)
+                context.stroke(
+                    Path { $0.move(to: CGPoint(x: x, y: size.height)); $0.addLine(to: CGPoint(x: x, y: size.height - (major ? 6 : 3))) },
+                    with: .color(.secondary.opacity(0.6)), lineWidth: 1)
+                if major, step < 8 {
+                    context.draw(
+                        Text(String(frameWidth * step / 8)).font(.system(size: 8)).foregroundStyle(.secondary),
+                        at: CGPoint(x: x + 3, y: 4), anchor: .topLeading)
+                }
+            }
+        }
+        .frame(height: rulerHeight)
+    }
+
+    static func leftRuler(_ frameHeight: Int) -> some View {
+        Canvas { context, size in
+            for step in 0...8 {
+                let y = size.height * Double(step) / 8
+                let major = step.isMultiple(of: 2)
+                context.stroke(
+                    Path { $0.move(to: CGPoint(x: size.width, y: y)); $0.addLine(to: CGPoint(x: size.width - (major ? 6 : 3), y: y)) },
+                    with: .color(.secondary.opacity(0.6)), lineWidth: 1)
+                if major, step < 8 {
+                    context.draw(
+                        Text(String(frameHeight * step / 8)).font(.system(size: 7)).foregroundStyle(.secondary),
+                        at: CGPoint(x: 1, y: y + 2), anchor: .topLeading)
+                }
+            }
+        }
+        .frame(width: rulerWidth)
     }
 }

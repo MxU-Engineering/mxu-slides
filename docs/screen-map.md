@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Approved 2026-10-29 (Cody: "the plan seems good now"). Phase 1 on labs; phases 2–5 in progress. Mockups: https://claude.ai/artifact/5U2ggA46RcRCNziFmsVTiD artboards K, L, M. |
+| **Status** | Approved 2026-10-29 (Cody: "the plan seems good now"). Phases 1, 3, 4 on labs; 2 (render) and 5 (layers, chips) in their own sessions. Mockups: https://claude.ai/artifact/5U2ggA46RcRCNziFmsVTiD artboards K, L, M. |
 | **Builds on** | docs/output-configuration.md (M4.3c: On menu, output page for processor packing), Output Presets (PRD §7.1: `OutputPreset` / `OutputAssignment`), `LayerKind` (RenderEngine) |
 | **Supersedes** | The 2026-10-28 layer→slice routing plan (dropped, never merged): its question — a layer on one piece of a screen — is answered here by placements. Preset-firing rules are shipped behavior in `ActionRouter.swift`: a header switch mid-service wins and is sticky, a slide-fired preset lands before its scene, a dangling preset id is a miss, never a reset. |
 | **Why** | Cody 2026-10-29: "PVP and Resolume, not ProPresenter and slides" — one picture of every output, and presets that say whether a layer is the same on each screen, stretched across them, or sitting on part of one. Anthony Terry's customer fork (Slack, 10-14) proved the appetite: custom layers, a Layer menu per media item, a Span column. Ideas only, our own code. |
@@ -62,8 +62,8 @@ Today each screen composites its own scene. A placed layer renders once per fram
 |---|---|---|
 | **1 model** ✓ | `ScreenMap` + `ScreenMapResolver` (OutputEngine/ScreenMap.swift), `OutputManager.screenMap` persisted at `outputs.screenMap`; schema v160: `LayerPlacement`, `CustomLayer`, `OutputPreset.placements/layers`, `CueMedia.layerId` | OutputEngine `ScreenMapTests` (dots-only, off-map, inside, spanned past the edge, duplicates, elsewhere, starting points, persistence hook); PresenterCore `ScreenMapSchemaTests` (pre-v160 decodes to dots, round trip, item layerId) |
 | **2 render** | placed-layer pass + blits; Fit/Fill per placement | RenderEngine: a spanned layer across two screens samples the right halves |
-| **3 Screen Map page** | the page + Add Screen Map… | on-screen QA |
-| **4 preset placements** | matrix disclosure, placement editor, starting-point buttons | PresenterCore: starting points produce the expected rects |
+| **3 Screen Map page** ✓ | `ScreenMapEditor` + `MapPicture` (Sources/ScreenMapEditor.swift), SCREEN MAP sidebar section, Add Screen Map… in the Screens +, Remove Screen Map in the row's menu; `PictureChrome`/`PixelField` shared with the output page | `ScreenMap.sideBySide/nextSeat` tests; sandbox QA 2026-10-29 (map, nudge, remove/add back, Content + grid) |
+| **4 preset placements** ✓ | `PresetPlacementsEditor` under the matrix (only with a map): layer picker, One per screen / Across chosen, Add placement, Duplicate, Fit/Fill, x y w h, Remove; gold ring on a placed layer's dots; `OutputPresetsController.placements/hasPlacements/setPlacements` | `ScreenMapResolver` starting-point tests; sandbox QA (across chosen, add, duplicate → 3 placements, rings). Persistence of the map across relaunch not verified: the QA Mac's disk was full (defaults writes fail silently) |
 | **5 layers + items** | Add Layer, item Layer menu, thumbnail chips + hover | PresenterCore: chips derive from stored fields only |
 | **6 QA** | wall + ribbon + lobby rig in the sandbox; a church with no map sees no change | — |
 

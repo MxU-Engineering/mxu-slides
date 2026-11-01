@@ -20,6 +20,20 @@ public struct ScreenMap: Codable, Equatable, Sendable {
     public var bounds: CGRect {
         screens.values.reduce(CGRect.zero) { $0.union($1) }
     }
+
+    public static func sideBySide(_ screens: [(id: UUID, width: Int, height: Int)], name: String = "Main Room") -> ScreenMap {
+        var map = ScreenMap(name: name)
+        var x = 0.0
+        for screen in screens {
+            map.place(screen.id, at: CGRect(x: x, y: 0, width: Double(screen.width), height: Double(screen.height)))
+            x += Double(screen.width)
+        }
+        return map
+    }
+
+    public func nextSeat(width: Int, height: Int) -> CGRect {
+        CGRect(x: bounds.maxX, y: 0, width: Double(width), height: Double(height))
+    }
 }
 
 public struct MapPlacement: Equatable, Sendable {

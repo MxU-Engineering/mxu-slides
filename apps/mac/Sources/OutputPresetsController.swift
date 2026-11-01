@@ -273,6 +273,22 @@ final class OutputPresetsController {
         }
     }
 
+    func placements(presetID: String, layer: String) -> [LayerPlacement] {
+        preset(presetID)?.placements?.filter { $0.layerId == layer } ?? []
+    }
+
+    func hasPlacements(presetID: String, layer: String) -> Bool {
+        preset(presetID)?.placements?.contains { $0.layerId == layer } ?? false
+    }
+
+    func setPlacements(_ placements: [LayerPlacement], presetID: String, layer: String) {
+        _ = write(presetID) { preset in
+            var all = (preset.placements ?? []).filter { $0.layerId != layer }
+            all.append(contentsOf: placements)
+            preset.placements = all.isEmpty ? nil : all
+        }
+    }
+
     func enabledLayers(presetID: String, targetId: String) -> Set<String>? {
         guard let preset = preset(presetID),
               let assignment = preset.assignments.first(where: { $0.targetId == targetId })

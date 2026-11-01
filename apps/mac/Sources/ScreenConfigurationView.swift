@@ -23,6 +23,8 @@ struct ScreenConfigurationView: View {
 
         case output(OutputCarry.Key)
 
+        case screenMap
+
         case preset(String)
     }
 
@@ -67,6 +69,10 @@ struct ScreenConfigurationView: View {
         case .screen(let id): [id]
         case .output(let key):
             OutputCarry.screenIDs(of: OutputCarry.members(of: key, outputs: outputs), outputs: outputs)
+        case .screenMap:
+            outputs.placeholderScreens.filter { outputs.screenMap?.rect(for: $0.id) != nil }.map(\.id)
+        case .preset where outputs.screenMap != nil:
+            outputs.placeholderScreens.filter { outputs.screenMap?.rect(for: $0.id) != nil }.map(\.id)
         default: []
         }
     }
@@ -91,6 +97,8 @@ struct ScreenConfigurationView: View {
         case .screen(let id) where outputs.placeholderScreens.contains(where: { $0.id == id }):
             return
         case .output(let key) where OutputCarry.groups(outputs: outputs).contains(where: { $0.key == key }):
+            return
+        case .screenMap where outputs.screenMap != nil:
             return
         case .preset(let id) where presets?.preset(id) != nil:
             return
@@ -122,6 +130,15 @@ struct ScreenConfigurationView: View {
                 }
                 ForEach(outputs.placeholderScreens.filter { !grouped.contains($0.id) }) { screen in
                     screenListRow(screen)
+                }
+
+                if let map = outputs.screenMap {
+                    HStack {
+                        sectionLabel("Screen Map")
+                        Spacer()
+                    }
+                    .padding(.top, 12)
+                    screenMapRow(map)
                 }
                 if let presets {
                     HStack {
@@ -161,6 +178,61 @@ struct ScreenConfigurationView: View {
         .sheet(isPresented: $showsWallSheet) {
             NewWallSheet(render: render, outputs: outputs) { selection = .output($0) }
         }
+    }
+
+    private func screenMapRow(_ map: ScreenMap) -> some View {
+        let selected = selection == .screenMap
+        let bounds = map.bounds
+        let audience = outputs.placeholderScreens.filter { outputs.role(forScreen: $0.id) != .confidence }
+        let onMap = audience.filter { map.rect(for: $0.id) != nil }.count
+        return Button {
+            selection = .screenMap
+        } label: {
+            HStack(spacing: 8) {
+                RoundedRectangle.standard(4)
+                    .fill(Color.black.opacity(0.5))
+                    .overlay {
+                        GeometryReader { proxy in
+                            ForEach(audience) { screen in
+                                if let rect = map.rect(for: screen.id), bounds.width > 0, bounds.height > 0 {
+                                    Rectangle()
+                                        .fill(Color.cyan.opacity(0.35))
+                                        .overlay(Rectangle().strokeBorder(Color.cyan, lineWidth: 0.5))
+                                        .frame(width: max(rect.width / bounds.width * proxy.size.width, 2), height: max(rect.height / bounds.height * proxy.size.height, 2))
+                                        .offset(x: rect.minX / bounds.width * proxy.size.width, y: rect.minY / bounds.height * proxy.size.height)
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: 46, height: 26)
+                    .clipShape(RoundedRectangle.standard(4))
+                    .overlay(RoundedRectangle.standard(4).strokeBorder(Color.separator.opacity(0.5), lineWidth: 1))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(map.name)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Text("\(String(Int(bounds.maxX)))×\(String(Int(bounds.maxY))) · \(onMap) of \(audience.count) audience screens")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+            }
+            .padding(6)
+            .contentShape(RoundedRectangle.standard(CornerStandard.element))
+        }
+        .buttonStyle(.plain)
+        .background(
+            selected ? Color.primary.opacity(0.08) : .clear,
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
+        .contextMenu {
+            Button("Remove Screen Map", role: .destructive) {
+                outputs.setScreenMap(nil)
+                if selection == .screenMap { selection = nil; ensureSelection() }
+            }
+        }
+        .help("Where every audience screen sits in the room — presets place layers against it")
     }
 
     private func outputGroup(_ key: OutputCarry.Key, members: [UUID]) -> some View {
@@ -371,6 +443,12 @@ struct ScreenConfigurationView: View {
             Button("Vertical 9:16  (1080×1920)") { addScreen(width: 1080, height: 1920) }
             Divider()
             Button("New LED Wall…") { showsWallSheet = true }
+            if outputs.screenMap == nil {
+                Button("Add Screen Map…") {
+                    ScreenMapEditor.add(to: outputs)
+                    selection = .screenMap
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 10, weight: .medium))
@@ -503,6 +581,8 @@ struct ScreenConfigurationView: View {
                     }
                 case .output(let key):
                     OutputEditor(render: render, outputs: outputs, key: key, openScreen: { selection = .screen($0) })
+                case .screenMap:
+                    ScreenMapEditor(render: render, outputs: outputs, openScreen: { selection = .screen($0) })
                 case .preset(let id):
                     if let presets, presets.preset(id) != nil {
                         PresetDetail(outputs: outputs, presets: presets, render: render, presetID: id)
@@ -1124,6 +1204,9 @@ private struct PresetDetail: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             RoutingMatrix(outputs: outputs, presets: presets, render: render, presetID: presetID)
+            if let render, outputs.screenMap != nil {
+                PresetPlacementsEditor(render: render, outputs: outputs, presets: presets, presetID: presetID)
+            }
             HStack {
                 Spacer()
                 Button("Delete Preset", role: .destructive) {
@@ -1239,6 +1322,7 @@ private struct RoutingMatrix: View {
     private func cell(target: Target, layer: LayerKind, enabled: Set<String>?) -> some View {
 
         let routed = enabled?.contains(layer.rawValue) ?? true
+        let placed = presets.hasPlacements(presetID: presetID, layer: layer.rawValue)
         return Button {
             presets.toggleLayer(
                 presetID: presetID, targetKind: target.kind,
@@ -1253,11 +1337,13 @@ private struct RoutingMatrix: View {
                 }
             }
             .frame(width: 9, height: 9)
+
+            .overlay(Circle().strokeBorder(Color.yellow, lineWidth: placed ? 1.5 : 0).frame(width: 13, height: 13))
             .frame(width: Self.cellWidth, height: 26)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(layer.displayName) → \(target.name)")
+        .help(placed ? "\(layer.displayName) → \(target.name) · placed on the Screen Map below" : "\(layer.displayName) → \(target.name)")
     }
 
     private func themeCell(_ target: Target) -> some View {

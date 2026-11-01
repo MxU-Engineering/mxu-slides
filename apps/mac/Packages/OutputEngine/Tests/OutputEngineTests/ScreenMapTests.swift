@@ -58,6 +58,15 @@ final class ScreenMapTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ScreenMap.self, from: data), map)
     }
 
+    func testAFirstMapLaysScreensSideBySideAndSeatsArrivalsToTheRight() {
+        let a = UUID(), b = UUID()
+        let map = ScreenMap.sideBySide([(a, 1920, 1080), (b, 1920, 192)])
+        XCTAssertEqual(map.rect(for: a), CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        XCTAssertEqual(map.rect(for: b), CGRect(x: 1920, y: 0, width: 1920, height: 192))
+        XCTAssertEqual(map.nextSeat(width: 1920, height: 1080), CGRect(x: 3840, y: 0, width: 1920, height: 1080))
+        XCTAssertEqual(map.name, "Main Room")
+    }
+
     @MainActor
     func testSettingTheMapFiresTheSaveHookOnce() throws {
         let outputs = OutputManager(compositor: try Compositor())
