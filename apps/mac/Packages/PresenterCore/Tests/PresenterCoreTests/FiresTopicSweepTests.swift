@@ -52,6 +52,8 @@ import Testing
 
         ("FollowController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .role, term: role.term, inCharge: me))"),
         ("StreamingController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .capture, id: live?.presetID))"),
+
+        ("FollowController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .quit))"),
     ]
 
     @Test func everyFireKindPublishesOnceFromWhereItRuns() throws {

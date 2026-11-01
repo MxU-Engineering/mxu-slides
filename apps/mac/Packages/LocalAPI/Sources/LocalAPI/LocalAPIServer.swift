@@ -18,11 +18,17 @@ public final class LocalAPIServer: @unchecked Sendable {
 
         public var blob: (@Sendable (String) -> URL?)?
 
+        public var heard: (@Sendable (String) -> Void)?
+
+        public var unpair: (@Sendable (APIToken) -> Void)?
+
         public init(
             port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo,
             beat: (@Sendable () -> UInt64)? = nil, hold: (@Sendable (APIRoute) -> APIError?)? = nil,
             pair: (@Sendable (Data) async -> APIHandlerResponse)? = nil,
-            blob: (@Sendable (String) -> URL?)? = nil
+            blob: (@Sendable (String) -> URL?)? = nil,
+            heard: (@Sendable (String) -> Void)? = nil,
+            unpair: (@Sendable (APIToken) -> Void)? = nil
         ) {
             self.port = port
             self.serviceName = serviceName
@@ -32,6 +38,8 @@ public final class LocalAPIServer: @unchecked Sendable {
             self.hold = hold
             self.pair = pair
             self.blob = blob
+            self.heard = heard
+            self.unpair = unpair
         }
     }
 
@@ -120,6 +128,17 @@ public final class LocalAPIServer: @unchecked Sendable {
             }
         }
 
+        if let unpair = configuration.unpair {
+            let tokens = self.tokens
+            await http.appendRoute(HTTPRoute("POST /v1/follow/unpair")) { request in
+                guard let token = Self.authenticate(request, tokens: tokens) else {
+                    return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
+                }
+                unpair(token)
+                return Self.jsonResponse(.ok)
+            }
+        }
+
         if let blob = configuration.blob {
             let tokens = self.tokens
             await http.appendRoute(HTTPRoute("GET /v1/follow/blobs/*")) { request in
@@ -142,11 +161,12 @@ public final class LocalAPIServer: @unchecked Sendable {
         let tokens = self.tokens
         let beat = configuration.beat
         let hold = configuration.hold
+        let heard = configuration.heard
         await http.appendRoute(HTTPRoute("GET /v1/ws")) { request in
             guard let token = Self.authenticate(request, tokens: tokens) else {
                 return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
             }
-            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens, beat: beat, hold: hold)
+            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens, beat: beat, hold: hold, heard: heard)
             let webSocket = WebSocketHTTPHandler(handler: MessageFrameWSHandler(handler: handler))
             return try await webSocket.handleRequest(request)
         }

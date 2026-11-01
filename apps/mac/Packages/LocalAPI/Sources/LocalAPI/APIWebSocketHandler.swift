@@ -17,6 +17,8 @@ struct APIWebSocketHandler: WSMessageHandler {
 
     var hold: (@Sendable (APIRoute) -> APIError?)? = nil
 
+    var heard: (@Sendable (String) -> Void)? = nil
+
     struct Inbound: Decodable {
         var type: String
         var topics: [String]?
@@ -80,6 +82,7 @@ struct APIWebSocketHandler: WSMessageHandler {
         }
         switch inbound.type {
         case "ping":
+            if let heard, let tokenName { heard(tokenName) }
             var pong: [String: Any] = ["type": "pong"]
             if let beat { pong["beat"] = beat() }
             Self.send(pong, to: continuation)

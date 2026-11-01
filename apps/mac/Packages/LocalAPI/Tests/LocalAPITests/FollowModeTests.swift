@@ -1,4 +1,5 @@
 import Foundation
+import os
 import XCTest
 
 @testable import LocalAPI
@@ -39,15 +40,33 @@ final class FollowReplayTests: XCTestCase {
             event(.audioTransport) { $0.audioTransport = APIAudioTransportCommand(action: "next") },
             event(.mediaTransport) { $0.id = "m1"; $0.mediaTransport = APIMediaTransportCommand(action: "pause") },
         ]
-        XCTAssertEqual(Set(fires.map(\.kind)), Set(APIFireEvent.Kind.allCases).subtracting([.role, .capture]), "every fire kind replays")
+        XCTAssertEqual(Set(fires.map(\.kind)), Set(APIFireEvent.Kind.allCases).subtracting([.role, .capture, .quit]), "every fire kind replays")
         XCTAssertFalse(FollowReplay.replays(event(.role) { $0.term = 2; $0.inCharge = "booth" }), "who is in charge is never a fire")
         XCTAssertFalse(FollowReplay.replays(event(.capture) { $0.id = "stream1" }), "a backup never starts the booth's stream on its own")
+        XCTAssertFalse(FollowReplay.replays(event(.quit)), "the booth quitting is never a fire")
         for fire in fires { try await FollowReplay.apply(fire, to: bridge) }
         XCTAssertEqual(bridge.calls, [
             "fireSlide:p1", "advance:-1", "clear:media", "clearAll", "fireMedia:m1", "fireOverlay:o1", "dismissOverlay:o1",
             "fireAlert:Parking lot", "dismissAlert", "timer:t1:play", "fireActionCombo:c1", "activatePreset:none",
             "setLock:true:-", "fireAudioItem:a1", "firePlaylist:pl1", "stopAudio", "audioTransport:next", "mediaTransport:m1:pause",
         ])
+    }
+
+    func testCatchUpRunsOnlyWhatDiffersFromTheBooth() throws {
+        func show(_ json: String) throws -> APIShowStatus {
+            try JSONDecoder().decode(APIShowStatus.self, from: Data(json.utf8))
+        }
+        let slide = #"{"presentationId":"p1","slideId":"s1"}"#
+        let booth = try show(#"{"mediaLayers":{"background":{"mediaId":"loop"},"foreground":{"mediaId":"walkin"}},"overlays":[{"id":"lower","name":"Lower third"}]}"#)
+        let here = try show(#"{"liveSlide":\#(slide),"mediaLayers":{"background":{"mediaId":"loop"},"loopingVideos":{"mediaId":"old"}},"overlays":[{"id":"logo","name":"Logo"}]}"#)
+        let events = FollowReplay.catchUp(booth: booth, here: here)
+        XCTAssertEqual(events.map(\.kind), [.clear, .clear, .dismissOverlay, .media, .overlay])
+        XCTAssertEqual(events[0].clear, APIClearCommand(function: "slides"), "the booth shows no slide")
+        XCTAssertEqual(events[1].clear, APIClearCommand(layer: "loopingVideos"), "a video the booth doesn't show comes down")
+        XCTAssertEqual(events[2].id, "logo")
+        XCTAssertEqual(events[3].id, "walkin", "the loop already in step keeps playing")
+        XCTAssertEqual(events[4].id, "lower")
+        XCTAssertTrue(FollowReplay.catchUp(booth: here, here: here).isEmpty, "in step: nothing runs")
     }
 
     func testALibraryFireReplaysBySlideNotAsAServiceItem() {
@@ -78,6 +97,41 @@ final class FollowPairingTests: XCTestCase {
         let token = try XCTUnwrap(tokens.verify(secret: key))
         XCTAssertEqual(token.scope, .control)
         XCTAssertEqual(token.name, "Backup: Backup Mac")
+        let again = pairing.answer(body("4817"), teamHexId: "team1", tokens: tokens)
+        let second = try JSONDecoder().decode(APIFollowPairResponse.self, from: again.body).token
+        XCTAssertNil(tokens.verify(secret: key), "pairing again replaces the old key")
+        XCTAssertNotNil(tokens.verify(secret: second))
+        XCTAssertEqual(tokens.all.filter { $0.name == "Backup: Backup Mac" }.count, 1)
+    }
+
+    func testTheBoothSeesWhichBackupsArePinging() async throws {
+        let seen = OSAllocatedUnfairLock<[Set<String>]>(initialState: [])
+        let presence = FollowPresence(lostAfter: .milliseconds(150)) { names in seen.withLock { $0.append(names) } }
+        presence.heard(tokenName: "Companion")
+        presence.heard(tokenName: "Backup: Backup Mac")
+        presence.heard(tokenName: "Backup: Backup Mac")
+        XCTAssertEqual(seen.withLock { $0 }, [["Backup Mac"]], "a key that isn't a backup's never counts; a second ping changes nothing")
+        for _ in 0 ..< 50 where seen.withLock({ $0.count }) < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(seen.withLock { $0 }, [["Backup Mac"], []], "quiet past lostAfter: dropped")
+    }
+
+    func testStopBackingUpForgetsTheKeyItCalledWith() async throws {
+        let tokens = APITokenStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("tokens-\(UUID().uuidString).json"))
+        let key = tokens.create(name: "Backup: Backup Mac", scope: .control).secret
+        let port = UInt16.random(in: 41000 ... 59000)
+        let info = APIServerInfo(name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1)
+        let booth = LocalAPIServer(
+            configuration: .init(port: port, serviceName: "Booth Mac", advertise: false, info: info, unpair: { tokens.revoke(id: $0.id) }),
+            routes: [], tokens: tokens)
+        let task = Task { try await booth.run() }
+        defer { task.cancel(); Task { await booth.stop() } }
+        try await booth.waitUntilListening()
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/follow/unpair")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as! HTTPURLResponse).statusCode, 200)
+        XCTAssertNil(tokens.verify(secret: key))
     }
 
     func testFiveWrongCodesRetireTheCodeUntilANewOne() {
