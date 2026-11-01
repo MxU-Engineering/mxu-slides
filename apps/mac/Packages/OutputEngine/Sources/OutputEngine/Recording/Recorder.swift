@@ -16,6 +16,8 @@ public final class Recorder: @unchecked Sendable {
         public var appendedFrames: Int
         public var droppedFrames: Int
         public var droppedAudioBuffers: Int
+
+        public var audioSeconds: Double
         public var freeDiskBytes: Int64
         public var url: URL
     }
@@ -27,12 +29,16 @@ public final class Recorder: @unchecked Sendable {
         var appendedFrames = 0
         var droppedFrames = 0
         var droppedAudioBuffers = 0
+        var appendedAudioSeconds = 0.0
+        var black = DropoutWatch()
         var freeDiskBytes: Int64 = .max
         var audioFormat: CMFormatDescription?
     }
 
     public let configuration: RecordingConfiguration
     public let url: URL
+
+    public var onBlackSpan: (@Sendable (_ fileSeconds: Double, _ seconds: Double) -> Void)?
 
     private let writer: AVAssetWriter
     private let videoInput: AVAssetWriterInput
@@ -109,6 +115,10 @@ public final class Recorder: @unchecked Sendable {
             return CMTime(seconds: stamped, preferredTimescale: Self.timescale)
         }
         guard let pts else { return false }
+        let black = SyncTestReader.gridLuma(pixelBuffer).map(SyncTestReader.isBlackAbove) ?? false
+        if let span = box.withLock({ $0.black.update(black, at: pts.seconds) }) {
+            onBlackSpan?(span.start, span.seconds)
+        }
 
         if box.withLock({ $0.appendedFrames == 0 }) {
             writer.startSession(atSourceTime: .zero)
@@ -137,7 +147,9 @@ public final class Recorder: @unchecked Sendable {
             box.withLock { $0.droppedAudioBuffers += 1 }
             return
         }
-        if !audioInput.append(sample) {
+        if audioInput.append(sample) {
+            box.withLock { $0.appendedAudioSeconds += Double(buffer.frameLength) / buffer.format.sampleRate }
+        } else {
             box.withLock { $0.droppedAudioBuffers += 1 }
             noteWriterFailureIfAny()
         }
@@ -174,6 +186,7 @@ public final class Recorder: @unchecked Sendable {
                 appendedFrames: state.appendedFrames,
                 droppedFrames: state.droppedFrames,
                 droppedAudioBuffers: state.droppedAudioBuffers,
+                audioSeconds: state.appendedAudioSeconds,
                 freeDiskBytes: state.freeDiskBytes,
                 url: url)
         }

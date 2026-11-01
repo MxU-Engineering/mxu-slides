@@ -42,3 +42,29 @@ final class ArrivalWindowTests: XCTestCase {
         XCTAssertNil(engine.liveCadence(for: "ndi"))
     }
 }
+
+final class LiveDropoutTests: XCTestCase {
+
+    func testALiveInputWithNothingToDrawIsReported() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("no Metal device on this machine")
+        }
+        let engine = try MediaEngine(device: device)
+        let frame = Locked<CVPixelBuffer?>(nil)
+        let reports = Locked<[(String, Double, String)]>([])
+        engine.onLiveDropout = { id, seconds, reason in reports.withLock { $0.append((id, seconds, reason)) } }
+        engine.registerLiveSource(id: "card", latestFrame: { frame.value }, onStop: {})
+        XCTAssertNil(engine.surface(for: "card", hostTime: 10))
+        XCTAssertNil(engine.surface(for: "card", hostTime: 10.25))
+        var made: CVPixelBuffer?
+        CVPixelBufferCreate(nil, 64, 36, kCVPixelFormatType_32BGRA,
+                            [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+                             kCVPixelBufferMetalCompatibilityKey: true] as CFDictionary, &made)
+        frame.withLock { $0 = made }
+        XCTAssertNotNil(engine.surface(for: "card", hostTime: 10.5))
+        let report = try XCTUnwrap(reports.value.first)
+        XCTAssertEqual(report.0, "card")
+        XCTAssertEqual(report.1, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(report.2, "no frame from the input")
+    }
+}

@@ -139,6 +139,10 @@ final class RenderContext {
         else { return nil }
         self.compositor = compositor
         self.media = media
+        media.onLiveDropout = { id, seconds, reason in
+            DiagnosticsStore.shared.note(
+                "input.render", detail: "\(id): nothing to draw for \(Int(seconds * 1000))ms — \(reason)")
+        }
         self.outputs = OutputManager(compositor: compositor)
         let initialScene = RenderScene.sampleLyricScene()
         self.scene = initialScene

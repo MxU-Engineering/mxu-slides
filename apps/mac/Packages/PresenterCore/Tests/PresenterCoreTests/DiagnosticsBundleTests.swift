@@ -14,8 +14,17 @@ private func file(_ name: String, daysAgo: Double, bytes: Int = 10) -> Diagnosti
         file("old.log", daysAgo: 9), file("b.log", daysAgo: 2, bytes: 40),
         file("huge-hang.txt", daysAgo: 1, bytes: 90), file("a.log", daysAgo: 0.5, bytes: 50),
     ]
-    let chosen = DiagnosticsBundle.selection(from: files, now: now, byteCap: 100)
+    let chosen = DiagnosticsBundle.selection(from: files, now: now, byteCap: 20)
     #expect(chosen.map(\.url.lastPathComponent) == ["a.log", "b.log"], "the file that would pass the cap is skipped, smaller ones still fit")
+}
+
+@Test func diagnosticsLogsCountZippedAndComeBeforeHangSamples() {
+    let files = [
+        file("breadcrumbs-sunday.log", daysAgo: 1, bytes: 160), file("breadcrumbs-monday.log", daysAgo: 0.1, bytes: 176),
+        file("today.hang", daysAgo: 0.05, bytes: 90),
+    ]
+    let chosen = DiagnosticsBundle.selection(from: files, now: now, byteCap: 100)
+    #expect(chosen.map(\.url.lastPathComponent) == ["breadcrumbs-monday.log", "breadcrumbs-sunday.log"])
 }
 
 @Test func diagnosticsPruneTakesOnlyWhatIsPastRetention() {

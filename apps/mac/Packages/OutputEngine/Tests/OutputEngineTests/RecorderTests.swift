@@ -175,6 +175,24 @@ final class RecorderTests: XCTestCase {
         let asset = AVURLAsset(url: url)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         XCTAssertEqual(audioTracks.count, 1, "audio appends should produce one audio track")
+        let status = recorder.status
+        XCTAssertEqual(status.audioSeconds + Double(status.droppedAudioBuffers) * 0.1, 1, accuracy: 1e-9)
+    }
+
+    func testABlackSpanIsReportedWithItsFileTime() async throws {
+        let url = scratchURL.appendingPathComponent("black.mov")
+        let recorder = try Recorder(
+            url: url, configuration: RecordingConfiguration(codec: .h264, width: 320, height: 180))
+        let spans = SpanLog()
+        recorder.onBlackSpan = { start, seconds in spans.append(start, seconds) }
+        let gray = try makeBuffer(), black = try makeBuffer(gray: 0)
+        for frame in 0..<60 {
+            recorder.append((30..<45).contains(frame) ? black : gray, atHostSeconds: 500 + Double(frame) / 30)
+        }
+        await recorder.finish()
+        XCTAssertEqual(spans.values.count, 1)
+        XCTAssertEqual(spans.values.first?.start ?? 0, 1, accuracy: 0.001)
+        XCTAssertEqual(spans.values.first?.seconds ?? 0, 0.5, accuracy: 0.001)
     }
 
     func testAudioBeforeFirstVideoFrameDropsHonestly() async throws {
@@ -246,4 +264,11 @@ final class RecorderTests: XCTestCase {
         }
         fatalError("couldn't find the products directory")
     }
+}
+
+private final class SpanLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [(start: Double, seconds: Double)] = []
+    var values: [(start: Double, seconds: Double)] { lock.withLock { stored } }
+    func append(_ start: Double, _ seconds: Double) { lock.withLock { stored.append((start, seconds)) } }
 }

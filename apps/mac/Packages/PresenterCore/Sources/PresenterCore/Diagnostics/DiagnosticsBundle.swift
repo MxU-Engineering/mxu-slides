@@ -28,11 +28,16 @@ public enum DiagnosticsBundle {
         windowDays: Int = reportWindowDays, byteCap: Int = byteCap
     ) -> [Candidate] {
         let since = cutoff(windowDays, before: now)
+        let isLog = { (candidate: Candidate) in candidate.url.pathExtension == "log" }
         var total = 0
         var chosen: [Candidate] = []
-        for candidate in candidates.filter({ $0.modified >= since }).sorted(by: { $0.modified > $1.modified }) {
-            if total + candidate.byteSize <= byteCap {
-                total += candidate.byteSize
+        let ordered = candidates.filter { $0.modified >= since }.sorted {
+            isLog($0) != isLog($1) ? isLog($0) : $0.modified > $1.modified
+        }
+        for candidate in ordered {
+            let cost = isLog(candidate) ? candidate.byteSize / 8 : candidate.byteSize
+            if total + cost <= byteCap {
+                total += cost
                 chosen.append(candidate)
             }
         }

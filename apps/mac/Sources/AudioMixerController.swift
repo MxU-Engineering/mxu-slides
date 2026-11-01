@@ -388,6 +388,15 @@ final class AudioMixerController {
         feedHubs.values.compactMap { $0.feed?.trimmedMilliseconds }.reduce(0, +)
     }
 
+    var feedLossSummary: String {
+        let feeds = feedHubs.values.compactMap(\.feed)
+        let overflow = feeds.map(\.overflowMilliseconds).reduce(0, +)
+        let skipped = feeds.map(\.skippedMilliseconds).reduce(0, +)
+        let age = feeds.compactMap(\.emittedAgeMilliseconds).max()
+        return "mixOverflow=\(Int(overflow))ms mixSkipped=\(Int(skipped))ms "
+            + (age.map { "audioAge=\(Int($0))ms " } ?? "")
+    }
+
     var worstFeedBacklogMilliseconds: Double? {
         feedHubs.values.compactMap { $0.feed?.backlogMilliseconds }.max()
     }
@@ -526,7 +535,7 @@ final class AudioMixerController {
             if shouldFeed, feedConsumerTokens[id] == nil,
                let source = audioInputs.source(forId: id),
                let hub = feedHubs[mix] {
-                feedConsumerTokens[id] = source.addConsumer { [weak hub] buffer, _, _ in
+                feedConsumerTokens[id] = source.addConsumer { [weak hub] buffer, _, captured in
                     let defaults = UserDefaults.standard
                     let muted = defaults.bool(forKey: "audio.input.\(id).muted")
                         || defaults.bool(forKey: "audio.mix.\(mix).muted")
@@ -535,7 +544,8 @@ final class AudioMixerController {
                     hub?.feed?.push(
                         member: "input-\(id)", buffer: buffer,
                         gain: muted ? 0 : min(max(inputGain, 0), 1) * min(max(mixGain, 0), 1),
-                        pan: (defaults.object(forKey: "audio.input.\(id).pan") as? Float) ?? 0)
+                        pan: (defaults.object(forKey: "audio.input.\(id).pan") as? Float) ?? 0,
+                        captured: captured)
                 }
             } else if !shouldFeed, let token = feedConsumerTokens.removeValue(forKey: id) {
                 audioInputs.source(forId: id)?.removeConsumer(token)
@@ -550,7 +560,7 @@ final class AudioMixerController {
                    let source = audioInputs.source(forId: id),
                    let sendHub = feedHubs[sendMix] {
                     let gain = sendGain
-                    sendFeedTokens[key] = source.addConsumer { [weak sendHub] buffer, _, _ in
+                    sendFeedTokens[key] = source.addConsumer { [weak sendHub] buffer, _, captured in
                         let defaults = UserDefaults.standard
                         let muted = defaults.bool(forKey: "audio.input.\(id).muted")
                             || defaults.bool(forKey: "audio.mix.\(sendMix).muted")
@@ -562,7 +572,8 @@ final class AudioMixerController {
                             member: "send-input-\(id)", buffer: buffer,
                             gain: muted ? 0 : min(max(inputGain, 0), 1) * gain
                                 * min(max(mixGain, 0), 1),
-                            pan: (defaults.object(forKey: "audio.input.\(id).pan") as? Float) ?? 0)
+                            pan: (defaults.object(forKey: "audio.input.\(id).pan") as? Float) ?? 0,
+                            captured: captured)
                     }
                 } else if !wanted, let token = sendFeedTokens.removeValue(forKey: key) {
                     audioInputs.source(forId: id)?.removeConsumer(token)

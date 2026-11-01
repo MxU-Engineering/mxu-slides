@@ -64,6 +64,27 @@ final class AudioMixFeedBacklogTests: XCTestCase {
         XCTAssertEqual(feed.trimmedMilliseconds, 0)
     }
 
+    func testEmittedAgeIsCaptureToEmitForTheOldestSound() throws {
+        let feed = AudioMixFeed(startsClock: false) { _, _, _ in }
+        feed.tick(now: 500)
+        XCTAssertNil(feed.emittedAgeMilliseconds)
+        for tick in 1..<AudioMixFeed.ageWindowPulls {
+
+            feed.push(member: "card", buffer: try buffer(frames: 480), captured: 500 + Double(tick) * 0.010 - 1.5)
+            feed.tick(now: 500 + Double(tick) * 0.010)
+        }
+        XCTAssertEqual(try XCTUnwrap(feed.emittedAgeMilliseconds), 1500, accuracy: 0.5)
+    }
+
+    func testSkippedPullsAndOverflowAreCounted() throws {
+        let feed = AudioMixFeed(startsClock: false) { _, _, _ in }
+        feed.tick(now: 600)
+        feed.tick(now: 602)
+        XCTAssertEqual(feed.skippedMilliseconds, 1990, accuracy: 0.001)
+        for _ in 0..<6 { feed.push(member: "card", buffer: try buffer(frames: 4800)) }
+        XCTAssertEqual(feed.overflowMilliseconds, 100, accuracy: 0.001)
+    }
+
     func testAPartialPullLeavesOneMemberOut() throws {
         let whole = Marks(), without = Marks()
         let feed = AudioMixFeed(startsClock: false) { buffer, _, _ in whole.append(Double(buffer.floatChannelData![0][0])) }

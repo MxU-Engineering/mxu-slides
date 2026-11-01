@@ -24,6 +24,9 @@ public final class StreamSession: @unchecked Sendable {
         public var state: State
         public var framesSubmitted: Int
         public var framesDropped: Int
+
+        public var audioSecondsSent: Double = 0
+        public var audioBuffersDropped: Int = 0
     }
 
     public let destination: StreamEndpoint
@@ -33,6 +36,8 @@ public final class StreamSession: @unchecked Sendable {
         var state: State = .idle
         var framesSubmitted = 0
         var framesDropped = 0
+        var audioSecondsSent = 0.0
+        var audioBuffersDropped = 0
 
         var audioFormat: AVAudioFormat?
         var audioFormatMismatchLogged = false
@@ -63,7 +68,9 @@ public final class StreamSession: @unchecked Sendable {
             Status(
                 state: storage.state,
                 framesSubmitted: storage.framesSubmitted,
-                framesDropped: storage.framesDropped)
+                framesDropped: storage.framesDropped,
+                audioSecondsSent: storage.audioSecondsSent,
+                audioBuffersDropped: storage.audioBuffersDropped)
         }
     }
 
@@ -144,7 +151,24 @@ public final class StreamSession: @unchecked Sendable {
             log.warning("audio format changed mid-stream: \(self.destination.name, privacy: .public) pinned=\(mismatch, privacy: .public) got=\(buffer.format, privacy: .public) — dropping until reconnect")
         }
         guard let continuation, let copy = Self.copiedAudioBuffer(buffer) else { return }
-        continuation.yield((copy, when))
+        let counted = Self.counted(continuation.yield((copy, when)), sent: copy)
+        mutable.withLock {
+            storage.audioSecondsSent += counted.seconds
+            storage.audioBuffersDropped += counted.dropped
+        }
+    }
+
+    static func counted(
+        _ result: AsyncStream<(AVAudioPCMBuffer, AVAudioTime)>.Continuation.YieldResult,
+        sent buffer: AVAudioPCMBuffer
+    ) -> (seconds: Double, dropped: Int) {
+        let seconds = Double(buffer.frameLength) / buffer.format.sampleRate
+        switch result {
+        case .enqueued: return (seconds, 0)
+        case .dropped(let oldest): return (seconds - Double(oldest.0.frameLength) / oldest.0.format.sampleRate, 1)
+        case .terminated: return (0, 0)
+        @unknown default: return (0, 0)
+        }
     }
 
     static func copiedAudioBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {

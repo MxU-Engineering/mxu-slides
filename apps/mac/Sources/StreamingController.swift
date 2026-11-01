@@ -378,6 +378,15 @@ final class StreamingController {
                     let mirrorDelivered = live.mirrors.reduce(0) { $0 + $1.framesDelivered }
                     let mirrorDropped = live.mirrors.reduce(0) { $0 + $1.framesDropped }
                     Self.log.info("heartbeat: \(session.destination.name, privacy: .public) state=\(String(describing: status.state), privacy: .public) submitted=\(status.framesSubmitted) dropped=\(status.framesDropped) mirrorDelivered=\(mirrorDelivered) mirrorDropped=\(mirrorDropped)")
+
+                    DiagnosticsStore.shared.note(
+                        "stream.heartbeat",
+                        detail: "\(session.destination.name) state=\(status.state) "
+                            + "frames=\(status.framesSubmitted) dropped=\(status.framesDropped) "
+                            + String(format: "elapsed=%.2fs audio=%.2fs ", Date().timeIntervalSince(live.startedAt), status.audioSecondsSent)
+                            + "audioDropped=\(status.audioBuffersDropped) "
+                            + (AudioMixerController.current?.feedLossSummary ?? "")
+                            + DeckLinkDirectInputs.shared.ageSummary)
                 }
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
             }

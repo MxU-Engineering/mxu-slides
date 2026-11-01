@@ -93,6 +93,20 @@ final class StreamSessionTests: XCTestCase {
         XCTAssertTrue(body.contains(key), "server does not list our publisher: \(body)")
     }
 
+    func testAFullAudioPipeCountsItsDrop() throws {
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480))
+        buffer.frameLength = 480
+        let (stream, pipe) = AsyncStream<(AVAudioPCMBuffer, AVAudioTime)>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        defer { withExtendedLifetime(stream) {} }
+        let first = StreamSession.counted(pipe.yield((buffer, AVAudioTime(hostTime: 0))), sent: buffer)
+        let second = StreamSession.counted(pipe.yield((buffer, AVAudioTime(hostTime: 0))), sent: buffer)
+        XCTAssertEqual(first.seconds, 0.01, accuracy: 1e-9)
+        XCTAssertEqual(first.dropped, 0)
+        XCTAssertEqual(second.seconds, 0, accuracy: 1e-9)
+        XCTAssertEqual(second.dropped, 1)
+    }
+
     func testAppendBeforePublishingDropsNothingAndSubmitsNothing() throws {
         let session = StreamSession(
             destination: StreamEndpoint(

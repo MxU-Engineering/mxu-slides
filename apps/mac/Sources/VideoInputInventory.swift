@@ -277,7 +277,7 @@ final class VideoInputInventory {
                 try render.media.startCapture(
                     device: device, id: entry.engineID, frameRate: entry.frameRate)
                 running.insert(entry.id)
-                DiagnosticsStore.shared.note("input.camera", detail: "warm: \(entry.name)")
+                DiagnosticsStore.shared.note("input.camera", detail: "warm: \(entry.name) (\(entry.engineID))")
             } catch {
                 DiagnosticsStore.shared.note("input.camera", detail: "warm-up failed: \(error)")
             }
@@ -306,7 +306,7 @@ final class VideoInputInventory {
                     onStop: { DeckLinkDirectInputs.shared.release(persistentID: persistentID) },
                     cadence: { capture.cadence })
                 running.insert(entry.id)
-                DiagnosticsStore.shared.note("input.decklink", detail: "warm: \(entry.name)")
+                DiagnosticsStore.shared.note("input.decklink", detail: "warm: \(entry.name) (\(entry.engineID))")
             } else {
                 DiagnosticsStore.shared.note("input.decklink", detail: "bad device id for \(entry.name): \(sourceId)")
                 return
