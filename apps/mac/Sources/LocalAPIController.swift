@@ -106,7 +106,7 @@ final class LocalAPIController {
     private(set) var pairingCode = ""
     @ObservationIgnored private nonisolated let teamHexId = OSAllocatedUnfairLock<String?>(initialState: nil)
 
-    @ObservationIgnored var identity: () -> (stationHexId: String?, teamHexId: String?) = { (nil, nil) } {
+    @ObservationIgnored var identity: () -> (stationHexId: String?, teamHexId: String?, stationName: String?) = { (nil, nil, nil) } {
         didSet { observeIdentity() }
     }
 
@@ -225,7 +225,8 @@ final class LocalAPIController {
             apiVersion: OpenAPIDocument.apiVersion,
             schemaVersion: OpenAPIDocument.documentSchemaVersion(),
             stationHexId: ids.stationHexId,
-            teamHexId: ids.teamHexId
+            teamHexId: ids.teamHexId,
+            stationName: ids.stationName
         )
         let server = LocalAPIServer(
             configuration: .init(
@@ -320,7 +321,7 @@ final class LocalAPIController {
                 self.observeIdentity()
             }
         }
-        server.update(stationHexId: ids.stationHexId, teamHexId: ids.teamHexId)
+        server.update(stationHexId: ids.stationHexId, teamHexId: ids.teamHexId, stationName: ids.stationName)
         teamHexId.withLock { $0 = ids.teamHexId }
         if pairingCode.isEmpty { pairingCode = followPairing.current ?? followPairing.refresh() }
     }
@@ -343,11 +344,11 @@ final class LocalAPIController {
             act("/v1/follow/takeback", "followTakeBack", "A booth that stepped down takes back.") { FollowController.shared.takeBack() },
 
             APIRoute("GET", "/v1/follow/files", scope: .control, operationId: "followFiles",
-                     summary: "This computer's This Mac only items, for its backup.", tag: "Follow", responseSchema: object) { _ in
+                     summary: "This computer's library items, for its backup.", tag: "Follow", responseSchema: object) { _ in
                 .json(try await FollowFileCopy.offered(model))
             },
             APIRoute("GET", "/v1/follow/files/{kind}/{id}", scope: .control, operationId: "followFile",
-                     summary: "One This Mac only item's whole save.", tag: "Follow", responseSchema: object) { context in
+                     summary: "One library item's whole save.", tag: "Follow", responseSchema: object) { context in
                 .json(try await FollowFileCopy.document(model, kind: context.pathParameters["kind"] ?? "", id: context.pathParameters["id"] ?? ""))
             },
             APIRoute("POST", "/v1/follow/role", scope: .control, operationId: "followRole",

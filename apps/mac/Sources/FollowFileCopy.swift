@@ -12,7 +12,7 @@ enum FollowFileCopy {
         let blobs = model.blobs
         var items: [FollowFiles.Item] = []
         for kind in FollowCopy.kinds {
-            let ids = snapshot.entries(of: kind).map(\.id).filter { snapshot.area(kind: kind, id: $0) == .local }
+            let ids = snapshot.entries(of: kind).map(\.id)
             guard !ids.isEmpty else { continue }
             let files: [String: String] = switch kind {
             case .media: (try? await model.client.loadValues(MediaItem.self, ids: ids).values.mapValues(\.fileHash)) ?? [:]
@@ -23,7 +23,8 @@ enum FollowFileCopy {
                 guard let heads = try await model.client.localHeads(kind: kind, id: id) else { continue }
                 let file = files[id].flatMap { FollowFiles.isHash($0) ? $0 : nil }
                 let ext = file.flatMap { blobs?.url(forHash: $0)?.pathExtension }
-                items.append(FollowFiles.Item(kind: kind.rawValue, id: id, heads: heads, file: ext == nil ? nil : file, ext: ext))
+                items.append(FollowFiles.Item(kind: kind.rawValue, id: id, heads: heads, file: ext == nil ? nil : file, ext: ext,
+                                              area: FollowCopy.offered(snapshot.area(kind: kind, id: id))))
             }
         }
         return FollowFiles.List(items: items)
@@ -31,9 +32,8 @@ enum FollowFileCopy {
 
     static func document(_ model: AppModel, kind: String, id: String) async throws -> FollowFiles.Document {
         guard let kind = DocumentKind(rawValue: kind), FollowCopy.kinds.contains(kind),
-              (try await model.client.settledSnapshot()).area(kind: kind, id: id) == .local,
               let bytes = try await model.client.documentBytes(kind: kind, id: id) else {
-            throw APIError.notFound("Not a This Mac only item here.")
+            throw APIError.notFound("Not a library item here.")
         }
         return FollowFiles.Document(bytes: bytes)
     }
@@ -59,7 +59,7 @@ enum FollowFileCopy {
         for item in wanted.documents {
             guard let kind = DocumentKind(rawValue: item.kind), FollowCopy.kinds.contains(kind) else { continue }
             let document = try await get(FollowFiles.Document.self, "/v1/follow/files/\(item.kind)/\(item.id)", endpoint)
-            try await model.client.mergeCopy(kind: kind, id: item.id, bytes: document.bytes).value
+            try await model.client.mergeCopy(kind: kind, id: item.id, bytes: document.bytes, area: FollowCopy.landing(item.area)).value
         }
 
         let copied = Set(UserDefaults.standard.stringArray(forKey: copiedKey) ?? [])

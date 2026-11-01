@@ -85,8 +85,8 @@ final class DiscoveryTests: XCTestCase {
     func testTXTCarriesTheIds() {
         let info = APIServerInfo(
             name: "Booth Mac", product: "MxU Slides", apiVersion: "1", schemaVersion: 1,
-            stationHexId: "st1", teamHexId: "tm9")
-        XCTAssertEqual(BonjourAdvertiser.txt(for: info), ["stationHexId": "st1", "teamHexId": "tm9"])
+            stationHexId: "st1", teamHexId: "tm9", stationName: "Booth")
+        XCTAssertEqual(BonjourAdvertiser.txt(for: info), ["stationHexId": "st1", "teamHexId": "tm9", "stationName": "Booth"])
         XCTAssertEqual(
             BonjourAdvertiser.txtRecord(["teamHexId": "tm9", "stationHexId": "st1"]),
             Data([16]) + Data("stationHexId=st1".utf8) + Data([13]) + Data("teamHexId=tm9".utf8))
@@ -102,10 +102,11 @@ final class DiscoveryTests: XCTestCase {
         var info = try await running.ping()
         XCTAssertNil(info.stationHexId)
         XCTAssertNil(info.teamHexId)
-        running.server.update(stationHexId: "st1", teamHexId: "tm9")
+        running.server.update(stationHexId: "st1", teamHexId: "tm9", stationName: "Booth")
         info = try await running.ping()
         XCTAssertEqual(info.stationHexId, "st1")
         XCTAssertEqual(info.teamHexId, "tm9")
+        XCTAssertEqual(info.stationName, "Booth")
     }
 
     func testTheBrowserListsOnlyTheTeamsOtherComputers() {
@@ -115,6 +116,9 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(
             candidate(["teamHexId": "tm9", "stationHexId": "booth"]),
             BonjourBrowser.Candidate(name: "Booth Mac", stationHexId: "booth"))
+        XCTAssertEqual(
+            candidate(["teamHexId": "tm9", "stationHexId": "booth", "stationName": "Booth"])?.stationName, "Booth",
+            "its MxU name, for a backup pairing with the internet down")
         XCTAssertNil(candidate(["teamHexId": "other", "stationHexId": "booth"]), "another team's computer")
         XCTAssertNil(candidate(["teamHexId": "tm9", "stationHexId": "me"]), "this computer")
         XCTAssertNil(candidate(["stationHexId": "booth"]), "signed out")

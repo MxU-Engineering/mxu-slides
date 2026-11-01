@@ -98,8 +98,8 @@ public extension Follow {
     static func copiedLine(_ items: Int) -> String {
         switch items {
         case 0: ""
-        case 1: " 1 This Mac only item copied here."
-        default: " \(items) This Mac only items copied here."
+        case 1: " 1 item copied here over the network."
+        default: " \(items) items copied here over the network."
         }
     }
 

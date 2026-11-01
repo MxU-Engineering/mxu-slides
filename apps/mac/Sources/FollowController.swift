@@ -89,7 +89,7 @@ final class FollowController {
         steppedDown = Self.load(SteppedDown.self, Self.steppedDownKey)
     }
 
-    private var me: String? { station?.stationHexId }
+    private var me: String? { station?.lanStationHexId }
 
     var backingUp: Bool { pairing != nil && !inCharge }
 
@@ -121,10 +121,10 @@ final class FollowController {
     }
 
     func pair(with peer: BonjourBrowser.Peer, name: String, code: String, automatic: Bool, teamHexId: String, station: StationSyncController) async -> String? {
-        guard let stationHexId = station.stationHexId, let client = MxUAccountController.shared.client else {
+        guard let stationHexId = station.lanStationHexId, let client = MxUAccountController.shared.client else {
             return "Sign in first."
         }
-        let request = APIFollowPairRequest(code: code, teamHexId: teamHexId, stationHexId: stationHexId, name: station.stationName)
+        let request = APIFollowPairRequest(code: code, teamHexId: teamHexId, stationHexId: stationHexId, name: station.lanStationName)
         let key: String
         do {
             key = try await Self.requestKey(request, host: peer.host, port: peer.port)
@@ -149,7 +149,7 @@ final class FollowController {
         if let pairing { FollowKeyKeychain.clear(account: pairing.stationHexId) }
         save(nil)
         Self.held.withLock { $0 = nil }
-        if let stationHexId = station.stationHexId, let client = MxUAccountController.shared.client {
+        if let stationHexId = station.lanStationHexId, let client = MxUAccountController.shared.client {
             _ = try? await client.setFollow(hexId: stationHexId, followsStationHexId: nil)
         }
         DiagnosticsStore.shared.note("follow.unpaired")
@@ -222,7 +222,7 @@ final class FollowController {
 
     private func post(role: FollowRole, for pairing: Pairing) async -> APIFollowRoleCommand? {
         guard let endpoint else { return nil }
-        let command = APIFollowRoleCommand(term: role.term, inCharge: role.inCharge, name: station?.stationName ?? "Backup")
+        let command = APIFollowRoleCommand(term: role.term, inCharge: role.inCharge, name: station?.lanStationName ?? "Backup")
         return await Self.postRole(command, endpoint: endpoint)
     }
 
@@ -240,7 +240,7 @@ final class FollowController {
         let mine = boothRole
         let incoming = FollowRole(term: command.term, inCharge: command.inCharge)
         guard let newer = mine.newer(incoming) else {
-            return APIFollowRoleCommand(term: mine.term, inCharge: mine.inCharge, name: station?.stationName ?? "")
+            return APIFollowRoleCommand(term: mine.term, inCharge: mine.inCharge, name: station?.lanStationName ?? "")
         }
         boothRole = newer
         if newer.inCharge == me {
@@ -378,7 +378,7 @@ final class FollowController {
                     self.copiedItems += try await FollowFileCopy.copy(from: endpoint, model: model)
                     self.copyProblem = nil
                 } catch {
-                    self.copyProblem = "Couldn't copy \(self.pairing?.name ?? "the other computer")'s This Mac only items: \(error.localizedDescription)"
+                    self.copyProblem = "Couldn't copy \(self.pairing?.name ?? "the other computer")'s items: \(error.localizedDescription)"
                     DiagnosticsStore.shared.note("follow.copyFailed", detail: "\(error)")
                 }
                 try? await Task.sleep(for: .seconds(300))

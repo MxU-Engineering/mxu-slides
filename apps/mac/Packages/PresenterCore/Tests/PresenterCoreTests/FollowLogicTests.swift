@@ -74,8 +74,8 @@ import Testing
         #expect(Follow.inChargeBanner(over: "Booth Mac", since: at, boothStreamed: true, calendar: calendar).detail == "Booth Mac was streaming. Start Stream Here to send it from this computer.")
         #expect(Follow.steppedDownBanner(backup: "Backup Mac").title == "Backup Mac took over.")
         #expect(Follow.copiedLine(0) == "")
-        #expect(Follow.copiedLine(1) == " 1 This Mac only item copied here.")
-        #expect(Follow.copiedLine(3) == " 3 This Mac only items copied here.")
+        #expect(Follow.copiedLine(1) == " 1 item copied here over the network.")
+        #expect(Follow.copiedLine(3) == " 3 items copied here over the network.")
     }
 }
 

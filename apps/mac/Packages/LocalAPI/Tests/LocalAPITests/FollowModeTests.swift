@@ -277,6 +277,13 @@ final class FollowFilesTests: XCTestCase {
         XCTAssertEqual(FollowFiles.gone(copied: [], booth: booth), [], "nothing this backup didn't copy")
     }
 
+    func testADriveItemSaysSoAndAnOlderBoothsListStillReads() throws {
+        let drive = FollowFiles.Item(kind: "presentation", id: "d1", heads: ["h1"], area: "team")
+        XCTAssertEqual(try JSONDecoder().decode(FollowFiles.Item.self, from: JSONEncoder().encode(drive)).area, "team")
+        let older = Data(#"{"kind":"presentation","id":"d1","heads":["h1"]}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(FollowFiles.Item.self, from: older).area)
+    }
+
     func testARefusalReadsAsItsMessage() {
         XCTAssertEqual(APIError(status: 403, code: "wrong_code", message: "That code doesn't match.").localizedDescription, "That code doesn't match.")
     }
