@@ -227,6 +227,14 @@ public struct ShowState: Sendable, Equatable {
         }
     }
 
+    public var layerStackTopFirst: [RenderLayer] {
+        var scene = RenderScene()
+        for custom in customLayers {
+            scene.insertCustomLayer(id: custom.id, name: custom.name, above: custom.above)
+        }
+        return scene.layers.reversed()
+    }
+
     private func sweepsOnSlideFire(_ cue: CueMedia, on layer: String) -> Bool {
         if cue.classification == nil, layer == LayerKind.stillGraphics.rawValue, directMediaFires.contains(layer) {
             true
@@ -623,6 +631,14 @@ public struct ShowState: Sendable, Equatable {
 
     public mutating func clear(layer: LayerKind, atHostTime: Double? = nil) {
         clear(layer: layer, atHostTime: atHostTime, sweeping: Set(ShowFunction.allCases))
+    }
+
+    public mutating func clear(layerID: String, atHostTime: Double? = nil) {
+        if let layer = LayerKind(rawValue: layerID) {
+            clear(layer: layer, atHostTime: atHostTime)
+        } else if customLayers.contains(where: { $0.id == layerID }) {
+            clearMedia(layerID: layerID, sweeping: Set(ShowFunction.allCases))
+        }
     }
 
     private mutating func clear(layer: LayerKind, atHostTime: Double?, sweeping functions: Set<ShowFunction>) {

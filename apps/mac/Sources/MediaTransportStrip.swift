@@ -1,4 +1,5 @@
 import RenderEngine
+import SlideScene
 import SwiftUI
 
 struct MediaTransportStrip: View {
@@ -240,20 +241,16 @@ struct MediaTransportStrip: View {
     private func pickerMenu(
         _ media: MediaTransportController, target: MediaTransportController.Row?, now: Date
     ) -> some View {
-        let byLayer = Dictionary(grouping: media.rows, by: \.candidate.layer)
-
-        let fixed: Set<LayerKind> = [.alerts, .overlays, .slide, .videos, .loopingVideos]
-        let layers = LayerKind.allCases.reversed().filter { layer in
-            fixed.contains(layer) || byLayer[layer] != nil
-        }
+        let byLayer = Dictionary(grouping: media.rows, by: \.candidate.layerID)
+        let layers = TransportTarget.pickerLayers(stack: media.layerStack, carrying: Set(byLayer.keys))
         return Menu {
-            ForEach(layers, id: \.self) { layer in
-                Section(layer.displayName) {
-                    Toggle("View \(layer.displayName)", isOn: Binding(
-                        get: { media.viewedLayer == layer },
-                        set: { _ in media.select(layer: layer) }
+            ForEach(layers) { layer in
+                Section(layer.name) {
+                    Toggle("View \(layer.name)", isOn: Binding(
+                        get: { media.viewedLayer == layer.id },
+                        set: { _ in media.select(layer: layer.id) }
                     ))
-                    ForEach(byLayer[layer] ?? []) { row in
+                    ForEach(byLayer[layer.id] ?? []) { row in
                         Toggle(isOn: Binding(
                             get: { media.pinnedID == row.id },
                             set: { _ in media.pin(row.id) }
@@ -268,7 +265,7 @@ struct MediaTransportStrip: View {
             HStack(spacing: 4) {
                 Image(systemName: "square.3.layers.3d")
                     .font(.system(size: 10))
-                Text((target?.candidate.layer ?? media.viewedLayer).displayName)
+                Text(media.layerName(target?.candidate.layerID ?? media.viewedLayer))
                     .font(.caption)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7, weight: .semibold))

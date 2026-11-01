@@ -23,9 +23,11 @@ final class MediaTransportController {
 
     private(set) var rowsVersion = 0
 
-    private(set) var selectedLayer: LayerKind?
+    private(set) var selectedLayer: String?
 
     private(set) var pinnedID: String?
+
+    private(set) var layerStack: [RenderLayer] = ShowState().layerStackTopFirst
 
     private let appModel: AppModel
     private let render: RenderContext
@@ -37,13 +39,18 @@ final class MediaTransportController {
     init(appModel: AppModel, render: RenderContext) {
         self.appModel = appModel
         self.render = render
-        if let raw = UserDefaults.standard.string(forKey: Self.layerKey) {
-            selectedLayer = LayerKind(rawValue: raw)
-        }
+        selectedLayer = UserDefaults.standard.string(forKey: Self.layerKey)
     }
 
-    var viewedLayer: LayerKind {
-        selectedLayer ?? TransportTarget.defaultLayer
+    var viewedLayer: String {
+        guard let selectedLayer, layerStack.contains(where: { $0.id == selectedLayer }) else {
+            return TransportTarget.defaultLayer
+        }
+        return selectedLayer
+    }
+
+    func layerName(_ id: String) -> String {
+        layerStack.first { $0.id == id }?.name ?? LayerKind(rawValue: id)?.displayName ?? id
     }
 
     var target: Row? {
@@ -63,17 +70,17 @@ final class MediaTransportController {
         return !target.candidate.isLooping || pinnedID == target.id
     }
 
-    func select(layer: LayerKind?) {
+    func select(layer: String?) {
         selectedLayer = layer
         pinnedID = nil
-        UserDefaults.standard.set(layer?.rawValue, forKey: Self.layerKey)
+        UserDefaults.standard.set(layer, forKey: Self.layerKey)
         pushCountdown(force: true)
     }
 
     func pin(_ mediaID: String?) {
         pinnedID = mediaID
         if let mediaID, let row = rows.first(where: { $0.id == mediaID }) {
-            selectedLayer = row.candidate.layer
+            selectedLayer = row.candidate.layerID
         }
         pushCountdown(force: true)
     }
@@ -103,8 +110,9 @@ final class MediaTransportController {
             && state.position(at: date) >= state.duration - 0.05
     }
 
-    func refresh(seeds newSeeds: [TransportSeed]? = nil) {
+    func refresh(seeds newSeeds: [TransportSeed]? = nil, layers: [RenderLayer]? = nil) {
         if let newSeeds { seeds = newSeeds }
+        if let layers, layers != layerStack { layerStack = layers }
         let now = Date()
         let states = render.media.transportStates()
         var next: [Row] = []
@@ -114,7 +122,7 @@ final class MediaTransportController {
             firedAt[seed.mediaID] = fired
             next.append(Row(
                 candidate: TransportCandidate(
-                    mediaID: seed.mediaID, layer: seed.layer, origin: seed.origin,
+                    mediaID: seed.mediaID, layerID: seed.layerID, origin: seed.origin,
                     isLooping: state.isLooping, firedAt: fired
                 ),
                 name: appModel.entry(seed.mediaID)?.name ?? "Video",
@@ -151,12 +159,12 @@ final class MediaTransportController {
     private func pushCountdown(force: Bool = false) -> Bool {
         let now = Date()
         var wanted: [String: VideoCountdown] = [:]
-        for layer in Set(rows.map(\.candidate.layer)) {
+        for layer in Set(rows.map(\.candidate.layerID)) {
             guard let target = TransportTarget.countdownTarget(
                 candidates: rows.map(\.candidate), layer: layer
             ).flatMap({ candidate in rows.first { $0.id == candidate.mediaID } })
             else { continue }
-            wanted[layer.rawValue] = VideoCountdown(
+            wanted[layer] = VideoCountdown(
                 name: target.name,
                 duration: target.state.duration,
                 position: target.state.position(at: now),
@@ -179,7 +187,7 @@ final class MediaTransportController {
         let writes = force || !tracking
         if writes {
             info.videoCountdowns = wanted
-            info.videoCountdown = wanted[TransportTarget.defaultLayer.rawValue]
+            info.videoCountdown = wanted[TransportTarget.defaultLayer]
             render.confidenceInfo = info
         }
         return writes

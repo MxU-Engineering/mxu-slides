@@ -1354,17 +1354,22 @@ final class ServiceControls {
     }
 
     func clear(layer: LayerKind) {
+        clear(layerID: layer.rawValue)
+    }
+
+    func clear(layerID: String) {
+        guard let layer = layerStack.first(where: { $0.id == layerID }) else { return }
         settlePending()
-        stashExitTransition(for: [layer.rawValue])
-        state.clear(layer: layer, atHostTime: CACurrentMediaTime())
-        if layer == .slide, state.liveSlide == nil {
+        stashExitTransition(for: [layerID])
+        state.clear(layerID: layerID, atHostTime: CACurrentMediaTime())
+        if layer.kind == .slide, state.liveSlide == nil {
             liveContextID = nil
             liveOccurrence = nil
             cancelAutoAdvance()
             refreshNextSlide()
         }
         apply()
-        if layer == .alerts { syncFlashClock() }
+        if layer.kind == .alerts { syncFlashClock() }
     }
 
     func clearAll(protecting: Set<String> = [], cancelsPendingActions: Bool = true) {
@@ -1401,11 +1406,11 @@ final class ServiceControls {
         }
     }
 
-    func hasContent(layer: LayerKind) -> Bool {
-        switch layer {
-        case .loopingVideos, .stillGraphics, .videos, .videoInput:
+    func hasContent(layerID: String) -> Bool {
+        switch LayerKind(rawValue: layerID) {
+        case .loopingVideos, .stillGraphics, .videos, .videoInput, nil:
 
-            state.liveMedia[layer.rawValue] != nil
+            state.liveMedia[layerID] != nil
         case .slide:
             state.liveSlide != nil
         case .overlays:
@@ -1622,9 +1627,12 @@ final class ServiceControls {
 
     private var slideThemeOverrides: [String: Theme] = [:]
 
+    private(set) var layerStack = ShowState().layerStackTopFirst
+
     func setCustomLayers(_ layers: [CustomLayer]) {
         guard layers != state.customLayers else { return }
         state.setCustomLayers(layers)
+        layerStack = state.layerStackTopFirst
         apply()
     }
 
@@ -1763,7 +1771,7 @@ final class ServiceControls {
 
         pushLiveInputVisibility(liveNamedInputs)
         let seeds = state.transportSeeds()
-        media.refresh(seeds: seeds)
+        media.refresh(seeds: seeds, layers: layerStack)
         guard !added.isEmpty, let blobs else { return }
         Task { [render, appModel, media] in
             for mediaID in added {

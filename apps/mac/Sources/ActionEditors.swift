@@ -182,8 +182,8 @@ struct ActionParameterFields: View {
             Picker("Layer", selection: stringBinding(action, \.layer)) {
                 Text("Choose\u{2026}").tag("")
 
-                ForEach(LayerKind.allCases.reversed(), id: \.rawValue) { layer in
-                    Text(layer.displayName).tag(layer.rawValue)
+                ForEach(router?.layerStack ?? RenderScene.defaultLayerStack().reversed()) { layer in
+                    Text(layer.name).tag(layer.id)
                 }
             }
         case .switchOutputPreset:
@@ -660,6 +660,7 @@ struct ActionsMenu: View {
     var body: some View {
         let timers = actionRouter?.timerChoices ?? []
         let screens = actionRouter?.confidenceScreenChoices ?? []
+        let layers = actionRouter?.layerStack ?? []
         Menu(actions.isEmpty ? "Actions: None" : "Actions: \(actions.count)") {
             Menu("Add Action") {
                 AddActionMenuItems(model: model, timers: timers, add: add)
@@ -673,7 +674,7 @@ struct ActionsMenu: View {
                             Button("Remove", role: .destructive) { remove(action) }
                         } label: {
                             Label {
-                                Text(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens))
+                                Text(slideActionLabel(action, model: model, timers: timers, confidenceScreens: screens, layers: layers))
                             } icon: {
                                 Image(nsImage: GlyphKind(action: action, model: model).menuImage)
                             }
@@ -698,9 +699,11 @@ struct AddActionMenuItems: View {
     var excludeComboID: String? = nil
 
     let add: (SlideAction) -> Void
+    @Environment(\.actionRouter) private var router
 
     var body: some View {
         let presets = entries(of: .outputPreset)
+        let layers = router?.layerStack ?? RenderScene.defaultLayerStack().reversed()
         if !presets.isEmpty {
             Menu("Output Preset") {
                 ForEach(presets, id: \.id) { preset in
@@ -714,9 +717,9 @@ struct AddActionMenuItems: View {
             Button("Clear All") { add(make(.clearAll)) }
             Divider()
 
-            ForEach(LayerKind.allCases.reversed(), id: \.rawValue) { layer in
-                Button(layer.displayName) {
-                    add(make(.clearLayer) { $0.layer = layer.rawValue })
+            ForEach(layers) { layer in
+                Button(layer.name) {
+                    add(make(.clearLayer) { $0.layer = layer.id })
                 }
             }
             Divider()

@@ -1933,7 +1933,8 @@ struct SlideTile: View {
                                 .tileHelp(slideActionLabel(
                                     action, model: model,
                                     timers: actionRouter?.timerChoices ?? [],
-                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
+                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? [],
+                                    layers: actionRouter?.layerStack ?? []))
                         }
                         if actionBadges.count > 3 {
                             Text("+\(actionBadges.count - 3)")
@@ -2088,7 +2089,8 @@ struct SlideTile: View {
         (slide.actions ?? []).map {
             slideActionLabel(
                 $0, model: model, timers: actionRouter?.timerChoices ?? [],
-                confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])
+                confidenceScreens: actionRouter?.confidenceScreenChoices ?? [],
+                layers: actionRouter?.layerStack ?? [])
         }.joined(separator: "\n")
     }
 }
@@ -2097,7 +2099,8 @@ struct SlideTile: View {
 func slideActionLabel(
     _ action: SlideAction, model: AppModel,
     timers: [(id: String, name: String)] = [],
-    confidenceScreens: [(id: String, name: String)] = []
+    confidenceScreens: [(id: String, name: String)] = [],
+    layers: [RenderLayer] = []
 ) -> String {
     func entryName(_ id: String?) -> String {
         guard let id, !id.isEmpty else { return "not set" }
@@ -2139,7 +2142,7 @@ func slideActionLabel(
     case .switchOutputPreset:
         "Switch Output Preset: \(entryName(action.presetId))"
     case .clearLayer:
-        "Clear \(action.layer.flatMap(LayerKind.init(rawValue:))?.displayName ?? "Layer")"
+        "Clear \(action.layer.flatMap { id in layers.first { $0.id == id }?.name ?? LayerKind(rawValue: id)?.displayName } ?? "Layer")"
     case .clearAll: "Clear All"
     case .clearAudio: "Clear Music"
     case .fireMedia: "Fire Media: \(entryName(action.mediaId))"

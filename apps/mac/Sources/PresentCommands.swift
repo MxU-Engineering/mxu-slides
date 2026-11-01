@@ -32,8 +32,8 @@ struct PresentCommands: Commands {
             Divider()
             Menu("Clear Layer") {
 
-                ForEach(Array(LayerKind.allCases.reversed()), id: \.self) { layer in
-                    Button("Clear \(layer.displayName)") { controls?.clear(layer: layer) }
+                ForEach(controls?.layerStack ?? RenderScene.defaultLayerStack().reversed()) { layer in
+                    Button("Clear \(layer.name)") { controls?.clear(layerID: layer.id) }
                 }
             }
             Button("Clear All") { controls?.clearAll() }

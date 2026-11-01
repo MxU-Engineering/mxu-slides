@@ -665,3 +665,20 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     #expect(show.liveMedia["lower"] == nil, "no layer left to composite it")
     #expect(!show.scene().layers.contains { $0.id == "lower" })
 }
+
+@Test func clearLayerByIdTakesDownOnlyThatCustomLayer() {
+    var show = ShowState()
+    show.setCustomLayers([CustomLayer(id: "lower", name: "Lower", above: "slide")])
+    var band = cue("band")
+    band.layerId = "lower"
+    show.fire(slide: slide("a", background: band))
+    show.fire(media: cue("walk-in"), on: .loopingVideos)
+    show.clear(layerID: "gone")
+    #expect(show.liveMedia["lower"]?.mediaId == "band", "an unknown id clears nothing")
+    show.clear(layerID: "lower")
+    #expect(show.liveMedia["lower"] == nil)
+    #expect(show.liveSlide != nil, "the slide stays")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "walk-in", "other layers stay")
+    show.clear(layerID: "loopingVideos")
+    #expect(show.liveMedia["loopingVideos"] == nil, "a built-in id clears as Clear Layer always did")
+}

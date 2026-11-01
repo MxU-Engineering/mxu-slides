@@ -36,6 +36,8 @@ final class ActionRouter {
 
     var customLayers: [CustomLayer] { presets.customLayers }
 
+    var layerStack: [RenderLayer] { controls.layerStack }
+
     func layerName(_ id: String) -> String? {
         LayerKind(rawValue: id)?.displayName ?? presets.customLayers.first { $0.id == id }?.name
     }
@@ -336,16 +338,17 @@ final class ActionRouter {
         DiagnosticsStore.shared.note("actions.step", detail: label(action))
         switch action.kind {
         case .clearLayer:
-            guard let layer = action.layer.flatMap(LayerKind.init(rawValue:)) else {
+
+            guard let layer = action.layer, layerName(layer) != nil else {
                 return miss(action, "layer")
             }
 
-            if protected.contains(layer.rawValue) {
+            if protected.contains(layer) {
                 DiagnosticsStore.shared.note(
-                    "actions.clear.skippedOwnLayer", detail: layer.rawValue)
+                    "actions.clear.skippedOwnLayer", detail: layer)
                 return
             }
-            controls.clear(layer: layer)
+            controls.clear(layerID: layer)
         case .clearAll:
             if !protected.isEmpty {
                 DiagnosticsStore.shared.note(

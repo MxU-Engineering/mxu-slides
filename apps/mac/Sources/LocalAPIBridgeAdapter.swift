@@ -240,7 +240,7 @@ final class AppAPIBridge: LocalAPIBridge {
         return controls.media.rows.map { row in
             APITransportRow(
                 mediaId: row.id, name: row.name,
-                layer: row.candidate.layer.rawValue,
+                layer: row.candidate.layerID,
                 playing: row.state.isPlaying,
                 looping: row.state.isLooping,
                 position: row.state.position(at: now),
