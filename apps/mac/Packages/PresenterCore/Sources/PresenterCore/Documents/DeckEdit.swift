@@ -189,7 +189,7 @@ struct DeckField {
                 adopt: { $1[keyPath: keyPath] = $0[keyPath: keyPath] },
                 writeValue: { document, encoder in
                     if let value = next[keyPath: keyPath] {
-                        try encoder.encode(value, at: [AnyCodingKey(key)])
+                        try encodeRootField(value, key: key, in: document, with: encoder)
                     } else {
                         try document.delete(obj: ObjId.ROOT, key: key)
                     }

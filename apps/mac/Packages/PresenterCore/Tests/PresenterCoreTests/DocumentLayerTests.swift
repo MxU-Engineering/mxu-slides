@@ -193,6 +193,24 @@ private func fullyStyledObject(id: String = "obj-full") -> SlideObject {
     #expect(ours.value.slides.contains { $0.id == "new-slide" })
 }
 
+@LibraryActor @Test func sameArrangementWrittenOnTwoComputersMergesOnce() throws {
+
+    var song = sampleSong()
+    song.arrangements = [Arrangement(id: "a", name: "Jordan", sectionIds: ["intro", "v1"])]
+    let order = [Arrangement(id: "a", name: "Jordan", sectionIds: ["intro", "v1", "end"])]
+    for write in [
+        { (doc: TypedDocument<Presentation>) in try doc.updateField(\.arrangements, key: "arrangements", to: order) },
+        { (doc: TypedDocument<Presentation>) in try doc.core.updateDeck { $0.arrangements = order } },
+    ] {
+        let ours = try TypedDocument(song)
+        let theirs = try ours.fork()
+        _ = try write(ours)
+        _ = try write(theirs)
+        try ours.merge(theirs)
+        #expect(ours.value.arrangements == order)
+    }
+}
+
 @LibraryActor @Test func alternatingSavesFromTwoLiveDocumentsStillConverge() throws {
 
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -204,11 +222,11 @@ private func fullyStyledObject(id: String = "obj-full") -> SlideObject {
     let present = try store.load(Presentation.self, id: "shared")
 
     try editor.update { $0.slides[0].objects[0].text = "Editor edit" }
-    try store.save(editor) 
+    try store.save(editor)
     try present.update { $0.name = "Present rename" }
-    try store.save(present) 
+    try store.save(present)
     try editor.update { $0.slides[0].name = "Verse 1" }
-    try store.save(editor) 
+    try store.save(editor)
 
     let converged = try store.load(Presentation.self, id: "shared").value
     #expect(converged.slides[0].objects[0].text == "Editor edit")
