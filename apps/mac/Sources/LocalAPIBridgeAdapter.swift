@@ -532,12 +532,12 @@ final class AppAPIBridge: LocalAPIBridge {
             }
             controls.clear(function: function)
         } else if let raw = command.layer {
-            guard let layer = LayerKind(rawValue: raw) else {
-                throw APIError.badRequest(
-                    "Unknown layer '\(raw)'. Layers: \(LayerKind.allCases.map(\.rawValue).joined(separator: ", "))."
-                )
+
+            let ids = controls.layerStack.map(\.id)
+            guard ids.contains(raw) else {
+                throw APIError.badRequest("Unknown layer '\(raw)'. Layers: \(ids.joined(separator: ", ")).")
             }
-            controls.clear(layer: layer)
+            controls.clear(layerID: raw)
         } else {
             throw APIError.badRequest("Provide either 'function' or 'layer'.")
         }

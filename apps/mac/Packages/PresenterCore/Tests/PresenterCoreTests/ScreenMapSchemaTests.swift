@@ -1,3 +1,4 @@
+import Testing
 import XCTest
 @testable import PresenterCore
 
@@ -30,5 +31,20 @@ final class ScreenMapSchemaTests: XCTestCase {
         cue.layerId = "live-stream"
         let back = try JSONDecoder().decode(CueMedia.self, from: try JSONEncoder().encode(cue))
         XCTAssertEqual(back.layerId, "live-stream")
+    }
+}
+
+@Suite struct ScreenMapLocalAPISweepTests {
+    @Test func apiClearTakesCustomLayerIDs() throws {
+        let adapter = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/LocalAPIBridgeAdapter.swift"),
+            encoding: .utf8
+        )
+        #expect(adapter.contains("let ids = controls.layerStack.map(\\.id)"))
+        #expect(adapter.contains("controls.clear(layerID: raw)"))
+        #expect(!adapter.contains("LayerKind(rawValue: raw)"), "built-in names only was the gap")
     }
 }
