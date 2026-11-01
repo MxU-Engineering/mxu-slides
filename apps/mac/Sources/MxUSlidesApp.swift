@@ -306,7 +306,7 @@ struct MxUSlidesApp: App {
                     .background(NonRestorableWindow())
             }
         }
-        .defaultSize(width: 780, height: 540)
+        .defaultSize(width: 1080, height: 680)
 
         Window("Engine", id: "engine") {
             if presentLayout.runOnly {

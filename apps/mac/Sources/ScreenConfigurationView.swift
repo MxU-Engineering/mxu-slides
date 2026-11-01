@@ -346,6 +346,12 @@ struct ScreenConfigurationView: View {
             selected ? Color.primary.opacity(0.08) : .clear,
             in: RoundedRectangle.standard(CornerStandard.element)
         )
+
+        .contextMenu {
+            Button("Remove Screen", role: .destructive) {
+                outputs.removePlaceholderScreen(id: screen.id)
+            }
+        }
     }
 
     private func screenStatus(
@@ -564,81 +570,97 @@ private struct ScreenDetail: View {
     }
 
     private var identityBar: some View {
-        HStack(spacing: 10) {
-            TextField("Name", text: $name)
-                .textFieldStyle(.plain)
-                .font(.title3.weight(.semibold))
-                .onSubmit(commit)
-                .frame(maxWidth: 240)
-                .help("The screen's name — presets and services route by it")
-            TextField("W", text: $widthText)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .frame(width: 56)
-                .multilineTextAlignment(.trailing)
-                .font(.callout.monospacedDigit())
-                .onSubmit(commit)
-            Text("×").foregroundStyle(.tertiary)
-            TextField("H", text: $heightText)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .frame(width: 56)
-                .multilineTextAlignment(.trailing)
-                .font(.callout.monospacedDigit())
-                .onSubmit(commit)
-            Menu {
-                ForEach([24, 25, 30, 50, 60], id: \.self) { rate in
-                    Toggle("\(rate) fps", isOn: Binding(
-                        get: { screen.framesPerSecond == rate },
-                        set: { _ in setFrameRate(rate) }
-                    ))
-                }
-            } label: {
-                Text("\(screen.framesPerSecond) fps")
-                    .font(.callout)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .fixedSize()
-            .help("Render cadence — match the venue or stream rate")
-            if outputs.role(forScreen: screen.id) == .audience {
 
-                Picker("", selection: Binding(
-                    get: { outputs.scaleMode(forScreen: screen.id) },
-                    set: { outputs.setScaleMode($0, forScreen: screen.id) }
-                )) {
-                    Text("Fit Slides").tag(OutputScaleMode.fit)
-                    Text("Fill Slides").tag(OutputScaleMode.fill)
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .fixedSize()
-                .help("When a presentation is a different shape than this screen: Fit shows the whole slide with its background filling the sides; Fill covers the screen and crops the edges")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                identityFacts
             }
-            Spacer()
+            HStack(spacing: 10) {
+                identityVerbs
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var identityFacts: some View {
+        TextField("Name", text: $name)
+            .textFieldStyle(.plain)
+            .font(.title3.weight(.semibold))
+            .onSubmit(commit)
+            .frame(maxWidth: 240)
+            .help("The screen's name — presets and services route by it")
+        TextField("W", text: $widthText)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .frame(width: 56)
+            .multilineTextAlignment(.trailing)
+            .font(.callout.monospacedDigit())
+            .onSubmit(commit)
+        Text("×").foregroundStyle(.tertiary)
+        TextField("H", text: $heightText)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .frame(width: 56)
+            .multilineTextAlignment(.trailing)
+            .font(.callout.monospacedDigit())
+            .onSubmit(commit)
+        Menu {
+            ForEach([24, 25, 30, 50, 60], id: \.self) { rate in
+                Toggle("\(rate) fps", isOn: Binding(
+                    get: { screen.framesPerSecond == rate },
+                    set: { _ in setFrameRate(rate) }
+                ))
+            }
+        } label: {
+            Text("\(screen.framesPerSecond) fps")
+                .font(.callout)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Render cadence — match the venue or stream rate")
+        if outputs.role(forScreen: screen.id) == .audience {
+
             Picker("", selection: Binding(
-                get: { outputs.role(forScreen: screen.id) },
-                set: { outputs.setRole($0, forScreen: screen.id) }
+                get: { outputs.scaleMode(forScreen: screen.id) },
+                set: { outputs.setScaleMode($0, forScreen: screen.id) }
             )) {
-                Text("Audience").tag(ScreenRole.audience)
-                Text("Confidence").tag(ScreenRole.confidence)
+                Text("Fit Slides").tag(OutputScaleMode.fit)
+                Text("Fill Slides").tag(OutputScaleMode.fill)
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .controlSize(.small)
             .fixedSize()
-            .help("Audience carries the program scene through preset routing; Confidence carries the stage layout — current/next, clock, timers, alerts")
-            Button("Identify") { identify() }
-                .controlSize(.small)
-                .help("Flash the alignment grid on this screen's outputs for a moment — which glass/wire is this?")
-            Toggle("Sync Test", isOn: Binding(
-                get: { outputs.syncTestScreens.contains(screen.id) },
-                set: { outputs.setSyncTest($0, forScreen: screen.id) }
-            ))
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            .help("Play the metronome sync pattern on this screen — a click and a flash every beat, the circle filling each bar — and check its picture against its sound wherever the two end up: the room, a stream, a send")
+            .help("When a presentation is a different shape than this screen: Fit shows the whole slide with its background filling the sides; Fill covers the screen and crops the edges")
         }
+        Spacer()
+    }
+
+    @ViewBuilder
+    private var identityVerbs: some View {
+        Picker("", selection: Binding(
+            get: { outputs.role(forScreen: screen.id) },
+            set: { outputs.setRole($0, forScreen: screen.id) }
+        )) {
+            Text("Audience").tag(ScreenRole.audience)
+            Text("Confidence").tag(ScreenRole.confidence)
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Audience carries the program scene through preset routing; Confidence carries the stage layout — current/next, clock, timers, alerts")
+        Button("Identify") { identify() }
+            .controlSize(.small)
+            .help("Flash the alignment grid on this screen's outputs for a moment — which glass/wire is this?")
+        Toggle("Sync Test", isOn: Binding(
+            get: { outputs.syncTestScreens.contains(screen.id) },
+            set: { outputs.setSyncTest($0, forScreen: screen.id) }
+        ))
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
+        .help("Play the metronome sync pattern on this screen — a click and a flash every beat, the circle filling each bar — and check its picture against its sound wherever the two end up: the room, a stream, a send")
+        Spacer()
     }
 
     private func identify() {
