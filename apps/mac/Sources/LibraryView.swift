@@ -336,7 +336,7 @@ struct LibrarySidebar: View {
             : upcoming ? "Sort, or show only what's used in an upcoming service" : "Sort")
     }
 
-    private func searchHitRow(_ hit: LibraryIndex.Hit) -> some View {
+    private func searchHitRow(_ hit: LibraryIndex.Hit, menus: RowMenuLists) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Glyph(kind: section(for: hit.entry)?.glyph ?? .presentations, size: 13)
                 .foregroundStyle(.secondary)
@@ -367,10 +367,22 @@ struct LibrarySidebar: View {
         .tag(hit.entry.id)
         .draggable(hit.entry.id)
         .contextMenu {
-            if [.presentation, .media, .audio].contains(hit.entry.kind) {
-                Button("Add to Service") { model.addToCurrentService(hit.entry) }
-            }
+            Button("Show in Library") { showInLibrary(hit.entry) }
+            Divider()
+            entryMenu(hit.entry, menus: menus)
         }
+    }
+
+    private func showInLibrary(_ entry: LibraryIndex.Entry) {
+        guard let section = section(for: entry) else { return }
+        searchText = ""
+        model.selectedSection = section
+        folderPath = nil
+        showHome(entry.id)
+        if folderPath == [], !model.childFolders(in: section, under: []).isEmpty {
+            folderPath = [Self.unfiledToken]
+        }
+        model.librarySelection = [entry.id]
     }
 
     @ViewBuilder
@@ -385,11 +397,13 @@ struct LibrarySidebar: View {
         let cloudHits = cloudSearchHits.filter { item in
             searchScopes.isEmpty || searchScopes.contains { $0.kind == item.kind }
         }
+
+        let menus = Dictionary(uniqueKeysWithValues: Set(hits.compactMap { section(for: $0.entry) }).map { ($0, rowMenuLists(for: $0)) })
         List(selection: $model.selectedEntryID) {
             ForEach(TeamDriveLogic.searchRows(hits: hits, cloud: cloudHits, query: searchText)) { row in
                 switch row {
                 case .hit(let hit):
-                    searchHitRow(hit)
+                    searchHitRow(hit, menus: section(for: hit.entry).flatMap { menus[$0] } ?? RowMenuLists(folders: [], playlists: [], selection: []))
                 case .cloud(let item):
                     HStack(alignment: .firstTextBaseline) {
                         Glyph(kind: LibrarySection.libraryTabs.first { $0.kind == item.kind }?.glyph ?? .presentations, size: 13)
@@ -966,7 +980,7 @@ struct LibrarySidebar: View {
                     }
                     if !menus.playlists.isEmpty { Divider() }
                     Button("New Playlist…") {
-                        if let id = model.createPlaylist(in: model.selectedSection) {
+                        if let id = model.createPlaylist(in: .audio) {
                             for entry in tracks { model.addToPlaylist(id, itemID: entry.id) }
                         }
                     }
@@ -1051,7 +1065,7 @@ struct LibrarySidebar: View {
                     }
                     if !menus.playlists.isEmpty { Divider() }
                     Button("New Playlist…") {
-                        if let id = model.createPlaylist(in: model.selectedSection) {
+                        if let id = model.createPlaylist(in: .audio) {
                             model.addToPlaylist(id, itemID: entry.id)
                         }
                     }
