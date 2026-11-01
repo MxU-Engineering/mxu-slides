@@ -546,82 +546,96 @@ public enum StarterPack: String, CaseIterable, Sendable {
     }
 
     private func namePlate(timed: Bool, base b: String) -> Overlay {
-        let look = look
-        var objects: [SlideObject] = []
-        var order: [String] = []
 
         let outTrigger: AnimationTrigger = timed ? .afterPrevious : .onClick
         let outDelay: Double? = timed ? 6 : nil
 
-        switch self {
-        case .cleanGeometric:
-            let accentIn = plateIn("\(b).accent.in"), accentOut = plateOut("\(b).accent.out", .afterPrevious, delay: -0.2)
-            let plateIn = step("\(b).plate.in", .in, .wipe, .afterPrevious, delay: -0.3, duration: 0.5, ramp: .out, edge: .left, softEdge: 40)
-            let plateOut = step("\(b).plate.out", .out, .wipe, .withPrevious, delay: 0.05, duration: 0.4, ramp: .in, edge: .left, softEdge: 40)
-            let nameIn = textIn("\(b).name.in", delay: -0.15, rise: 90), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay, distance: 90)
-            let ruleIn = ruleIn("\(b).rule.in", delay: -0.35, duration: 0.45), ruleOut = ruleOut("\(b).rule.out", edge: .left)
-            let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.1, rise: -60), titleOut = textOut("\(b).title.out", .withPrevious, distance: 60)
-            objects = [
-                block("\(b).plate", "Plate", x: 160, y: 820, w: 960, h: 170, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [plateIn, plateOut]),
-                block("\(b).accent", "Accent Bar", x: 120, y: 820, w: 40, h: 170, color: look.accent, radius: 0, animationSteps: [accentIn, accentOut]),
-                matte("\(b).mask.name", x: 160, y: 812, w: 960, h: 98),
-                label("\(b).name", "Name", "Full Name", x: 160, y: 824, w: 960, h: 84, size: 60, display: true, inset: 40, maskedBy: "\(b).mask.name", shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                block("\(b).rule", "Rule", x: 200, y: 910, w: 300, h: 4, color: look.accent2, radius: 0, animationSteps: [ruleIn, ruleOut]),
-                matte("\(b).mask.title", x: 160, y: 914, w: 960, h: 80),
-                label("\(b).title", "Title", "Title or role", x: 160, y: 920, w: 960, h: 60, size: 32, color: look.accent2, tracking: 2, inset: 40, maskedBy: "\(b).mask.title", animationSteps: [titleIn, titleOut]),
-            ]
-            order = [accentIn.id, plateIn.id, nameIn.id, ruleIn.id, titleIn.id, nameOut.id, titleOut.id, ruleOut.id, plateOut.id, accentOut.id]
-
-        case .editorialSerif:
-            let bandIn = plateIn("\(b).band.in"), bandOut = plateOut("\(b).band.out", .afterPrevious, delay: -0.3)
-            let topIn = ruleIn("\(b).top.in", delay: -0.7, duration: 0.8), topOut = ruleOut("\(b).top.out")
-            let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
-            let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.2), titleOut = textOut("\(b).title.out", .withPrevious)
-            let bottomIn = ruleIn("\(b).bottom.in", .withPrevious, delay: 0.1, duration: 0.8), bottomOut = ruleOut("\(b).bottom.out", edge: .left)
-            objects = [
-                block("\(b).band", "Band", x: 0, y: 800, w: 1300, h: 220, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
-                block("\(b).top", "Hairline", x: 140, y: 828, w: 720, h: 2, color: look.accent, radius: 0, animationSteps: [topIn, topOut]),
-                label("\(b).name", "Name", "Full Name", x: 140, y: 840, w: 1000, h: 92, size: 66, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                label("\(b).title", "Title", "Title or role", x: 140, y: 930, w: 1000, h: 50, size: 28, color: look.accent, tracking: kickerTracking, uppercase: true, inset: 0, animationSteps: [titleIn, titleOut]),
-                block("\(b).bottom", "Hairline", x: 140, y: 992, w: 220, h: 2, color: look.accent, radius: 0, animationSteps: [bottomIn, bottomOut]),
-            ]
-            order = [bandIn.id, topIn.id, nameIn.id, titleIn.id, bottomIn.id, nameOut.id, titleOut.id, topOut.id, bottomOut.id, bandOut.id]
-
-        case .boldBlocks:
-            let yellowIn = plateIn("\(b).yellow.in"), yellowOut = plateOut("\(b).yellow.out", .afterPrevious, delay: -0.2)
-            let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
-            let blackIn = plateIn("\(b).black.in", .withPrevious, delay: 0.1), blackOut = plateOut("\(b).black.out", .withPrevious, delay: 0.05)
-            let titleIn = textIn("\(b).title.in"), titleOut = textOut("\(b).title.out", .withPrevious)
-            let chipIn = popIn("\(b).chip.in", delay: -0.1, duration: 0.35, from: 0), chipOut = popOut("\(b).chip.out")
-            objects = [
-                block("\(b).yellow", "Yellow Block", x: 120, y: 800, w: 820, h: 140, color: look.accent, skew: -12, animationSteps: [yellowIn, yellowOut]),
-                label("\(b).name", "Name", "Full Name", x: 150, y: 800, w: 790, h: 140, size: 72, display: true, color: look.inkOnAccent, tracking: 2, uppercase: true, inset: 40, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                block("\(b).black", "Black Block", x: 200, y: 940, w: 680, h: 64, color: look.accent2, skew: -12, animationSteps: [blackIn, blackOut]),
-                label("\(b).title", "Title", "Title or role", x: 230, y: 940, w: 650, h: 64, size: 30, color: look.ink, tracking: 5, uppercase: true, inset: 40, animationSteps: [titleIn, titleOut]),
-                block("\(b).chip", "Chip", x: 94, y: 940, w: 64, h: 64, color: look.accent, skew: -12, animationSteps: [chipIn, chipOut]),
-            ]
-            order = [yellowIn.id, nameIn.id, blackIn.id, titleIn.id, chipIn.id, nameOut.id, titleOut.id, chipOut.id, blackOut.id, yellowOut.id]
-
-        case .digital:
-            let plateIn = plateIn("\(b).plate.in"), plateOut = plateOut("\(b).plate.out", .afterPrevious, delay: -0.3)
-            let lbIn = popIn("\(b).lb.in", .afterPrevious, delay: -0.05, duration: 0.5, from: 0.2), lbOut = popOut("\(b).lb.out")
-            let rbIn = popIn("\(b).rb.in", .withPrevious, delay: 0, duration: 0.5, from: 0.2), rbOut = popOut("\(b).rb.out")
-            let kickIn = typeIn("\(b).kicker.in", delay: -0.3, duration: 0.8), kickOut = textOut("\(b).kicker.out", .withPrevious)
-            let nameIn = textIn("\(b).name.in", delay: -0.3), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
-            let bandIn = ruleIn("\(b).band.in", delay: -0.5, duration: 0.6), bandOut = ruleOut("\(b).band.out")
-            let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.15), titleOut = textOut("\(b).title.out", .withPrevious)
-            objects = [
-                block("\(b).plate", "Plate", x: 120, y: 810, w: 960, h: 190, color: look.plate, stroke: ObjectStroke(colorHex: look.accent, width: 1.5), animationSteps: [plateIn, plateOut]),
-                label("\(b).lb", "Bracket", "[", x: 96, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [lbIn, lbOut]),
-                label("\(b).rb", "Bracket", "]", x: 1014, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [rbIn, rbOut]),
-                label("\(b).kicker", "Kicker", "// speaker", x: 160, y: 822, w: 800, h: 40, size: 22, color: look.accent2, tracking: 4, inset: 0, animationSteps: [kickIn, kickOut]),
-                label("\(b).name", "Name", "Full Name", x: 160, y: 858, w: 880, h: 80, size: 58, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                block("\(b).band", "Band", x: 160, y: 942, w: 760, h: 36, fill: gradient(look.accent, look.accent2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
-                label("\(b).title", "Title", "Title or role", x: 160, y: 942, w: 760, h: 36, size: 22, color: look.inkOnAccent, tracking: 3, uppercase: true, inset: 16, animationSteps: [titleIn, titleOut]),
-            ]
-            order = [plateIn.id, lbIn.id, rbIn.id, kickIn.id, nameIn.id, bandIn.id, titleIn.id, nameOut.id, titleOut.id, kickOut.id, bandOut.id, lbOut.id, rbOut.id, plateOut.id]
+        let plate = switch self {
+        case .cleanGeometric: namePlateCleanGeometric(b, outTrigger: outTrigger, outDelay: outDelay)
+        case .editorialSerif: namePlateEditorialSerif(b, outTrigger: outTrigger, outDelay: outDelay)
+        case .boldBlocks: namePlateBoldBlocks(b, outTrigger: outTrigger, outDelay: outDelay)
+        case .digital: namePlateDigital(b, outTrigger: outTrigger, outDelay: outDelay)
         }
-        return Overlay(id: b, name: timed ? "Name + Title (timed)" : "Name + Title", objects: objects, animationOrder: order)
+        return Overlay(id: b, name: timed ? "Name + Title (timed)" : "Name + Title", objects: plate.objects, animationOrder: plate.order)
+    }
+
+    private func namePlateCleanGeometric(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let accentIn = plateIn("\(b).accent.in"), accentOut = plateOut("\(b).accent.out", .afterPrevious, delay: -0.2)
+        let plateIn = step("\(b).plate.in", .in, .wipe, .afterPrevious, delay: -0.3, duration: 0.5, ramp: .out, edge: .left, softEdge: 40)
+        let plateOut = step("\(b).plate.out", .out, .wipe, .withPrevious, delay: 0.05, duration: 0.4, ramp: .in, edge: .left, softEdge: 40)
+        let nameIn = textIn("\(b).name.in", delay: -0.15, rise: 90), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay, distance: 90)
+        let ruleIn = ruleIn("\(b).rule.in", delay: -0.35, duration: 0.45), ruleOut = ruleOut("\(b).rule.out", edge: .left)
+        let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.1, rise: -60), titleOut = textOut("\(b).title.out", .withPrevious, distance: 60)
+        let objects: [SlideObject] = [
+            block("\(b).plate", "Plate", x: 160, y: 820, w: 960, h: 170, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [plateIn, plateOut]),
+            block("\(b).accent", "Accent Bar", x: 120, y: 820, w: 40, h: 170, color: look.accent, radius: 0, animationSteps: [accentIn, accentOut]),
+            matte("\(b).mask.name", x: 160, y: 812, w: 960, h: 98),
+            label("\(b).name", "Name", "Full Name", x: 160, y: 824, w: 960, h: 84, size: 60, display: true, inset: 40, maskedBy: "\(b).mask.name", shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            block("\(b).rule", "Rule", x: 200, y: 910, w: 300, h: 4, color: look.accent2, radius: 0, animationSteps: [ruleIn, ruleOut]),
+            matte("\(b).mask.title", x: 160, y: 914, w: 960, h: 80),
+            label("\(b).title", "Title", "Title or role", x: 160, y: 920, w: 960, h: 60, size: 32, color: look.accent2, tracking: 2, inset: 40, maskedBy: "\(b).mask.title", animationSteps: [titleIn, titleOut]),
+        ]
+        let order = [accentIn.id, plateIn.id, nameIn.id, ruleIn.id, titleIn.id, nameOut.id, titleOut.id, ruleOut.id, plateOut.id, accentOut.id]
+        return (objects, order)
+    }
+
+    private func namePlateEditorialSerif(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let bandIn = plateIn("\(b).band.in"), bandOut = plateOut("\(b).band.out", .afterPrevious, delay: -0.3)
+        let topIn = ruleIn("\(b).top.in", delay: -0.7, duration: 0.8), topOut = ruleOut("\(b).top.out")
+        let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
+        let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.2), titleOut = textOut("\(b).title.out", .withPrevious)
+        let bottomIn = ruleIn("\(b).bottom.in", .withPrevious, delay: 0.1, duration: 0.8), bottomOut = ruleOut("\(b).bottom.out", edge: .left)
+        let objects: [SlideObject] = [
+            block("\(b).band", "Band", x: 0, y: 800, w: 1300, h: 220, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
+            block("\(b).top", "Hairline", x: 140, y: 828, w: 720, h: 2, color: look.accent, radius: 0, animationSteps: [topIn, topOut]),
+            label("\(b).name", "Name", "Full Name", x: 140, y: 840, w: 1000, h: 92, size: 66, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            label("\(b).title", "Title", "Title or role", x: 140, y: 930, w: 1000, h: 50, size: 28, color: look.accent, tracking: kickerTracking, uppercase: true, inset: 0, animationSteps: [titleIn, titleOut]),
+            block("\(b).bottom", "Hairline", x: 140, y: 992, w: 220, h: 2, color: look.accent, radius: 0, animationSteps: [bottomIn, bottomOut]),
+        ]
+        let order = [bandIn.id, topIn.id, nameIn.id, titleIn.id, bottomIn.id, nameOut.id, titleOut.id, topOut.id, bottomOut.id, bandOut.id]
+        return (objects, order)
+    }
+
+    private func namePlateBoldBlocks(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let yellowIn = plateIn("\(b).yellow.in"), yellowOut = plateOut("\(b).yellow.out", .afterPrevious, delay: -0.2)
+        let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
+        let blackIn = plateIn("\(b).black.in", .withPrevious, delay: 0.1), blackOut = plateOut("\(b).black.out", .withPrevious, delay: 0.05)
+        let titleIn = textIn("\(b).title.in"), titleOut = textOut("\(b).title.out", .withPrevious)
+        let chipIn = popIn("\(b).chip.in", delay: -0.1, duration: 0.35, from: 0), chipOut = popOut("\(b).chip.out")
+        let objects: [SlideObject] = [
+            block("\(b).yellow", "Yellow Block", x: 120, y: 800, w: 820, h: 140, color: look.accent, skew: -12, animationSteps: [yellowIn, yellowOut]),
+            label("\(b).name", "Name", "Full Name", x: 150, y: 800, w: 790, h: 140, size: 72, display: true, color: look.inkOnAccent, tracking: 2, uppercase: true, inset: 40, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            block("\(b).black", "Black Block", x: 200, y: 940, w: 680, h: 64, color: look.accent2, skew: -12, animationSteps: [blackIn, blackOut]),
+            label("\(b).title", "Title", "Title or role", x: 230, y: 940, w: 650, h: 64, size: 30, color: look.ink, tracking: 5, uppercase: true, inset: 40, animationSteps: [titleIn, titleOut]),
+            block("\(b).chip", "Chip", x: 94, y: 940, w: 64, h: 64, color: look.accent, skew: -12, animationSteps: [chipIn, chipOut]),
+        ]
+        let order = [yellowIn.id, nameIn.id, blackIn.id, titleIn.id, chipIn.id, nameOut.id, titleOut.id, chipOut.id, blackOut.id, yellowOut.id]
+        return (objects, order)
+    }
+
+    private func namePlateDigital(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let plateIn = plateIn("\(b).plate.in"), plateOut = plateOut("\(b).plate.out", .afterPrevious, delay: -0.3)
+        let lbIn = popIn("\(b).lb.in", .afterPrevious, delay: -0.05, duration: 0.5, from: 0.2), lbOut = popOut("\(b).lb.out")
+        let rbIn = popIn("\(b).rb.in", .withPrevious, delay: 0, duration: 0.5, from: 0.2), rbOut = popOut("\(b).rb.out")
+        let kickIn = typeIn("\(b).kicker.in", delay: -0.3, duration: 0.8), kickOut = textOut("\(b).kicker.out", .withPrevious)
+        let nameIn = textIn("\(b).name.in", delay: -0.3), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
+        let bandIn = ruleIn("\(b).band.in", delay: -0.5, duration: 0.6), bandOut = ruleOut("\(b).band.out")
+        let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.15), titleOut = textOut("\(b).title.out", .withPrevious)
+        let objects: [SlideObject] = [
+            block("\(b).plate", "Plate", x: 120, y: 810, w: 960, h: 190, color: look.plate, stroke: ObjectStroke(colorHex: look.accent, width: 1.5), animationSteps: [plateIn, plateOut]),
+            label("\(b).lb", "Bracket", "[", x: 96, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [lbIn, lbOut]),
+            label("\(b).rb", "Bracket", "]", x: 1014, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [rbIn, rbOut]),
+            label("\(b).kicker", "Kicker", "// speaker", x: 160, y: 822, w: 800, h: 40, size: 22, color: look.accent2, tracking: 4, inset: 0, animationSteps: [kickIn, kickOut]),
+            label("\(b).name", "Name", "Full Name", x: 160, y: 858, w: 880, h: 80, size: 58, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            block("\(b).band", "Band", x: 160, y: 942, w: 760, h: 36, fill: gradient(look.accent, look.accent2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
+            label("\(b).title", "Title", "Title or role", x: 160, y: 942, w: 760, h: 36, size: 22, color: look.inkOnAccent, tracking: 3, uppercase: true, inset: 16, animationSteps: [titleIn, titleOut]),
+        ]
+        let order = [plateIn.id, lbIn.id, rbIn.id, kickIn.id, nameIn.id, bandIn.id, titleIn.id, nameOut.id, titleOut.id, kickOut.id, bandOut.id, lbOut.id, rbOut.id, plateOut.id]
+        return (objects, order)
     }
 
     private func verseLowerThird(base b: String) -> Overlay {

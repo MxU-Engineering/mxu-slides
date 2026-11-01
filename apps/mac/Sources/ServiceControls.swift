@@ -55,6 +55,8 @@ final class ServiceControls {
         self.mixer = AudioMixerController(audio: audio)
         self.timeline.controls = self
         self.timecode.controls = self
+
+        media.runVideoActions = { [weak self] actions in self?.actionRouter?.execute(actions) }
         tracks.model = appModel
         tracks.mixer = mixer
         mixer.tracks = tracks

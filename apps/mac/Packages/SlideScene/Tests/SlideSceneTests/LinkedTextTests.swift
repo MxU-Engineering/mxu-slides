@@ -372,3 +372,51 @@ private func link(_ source: TextSourceKind) -> TextLink { TextLink(source: sourc
     #expect(LinkedText.ticksSubSecond(link(.timecode)), "frames tick faster than a second")
     #expect(LinkedText.resolve(link(.timecode), info: LinkedText.previewInfo, at: LinkedText.previewDate) == "01:01:02:15")
 }
+
+private func markedInfo() -> ConfidenceInfo {
+    var info = fixtureInfo()
+    info.videoCountdown = VideoCountdown(
+        name: "Bumper", duration: 120, position: 30, anchoredAt: fixedDate, isPlaying: true,
+        marks: [
+            .init(id: "a", name: "Lights", at: 45),
+            .init(id: "b", name: "Walk On", at: 60),
+            .init(id: "c", name: "walk on", at: 90),
+        ])
+    return info
+}
+
+private func countdown(_ target: VideoCountdownTarget?, name: String? = nil, up: Bool = false) -> TextLink {
+    TextLink(source: .videoCountdown, showsVideoName: false, videoTarget: target, videoMarkName: name, countsUp: up ? true : nil)
+}
+
+@Test func videoCountdownCountsToTheNextOrANamedActionThenTheEnd() {
+    let info = markedInfo()
+    #expect(LinkedText.resolve(countdown(nil), info: info, at: fixedDate) == "1:30", "absent = the end, as before")
+    #expect(LinkedText.resolve(countdown(.nextMark), info: info, at: fixedDate) == "0:15")
+    #expect(LinkedText.resolve(countdown(.nextMark), info: info, at: fixedDate + 20) == "0:10", "past Lights: to Walk On")
+    #expect(LinkedText.resolve(countdown(.namedMark, name: "WALK ON"), info: info, at: fixedDate) == "0:30")
+    #expect(LinkedText.resolve(countdown(.nextMark), info: info, at: fixedDate + 70) == "0:20", "none left: the end")
+}
+
+@Test func videoCountdownCountsUpFromThePreviousAction() {
+    let info = markedInfo()
+    #expect(LinkedText.resolve(countdown(.nextMark, up: true), info: info, at: fixedDate) == "0:30", "from the top")
+    #expect(LinkedText.resolve(countdown(.nextMark, up: true), info: info, at: fixedDate + 20) == "0:05", "from Lights")
+    #expect(LinkedText.resolve(countdown(nil, up: true), info: info, at: fixedDate + 20) == "0:50", "to the end: elapsed")
+}
+
+@Test func videoActionNameShowsTheUpcomingMarkOrNothing() {
+    let info = markedInfo()
+    let title = TextLink(source: .videoMarkName)
+    #expect(LinkedText.resolve(title, info: info, at: fixedDate) == "Lights")
+    #expect(LinkedText.resolve(title, info: info, at: fixedDate + 20) == "Walk On")
+    #expect(LinkedText.resolve(title, info: info, at: fixedDate + 70) == nil, "none left")
+    #expect(LinkedText.resolve(title, info: ConfidenceInfo(), at: fixedDate) == nil, "nothing playing")
+    #expect(LinkedText.isTimeVarying(title))
+}
+
+@Test func countingUpNeverReadsAmber() {
+    let info = markedInfo()
+    #expect(LinkedText.warningColorHex(for: countdown(.nextMark), info: info, at: fixedDate + 10) == TimerWarning.amberHex)
+    #expect(LinkedText.warningColorHex(for: countdown(.nextMark, up: true), info: info, at: fixedDate + 10) == nil)
+}

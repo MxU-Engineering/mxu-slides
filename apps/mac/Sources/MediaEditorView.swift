@@ -176,6 +176,11 @@ final class MediaPreviewPlayer {
         }
     }
 
+    func currentSeconds() -> Double {
+        let seconds = player.currentTime().seconds
+        return seconds.isFinite ? max(0, seconds) : 0
+    }
+
     func teardown() {
         player.pause()
         pollTimer?.invalidate()
@@ -669,6 +674,15 @@ struct MediaEditorView: View {
 
     @State private var loadedHash: String?
 
+    @State private var filmstrip: [CGImage] = []
+    @State private var placingMark: PendingVideoMark?
+    @State private var editingMarkID: String?
+    @State private var renamingMarkID: String?
+
+    @State private var recolorSave: Task<Void, Never>?
+    @State private var marksBeforeRecolor: [VideoMark]??
+    @State private var markNameDraft = ""
+
     private var fileHash: String? {
         cachedMedia?.fileHash ?? cachedAudio?.fileHash
     }
@@ -682,10 +696,41 @@ struct MediaEditorView: View {
                 Color.clear
                     .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
                 previewArea
+                if isVideo {
+
+                    VideoActionsCard(
+                        model: model, preview: preview, marks: cachedMedia?.marks ?? [],
+                        trim: editorTrimWindow, filmstrip: filmstrip,
+                        add: addMark, move: moveMark, remove: removeMark,
+                        editActions: { editingMarkID = $0 }, rename: startRenameMark)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, CornerStandard.panelInset)
+                }
             }
             .frame(maxWidth: .infinity)
 
             settingsPanel
+            .sheet(item: $placingMark) { pending in
+                ActionPlacementSheet(model: model, draft: pending.action) { action in
+                    placeMark(
+                        name: VideoMarks.defaultName(forActionLabel: slideActionLabel(action, model: model)),
+                        at: pending.at, actions: [action])
+                }
+            }
+            .sheet(isPresented: Binding(get: { editingMarkID != nil }, set: { if !$0 { editingMarkID = nil } })) {
+                if let id = editingMarkID {
+                    SlideActionsSheet(
+                        model: model, slideName: "",
+                        actions: Binding(
+                            get: { cachedMedia?.marks?.first { $0.id == id }?.actions ?? [] },
+                            set: { actions in
+                                writeMarks("Edit Video Action") { marks in
+                                    if let index = marks.firstIndex(where: { $0.id == id }) { marks[index].actions = actions }
+                                }
+                            }),
+                        title: "Video Action — \(cachedMedia?.marks?.first { $0.id == id }?.name ?? "")")
+                }
+            }
             .sheet(item: $replaceFileRequest) { request in
                 ReplaceMediaFileSheet(request: request) {
                     ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
@@ -708,6 +753,21 @@ struct MediaEditorView: View {
             Task { await refresh(reloadMedia: false) }
         }
         .onDisappear { preview.teardown() }
+        .alert("Rename Video Action", isPresented: Binding(
+            get: { renamingMarkID != nil }, set: { if !$0 { renamingMarkID = nil } }
+        )) {
+            TextField("Name", text: $markNameDraft)
+            Button("Rename") {
+                let name = markNameDraft.trimmingCharacters(in: .whitespaces)
+                if let id = renamingMarkID, !name.isEmpty {
+                    writeMarks("Rename Video Action") { marks in
+                        if let index = marks.firstIndex(where: { $0.id == id }) { marks[index].name = name }
+                    }
+                }
+                renamingMarkID = nil
+            }
+            Button("Cancel", role: .cancel) { renamingMarkID = nil }
+        }
         .alert("New Effect Preset", isPresented: $presetNamePrompt) {
             TextField("Name", text: $presetNameDraft)
             Button("Save") {
@@ -737,6 +797,7 @@ struct MediaEditorView: View {
             if let hash, let url = model.blobs?.url(forHash: hash) {
                 if isTimeBased {
                     await preview.load(url: url)
+                    filmstrip = isVideo ? await VideoActionsCard.filmstrip(url: url) : []
                 } else {
                     baseStill = await Self.downsampledStill(url: url)
                 }
@@ -896,6 +957,14 @@ struct MediaEditorView: View {
                 playRatePicker(item)
             }
             transitionRows
+        }
+        if item.mediaKind == .video {
+            VideoActionsSection(
+                model: model, marks: item.marks ?? [], add: addMark,
+                rename: startRenameMark,
+                recolor: recolorMark,
+                remove: removeMark, editActions: { editingMarkID = $0 },
+                goTo: { preview.seek(to: $0, final: true) })
         }
         if item.mediaKind == .video {
             trimSection
@@ -1255,6 +1324,82 @@ struct MediaEditorView: View {
                 if let outPoint { $0.outPoint = outPoint }
             }
         }
+    }
+
+    private var editorTrimWindow: ClosedRange<Double>? {
+        guard preview.duration > 0 else { return nil }
+        return MediaTrimEdit.window(inPoint: trimIn, outPoint: trimOut, duration: preview.duration)
+    }
+
+    private func addMark(_ action: SlideAction?) {
+        let at = preview.currentSeconds()
+        if let action {
+            placingMark = PendingVideoMark(action: action, at: at)
+        } else {
+            placeMark(name: VideoMarks.defaultName(cachedMedia?.marks), at: at, actions: [])
+        }
+    }
+
+    private func placeMark(name: String, at: Double, actions: [SlideAction]) {
+        let length = preview.duration
+        writeMarks("Add Video Action") { marks in
+            marks = VideoMarks.adding(marks, id: UUID().uuidString, name: name, at: at, actions: actions, fileLength: length)
+        }
+    }
+
+    private func moveMark(_ id: String, to at: Double) {
+        let length = preview.duration
+        writeMarks("Move Video Action") { marks in marks = VideoMarks.moving(marks, id: id, to: at, fileLength: length) }
+    }
+
+    private func recolorMark(_ id: String, _ hex: String) {
+        if marksBeforeRecolor == nil { marksBeforeRecolor = .some(cachedMedia?.marks) }
+        if let index = cachedMedia?.marks?.firstIndex(where: { $0.id == id }) {
+            cachedMedia?.marks?[index].colorHex = hex
+        }
+        recolorSave?.cancel()
+        recolorSave = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, let before = marksBeforeRecolor else { return }
+            marksBeforeRecolor = nil
+            let after = cachedMedia?.marks
+            cachedMedia?.marks = before
+            setMarks(after, undoName: "Color Video Action")
+        }
+    }
+
+    private func startRenameMark(_ id: String) {
+        markNameDraft = cachedMedia?.marks?.first { $0.id == id }?.name ?? ""
+        renamingMarkID = id
+    }
+
+    private func removeMark(_ id: String) {
+        writeMarks("Remove Video Action") { marks in marks.removeAll { $0.id == id } }
+    }
+
+    private func writeMarks(_ name: String, _ mutate: (inout [VideoMark]) -> Void) {
+        var marks = cachedMedia?.marks ?? []
+        mutate(&marks)
+        setMarks(marks.isEmpty ? nil : marks, undoName: name)
+    }
+
+    private func setMarks(_ stored: [VideoMark]?, undoName: String) {
+        let before = cachedMedia?.marks
+        guard before != stored else { return }
+        applyMarks(stored)
+        let undo = { applyMarks(before); return true }
+        let redo = { applyMarks(stored); return true }
+
+        if undoName == "Edit Video Action" || undoName == "Color Video Action" {
+            model.moveUndo.registerEdit(key: "videoMarks.\(entry.id).\(undoName)", label: undoName, undo: undo, redo: redo)
+        } else {
+            model.moveUndo.registerMove(label: undoName, undo: undo, redo: redo)
+        }
+    }
+
+    private func applyMarks(_ marks: [VideoMark]?) {
+        cachedMedia?.marks = marks
+        model.updateMedia(entry.id) { $0.marks = marks }
     }
 
     @ViewBuilder

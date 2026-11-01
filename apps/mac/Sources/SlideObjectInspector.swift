@@ -856,6 +856,35 @@ struct SlideObjectInspector: View {
                 }
             }
             if let link {
+                if link.source == .videoCountdown || link.source == .videoMarkName {
+
+                    let counting = link.source == .videoCountdown
+                    InspectorPicker(
+                        counting ? "Counts To" : "Action",
+                        selection: linkWrite(object, \.videoTarget, default: counting ? .end : .nextMark)
+                    ) {
+                        if counting { Text("End of Video").tag(VideoCountdownTarget.end) }
+                        Text("Next Video Action").tag(VideoCountdownTarget.nextMark)
+                        Text("Video Action Named…").tag(VideoCountdownTarget.namedMark)
+                    }
+                    .help(counting
+                        ? "What this box counts to on the playing video. A video action counts to the end once none is left."
+                        : "Which video action's name this box shows; empty once none is left")
+                    if link.videoTarget == .namedMark {
+                        LabeledContent("Action Name") {
+                            CommittedTextField("", text: linkWrite(object, \.videoMarkName, default: ""))
+                                .multilineTextAlignment(.trailing)
+                        }
+                        .help("The video action to count to, matched by name (any capitalization) in whichever video is playing")
+                    }
+                    if counting {
+                        InspectorPicker("Direction", selection: linkWrite(object, \.countsUp, default: false)) {
+                            Text("Down").tag(false)
+                            Text("Up").tag(true)
+                        }
+                        .help("Up counts from the previous video action (or the start of the video) and stops at the target")
+                    }
+                }
                 if link.source == .timer {
                     InspectorPicker("Timer", selection: linkWrite(object, \.timerId, default: "")) {
 
@@ -909,6 +938,15 @@ struct SlideObjectInspector: View {
                         isOn: linkWrite(object, \.usesWarningColor, default: true)
                     )
                     .help("Read the timer's amber/red warning ink when it applies")
+                }
+                if link.source == .videoMarkName {
+                    InspectorPicker("Video From", selection: linkWrite(object, \.videoLayer, default: "")) {
+                        Text(LayerKind.videos.displayName).tag("")
+                        Text(LayerKind.loopingVideos.displayName).tag(LayerKind.loopingVideos.rawValue)
+                        Text(LayerKind.slide.displayName).tag(LayerKind.slide.rawValue)
+                        Text(LayerKind.overlays.displayName).tag(LayerKind.overlays.rawValue)
+                    }
+                    .help("The render layer whose playing video this box reads; Foreground Videos is the room default")
                 }
                 if link.source == .videoCountdown {
                     Toggle(
@@ -2849,6 +2887,7 @@ extension TextSourceKind {
         case .currentPresentation: "Presentation Name"
         case .nextServiceTitle: "Next Service Title"
         case .timecode: "Timecode"
+        case .videoMarkName: "Video Action Name"
         }
     }
 }

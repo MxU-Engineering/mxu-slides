@@ -1,3 +1,4 @@
+import PresenterCore
 import RenderEngine
 import SlideScene
 import SwiftUI
@@ -125,17 +126,21 @@ struct MediaTransportStrip: View {
                 TimelineView(
                     .animation(minimumInterval: 1.0 / 30.0, paused: !target.state.isPlaying)
                 ) { context in
+                    let position = target.state.position(at: context.date)
                     VStack(spacing: 1) {
-                        nameCaption(target)
+                        nameCaption(target, position: position)
                         ScrubBar(
-                            elapsed: target.state.position(at: context.date),
+                            elapsed: position,
                             duration: target.state.duration,
-                            isPlaying: target.state.isPlaying
+                            isPlaying: target.state.isPlaying,
+                            marks: target.state.duration > 0
+                                ? target.marks.map { ($0.at / target.state.duration, VideoMarkColor.color($0.colorHex)) } : []
                         ) { seconds, final in
                             media.seek(target.id, to: seconds, final: final)
                         }
                         HStack(spacing: 2) {
-                            GoToTimeReadout(media: media, row: target)
+
+                            GoToTimeReadout(media: media, row: target, position: position)
                             Text("/ \(ScrubBar.timecode(target.state.duration))")
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.tertiary)
@@ -151,7 +156,7 @@ struct MediaTransportStrip: View {
                         Text(ScrubBar.timecode(target.state.remaining(at: context.date)) + " left")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
-                        nameCaption(target)
+                        nameCaption(target, position: nil)
                     }
                 }
                 .help("Remaining in this pass — select the video in the picker to control it")
@@ -187,8 +192,9 @@ struct MediaTransportStrip: View {
         .help("Jump to \(skipToEndOffset)s before the end — long-press to change the amount")
     }
 
-    private func nameCaption(_ target: MediaTransportController.Row) -> some View {
-        HStack(spacing: 4) {
+    private func nameCaption(_ target: MediaTransportController.Row, position: Double?) -> some View {
+        let next = position.flatMap { VideoMarks.target(target.marks, after: $0, target: .nextMark, name: nil) }
+        return HStack(spacing: 4) {
             Text(
                 nameHovering || target.name.count <= 20
                     ? target.name
@@ -198,6 +204,13 @@ struct MediaTransportStrip: View {
             .foregroundStyle(.tertiary)
             .lineLimit(1)
             .onHover { nameHovering = $0 }
+            if let next, let position {
+                Text("· Next: \(next.name.count <= 16 ? next.name : String(next.name.prefix(16)) + "…") \(ScrubBar.timecode(next.at - position))")
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(VideoMarkColor.color(next.colorHex))
+                    .lineLimit(1)
+                    .help(next.name)
+            }
             if target.candidate.isLooping {
                 Image(systemName: "repeat")
                     .font(.system(size: 7, weight: .medium))
@@ -287,6 +300,7 @@ struct MediaTransportStrip: View {
 private struct GoToTimeReadout: View {
     let media: MediaTransportController
     let row: MediaTransportController.Row
+    let position: Double
 
     @State private var editing = false
     @State private var minutes = 0
@@ -318,14 +332,14 @@ private struct GoToTimeReadout: View {
                 .help("Seek to this time (or press Return)")
             }
         } else {
-            Text(ScrubBar.timecode(row.state.position(at: Date())))
+            Text(ScrubBar.timecode(position))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    let position = Int(row.state.position(at: Date()))
-                    minutes = position / 60
-                    seconds = position % 60
+                    let at = Int(row.state.position(at: Date()))
+                    minutes = at / 60
+                    seconds = at % 60
                     editing = true
                 }
                 .help("Click to type an exact time")

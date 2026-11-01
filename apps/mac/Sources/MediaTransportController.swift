@@ -1,6 +1,7 @@
 import Foundation
 import MediaEngine
 import Observation
+import PresenterCore
 import RenderEngine
 import SlideScene
 
@@ -12,10 +13,13 @@ final class MediaTransportController {
         var candidate: TransportCandidate
         var name: String
         var state: MediaTransportState
+
+        var marks: [VideoMarks.Point] = []
         var id: String { candidate.mediaID }
 
         func tracks(_ other: Row, at date: Date) -> Bool {
-            candidate == other.candidate && name == other.name && state.tracks(other.state, at: date)
+            candidate == other.candidate && name == other.name && marks == other.marks
+                && state.tracks(other.state, at: date)
         }
     }
 
@@ -126,7 +130,10 @@ final class MediaTransportController {
                     isLooping: state.isLooping, firedAt: fired
                 ),
                 name: appModel.entry(seed.mediaID)?.name ?? "Video",
-                state: state
+                state: state,
+                marks: appModel.media(seed.mediaID).map {
+                    VideoMarks.points($0.marks, inPoint: $0.inPoint, length: state.duration)
+                } ?? []
             ))
         }
         let liveIDs = Set(next.map(\.id))
@@ -137,6 +144,7 @@ final class MediaTransportController {
         }
         let moved = !rows.elementsEqual(next) { $0.tracks($1, at: now) }
         if moved { rows = next }
+        fireVideoActions(states, at: now)
         updatePoll()
         let countdownsMoved = pushCountdown()
         if moved || countdownsMoved { rowsVersion += 1 }
@@ -164,12 +172,14 @@ final class MediaTransportController {
                 candidates: rows.map(\.candidate), layer: layer
             ).flatMap({ candidate in rows.first { $0.id == candidate.mediaID } })
             else { continue }
+            let item = appModel.media(target.id)
             wanted[layer] = VideoCountdown(
                 name: target.name,
                 duration: target.state.duration,
                 position: target.state.position(at: now),
                 anchoredAt: now,
-                isPlaying: target.state.isPlaying
+                isPlaying: target.state.isPlaying,
+                marks: VideoMarks.points(item?.marks, inPoint: item?.inPoint, length: target.state.duration)
             )
         }
         var info = render.confidenceInfo
@@ -179,6 +189,7 @@ final class MediaTransportController {
             && wanted.allSatisfy { key, next in
                 current[key].map { held in
                     next.name == held.name
+                        && next.marks == held.marks
                         && next.duration == held.duration
                         && next.isPlaying == held.isPlaying
                         && abs(held.remaining(at: now) - next.remaining(at: now)) < MediaTransportState.playingTolerance
@@ -191,5 +202,55 @@ final class MediaTransportController {
             render.confidenceInfo = info
         }
         return writes
+    }
+
+    var runVideoActions: (([SlideAction]) -> Void)?
+
+    private var markReads: [String: (position: Double, at: Date)] = [:]
+
+    private var markTimer: Timer?
+
+    private func fireVideoActions(_ states: [String: MediaTransportState], at now: Date) {
+        var reads: [String: (position: Double, at: Date)] = [:]
+        var due: [[SlideAction]] = []
+        var wait: TimeInterval?
+        for seed in seeds {
+            guard let state = states[seed.mediaID], state.duration > 0 else { continue }
+            let last = markReads[seed.mediaID]
+            let position = state.position(at: now)
+            guard last != nil || state.isPlaying else { continue }
+            reads[seed.mediaID] = (position, now)
+            let item = appModel.media(seed.mediaID)
+            let points = VideoMarks.points(item?.marks, inPoint: item?.inPoint, length: state.duration)
+            guard !points.isEmpty else { continue }
+            let crossed = VideoMarks.crossed(
+                points, from: last?.position, to: position, elapsed: last.map { now.timeIntervalSince($0.at) } ?? 0,
+                rate: state.rate, length: state.duration, looping: state.isLooping)
+            for point in crossed {
+                DiagnosticsStore.shared.note(
+                    "video.mark", detail: "\(seed.mediaID) \(point.name) at \(String(format: "%.3f", point.at)) read \(String(format: "%.3f", position))")
+                if let actions = item?.marks?.first(where: { $0.id == point.id })?.actions, !actions.isEmpty {
+                    due.append(actions)
+                }
+            }
+            if state.isPlaying, state.rate > 0,
+               let ahead = VideoMarks.untilNext(points, after: position, length: state.duration, looping: state.isLooping) {
+                wait = min(wait ?? .infinity, ahead / state.rate)
+            }
+        }
+        markReads = reads
+        markTimer?.invalidate()
+        markTimer = nil
+        guard let wait else {
+            for actions in due { runVideoActions?(actions) }
+            return
+        }
+        let timer = Timer(timeInterval: wait + 0.002, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refresh() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        markTimer = timer
+
+        for actions in due { runVideoActions?(actions) }
     }
 }

@@ -50,7 +50,10 @@ import Testing
         "timecodeLevel": ("timecodeLevel", /\.timecodeLevel\b/, ["TimecodeSignalReadout"]),
 
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
-        "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
+        "elapsed": (
+            ".elapsed", /\w\.elapsed\b(?!\s*\()/,
+            ["AudioScrubBar", "AudioTimecode", "TransportPill", "VideoActionsNextReadout"]
+        ),
         "alertVisible": ("alertVisible", /\balertVisible\b/, []),
 
         "displayLevels": ("displayLevels", /\.displayLevels\b/, []),

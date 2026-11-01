@@ -10,6 +10,8 @@ struct ScrubBar: View {
 
     var trimRange: ClosedRange<Double>? = nil
 
+    var marks: [(fraction: Double, color: Color)] = []
+
     var onTrimChange: ((ClosedRange<Double>, _ final: Bool) -> Void)? = nil
 
     var liveSeekInterval: Duration = .milliseconds(120)
@@ -71,6 +73,12 @@ struct ScrubBar: View {
                 Capsule()
                     .fill(isPlaying ? Color.green : Color.secondary)
                     .frame(width: clamped * width, height: 3)
+                ForEach(marks.indices, id: \.self) { index in
+                    Rectangle()
+                        .fill(marks[index].color)
+                        .frame(width: 2, height: 10)
+                        .offset(x: min(max(marks[index].fraction, 0), 1) * width - 1)
+                }
                 if let trim = displayTrim {
 
                     let lower = min(max(trim.lowerBound, 0), 1)
