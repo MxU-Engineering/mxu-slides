@@ -85,6 +85,17 @@ struct ChordChartPDFTests {
         #expect(ChordChartPDF.text(of: unspaced).text == "Lord will")
     }
 
+    @Test func aSpreadWordOnALineWithNoSpacesReadsWhole() {
+        let spread = Self.glyphs("Hallelu", y: 600) + Self.glyphs("jah", x: 70 + 7 * 6 + 5, y: 600)
+        #expect(ChordChartPDF.text(of: spread, drawsSpaces: true).text == "Hallelujah")
+        #expect(ChordChartPDF.text(of: spread).text == "Hallelu jah", "a page without space glyphs breaks at gaps")
+        let promise = Self.glyphs("the pro", y: 600) + Self.glyphs("-", x: 70 + 7 * 6 + 4, y: 600)
+            + Self.glyphs("mise", x: 70 + 8 * 6 + 12, y: 600)
+        #expect(ChordChartPDF.text(of: promise).text == "the pro - mise")
+        #expect(ChordChartPDF.joinedSyllables("That sealed the pro - [G]mise") == "That sealed the pro[G]mise")
+        #expect(ChordChartPDF.joinedSyllables("an all-consuming fire") == "an all-consuming fire")
+    }
+
     @Test func aChordOnlySectionRepeatsOnlyWithTheSameChords() {
 
         let sections: [ChordChartPDF.Section] = [

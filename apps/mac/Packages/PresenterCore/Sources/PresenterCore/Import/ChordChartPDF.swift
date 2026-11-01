@@ -90,7 +90,9 @@ public enum ChordChartPDF {
 
         var small: [PDFGlyph] = []
 
-        var text: String { ChordChartPDF.text(of: glyphs).text }
+        var drawsSpaces: Bool? = nil
+
+        var text: String { ChordChartPDF.text(of: glyphs, drawsSpaces: drawsSpaces).text }
         func isOversized(body: CGFloat) -> Bool { (glyphs.map(\.size).max() ?? 0) >= body * 1.25 }
     }
 
@@ -134,6 +136,8 @@ public enum ChordChartPDF {
 
         let printable = page.glyphs.filter { !$0.light && (!$0.text.trimmingCharacters(in: .whitespaces).isEmpty || $0.text == " ") }
         let main = printable.filter { $0.size >= body * 0.85 }
+
+        let drawsSpaces = main.contains { $0.text == " " }
         let small = printable.filter { $0.size < body * 0.85 } + page.marks.compactMap { mark in
             mark.accidental.map {
                 PDFGlyph(text: $0, x: mark.bounds.minX, y: mark.bounds.minY, width: mark.bounds.width,
@@ -172,7 +176,7 @@ public enum ChordChartPDF {
                 if let last = columnRows.indices.last, abs(columnRows[last].baseline - glyph.y) < body * 0.2 {
                     columnRows[last].glyphs.append(glyph)
                 } else {
-                    columnRows.append(Row(page: pageIndex, column: columnIndex, baseline: glyph.y, glyphs: [glyph]))
+                    columnRows.append(Row(page: pageIndex, column: columnIndex, baseline: glyph.y, glyphs: [glyph], drawsSpaces: drawsSpaces))
                 }
             }
 
@@ -217,12 +221,21 @@ public enum ChordChartPDF {
         return min(left, glyphs.count - left) >= glyphs.count / 10 ? split : nil
     }
 
-    static func text(of glyphs: [PDFGlyph]) -> (text: String, ends: [CGFloat]) {
+    static func text(of glyphs: [PDFGlyph], drawsSpaces: Bool? = nil) -> (text: String, ends: [CGFloat]) {
         var text = ""
         var ends: [CGFloat] = []
         var lastEnd: CGFloat?
-        let drawsSpaces = glyphs.contains { $0.text == " " }
-        for glyph in glyphs {
+        let drawsSpaces = drawsSpaces ?? glyphs.contains { $0.text == " " }
+        for (index, glyph) in glyphs.enumerated() {
+            let next = index + 1 < glyphs.count ? glyphs[index + 1] : nil
+            if drawsSpaces, glyph.text == "-" || glyph.text == "–", let previousEnd = lastEnd, let next, next.text != " ",
+               glyph.x - previousEnd > glyph.size * 0.2, next.x - glyph.maxX > glyph.size * 0.2, !text.isEmpty {
+                if text.last != " " { text.append(" "); ends.append(glyph.x) }
+                text += "- "
+                ends += [glyph.maxX, next.x]
+                lastEnd = glyph.maxX
+                continue
+            }
             if glyph.text == " " || glyph.text.trimmingCharacters(in: .whitespaces).isEmpty {
                 if !text.isEmpty, text.last != " " { text.append(" "); ends.append(glyph.maxX) }
                 lastEnd = glyph.maxX
@@ -293,7 +306,7 @@ public enum ChordChartPDF {
     }
 
     static func inline(_ chords: [(x: CGFloat, symbol: String)], into row: Row) -> String {
-        let built = text(of: row.glyphs)
+        let built = text(of: row.glyphs, drawsSpaces: row.drawsSpaces)
         var characters = Array(built.text)
         var inserts: [(index: Int, symbol: String)] = []
         for chord in chords {
@@ -321,9 +334,10 @@ public enum ChordChartPDF {
     static func joinedSyllables(_ line: String) -> String {
         var line = line
         var from = line.startIndex
-        while let match = line[from...].firstMatch(of: #/(\p{L}+) ?[-–] ?((?:\[[^\]]*\])*)(\p{Ll}+)/#) {
-            let (_, head, chords, tail) = match.output
-            let syllable = (tail.count <= 3 || head.count <= 2) && head.lowercased() != tail
+        while let match = line[from...].firstMatch(of: #/(\p{L}+)( ?)[-–]( ?)((?:\[[^\]]*\])*)(\p{Ll}+)/#) {
+            let (_, head, before, after, chords, tail) = match.output
+            let spaced = !before.isEmpty && !after.isEmpty
+            let syllable = (spaced || tail.count <= 3 || head.count <= 2) && head.lowercased() != tail
                 && !LyricPhrasing.interjections.contains(head.lowercased())
             if syllable {
                 let offset = line.distance(from: line.startIndex, to: match.range.lowerBound)
