@@ -258,6 +258,8 @@ final class AppAPIBridge: LocalAPIBridge {
                     "display"
                 } else if NDIScreenOutputs.shared.isCarrying(slice.id) {
                     "ndi"
+                } else if SyphonScreenOutputs.shared.isCarrying(slice.id) {
+                    "syphon"
                 } else if DeckLinkScreenOutputs.shared.isCarrying(slice.id) {
                     "decklink"
                 } else {

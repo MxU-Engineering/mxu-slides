@@ -1,0 +1,10 @@
+// MXU: the Metal server/client subset of upstream's framework module — the
+// OpenGL half is not vendored.
+module Syphon {
+    header "Syphon/SyphonServerBase.h"
+    header "Syphon/SyphonMetalServer.h"
+    header "Syphon/SyphonClientBase.h"
+    header "Syphon/SyphonMetalClient.h"
+    header "Syphon/SyphonServerDirectory.h"
+    export *
+}

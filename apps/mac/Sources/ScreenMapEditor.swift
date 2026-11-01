@@ -230,6 +230,7 @@ struct ScreenMapEditor: View {
     private func carry(_ screen: PlaceholderScreen) -> String {
         if let key = OutputCarry.key(of: screen.id, outputs: outputs) { return OutputCarry.name(of: key, outputs: outputs) }
         if NDIScreenOutputs.shared.isCarrying(screen.id) { return "NDI" }
+        if SyphonScreenOutputs.shared.isCarrying(screen.id) { return "Syphon" }
         return "no output"
     }
 

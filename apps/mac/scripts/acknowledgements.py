@@ -50,6 +50,7 @@ DECORATION = r"\s*[*=_-]{3,}\s*"
 # Names for vendored license files whose folder name says nothing.
 VENDORED_NAMES = {
     "Packages/StreamEngine/Sources/StreamEngine/HLS/Vendored/VendoredLICENSE.md": "HaishinKit (HLS writer vendored in StreamEngine)",
+    "Packages/SyphonKit/Sources/Syphon/VendoredLICENSE.txt": "Syphon (vendored in SyphonKit)",
 }
 
 

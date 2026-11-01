@@ -123,6 +123,7 @@ enum OutputCarry {
         let holders = members(of: key, outputs: outputs).filter { $0 != sliceID }
         let frame = frameSize(of: key, outputs: outputs)
         NDIScreenOutputs.shared.disable(screenID: sliceID)
+        SyphonScreenOutputs.shared.disable(screenID: sliceID)
         for holder in holders where outputs.placement(forSlice: holder) == nil {
             outputs.seedPlacement(forSlice: holder, frameWidth: frame.width, frameHeight: frame.height)
         }
@@ -146,6 +147,7 @@ enum OutputCarry {
     @MainActor
     static func release(_ sliceID: UUID, outputs: OutputManager, render: RenderContext) {
         NDIScreenOutputs.shared.disable(screenID: sliceID)
+        SyphonScreenOutputs.shared.disable(screenID: sliceID)
         DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
         outputs.assignPlaceholderDevice(placeholderID: sliceID, displayUUID: nil)
         outputs.setPlacement(nil, forSlice: sliceID)
@@ -223,6 +225,7 @@ struct OutputPicture: View {
             return OutputCarry.name(of: key, outputs: outputs)
         }
         if NDIScreenOutputs.shared.isCarrying(sliceID) { return "NDI" }
+        if SyphonScreenOutputs.shared.isCarrying(sliceID) { return "Syphon" }
         return "the output"
     }
 

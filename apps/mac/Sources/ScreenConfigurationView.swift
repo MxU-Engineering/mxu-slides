@@ -541,6 +541,11 @@ struct ScreenConfigurationView: View {
             }
             return (backing.deviceName, false)
         }
+        switch SyphonScreenOutputs.shared.status(for: screen.id) {
+        case .publishing(let name): return ("Syphon “\(name)”", true)
+        case .failed: return ("Syphon", false)
+        case .idle, nil: break
+        }
         switch NDIScreenOutputs.shared.status(for: screen.id) {
         case .sending(let name): return ("NDI “\(name)”", true)
         case .starting, .interrupted, .failed: return ("NDI", false)
@@ -788,10 +793,13 @@ struct OutputSourcePicker: View {
 
     private var backing: DisplayUUID? { outputs.placeholderDevices[sliceID] }
     private var ndiCarrying: Bool { NDIScreenOutputs.shared.isCarrying(sliceID) }
+    private var syphonCarrying: Bool { SyphonScreenOutputs.shared.isCarrying(sliceID) }
     private var deckLinkBacking: DeckLinkScreenOutputs.Backing? {
         DeckLinkScreenOutputs.shared.backing(for: sliceID)
     }
-    private var carried: Bool { backing != nil || ndiCarrying || deckLinkBacking != nil }
+    private var carried: Bool {
+        backing != nil || ndiCarrying || syphonCarrying || deckLinkBacking != nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -848,7 +856,9 @@ struct OutputSourcePicker: View {
                 Toggle(isOn: Binding(get: { ndiCarrying }, set: { _ in toggleNDI() })) {
                     Text("NDI · \(ndiCaption)")
                 }
-                Text("Syphon · coming soon")
+                Toggle(isOn: Binding(get: { syphonCarrying }, set: { _ in toggleSyphon() })) {
+                    Text("Syphon · \(syphonCaption)")
+                }
             }
             Divider()
             Toggle(isOn: Binding(get: { !carried }, set: { _ in releaseAll() })) {
@@ -874,6 +884,7 @@ struct OutputSourcePicker: View {
         }
         if let deckLinkBacking { return deckLinkBacking.deviceName }
         if ndiCarrying { return "NDI" }
+        if syphonCarrying { return "Syphon" }
         return "No output yet"
     }
 
@@ -935,6 +946,7 @@ struct OutputSourcePicker: View {
 
     private func releaseHelpers() {
         NDIScreenOutputs.shared.disable(screenID: sliceID)
+        SyphonScreenOutputs.shared.disable(screenID: sliceID)
         DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
     }
 
@@ -961,6 +973,14 @@ struct OutputSourcePicker: View {
             NDIScreenOutputs.shared.disable(screenID: sliceID)
         } else {
             NDIScreenOutputs.shared.enable(screenID: sliceID, render: render)
+        }
+    }
+
+    private func toggleSyphon() {
+        if syphonCarrying {
+            SyphonScreenOutputs.shared.disable(screenID: sliceID)
+        } else {
+            SyphonScreenOutputs.shared.enable(screenID: sliceID, render: render)
         }
     }
 
@@ -1023,6 +1043,13 @@ struct OutputSourcePicker: View {
             case .idle, nil: return "idle"
             }
         }
+        if let status = SyphonScreenOutputs.shared.status(for: sliceID) {
+            switch status {
+            case .publishing(let name): return "publishing as “\(name)”"
+            case .failed(let message): return message
+            case .idle: return "idle"
+            }
+        }
         switch NDIScreenOutputs.shared.status(for: sliceID) {
         case .sending(let name): return "sending as “\(name)”"
         case .starting: return "starting…"
@@ -1036,7 +1063,9 @@ struct OutputSourcePicker: View {
         switch liveWord {
         case "live", "sending": return .green
         case "idle": return .secondary
-        default: return liveWord.hasPrefix("sending as") ? .green : .orange
+        default:
+            return liveWord.hasPrefix("sending as") || liveWord.hasPrefix("publishing as")
+                ? .green : .orange
         }
     }
 
@@ -1149,6 +1178,14 @@ struct OutputSourcePicker: View {
         case .interrupted: "helper restarting…"
         case .failed(let message): message
         case .idle, nil: "network output"
+        }
+    }
+
+    private var syphonCaption: String {
+        switch SyphonScreenOutputs.shared.status(for: sliceID) {
+        case .publishing(let name): "publishing as “\(name)”"
+        case .failed(let message): message
+        case .idle, nil: "to apps on this Mac"
         }
     }
 }

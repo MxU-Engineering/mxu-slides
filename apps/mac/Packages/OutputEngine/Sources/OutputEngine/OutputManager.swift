@@ -171,6 +171,20 @@ public final class OutputManager {
         return nil
     }
 
+    public func networkCarryFeed(forSlice id: UUID) -> NetworkCarryFeed? {
+        guard let info = sliceInfo(for: id),
+              let screen = placeholderScreens.first(where: { $0.id == info.screenID })
+        else { return nil }
+        let placement = placement(forSlice: id)
+        return NetworkCarryFeed(
+            name: info.name.map { "\(screen.name) — \($0)" } ?? screen.name,
+            width: placement?.frameWidth ?? info.width,
+            height: placement?.frameHeight ?? info.height,
+            framesPerSecond: screen.framesPerSecond,
+            sourceRect: info.sourceRect == Compositor.fullSourceRect ? nil : info.sourceRect,
+            placement: placement?.unitRect)
+    }
+
     @discardableResult
     public func addSlice(
         toScreen screenID: UUID, id: UUID = UUID(), name: String? = nil,

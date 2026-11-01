@@ -187,6 +187,7 @@ struct AddScreenMenu<Label: View>: View {
             return "from \(OutputCarry.name(of: key, outputs: outputs))"
         }
         if NDIScreenOutputs.shared.isCarrying(screen.id) { return "from NDI" }
+        if SyphonScreenOutputs.shared.isCarrying(screen.id) { return "from Syphon" }
         return "no output yet"
     }
 }

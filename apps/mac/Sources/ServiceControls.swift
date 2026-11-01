@@ -78,6 +78,7 @@ final class ServiceControls {
         }
 
         NDIScreenOutputs.shared.restore(render: render)
+        SyphonScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
 
         VideoInputInventory.shared.warmUp(render: render)

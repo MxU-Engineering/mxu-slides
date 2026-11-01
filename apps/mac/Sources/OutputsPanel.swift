@@ -70,7 +70,7 @@ struct OutputsPanel: View {
             .help("A screen is a routing identity — set up looks and layer routing before the gig, then pick the output that carries it")
         }
         if outputs.placeholderScreens.isEmpty {
-            Text("Add a screen to set up routing before you have the hardware — back it with a display or NDI at the venue (Syphon coming soon).")
+            Text("Add a screen to set up routing before you have the hardware — back it with a display, NDI, or Syphon at the venue.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -347,7 +347,10 @@ private struct ScreenRow: View {
                 .foregroundStyle(.secondary)
             Menu {
                 Toggle("Placeholder — no output yet", isOn: Binding(
-                    get: { outputs.placeholderDevices[screen.id] == nil && !ndiCarrying },
+                    get: {
+                        outputs.placeholderDevices[screen.id] == nil && !ndiCarrying
+                            && !syphonCarrying
+                    },
                     set: { _ in assign(nil) }
                 ))
                 if !outputs.displays.isEmpty {
@@ -371,8 +374,16 @@ private struct ScreenRow: View {
                             }
                         }
                     ))
-                    Button("Syphon — coming soon") {}
-                        .disabled(true)
+                    Toggle("Syphon", isOn: Binding(
+                        get: { syphonCarrying },
+                        set: { on in
+                            if on {
+                                SyphonScreenOutputs.shared.enable(screenID: screen.id, render: render)
+                            } else {
+                                SyphonScreenOutputs.shared.disable(screenID: screen.id)
+                            }
+                        }
+                    ))
                 }
             } label: {
                 Text(deviceLabel)
@@ -386,10 +397,13 @@ private struct ScreenRow: View {
     }
 
     private var ndiCarrying: Bool { NDIScreenOutputs.shared.isCarrying(screen.id) }
+    private var syphonCarrying: Bool { SyphonScreenOutputs.shared.isCarrying(screen.id) }
 
     private var deviceLabel: String {
         if ndiCarrying {
             return "NDI"
+        } else if syphonCarrying {
+            return "Syphon"
         } else if let device = outputs.placeholderDevices[screen.id] {
             return deviceConnected(device)
                 ? deviceName(device)
@@ -411,6 +425,7 @@ private struct ScreenRow: View {
 
     private func assign(_ displayUUID: String?) {
         NDIScreenOutputs.shared.disable(screenID: screen.id)
+        SyphonScreenOutputs.shared.disable(screenID: screen.id)
         outputs.assignPlaceholderDevice(placeholderID: screen.id, displayUUID: displayUUID)
     }
 

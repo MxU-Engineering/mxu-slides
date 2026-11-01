@@ -281,6 +281,7 @@ struct OutputsSection: View {
 
     private func releaseCarries(_ sliceID: UUID) {
         NDIScreenOutputs.shared.disable(screenID: sliceID)
+        SyphonScreenOutputs.shared.disable(screenID: sliceID)
         DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
     }
 
@@ -447,6 +448,7 @@ struct OutputsSection: View {
                 ?? "Display"
         }
         if NDIScreenOutputs.shared.isCarrying(slice.id) { return "NDI" }
+        if SyphonScreenOutputs.shared.isCarrying(slice.id) { return "Syphon" }
         if let backing = DeckLinkScreenOutputs.shared.backing(for: slice.id) {
             return backing.deviceName
         }
