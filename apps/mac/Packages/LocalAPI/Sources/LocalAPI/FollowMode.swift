@@ -101,9 +101,15 @@ public struct FollowStandby: Sendable {
                 events.append(APIFireEvent(kind: .mediaTransport, id: row.mediaId, mediaTransport: APIMediaTransportCommand(action: "pause")))
             }
         }
-        for bus in audio?.buses ?? [] where bus.playing && bus.playlistId == nil {
-            guard let item = bus.audioItemId else { continue }
-            events.append(APIFireEvent(kind: .audioItem, id: item))
+        for bus in audio?.buses ?? [] where bus.playing {
+            if let playlist = bus.playlistId {
+                guard let entry = bus.entryId else { continue }
+                events.append(APIFireEvent(kind: .audioPlaylist, id: playlist, entryId: entry))
+            } else if let item = bus.audioItemId {
+                events.append(APIFireEvent(kind: .audioItem, id: item))
+            } else {
+                continue
+            }
             if let position = bus.position {
                 let at = Self.position(position, duration: bus.duration, playing: true, looping: false, from: self.at, to: now)
                 events.append(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "seek", position: at)))

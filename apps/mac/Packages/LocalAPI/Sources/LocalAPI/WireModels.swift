@@ -682,9 +682,11 @@ public struct APIAudioStatus: Codable, Sendable {
         public var position: Double?
         public var duration: Double?
 
+        public var entryId: String?
+
         public init(
             playlistId: String?, audioItemId: String?, trackName: String?,
-            playing: Bool, position: Double?, duration: Double?
+            playing: Bool, position: Double?, duration: Double?, entryId: String? = nil
         ) {
             self.playlistId = playlistId
             self.audioItemId = audioItemId
@@ -692,6 +694,7 @@ public struct APIAudioStatus: Codable, Sendable {
             self.playing = playing
             self.position = position
             self.duration = duration
+            self.entryId = entryId
         }
     }
 

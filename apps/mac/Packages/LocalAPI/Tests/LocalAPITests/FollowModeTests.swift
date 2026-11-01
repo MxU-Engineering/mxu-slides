@@ -82,11 +82,12 @@ final class FollowReplayTests: XCTestCase {
             ],
             audio: APIAudioStatus(buses: [
                 APIAudioStatus.Bus(playlistId: nil, audioItemId: "song", trackName: "Song", playing: true, position: 40, duration: 200),
-                APIAudioStatus.Bus(playlistId: "list", audioItemId: nil, trackName: "Track 3", playing: true, position: 5, duration: 90),
+                APIAudioStatus.Bus(playlistId: "list", audioItemId: nil, trackName: "Track 3", playing: true, position: 5, duration: 90, entryId: "e3"),
+                APIAudioStatus.Bus(playlistId: "older", audioItemId: nil, trackName: "Track 1", playing: true, position: 5, duration: 90),
             ]),
             at: read)
         let events = standby.takeover(here: clear, now: read + 5)
-        XCTAssertEqual(events.map(\.kind), [.media, .overlay, .slide, .mediaTransport, .mediaTransport, .mediaTransport, .audioItem, .audioTransport])
+        XCTAssertEqual(events.map(\.kind), [.media, .overlay, .slide, .mediaTransport, .mediaTransport, .mediaTransport, .audioItem, .audioTransport, .audioPlaylist, .audioTransport])
         XCTAssertEqual(events[2].slide?.slideId, "s2")
         XCTAssertEqual(events[2].slide?.serviceItemId, "item-9")
         XCTAssertEqual(events[3].mediaTransport, APIMediaTransportCommand(action: "seek", position: 3), "8 s + 5 s round a 10 s loop")
@@ -94,7 +95,10 @@ final class FollowReplayTests: XCTestCase {
         XCTAssertEqual(events[5].mediaTransport?.action, "pause")
         XCTAssertEqual(events[6].id, "song")
         XCTAssertEqual(events[7].audioTransport, APIAudioTransportCommand(action: "seek", position: 45))
-        XCTAssertFalse(events.contains { $0.id == "list" }, "the booth doesn't say which of a playlist's songs was on")
+        XCTAssertEqual(events[8].id, "list")
+        XCTAssertEqual(events[8].entryId, "e3", "the song the booth was on")
+        XCTAssertEqual(events[9].audioTransport, APIAudioTransportCommand(action: "seek", position: 10))
+        XCTAssertFalse(events.contains { $0.id == "older" }, "a booth that doesn't say which song")
     }
 
     func testAVideoNeverRunsPastItsEnd() {

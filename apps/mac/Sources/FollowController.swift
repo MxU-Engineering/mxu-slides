@@ -68,6 +68,8 @@ final class FollowController {
     private(set) var standby: FollowStandby?
     private var standbyRead = 0
 
+    private var standbyTask: Task<Void, Never>?
+
     nonisolated static let launch = UUID().uuidString
     nonisolated static let presence = FollowPresence { names in
         Task { @MainActor in FollowController.shared.backupsHeard(names) }
@@ -355,6 +357,8 @@ final class FollowController {
         task = nil
         copyTask?.cancel()
         copyTask = nil
+        standbyTask?.cancel()
+        standbyTask = nil
         if let client { Task { await client.stop() } }
         client = nil
         endpoint = nil
@@ -466,6 +470,16 @@ final class FollowController {
         }
         if standingBy {
             await readStandby(endpoint)
+            if standbyTask == nil {
+                standbyTask = Task { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(15))
+                        guard let self, !Task.isCancelled, self.standingBy, self.endpoint == endpoint, self.state == .live else { break }
+                        await self.readStandby(endpoint)
+                    }
+                    self?.standbyTask = nil
+                }
+            }
             if let bridge, FollowStandby.showsAnything(bridge.showStatus(), audio: bridge.audioStatus()) {
                 await APIFireSource.$current.withValue(APIFireSource(kind: .follow, name: pairing?.name)) {
                     for event in [APIFireEvent(kind: .clearAll), APIFireEvent(kind: .stopAudio)] { try? await FollowReplay.apply(event, to: bridge) }
