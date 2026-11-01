@@ -162,9 +162,7 @@ struct LibrarySidebar: View {
             Button("Cancel", role: .cancel) { renameTarget = nil }
         }
         .confirmationDialog(
-            deleteBatch.count == 1
-                ? "Delete \u{201C}\(deleteBatch.first?.name ?? "")\u{201D}?"
-                : "Delete \(deleteBatch.count) items?",
+            SyncStatusLogic.deleteTitle(inCloud: deleteInCloud),
             isPresented: deleteConfirmActive,
             titleVisibility: .visible
         ) {
@@ -174,13 +172,9 @@ struct LibrarySidebar: View {
             }
             Button("Cancel", role: .cancel) { deleteBatch = [] }
         } message: {
-            if deleteUsedCount > 0 {
-                Text(
-                    "Used in \(deleteUsedCount) place\(deleteUsedCount == 1 ? "" : "s"). Each spot shows a missing-media warning until the file is restored or replaced. This can't be undone."
-                )
-            } else {
-                Text("This can't be undone.")
-            }
+
+            Text(SyncStatusLogic.deleteSubtitle(name: deleteBatch.first?.name, count: deleteBatch.count)).fontWeight(.semibold)
+                + Text("\n\n" + SyncStatusLogic.deleteMessage(count: deleteBatch.count, inCloud: deleteInCloud, usedIn: deleteUsedCount))
         }
         .sheet(isPresented: $locatePanelShown) {
             LocateMissingMediaView(model: model)
@@ -190,11 +184,17 @@ struct LibrarySidebar: View {
                 ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
             }
         }
+        .sheet(item: $deleteUsesRequest) { request in
+            DeleteMediaSheet(request: request) { model.delete(request.entry) }
+        }
         .mediaCueSheets(model: model, state: mediaMenuState)
     }
 
     @State private var deleteBatch: [LibraryIndex.Entry] = []
     @State private var deleteUsedCount = 0
+    @State private var deleteInCloud = false
+
+    @State private var deleteUsesRequest: DeleteMediaRequest?
 
     @State private var locatePanelShown = false
 
@@ -210,13 +210,18 @@ struct LibrarySidebar: View {
 
         let mediaIds = Set(entries.filter { $0.kind == .media }.map(\.id))
         Task {
-            let used = await model.mediaReferenceDocumentCount(of: mediaIds)
-            if entries.count > 1 || used > 0 {
-                deleteUsedCount = used
-                deleteBatch = entries
-            } else if let entry = entries.first {
-                model.delete(entry)
+            let inCloud = MxUAccountController.shared.isSignedIn && entries.contains { model.area($0.kind, $0.id) != .local }
+
+            if entries.count == 1, let entry = entries.first, entry.kind == .media {
+                let groups = MediaUsage.groups(await model.mediaUses(of: entry.id))
+                if !groups.isEmpty {
+                    deleteUsesRequest = DeleteMediaRequest(entry: entry, groups: groups, inCloud: inCloud)
+                    return
+                }
             }
+            deleteUsedCount = await model.mediaReferenceDocumentCount(of: mediaIds)
+            deleteInCloud = inCloud
+            deleteBatch = entries
         }
     }
 

@@ -1917,6 +1917,14 @@ final class AppModel {
         guard !entries.isEmpty else { return }
 
         let tombstones = entries.filter { $0.kind == .media }.compactMap { media($0.id) }
+
+        let hashes = Set(entries.flatMap { entry -> [String?] in
+            switch entry.kind {
+            case .media: media(entry.id).map { [$0.fileHash, $0.previousFileHash] } ?? []
+            case .audio: audio(entry.id).map { [$0.fileHash, $0.previousFileHash] } ?? []
+            default: []
+            }
+        }.compactMap { $0 })
         client.delete(entries.map { SyncLedger.Key(kind: $0.kind, id: $0.id) })
         let posterStore = posterStore
 
@@ -1927,6 +1935,10 @@ final class AppModel {
                 }
             }.value
             await client.settled()
+            if !hashes.isEmpty {
+                let files = await removeBlobs(hashes)
+                DiagnosticsStore.shared.note("library.delete", detail: "\(entries.count) item\(entries.count == 1 ? "" : "s"), \(files) of \(hashes.count) file\(hashes.count == 1 ? "" : "s") left this Mac")
+            }
             sweepMediaPosters()
         }
         let deleted = Set(entries.map(\.id))

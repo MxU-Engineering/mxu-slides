@@ -69,8 +69,28 @@ struct ReplaceMediaFileSheet: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            MediaUsesList(groups: request.groups)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Replace Everywhere…") {
+                    dismiss()
+                    onChooseFile()
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+    }
+}
+
+struct MediaUsesList: View {
+    let groups: [MediaUsage.Group]
+
+    var body: some View {
             List {
-                ForEach(request.groups, id: \.kind) { group in
+                ForEach(groups, id: \.kind) { group in
                     Section {
                         ForEach(group.uses, id: \.id) { use in
                             Label {
@@ -94,14 +114,47 @@ struct ReplaceMediaFileSheet: View {
             .listStyle(.inset)
             .frame(minHeight: 160, maxHeight: 280)
             .clipShape(RoundedRectangle.standard(CornerStandard.element))
+    }
+}
+
+struct DeleteMediaRequest: Identifiable {
+    let entry: LibraryIndex.Entry
+    let groups: [MediaUsage.Group]
+    let inCloud: Bool
+
+    var id: String { entry.id }
+    var count: Int { groups.reduce(0) { $0 + $1.uses.count } }
+}
+
+struct DeleteMediaSheet: View {
+    let request: DeleteMediaRequest
+    let onDelete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(SyncStatusLogic.deleteTitle(inCloud: request.inCloud))
+                .font(.headline)
+            Text(request.entry.name)
+            Text(SyncStatusLogic.deleteLead(count: 1, inCloud: request.inCloud) + " " + SyncStatusLogic.deleteUsedNote(usedIn: request.count, listed: true))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            MediaUsesList(groups: request.groups)
+            Text("This can't be undone.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Replace Everywhere…") {
+                Button("Delete", role: .destructive) {
                     dismiss()
-                    onChooseFile()
+                    onDelete()
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
             }
         }
         .padding(20)
