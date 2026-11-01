@@ -32,10 +32,10 @@ import Testing
         let sweep = try SourceSweep.app()
         let library = try #require(sweep.file("LibraryView.swift")).text
         #expect(library.contains("if let allowed = layout?.volunteerLibraryKinds {\n            return orderedTabs.filter { allowed.contains($0.kind) }"))
-        #expect(library.contains("// Volunteer Mode plays only: no editor, no reorganizing.\n        if !runOnly {\n            entryMenuItems(entry, menus: menus)"))
-        #expect(library.contains("if !runOnly {\n            folderMenuItems(path, menus: menus)"))
+        #expect(library.contains("if !runOnly {\n            entryMenuItems(entry, menus: menus)"))
+        #expect(library.contains("private func folderMenu(_ path: [String]) -> some View {\n        if !isUnfiled(path), !runOnly {"))
         #expect(library.contains("guard !runOnly, let moved = LibrarySection(rawValue: movedID) else { return }"))
-        #expect(library.contains("if !runOnly {\n                    Divider()\n                    footer"))
+        #expect(library.contains("if !runOnly {\n                Divider()\n                footer"))
         #expect(library.contains("guard !runOnly else { return false }"), "folder drops")
         let controls = try #require(sweep.file("LibraryFireControls.swift")).text
         #expect(controls.components(separatedBy: "if hovering, !runOnly {").count == 3, "the pencil hides on rows and deck cards")

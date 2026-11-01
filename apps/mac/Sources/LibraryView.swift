@@ -573,7 +573,7 @@ struct LibrarySidebar: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard acceptsImport else { return false }
+            guard !runOnly, acceptsImport else { return false }
 
             let presentations = urls.filter(AppModel.isPresentationFile)
             let files = urls.filter { !AppModel.isPresentationFile($0) }

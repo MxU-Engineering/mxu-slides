@@ -127,7 +127,7 @@ import Testing
 
     @Test func theStickyHeaderTakesItsOwnHeight() throws {
         let surface = try source("ServiceContinuousView.swift")
-        let sticky = try #require(surface.range(of: "let stick = max(0, min(-frame.minY, geo.size.height - headerHeight))"))
+        let sticky = try #require(surface.range(of: "let stick = max(0, min(-frame.minY, geo.size.height - cards.headerHeight(item.id)))"))
         let body = surface[sticky.upperBound...].prefix(700)
         let fixed = try #require(body.range(of: ".fixedSize(horizontal: false, vertical: true)"))
         let reader = try #require(body.range(of: ".background(headerHeightReader(item))"))
