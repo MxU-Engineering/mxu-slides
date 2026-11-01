@@ -369,8 +369,9 @@ public struct TextStyleRun: Codable, Sendable, Equatable {
     public var colorHex: String?
     public var highlightColorHex: String?
     public var tracking: Double?
+    public var textTransform: TextTransform?
 
-    public init(line: Int, column: Int, length: Int, underline: Bool? = nil, strikethrough: Bool? = nil, fontName: String? = nil, fontSize: Double? = nil, colorHex: String? = nil, highlightColorHex: String? = nil, tracking: Double? = nil) {
+    public init(line: Int, column: Int, length: Int, underline: Bool? = nil, strikethrough: Bool? = nil, fontName: String? = nil, fontSize: Double? = nil, colorHex: String? = nil, highlightColorHex: String? = nil, tracking: Double? = nil, textTransform: TextTransform? = nil) {
         self.line = line
         self.column = column
         self.length = length
@@ -381,6 +382,7 @@ public struct TextStyleRun: Codable, Sendable, Equatable {
         self.colorHex = colorHex
         self.highlightColorHex = highlightColorHex
         self.tracking = tracking
+        self.textTransform = textTransform
     }
 }
 

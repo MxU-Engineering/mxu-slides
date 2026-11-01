@@ -1112,7 +1112,8 @@ public enum SlideSceneBuilder {
                     fontName: run.fontName, fontSize: run.fontSize,
                     color: run.colorHex.flatMap(ColorHex.color),
                     highlightColor: run.highlightColorHex.flatMap(ColorHex.color),
-                    tracking: run.tracking
+                    tracking: run.tracking,
+                    transform: run.textTransform.map { $0 == .uppercase ? .uppercase : .none }
                 )
             },
 

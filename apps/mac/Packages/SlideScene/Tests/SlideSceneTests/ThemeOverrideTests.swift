@@ -90,6 +90,12 @@ private func transformed(
     #expect(carried.fontSize == nil && carried.colorHex == nil)
 }
 
+@Test func allCapsWordCarriesAsContent() {
+    let run = TextStyleRun(line: 0, column: 0, length: 7, textTransform: .uppercase)
+    let result = transformed(lyricsObject(runs: [run]), keep: KeepFromSlideOptions(bold: false))
+    #expect(result.styleRuns?.first?.textTransform == .uppercase)
+}
+
 @Test func allBoldBaseCarriesNothing() {
 
     var base = TextStyle()

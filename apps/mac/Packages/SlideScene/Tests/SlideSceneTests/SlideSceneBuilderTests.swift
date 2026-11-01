@@ -1267,7 +1267,8 @@ private func themedTheme() -> Theme {
     object.styleRuns = [TextStyleRun(
         line: 0, column: 9, length: 5, underline: true,
         fontName: "HelveticaNeue-Bold", fontSize: 88,
-        colorHex: "#FF0000FF", highlightColorHex: "#00FF00FF", tracking: 4
+        colorHex: "#FF0000FF", highlightColorHex: "#00FF00FF", tracking: 4,
+        textTransform: .uppercase
     )]
 
     let item = SlideSceneBuilder.renderItem(for: object, theme: theme)
@@ -1285,7 +1286,7 @@ private func themedTheme() -> Theme {
         fontName: "HelveticaNeue-Bold", fontSize: 88,
         color: SceneColor(red: 1, green: 0, blue: 0),
         highlightColor: SceneColor(red: 0, green: 1, blue: 0),
-        tracking: 4
+        tracking: 4, transform: .uppercase
     )])
 }
 

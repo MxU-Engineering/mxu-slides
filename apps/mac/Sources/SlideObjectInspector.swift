@@ -1272,6 +1272,13 @@ struct SlideObjectInspector: View {
                             get: { run?.strikethrough == true },
                             set: { on in model.applyStyleToSelection { $0.strikethrough = on ? true : nil } }
                         )),
+
+                        (.allCaps, Binding(
+                            get: { (run?.textTransform ?? base?.textTransform) == .uppercase },
+                            set: { on in model.applyStyleToSelection {
+                                $0.textTransform = on ? .uppercase : (base?.textTransform == .uppercase ? TextTransform.none : nil)
+                            } }
+                        )),
                     ])
                 }
                 Button("Clear Selection Style") {
@@ -1283,6 +1290,7 @@ struct SlideObjectInspector: View {
                         run.colorHex = nil
                         run.highlightColorHex = nil
                         run.tracking = nil
+                        run.textTransform = nil
                     }
                 }
             }

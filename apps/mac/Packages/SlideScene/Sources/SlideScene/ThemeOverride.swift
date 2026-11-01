@@ -109,6 +109,8 @@ public enum ThemeOverride {
         if keep.strikethrough, run.strikethrough == true { carried.strikethrough = true }
         if keep.highlight { carried.highlightColorHex = run.highlightColorHex }
         if keep.textColor { carried.colorHex = run.colorHex }
+
+        carried.textTransform = run.textTransform
         carried.fontName = carriedFontName(run.fontName, from: from, to: to, keep: keep)
         if keep.sizeEmphasis, let size = run.fontSize, from.fontSize > 0 {
             let ratio = size / from.fontSize
@@ -187,6 +189,6 @@ extension TextStyleRun {
     fileprivate var stylesAnything: Bool {
         underline != nil || strikethrough != nil || fontName != nil
             || fontSize != nil || colorHex != nil || highlightColorHex != nil
-            || tracking != nil
+            || tracking != nil || textTransform != nil
     }
 }

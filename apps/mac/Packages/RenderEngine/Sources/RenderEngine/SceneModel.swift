@@ -207,6 +207,8 @@ public struct StyleRun: Hashable, Sendable {
 
     public var caret: Bool?
 
+    public var transform: SceneTextTransform?
+
     public init(
         line: Int,
         column: Int,
@@ -220,7 +222,8 @@ public struct StyleRun: Hashable, Sendable {
         tracking: Double? = nil,
         hidden: Bool? = nil,
         placeholderUnderline: Bool? = nil,
-        caret: Bool? = nil
+        caret: Bool? = nil,
+        transform: SceneTextTransform? = nil
     ) {
         self.line = line
         self.column = column
@@ -235,6 +238,37 @@ public struct StyleRun: Hashable, Sendable {
         self.hidden = hidden
         self.placeholderUnderline = placeholderUnderline
         self.caret = caret
+        self.transform = transform
+    }
+}
+
+extension StyledText {
+
+    public var uppercaseFlags: [Bool] {
+        var flags: [Bool] = []
+        flags.reserveCapacity(string.count)
+        let runs = styleRuns.filter { $0.transform != nil }
+        for (index, line) in string.components(separatedBy: "\n").enumerated() {
+            var lineFlags = [Bool](repeating: transform == .uppercase, count: line.count)
+            for run in runs where run.line == index {
+                let start = min(max(0, run.column), line.count)
+                let end = min(start + max(0, run.length), line.count)
+                for column in start..<end { lineFlags[column] = run.transform == .uppercase }
+            }
+            if index > 0 { flags.append(false) }
+            flags.append(contentsOf: lineFlags)
+        }
+        return flags
+    }
+
+    public var displayString: String {
+        guard transform == .uppercase || styleRuns.contains(where: { $0.transform != nil }) else { return string }
+        var result = ""
+        result.reserveCapacity(string.utf8.count)
+        for (character, upper) in zip(string, uppercaseFlags) {
+            if upper { result += String(character).uppercased() } else { result.append(character) }
+        }
+        return result
     }
 }
 
