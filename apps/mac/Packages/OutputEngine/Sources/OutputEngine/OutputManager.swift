@@ -208,6 +208,31 @@ public final class OutputManager {
         placeholderConfigurationChanged?()
     }
 
+    public func seedPlacement(
+        forSlice id: UUID, frameWidth: Int, frameHeight: Int,
+        siblings: [OutputPlacement] = []
+    ) {
+        guard let info = sliceInfo(for: id) else { return }
+        let width = Double(min(info.width, frameWidth))
+        let height = Double(min(info.height, frameHeight))
+        let below = siblings.map { $0.y + $0.height }.max() ?? 0
+        let y = below + height <= Double(frameHeight) ? below : 0
+        setPlacement(
+            OutputPlacement(
+                frameWidth: frameWidth, frameHeight: frameHeight,
+                x: 0, y: y, width: width, height: height),
+            forSlice: id)
+    }
+
+    public func restoreDisplayClaim(
+        placeholderID: UUID, displayUUID: DisplayUUID, displayName: String?
+    ) {
+        assignPlaceholderDevice(
+            placeholderID: placeholderID, displayUUID: displayUUID,
+            displayName: displayName,
+            exclusive: !placeholderDevices.values.contains(displayUUID))
+    }
+
     private func pushPlacement(forSlice id: UUID) {
         if let display = placeholderDevices[id] {
             if placeholderWindowSlices[display]?.count ?? 0 > 1 {
@@ -247,6 +272,15 @@ public final class OutputManager {
     public func setTestPattern(_ on: Bool, forScreen id: UUID) {
         if on { testPatternScreens.insert(id) } else { testPatternScreens.remove(id) }
         testPatternBox.value = testPatternScreens
+    }
+
+    public func identify(screens ids: [UUID], for seconds: Double = 2.5) {
+        let flashed = ids.filter { !testPatternScreens.contains($0) }
+        for id in ids { setTestPattern(true, forScreen: id) }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            for id in flashed { self?.setTestPattern(false, forScreen: id) }
+        }
     }
 
     public private(set) var syncTestScreens: Set<UUID> = []
@@ -717,7 +751,7 @@ public final class OutputManager {
             }
             if assignedDisplays.contains(displayUUID) {
                 assignedDisplays.remove(displayUUID)
-                reconcile() 
+                reconcile()
                 placeholderConfigurationChanged?()
                 return
             }
@@ -816,7 +850,7 @@ public final class OutputManager {
         if placeholderDevices[id] == nil { screen.start() }
         placeholderScreens[index] = screen
         pushAdjustments(forScreen: id)
-        pushMasks(forScreen: id)  
+        pushMasks(forScreen: id)
         updateSleepProofing()
         placeholderConfigurationChanged?()
         return screen

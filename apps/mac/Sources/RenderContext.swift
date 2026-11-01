@@ -303,7 +303,7 @@ final class RenderContext {
                 outputs.setVideoDelay(delay, forScreen: config.id)
             }
             if let device = config.deviceDisplayUUID {
-                outputs.assignPlaceholderDevice(
+                outputs.restoreDisplayClaim(
                     placeholderID: config.id, displayUUID: device,
                     displayName: config.deviceDisplayName
                 )
@@ -321,7 +321,7 @@ final class RenderContext {
                     outputs.setVideoDelay(delay, forScreen: slice.id)
                 }
                 if let device = slice.deviceDisplayUUID {
-                    outputs.assignPlaceholderDevice(
+                    outputs.restoreDisplayClaim(
                         placeholderID: slice.id, displayUUID: device,
                         displayName: slice.deviceDisplayName
                     )

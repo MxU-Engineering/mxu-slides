@@ -276,6 +276,19 @@ final class PackedFrameTests: XCTestCase {
         XCTAssertEqual(outputs.placeholderDevices[projector.id], "FRAME-4K")
     }
 
+    func testRestoredClaimsJoinADisplayInsteadOfStealingIt() throws {
+
+        let outputs = try makeManager()
+        let wall = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Wall", width: 832, height: 416))
+        let strip = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Strip", width: 3840, height: 540))
+        outputs.restoreDisplayClaim(placeholderID: wall.id, displayUUID: "FRAME-4K", displayName: nil)
+        outputs.restoreDisplayClaim(placeholderID: strip.id, displayUUID: "FRAME-4K", displayName: nil)
+        XCTAssertEqual(outputs.placeholderDevices[wall.id], "FRAME-4K")
+        XCTAssertEqual(outputs.placeholderDevices[strip.id], "FRAME-4K")
+    }
+
     func testCompositeMirrorPacksTwoScreensIntoOneFeed() throws {
 
         let compositor: Compositor
