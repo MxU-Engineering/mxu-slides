@@ -860,12 +860,34 @@ public struct RenderLayer: Identifiable, Equatable, Sendable {
 
     public var crossfadeProgress: Double?
 
+    public var placed: PlacedLayer?
+
     public init(kind: LayerKind, name: String? = nil, isHidden: Bool = false, items: [RenderItem] = []) {
         self.id = kind.rawValue
         self.kind = kind
         self.name = name ?? kind.displayName
         self.isHidden = isHidden
         self.items = items
+    }
+}
+
+public struct PlacedLayer: Equatable, Sendable {
+    public struct Frame: Equatable, Sendable {
+        public var rect: CGRect
+        public var fill: Bool
+
+        public init(rect: CGRect, fill: Bool = false) {
+            self.rect = rect
+            self.fill = fill
+        }
+    }
+
+    public var canvasSize: CGSize
+    public var frames: [Frame]
+
+    public init(canvasSize: CGSize, frames: [Frame]) {
+        self.canvasSize = canvasSize
+        self.frames = frames
     }
 }
 

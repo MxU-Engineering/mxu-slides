@@ -123,6 +123,7 @@ final class OutputPresetsController {
                 DiagnosticsStore.shared.note("presets.routing", detail: "active preset \(id) is not in the library — every layer routes")
             }
             outputs.setLayerRouting([:])
+            outputs.setLayerPlacements([:])
             outputs.setSlideThemeRouting([:])
             controls?.setSlideThemeOverrides([:])
             applyMaskActivation(nil)
@@ -139,6 +140,15 @@ final class OutputPresetsController {
             routing[assignment.targetId] = Set(assignment.enabledLayers)
         }
         outputs.setLayerRouting(routing)
+
+        outputs.setLayerPlacements(
+            Dictionary(grouping: preset.placements ?? [], by: \.layerId).mapValues { placements in
+                placements.map {
+                    MapPlacement(
+                        rect: CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height),
+                        fill: $0.scale == .fill)
+                }
+            })
 
         var themeRouting: [String: String] = [:]
         var overrides: [String: Theme] = [:]

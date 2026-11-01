@@ -38,7 +38,28 @@ public final class OutputManager {
     public func setScreenMap(_ map: ScreenMap?) {
         guard map != screenMap else { return }
         screenMap = map
+        screenMapBox.value = map
         screenMapChanged?()
+    }
+
+    private let screenMapBox = Locked<ScreenMap?>(nil)
+
+    private let layerPlacements = Locked<[String: [MapPlacement]]>([:])
+
+    public func setLayerPlacements(_ placements: [String: [MapPlacement]]) {
+        layerPlacements.value = placements
+    }
+
+    nonisolated static func dominantScreen(for placements: [MapPlacement], on map: ScreenMap) -> String? {
+        var best: (id: String, area: CGFloat)?
+        for (id, rect) in map.screens {
+            let area = placements.reduce(CGFloat(0)) { sum, placement in
+                let overlap = placement.rect.intersection(rect)
+                return sum + (overlap.isNull ? 0 : overlap.width * overlap.height)
+            }
+            if area > (best?.area ?? 0) { best = (id, area) }
+        }
+        return best?.id
     }
 
     public private(set) var reconfigurationCount = 0
@@ -602,6 +623,8 @@ public final class OutputManager {
         let variants = variantSceneProvider
         let routing = layerRouting
         let themeRouting = slideThemeRouting
+        let placementBox = layerPlacements
+        let mapBox = screenMapBox
         let roles = roleBox
         let scaling = scaleModeBox
         let spans = spanBox
@@ -635,12 +658,47 @@ public final class OutputManager {
                 scene = base()
             }
 
+            let room = scene
+
             if let screenID, let canvasSize, !spans.value.contains(screenID) {
                 scene = scene.scaled(toScreen: canvasSize, mode: scaling.value[screenID] ?? .fit)
             }
+
+            let placements = placementBox.value
+            if !placements.isEmpty, let screenID, let map = mapBox.value,
+               let mapRect = map.rect(for: screenID) {
+                for index in scene.layers.indices {
+                    let layerID = scene.layers[index].id
+                    guard let layerPlacements = placements[layerID],
+                          let hits = ScreenMapResolver.resolve(placements: layerPlacements, screen: mapRect)
+                    else { continue }
+                    guard !hits.isEmpty else {
+                        scene.layers[index].isHidden = true
+                        continue
+                    }
+                    var picture = room.layers[index]
+
+                    if picture.kind == .slide, let variants,
+                       let host = Self.dominantScreen(for: layerPlacements, on: map),
+                       let themeID = themeRouting.value[host], let variant = variants(themeID),
+                       let look = variant.layers.first(where: { $0.id == layerID }) {
+                        picture = look
+                    }
+                    let canvas = scene.canvasSize
+                    picture.placed = PlacedLayer(canvasSize: room.canvasSize, frames: hits.map {
+                        PlacedLayer.Frame(
+                            rect: CGRect(
+                                x: $0.frame.minX * canvas.width, y: $0.frame.minY * canvas.height,
+                                width: $0.frame.width * canvas.width, height: $0.frame.height * canvas.height),
+                            fill: $0.fill)
+                    })
+                    scene.layers[index] = picture
+                }
+            }
             guard let enabled = routing.value[routingKey] else { return scene }
             for index in scene.layers.indices
-            where !enabled.contains(scene.layers[index].kind.rawValue) {
+            where scene.layers[index].placed == nil
+                && !enabled.contains(scene.layers[index].kind.rawValue) {
                 scene.layers[index].isHidden = true
             }
             return scene
