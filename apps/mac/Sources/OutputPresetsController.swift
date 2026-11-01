@@ -303,7 +303,7 @@ final class OutputPresetsController {
             var assignment = preset.assignments.first { $0.targetId == targetId }
                 ?? OutputAssignment(
                     targetKind: targetKind, targetId: targetId,
-                    enabledLayers: LayerKind.allCases.map(\.rawValue)
+                    enabledLayers: Self.seededLayers(preset)
                 )
             var layers = Set(assignment.enabledLayers)
             if layers.contains(layer) { layers.remove(layer) } else { layers.insert(layer) }
@@ -331,7 +331,7 @@ final class OutputPresetsController {
             var assignment = preset.assignments.first { $0.targetId == targetId }
                 ?? OutputAssignment(
                     targetKind: targetKind, targetId: targetId,
-                    enabledLayers: LayerKind.allCases.map(\.rawValue).sorted()
+                    enabledLayers: Self.seededLayers(preset)
                 )
             assignment.slideThemeId = (themeId?.isEmpty ?? true) ? nil : themeId
 
@@ -387,7 +387,7 @@ final class OutputPresetsController {
             var assignment = preset.assignments.first { $0.targetId == targetId }
                 ?? OutputAssignment(
                     targetKind: targetKind, targetId: targetId,
-                    enabledLayers: LayerKind.allCases.map(\.rawValue).sorted()
+                    enabledLayers: Self.seededLayers(preset)
                 )
             var ids = Set((assignment.maskIds ?? []).compactMap(UUID.init(uuidString:)))
             if ids.contains(maskId) { ids.remove(maskId) } else { ids.insert(maskId) }
@@ -401,5 +401,57 @@ final class OutputPresetsController {
     func clearAssignment(presetID: String, targetId: String) {
         guard write(presetID, { $0.assignments.removeAll { $0.targetId == targetId } }) else { return }
         if presetID == activePresetID { applyActivePreset() }
+    }
+
+    private nonisolated static func seededLayers(_ preset: OutputPreset) -> [String] {
+        (LayerKind.allCases.map(\.rawValue) + (preset.layers ?? []).map(\.id)).sorted()
+    }
+
+    func customLayers(presetID: String) -> [CustomLayer] {
+        preset(presetID)?.layers ?? []
+    }
+
+    var customLayers: [CustomLayer] {
+        _ = version
+        var seen: Set<String> = []
+        return appModel.resident.outputPresets.values
+            .flatMap { $0.layers ?? [] }
+            .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+            .filter { seen.insert($0.id).inserted }
+    }
+
+    @discardableResult
+    func addLayer(presetID: String, name: String) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let id = UUID().uuidString
+        guard write(presetID, { $0.addLayer(named: trimmed, id: id) }) else { return nil }
+        if presetID == activePresetID { applyActivePreset() }
+        return id
+    }
+
+    func renameLayer(presetID: String, layerID: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        write(presetID) { preset in
+            if let index = preset.layers?.firstIndex(where: { $0.id == layerID }) {
+                preset.layers?[index].name = trimmed
+            }
+        }
+    }
+
+    func removeLayer(presetID: String, layerID: String) {
+        guard write(presetID, { $0.removeLayer(id: layerID) }) else { return }
+        if presetID == activePresetID { applyActivePreset() }
+    }
+
+    func routedTargetNames(presetID: String, layerId: String) -> [String] {
+        let targets = outputs.displays.map { ($0.uuid, $0.name) }
+            + outputs.placeholderScreens
+                .filter { outputs.role(forScreen: $0.id) != .confidence }
+                .map { ($0.id.uuidString, $0.name) }
+        return targets
+            .filter { enabledLayers(presetID: presetID, targetId: $0.0)?.contains(layerId) ?? true }
+            .map(\.1)
     }
 }

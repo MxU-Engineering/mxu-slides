@@ -1,5 +1,6 @@
 import AppKit
 import PresenterCore
+import RenderEngine
 import SlideScene
 import SwiftUI
 
@@ -47,6 +48,8 @@ struct MediaCueMenuItems: View {
     var replace: SpotReplace? = nil
 
     var inheritedTransition: MediaTransition? = nil
+
+    var layer: SpotLayer? = nil
 
     var body: some View {
         if model.media(mediaID) == nil {
@@ -128,12 +131,53 @@ struct MediaCueMenuItems: View {
         TransitionMenu(current: item.transition, inherited: inheritedTransition) { transform in
             model.updateMedia(mediaID) { $0.transition = transform($0.transition) }
         }
+
+        if let layer {
+            layerPicker(layer)
+        }
     }
 }
 
 struct SpotReplace {
     let label: String
     let swap: (_ oldID: String, _ newID: String) -> Void
+}
+
+struct SpotLayer {
+    let cue: CueMedia
+    let kind: MediaKind
+    let customLayers: [CustomLayer]
+    let set: (_ layerId: String?) -> Void
+
+    static let builtIn: [LayerKind] = [.loopingVideos, .stillGraphics, .videos, .overlays]
+}
+
+extension MediaCueMenuItems {
+
+    @ViewBuilder
+    func layerPicker(_ layer: SpotLayer) -> some View {
+        let offered = SpotLayer.builtIn.map(\.rawValue) + layer.customLayers.map(\.id)
+        let stored = layer.cue.storedRoutingLayerId ?? ""
+        let defaultKind = SlideSceneBuilder.layerKind(layer.cue.defaultLayer(kind: layer.kind))
+        let defaultName = defaultKind.displayName
+
+        Picker("Layer", selection: Binding(
+            get: { offered.contains(stored) && stored != defaultKind.rawValue ? stored : "" },
+            set: { layer.set($0.isEmpty ? nil : $0) }
+        )) {
+            Text("Default (\(defaultName))").tag("")
+            Divider()
+            ForEach(SpotLayer.builtIn, id: \.self) { kind in
+                Text(kind.displayName).tag(kind.rawValue)
+            }
+            if !layer.customLayers.isEmpty {
+                Divider()
+                ForEach(layer.customLayers) { custom in
+                    Text(custom.name).tag(custom.id)
+                }
+            }
+        }
+    }
 }
 
 struct MediaEditorDoors: View {

@@ -1161,6 +1161,9 @@ private struct PresetDetail: View {
 
     @State private var name = ""
 
+    @State private var addingLayer = false
+    @State private var newLayerName = ""
+
     var body: some View {
         let active = presets.activePresetID == presetID
         VStack(alignment: .leading, spacing: 12) {
@@ -1170,6 +1173,12 @@ private struct PresetDetail: View {
                     .controlSize(.small)
                     .frame(maxWidth: 220)
                     .onSubmit { presets.renamePreset(presetID, to: name) }
+                Button("Add Layer") {
+                    newLayerName = ""
+                    addingLayer = true
+                }
+                .controlSize(.small)
+                .help("A layer of your own on this preset — route it per screen below; move a slide's media onto it with right-click › Layer.")
                 Spacer()
                 Button {
                     presets.activate(active ? nil : presetID)
@@ -1219,6 +1228,13 @@ private struct PresetDetail: View {
         .task(id: presetID) {
             name = presets.preset(presetID)?.name ?? ""
         }
+        .alert("Add Layer", isPresented: $addingLayer) {
+            TextField("Name", text: $newLayerName)
+            Button("Add") { presets.addLayer(presetID: presetID, name: newLayerName) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The layer stacks above the Slide layer and starts on for every screen this preset routes.")
+        }
     }
 }
 
@@ -1229,6 +1245,13 @@ private struct RoutingMatrix: View {
     let presetID: String
 
     @State private var pickerTargetID: String?
+
+    @State private var renamingLayerID: String?
+    @State private var layerNameText = ""
+
+    private var customLayers: [CustomLayer] {
+        presets.customLayers(presetID: presetID)
+    }
 
     private struct Target: Identifiable {
         let id: String
@@ -1250,6 +1273,7 @@ private struct RoutingMatrix: View {
     private static let cellWidth: CGFloat = 44
     private static let themeColumnWidth: CGFloat = 128
     private static let maskColumnWidth: CGFloat = 104
+    private static let customCellWidth: CGFloat = 64
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -1260,8 +1284,40 @@ private struct RoutingMatrix: View {
                     targetRow(target)
                 }
             }
+            .alert("Rename Layer", isPresented: Binding(
+                get: { renamingLayerID != nil },
+                set: { if !$0 { renamingLayerID = nil } }
+            )) {
+                TextField("Name", text: $layerNameText)
+                Button("Rename") {
+                    if let id = renamingLayerID {
+                        presets.renameLayer(presetID: presetID, layerID: id, to: layerNameText)
+                    }
+                    renamingLayerID = nil
+                }
+                Button("Cancel", role: .cancel) { renamingLayerID = nil }
+            }
         }
         .scrollIndicators(.automatic)
+    }
+
+    private func customHeader(_ layer: CustomLayer) -> some View {
+        Text(layer.name.uppercased())
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .tracking(0.3)
+            .lineLimit(1)
+            .frame(width: Self.customCellWidth)
+            .help("\(layer.name) — a layer added to this preset. Right-click to rename or remove it.")
+            .contextMenu {
+                Button("Rename Layer…") {
+                    layerNameText = layer.name
+                    renamingLayerID = layer.id
+                }
+                Button("Remove Layer", role: .destructive) {
+                    presets.removeLayer(presetID: presetID, layerID: layer.id)
+                }
+            }
     }
 
     private var headerRow: some View {
@@ -1276,6 +1332,9 @@ private struct RoutingMatrix: View {
                     .lineLimit(1)
                     .frame(width: Self.cellWidth)
                     .help(layer.displayName)
+            }
+            ForEach(customLayers) { layer in
+                customHeader(layer)
             }
             Text("SLIDE THEME")
                 .font(.system(size: 8, weight: .semibold))
@@ -1306,7 +1365,10 @@ private struct RoutingMatrix: View {
             }
             .frame(width: Self.nameColumnWidth)
             ForEach(LayerKind.allCases, id: \.self) { layer in
-                cell(target: target, layer: layer, enabled: enabled)
+                cell(target: target, layerId: layer.rawValue, layerName: layer.displayName, enabled: enabled)
+            }
+            ForEach(customLayers) { layer in
+                cell(target: target, layerId: layer.id, layerName: layer.name, width: Self.customCellWidth, enabled: enabled)
             }
             themeCell(target)
             maskCell(target)
@@ -1319,14 +1381,17 @@ private struct RoutingMatrix: View {
         }
     }
 
-    private func cell(target: Target, layer: LayerKind, enabled: Set<String>?) -> some View {
+    private func cell(
+        target: Target, layerId: String, layerName: String,
+        width: CGFloat = RoutingMatrix.cellWidth, enabled: Set<String>?
+    ) -> some View {
 
-        let routed = enabled?.contains(layer.rawValue) ?? true
-        let placed = presets.hasPlacements(presetID: presetID, layer: layer.rawValue)
+        let routed = enabled?.contains(layerId) ?? true
+        let placed = presets.hasPlacements(presetID: presetID, layer: layerId)
         return Button {
             presets.toggleLayer(
                 presetID: presetID, targetKind: target.kind,
-                targetId: target.id, layer: layer.rawValue
+                targetId: target.id, layer: layerId
             )
         } label: {
             Group {
@@ -1339,11 +1404,11 @@ private struct RoutingMatrix: View {
             .frame(width: 9, height: 9)
 
             .overlay(Circle().strokeBorder(Color.yellow, lineWidth: placed ? 1.5 : 0).frame(width: 13, height: 13))
-            .frame(width: Self.cellWidth, height: 26)
+            .frame(width: width, height: 26)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(placed ? "\(layer.displayName) → \(target.name) · placed on the Screen Map below" : "\(layer.displayName) → \(target.name)")
+        .help(placed ? "\(layerName) → \(target.name) · placed on the Screen Map below" : "\(layerName) → \(target.name)")
     }
 
     private func themeCell(_ target: Target) -> some View {

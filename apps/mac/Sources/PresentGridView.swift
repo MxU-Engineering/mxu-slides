@@ -1262,7 +1262,20 @@ struct SlideGridBody: View {
                             SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
                         }
                     },
-                    inheritedTransition: presentation.transition
+                    inheritedTransition: presentation.transition,
+
+                    layer: slide.background?.mediaId == mediaID
+                        ? slide.background.flatMap { cue in
+                            model.media(mediaID).map { item in
+                                SpotLayer(cue: cue, kind: item.mediaKind, customLayers: actionRouter?.customLayers ?? []) {
+                                    [presentationID = presentation.id, slideID = slide.id] layerId in
+                                    model.updateSlide(presentationID: presentationID, slideID: slideID, undoLabel: "Set Layer") {
+                                        $0.background?.setRoutingLayer(layerId)
+                                    }
+                                }
+                            }
+                        }
+                        : nil
                 )
             }
         }
@@ -1799,6 +1812,35 @@ struct SlideTile: View {
                         .padding(4)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+
+                let chips = layerChips
+                if !chips.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(chips) { chip in
+                            LayerChip(chip: chip)
+                                .onHover { over in
+                                    if over {
+                                        hoveredChipID = chip.id
+                                    } else if hoveredChipID == chip.id {
+                                        hoveredChipID = nil
+                                    }
+                                }
+                                .popover(
+                                    isPresented: Binding(
+                                        get: { hoveredChipID == chip.id },
+                                        set: { if !$0, hoveredChipID == chip.id { hoveredChipID = nil } }
+                                    ), arrowEdge: .bottom
+                                ) {
+                                    LayerChipHover(chip: chip, actionRouter: actionRouter)
+                                }
+                        }
+                    }
+                    .padding(5)
+                }
+            }
+
+            }
             .overlay(alignment: .topTrailing) {
                 if mediaMissing {
                     Image(systemName: "exclamationmark.triangle")
@@ -1939,6 +1981,19 @@ struct SlideTile: View {
     @State private var hasClippedText = false
     @State private var pageLooks: [PageLook] = []
     @State private var pagesHovered = false
+
+    @State private var hoveredChipID: String?
+
+    private var layerChips: [SlideLayerFacts.Chip] {
+        guard slide.background?.storedRoutingLayerId != nil || !(slide.actions ?? []).isEmpty
+        else { return [] }
+        return SlideLayerFacts.chips(
+            for: slide,
+
+            item: { id in model.media(id).map { ($0.name, $0.mediaKind) } },
+            layerName: { id in actionRouter?.layerName(id) ?? LayerKind(rawValue: id)?.displayName },
+            presetName: { actionRouter?.presetName($0) })
+    }
 
     @State private var tip: String?
 
@@ -2707,3 +2762,85 @@ struct TileTipLabel: View {
             .allowsHitTesting(false)
     }
 }
+
+struct LayerChip: View {
+    let chip: SlideLayerFacts.Chip
+
+    static let layerTint = Color(red: 0.54, green: 0.71, blue: 1)
+    static let presetTint = Color(red: 1, green: 0.82, blue: 0.4)
+
+    var body: some View {
+        let tint = chip.kind == .layer ? Self.layerTint : Self.presetTint
+        Text(chip.label)
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(Color.black.opacity(0.7), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint, lineWidth: 1))
+    }
+}
+
+struct LayerChipHover: View {
+    let chip: SlideLayerFacts.Chip
+    let actionRouter: ActionRouter?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            lines
+        }
+        .padding(10)
+        .frame(width: 300, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var lines: some View {
+        Group {
+            if chip.kind == .preset {
+                Text("\(chip.label): this slide switches to that preset when it fires.")
+                    .font(.caption.weight(.semibold))
+                Text("A preset picked in the header during the service stays over it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("\(chip.itemName) · \(chip.label) layer")
+                    .font(.caption.weight(.semibold))
+                if let destinations = actionRouter?.activeDestinations(layerId: chip.targetId) {
+                    Text("under \(Text(destinations.preset).bold()) (active) lands on")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if destinations.screens.isEmpty {
+                        Text("nowhere")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 5) {
+                            ForEach(destinations.screens, id: \.self) { screen in
+                                Text(screen)
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .overlay(RoundedRectangle.standard(CornerStandard.element).strokeBorder(Color.green, lineWidth: 1))
+                            }
+                        }
+                    }
+                    let rest = actionRouter?.activeDestinations(layerId: LayerKind.slide.rawValue)?.screens ?? []
+                    Text("Everything else on this slide: Slide layer → \(rest.isEmpty ? "nowhere" : rest.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No preset is active — every screen composites every layer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Nothing here is saved on the slide — the preset decides.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
