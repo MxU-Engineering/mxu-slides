@@ -29,7 +29,8 @@ final class FocusWatchRecorder {
             ] {
                 center.addObserver(forName: name, object: nil, queue: .main) { _ in
                     MainActor.assumeIsolated {
-                        DiagnosticsStore.shared.note("focus.app", detail: "\(state); \(InputTrailRecorder.shared.cause())")
+                        DiagnosticsStore.shared.note(
+                            "focus.app", detail: "\(state); front: \(Self.frontDescription()); \(InputTrailRecorder.shared.cause())")
                     }
                 }
             }
@@ -69,32 +70,68 @@ final class FocusWatchRecorder {
             }
 
             let number = target.windowNumber
+            let poster = Self.poster(of: event)
             RunLoop.main.perform(inModes: [.default]) {
                 MainActor.assumeIsolated {
                     if click.isStuck(hasKeyWindowAfter: NSApp.keyWindow != nil),
                        let window = NSApp.window(withWindowNumber: number), window.isVisible {
-                        FocusWatchRecorder.shared.unstick(window, name: name, click: click)
+                        FocusWatchRecorder.shared.unstick(window, name: name, click: click, poster: poster)
                     }
                 }
             }
         }
     }
 
-    private func unstick(_ window: NSWindow, name: String, click: FocusWatch.Click) {
+    private func unstick(_ window: NSWindow, name: String, click: FocusWatch.Click, poster: String) {
         noteLimited(
             "focus.stuck",
-            "a click on \(name) left no key window (before it: \(click.summary)); activating; windows: \(Self.windowsSummary())")
+            "a click on \(name)\(poster) left no key window (before it: \(click.summary)); front: \(Self.frontDescription()); "
+                + "activating; windows: \(Self.windowsSummary())")
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                if NSApp.keyWindow === window {
+                    DiagnosticsStore.shared.note("focus.unstuck", detail: "\(name) is key again")
+                    return
+                }
+                let front = FocusWatch.Front(appActive: NSApp.isActive, frontIsSelf: Self.frontIsSelf)
                 DiagnosticsStore.shared.note(
                     "focus.unstuck",
-                    detail: NSApp.keyWindow === window
-                        ? "\(name) is key again"
-                        : "still not key (\(NSApp.isActive ? "app active" : "app inactive"), key: \(NSApp.keyWindow.map(SheetWatchRecorder.hostName(of:)) ?? "none"))")
+                    detail: "still not key (\(front.summary) \(Self.frontDescription()), key: \(NSApp.keyWindow.map(SheetWatchRecorder.hostName(of:)) ?? "none"))")
+
+                if front.resyncs {
+                    NSApp.deactivate()
+                    NSApp.activate(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            DiagnosticsStore.shared.note(
+                                "focus.resync",
+                                detail: NSApp.keyWindow === window
+                                    ? "\(name) is key again"
+                                    : "still not key (\(NSApp.isActive ? "app active" : "app inactive"), front: \(Self.frontDescription()))")
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private static var frontIsSelf: Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    }
+
+    private static func frontDescription() -> String {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return "none" }
+        return app.processIdentifier == ProcessInfo.processInfo.processIdentifier
+            ? "this app" : "\(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "pid \(app.processIdentifier)"))"
+    }
+
+    private static func poster(of event: NSEvent) -> String {
+        guard let pid = event.cgEvent.map({ pid_t($0.getIntegerValueField(.eventSourceUnixProcessID)) }), pid != 0 else { return "" }
+        let name = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "pid \(pid)"
+        return " posted by \(name)"
     }
 
     private func noteLimited(_ name: String, _ detail: String) {
