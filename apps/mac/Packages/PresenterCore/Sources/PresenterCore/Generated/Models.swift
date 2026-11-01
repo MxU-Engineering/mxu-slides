@@ -741,13 +741,15 @@ public struct CueMedia: Codable, Sendable, Equatable {
     public var layer: CueMediaLayer?
     public var loops: Bool?
     public var classification: MediaClassification?
+    public var layerId: String?
 
-    public init(mediaId: String, mode: CueMediaMode? = nil, layer: CueMediaLayer? = nil, loops: Bool? = nil, classification: MediaClassification? = nil) {
+    public init(mediaId: String, mode: CueMediaMode? = nil, layer: CueMediaLayer? = nil, loops: Bool? = nil, classification: MediaClassification? = nil, layerId: String? = nil) {
         self.mediaId = mediaId
         self.mode = mode
         self.layer = layer
         self.loops = loops
         self.classification = classification
+        self.layerId = layerId
     }
 }
 
@@ -1095,8 +1097,9 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var recordedByPresetId: String?
     public var actions: [SlideAction]?
     public var autoAdvance: AutoAdvance?
+    public var marks: [VideoMark]?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, previousFileHash: String? = nil, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, previousFileHash: String? = nil, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, marks: [VideoMark]? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -1125,6 +1128,23 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.recordedByPresetId = recordedByPresetId
         self.actions = actions
         self.autoAdvance = autoAdvance
+        self.marks = marks
+    }
+}
+
+public struct VideoMark: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var at: Double
+    public var actions: [SlideAction]
+    public var colorHex: String?
+
+    public init(id: String, name: String, at: Double, actions: [SlideAction], colorHex: String? = nil) {
+        self.id = id
+        self.name = name
+        self.at = at
+        self.actions = actions
+        self.colorHex = colorHex
     }
 }
 
@@ -1526,11 +1546,15 @@ public struct OutputPreset: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var assignments: [OutputAssignment]
+    public var placements: [LayerPlacement]?
+    public var layers: [CustomLayer]?
 
-    public init(id: String, name: String, assignments: [OutputAssignment]) {
+    public init(id: String, name: String, assignments: [OutputAssignment], placements: [LayerPlacement]? = nil, layers: [CustomLayer]? = nil) {
         self.id = id
         self.name = name
         self.assignments = assignments
+        self.placements = placements
+        self.layers = layers
     }
 }
 
@@ -2178,12 +2202,19 @@ public enum TextSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case currentPresentation
     case nextServiceTitle
     case timecode
+    case videoMarkName
 }
 
 public enum TimerTextFormat: String, Codable, Sendable, CaseIterable, Equatable {
     case digits
     case abbreviated
     case words
+}
+
+public enum VideoCountdownTarget: String, Codable, Sendable, CaseIterable, Equatable {
+    case end
+    case nextMark
+    case namedMark
 }
 
 public struct TextLink: Codable, Sendable, Equatable {
@@ -2199,8 +2230,11 @@ public struct TextLink: Codable, Sendable, Equatable {
     public var videoLayer: String?
     public var timerFormat: TimerTextFormat?
     public var timerPattern: String?
+    public var videoTarget: VideoCountdownTarget?
+    public var videoMarkName: String?
+    public var countsUp: Bool?
 
-    public init(source: TextSourceKind, timerId: String? = nil, clockFormat: String? = nil, usesWarningColor: Bool? = nil, maxLines: Int? = nil, includeSteps: Bool? = nil, includeBuilds: Bool? = nil, sourceObjectName: String? = nil, showsVideoName: Bool? = nil, videoLayer: String? = nil, timerFormat: TimerTextFormat? = nil, timerPattern: String? = nil) {
+    public init(source: TextSourceKind, timerId: String? = nil, clockFormat: String? = nil, usesWarningColor: Bool? = nil, maxLines: Int? = nil, includeSteps: Bool? = nil, includeBuilds: Bool? = nil, sourceObjectName: String? = nil, showsVideoName: Bool? = nil, videoLayer: String? = nil, timerFormat: TimerTextFormat? = nil, timerPattern: String? = nil, videoTarget: VideoCountdownTarget? = nil, videoMarkName: String? = nil, countsUp: Bool? = nil) {
         self.source = source
         self.timerId = timerId
         self.clockFormat = clockFormat
@@ -2213,6 +2247,9 @@ public struct TextLink: Codable, Sendable, Equatable {
         self.videoLayer = videoLayer
         self.timerFormat = timerFormat
         self.timerPattern = timerPattern
+        self.videoTarget = videoTarget
+        self.videoMarkName = videoMarkName
+        self.countsUp = countsUp
     }
 }
 
@@ -2715,5 +2752,35 @@ public struct TrackSet: Codable, Sendable, Equatable, Identifiable {
         self.key = key
         self.tempo = tempo
         self.source = source
+    }
+}
+
+public struct LayerPlacement: Codable, Sendable, Equatable {
+    public var layerId: String
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+    public var scale: MediaScaleMode?
+
+    public init(layerId: String, x: Double, y: Double, width: Double, height: Double, scale: MediaScaleMode? = nil) {
+        self.layerId = layerId
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.scale = scale
+    }
+}
+
+public struct CustomLayer: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var above: String?
+
+    public init(id: String, name: String, above: String? = nil) {
+        self.id = id
+        self.name = name
+        self.above = above
     }
 }

@@ -150,7 +150,7 @@ public enum LinkedText {
             return true
         case .clock, .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
-             .currentPresentation, .nextServiceTitle, .firedBy, .videoMarkName:
+             .currentPresentation, .nextServiceTitle, .videoMarkName:
             return false
         }
     }

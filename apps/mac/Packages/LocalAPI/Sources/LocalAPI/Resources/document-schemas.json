@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 149,
+  "schemaVersion": 161,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -551,6 +551,9 @@
         },
         "tracking": {
           "type": "number"
+        },
+        "textTransform": {
+          "$ref": "#/components/schemas/TextTransform"
         }
       },
       "required": [
@@ -1106,6 +1109,9 @@
         },
         "classification": {
           "$ref": "#/components/schemas/MediaClassification"
+        },
+        "layerId": {
+          "type": "string"
         }
       },
       "required": [
@@ -1730,6 +1736,12 @@
         },
         "autoAdvance": {
           "$ref": "#/components/schemas/AutoAdvance"
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/VideoMark"
+          }
         }
       },
       "required": [
@@ -1745,6 +1757,35 @@
         "favorite",
         "collections",
         "loops"
+      ]
+    },
+    "VideoMark": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "at": {
+          "type": "number"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "colorHex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "at",
+        "actions"
       ]
     },
     "AudioItem": {
@@ -2374,6 +2415,18 @@
           "items": {
             "$ref": "#/components/schemas/OutputAssignment"
           }
+        },
+        "placements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LayerPlacement"
+          }
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/CustomLayer"
+          }
         }
       },
       "required": [
@@ -2693,6 +2746,12 @@
           "type": "integer"
         },
         "videoBitrateKbps": {
+          "type": "integer"
+        },
+        "adaptBitrate": {
+          "type": "boolean"
+        },
+        "minBitrateKbps": {
           "type": "integer"
         },
         "canvasScreenId": {
@@ -3381,7 +3440,8 @@
         "currentGroup",
         "currentPresentation",
         "nextServiceTitle",
-        "timecode"
+        "timecode",
+        "videoMarkName"
       ]
     },
     "TimerTextFormat": {
@@ -3390,6 +3450,14 @@
         "digits",
         "abbreviated",
         "words"
+      ]
+    },
+    "VideoCountdownTarget": {
+      "type": "string",
+      "enum": [
+        "end",
+        "nextMark",
+        "namedMark"
       ]
     },
     "TextLink": {
@@ -3430,6 +3498,15 @@
         },
         "timerPattern": {
           "type": "string"
+        },
+        "videoTarget": {
+          "$ref": "#/components/schemas/VideoCountdownTarget"
+        },
+        "videoMarkName": {
+          "type": "string"
+        },
+        "countsUp": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -4246,6 +4323,54 @@
         "id",
         "name",
         "stems"
+      ]
+    },
+    "LayerPlacement": {
+      "type": "object",
+      "properties": {
+        "layerId": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "scale": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        }
+      },
+      "required": [
+        "layerId",
+        "x",
+        "y",
+        "width",
+        "height"
+      ]
+    },
+    "CustomLayer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "above": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
       ]
     }
   }
