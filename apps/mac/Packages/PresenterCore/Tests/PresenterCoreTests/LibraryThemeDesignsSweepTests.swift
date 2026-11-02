@@ -37,7 +37,7 @@ import Testing
         #expect(drops.contains("!GutterDropDelegate.appliesToSlide(payload: payload)"), "gaps refuse it")
         let grid = try #require(sweep.file("PresentGridView.swift")).text
         #expect(grid.contains("model.applyTheme(to: presentation.id, slideIDs: [slide.id], themeID: dropped.themeId, design: dropped.design.name)"))
-        #expect(try #require(sweep.file("AppModel.swift")).text.contains("self == .media || self == .audio || self == .themes"),
+        #expect(try #require(sweep.file("AppModel.swift")).text.contains("self == .media || self == .audio || self == .notes || self == .themes"),
                 "Edit keeps the deck open on the Themes tab, to drop designs on")
         let editor = try #require(sweep.file("SlideEditorView.swift")).text
         #expect(editor.contains("guard model.hasPresentationSettings else { return false }\n            model.pickThemeSlide(dropped.design.name, themeId: dropped.themeId, for: slide.id)"))

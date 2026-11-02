@@ -1,0 +1,124 @@
+{
+  "name": "List under a heading",
+  "about": "A short line ending in a colon over a list (\"Three Warnings:\" and a numbered list) is one Points passage, the line its small heading without the colon; with no theme the heading leads the slide. The numbers live in the list, not the words. Words in parentheses go to the notes.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "text": "Three Warnings:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "items": [
+          {
+            "runs": [
+              {
+                "text": "“Don’t forget Me when you experience prosperity” (vs. 12)"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "Don’t fall for the surrounding culture’s idols (vs. 14)"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "Don’t test God when hardship comes (vs. 16)"
+              }
+            ]
+          }
+        ],
+        "ordered": true,
+        "type": "list"
+      },
+      {
+        "runs": [
+          {
+            "text": "What is it about prosperity that can cause us to forget God?"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Cru’s Four Root Idols:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "items": [
+          {
+            "runs": [
+              {
+                "text": "The idol of comfort"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "The idol of power"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "The idol of approval"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "The idol of control"
+              }
+            ]
+          }
+        ],
+        "ordered": false,
+        "type": "list"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "points",
+      "text": "Three Warnings:\n“Don’t forget Me when you experience prosperity” (vs. 12)\nDon’t fall for the surrounding culture’s idols (vs. 14)\nDon’t test God when hardship comes (vs. 16)"
+    },
+    {
+      "text": "What is it about prosperity that can cause us to forget God?"
+    },
+    {
+      "type": "points",
+      "text": "Cru’s Four Root Idols:\nThe idol of comfort\nThe idol of power\nThe idol of approval\nThe idol of control"
+    }
+  ],
+  "slides": [
+    {
+      "kind": "points",
+      "text": "Three Warnings\n“Don’t forget Me when you experience prosperity”\nDon’t fall for the surrounding culture’s idols\nDon’t test God when hardship comes",
+      "notes": "vs. 12\nvs. 14\nvs. 16"
+    },
+    {
+      "kind": "body",
+      "text": "What is it about prosperity that can cause us to forget God?"
+    },
+    {
+      "kind": "points",
+      "text": "Cru’s Four Root Idols\nThe idol of comfort\nThe idol of power\nThe idol of approval\nThe idol of control"
+    }
+  ]
+}

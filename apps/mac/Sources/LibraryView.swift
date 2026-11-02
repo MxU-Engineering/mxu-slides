@@ -70,24 +70,35 @@ struct LibrarySidebar: View {
     var body: some View {
         let _ = BodyMeter.tick(.librarySidebar)
         VStack(spacing: 0) {
-            headerRow
-            sectionPicker
-            if model.selectedSection == .audio, searchText.isEmpty {
-                ChipPicker(options: [(0, "Music"), (1, "Tracks")], selection: $audioTab)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 6)
-            }
-            Divider()
-            if searchText.isEmpty, model.selectedSection == .audio, audioTab == 1 {
-                TrackSetList(model: model)
-            } else if searchText.isEmpty {
-                entryList
+            if model.selectedSection == .notes, let noteID = model.openNoteID, appModeRaw != AppMode.edit.rawValue,
+               model.indexEntry(noteID)?.kind == .note {
+                NoteReaderView(
+                    model: model, noteID: noteID, host: .library,
+                    onBack: {
+                        model.openNoteID = nil
+                        model.selectedEntryID = nil
+                    },
+                    layout: layout, render: render, controls: controls)
             } else {
-                searchResults
-            }
-            if !runOnly {
+                headerRow
+                sectionPicker
+                if model.selectedSection == .audio, searchText.isEmpty {
+                    ChipPicker(options: [(0, "Music"), (1, "Tracks")], selection: $audioTab)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 6)
+                }
                 Divider()
-                footer
+                if searchText.isEmpty, model.selectedSection == .audio, audioTab == 1 {
+                    TrackSetList(model: model)
+                } else if searchText.isEmpty {
+                    entryList
+                } else {
+                    searchResults
+                }
+                if !runOnly {
+                    Divider()
+                    footer
+                }
             }
         }
         .onChange(of: viewedFolder, initial: true) { _, viewed in
@@ -101,6 +112,15 @@ struct LibrarySidebar: View {
                 model.libraryRevealID = nil
                 showHome(id)
             }
+        }
+        .onChange(of: model.selectedEntryID) { _, id in
+            guard let id, let entry = model.indexEntry(id), entry.kind == .note
+            else { return }
+            model.selectedSection = .notes
+            model.markUsed(id)
+
+            guard appModeRaw != AppMode.edit.rawValue else { return }
+            model.openNoteID = id
         }
         .overlay {
             if findSpotlight.active {
@@ -590,6 +610,10 @@ struct LibrarySidebar: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
+            if model.selectedSection == .notes, !runOnly {
+                Task { await model.importNotes(urls) }
+                return true
+            }
             guard !runOnly, acceptsImport else { return false }
 
             let presentations = urls.filter(AppModel.isPresentationFile)
@@ -742,6 +766,14 @@ struct LibrarySidebar: View {
         .scrollContentBackground(.hidden)
         .onDeleteCommand {
             if !runOnly { requestDelete(model.selectedEntries()) }
+        }
+        .onPasteCommand(of: model.selectedSection == .notes && !runOnly ? [.plainText, .rtfd, .flatRTFD, .png, .tiff] : []) { _ in
+            if let media = NoteDocumentTextView.pastedMedia(from: .general) {
+                let text = NSPasteboard.general.string(forType: .string) ?? "Pasted Notes"
+                Task { await model.newPastedNote(name: LocalNotes.pastedName(text), body: media) }
+            } else if let text = NSPasteboard.general.string(forType: .string) {
+                Task { await model.pasteNotes(text) }
+            }
         }
         .overlay {
             if contents.items.isEmpty, contents.cloud.isEmpty, contents.folders.isEmpty {
@@ -1116,6 +1148,18 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private func singleEntryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
+        if entry.kind == .note {
+            Button("Open") { model.selectedEntryID = entry.id }
+            if !runOnly {
+                Button("Pop Out") { openWindow(id: "note", value: entry.id) }
+            }
+            if let layout, !runOnly {
+                Menu("Show With Slides") {
+                    Button("Beside") { layout.showNotesPanel(.beside, noteID: entry.id) }
+                    Button("Below") { layout.showNotesPanel(.below, noteID: entry.id) }
+                }
+            }
+        }
         if [.presentation, .media, .audio].contains(entry.kind) {
             Button("Add to Service") { model.addToCurrentService(entry) }
         }
@@ -1258,7 +1302,7 @@ struct LibrarySidebar: View {
         case .alertPreset: nil
         case .actionCombo: nil
         case .confidenceLayout: .confidence
-        case .note: nil
+        case .note: .notes
         case .midiDevice: nil
         case .streamDestination: nil
         case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette,
@@ -1273,6 +1317,7 @@ struct LibrarySidebar: View {
     private var emptyDescription: String {
         switch model.selectedSection {
         case .media, .audio: "Drop files here or use Import."
+        case .notes: "Use New, paste, or drop a Word, PDF or text file."
         default: "Use New to create one."
         }
     }
@@ -1349,6 +1394,14 @@ struct LibrarySidebar: View {
                         Label("New", systemImage: "plus")
                     }
                     .fixedSize()
+                } else if model.selectedSection == .notes {
+                    Button {
+                        Task { await model.newNote() }
+                    } label: {
+                        Label("New", systemImage: "plus")
+                    }
+                    .disabled(runOnly)
+                    .help("New note")
                 } else {
                     Button {
                         fileNewEntry(model.createEntity(in: model.selectedSection))
@@ -1356,7 +1409,7 @@ struct LibrarySidebar: View {
                         Label("New", systemImage: "plus")
                     }
                 }
-                if AppModel.folderableSections.contains(model.selectedSection) {
+                if AppModel.folderableSections.contains(model.selectedSection), model.selectedSection != .notes {
                     Button {
                         creatingFolder = true
                     } label: {
@@ -1517,6 +1570,8 @@ struct LibraryCommands: Commands {
                 .disabled(model == nil || runOnly)
             Button("Import MxU Slides Presentation…") { model?.presentPresentationFileImport() }
                 .disabled(model == nil || runOnly)
+            Button("Import Notes…") { model?.presentNotesImport() }
+                .disabled(model == nil || runOnly)
             Divider()
             Button("Export Library Backup…") { exportBackup() }
                 .disabled(model == nil || runOnly)
@@ -1578,6 +1633,71 @@ struct LibraryCommands: Commands {
         if let model {
             BackupTransferRunner(model: model).presentImport()
         }
+    }
+}
+
+extension AppModel {
+    static let noteFileTypes: [UTType] = NoteFileReader.fileExtensions.compactMap { UTType(filenameExtension: $0) }
+    static let autoMarkKey = "makeSlides.autoMark"
+
+    var ownSlideTypes: [String] { slideBuilding.slideDesignMap.options.ownTypes.map(\.name) }
+
+    var autoMark: NoteSlideMarks.AutoMark {
+        UserDefaults.standard.string(forKey: Self.autoMarkKey).flatMap(NoteSlideMarks.AutoMark.init) ?? .pickForMe
+    }
+
+    func presentNotesImport() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = Self.noteFileTypes
+        panel.message = "Choose notes"
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in await self.importNotes(urls) }
+        }
+    }
+
+    func importNotes(_ urls: [URL]) async {
+        var unread: [String] = []
+        let mode = autoMark
+        let ownTypes = ownSlideTypes
+        for url in urls {
+            if let body = await Self.noteBody(of: url, save: NoteMediaFiles.save) {
+                await newNote(name: url.deletingPathExtension().lastPathComponent, body: mode.marking(body, ownTypes: ownTypes))
+            } else {
+                unread.append(url.lastPathComponent)
+            }
+        }
+        if !unread.isEmpty {
+            noteImportSummary("Can't read \(unread.joined(separator: ", ")) as notes. MxU Slides reads Word, RTF, ODT, PDF, PowerPoint and text files.")
+        }
+    }
+
+    func pasteNotes(_ text: String) async {
+        let mode = autoMark
+        let ownTypes = ownSlideTypes
+        let body = await Task.detached(priority: .userInitiated) { mode.marking(Self.noteBody(text: text), ownTypes: ownTypes) }.value
+        await newNote(name: LocalNotes.pastedName(text), body: body)
+    }
+
+    func newPastedNote(name: String, body: NoteBody) async {
+        let mode = autoMark
+        let ownTypes = ownSlideTypes
+        let marked = await Task.detached(priority: .userInitiated) { mode.marking(body, ownTypes: ownTypes) }.value
+        await newNote(name: name, body: marked)
+    }
+
+    nonisolated static func noteBody(of url: URL, save: NoteFileReader.SaveMedia? = nil) async -> NoteBody? {
+        await Task.detached(priority: .userInitiated) {
+            url.pathExtension.lowercased() == "pptx"
+                ? (try? PPTXNoteText.body(ofFile: url)).flatMap { $0.blocks.isEmpty ? nil : $0 }
+                : NoteFileReader.body(ofFile: url, save: save)
+        }.value
+    }
+
+    nonisolated static func noteBody(text: String) -> NoteBody {
+        NoteFileReader.body(text: text)
     }
 }
 

@@ -22,15 +22,15 @@ public enum StarterPack: String, CaseIterable, Sendable {
     public static let retiredOverlayItems = ["quote", "scripture", "section"]
 
     struct Look {
-        var body: String       
-        var display: String    
-        var accent: String     
-        var accent2: String    
-        var ink: String        
+        var body: String
+        var display: String
+        var accent: String
+        var accent2: String
+        var ink: String
         var inkOnAccent: String
-        var plate: String      
-        var plate2: String     
-        var backdrop: String   
+        var plate: String
+        var plate2: String
+        var backdrop: String
         var radius: Double
     }
 
@@ -230,6 +230,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
         slides.append(contentsOf: [
             lyricsSlide(), pointsSlide(), sectionTitleSlide(), verseSlide(), pointSlide(), quoteSlide(),
             fromOverlay(callToAction(base: "\(themeID).ctaFull", layout: .full), "ctaFull", "Call to Action", primary: "\(themeID).ctaFull.head", fullScreen: true),
+        ] + photoDesigns(folder: "Full Slide") + [
 
             simplifiedThird("lowerDefault", "Lower Third",
                             pointLowerThird(base: "\(themeID).lowerDefault"),
@@ -241,6 +242,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
             fromOverlay(verseLowerThird(base: "\(themeID).verseLower"), "verseLower", "Verse + Reference (Lower Third)", primary: "\(themeID).verseLower.verse", folder: "Lower Thirds"),
             fromOverlay(pointLowerThird(base: "\(themeID).pointLower"), "pointLower", "Point (Lower Third)", primary: "\(themeID).pointLower.text", folder: "Lower Thirds"),
             fromOverlay(callToAction(base: "\(themeID).ctaLower", layout: .lowerThird), "ctaLower", "Call to Action (Lower Third)", primary: "\(themeID).ctaLower.head", folder: "Lower Thirds"),
+        ] + photoDesigns(folder: "Lower Thirds") + [
             simplifiedThird("sideDefault", "Side Third",
                             pointSideThird(base: "\(themeID).sideDefault"),
                             primary: "\(themeID).sideDefault.text",
@@ -250,7 +252,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
             fromOverlay(pointSideThird(base: "\(themeID).pointSide"), "pointSide", "Point (Side Third)", primary: "\(themeID).pointSide.text", folder: "Side Thirds"),
             fromOverlay(verseSideThird(base: "\(themeID).verseSide"), "verseSide", "Verse + Reference (Side Third)", primary: "\(themeID).verseSide.verse", folder: "Side Thirds"),
             fromOverlay(callToAction(base: "\(themeID).ctaSide", layout: .sideThird), "ctaSide", "Call to Action (Side Third)", primary: "\(themeID).ctaSide.head", folder: "Side Thirds"),
-        ])
+        ] + photoDesigns(folder: "Side Thirds"))
         return Theme(id: themeID, name: title, fontFamily: look.body, fontSize: 72, textColorHex: look.ink,
                      backgroundColorHex: look.backdrop, slides: slides)
     }
@@ -277,15 +279,22 @@ public enum StarterPack: String, CaseIterable, Sendable {
     }
 
     public func addingLyricsDesigns(to slides: [Slide]) -> [Slide] {
+        addingDesigns(idPrefix: "\(themeID).lyrics", to: slides, fullSlideLeads: true)
+    }
+
+    public func addingPhotoDesigns(to slides: [Slide]) -> [Slide] {
+        addingDesigns(idPrefix: "\(themeID).photo", to: slides, fullSlideLeads: false)
+    }
+
+    private func addingDesigns(idPrefix: String, to slides: [Slide], fullSlideLeads: Bool) -> [Slide] {
         var result = slides
-        let designs = (makeTheme().slides ?? []).filter { $0.id.hasPrefix("\(themeID).lyrics") }
+        let designs = (makeTheme().slides ?? []).filter { $0.id.hasPrefix(idPrefix) }
         for design in designs
         where !result.contains(where: { $0.name.caseInsensitiveCompare(design.name) == .orderedSame }) {
-            if let folder = design.folder, folder != "Full Slide",
-               let last = result.lastIndex(where: { $0.folder == folder }) {
-                result.insert(design, at: last + 1)
-            } else if design.folder == "Full Slide" {
+            if fullSlideLeads, design.folder == "Full Slide" {
                 result.insert(design, at: 0)
+            } else if let folder = design.folder, let last = result.lastIndex(where: { $0.folder == folder }) {
+                result.insert(design, at: last + 1)
             } else {
                 result.append(design)
             }
@@ -334,6 +343,112 @@ public enum StarterPack: String, CaseIterable, Sendable {
         let primary = result.remove(at: primaryIndex)
         result.insert(primary, at: firstTextIndex)
         return result
+    }
+
+    public func shrinkingPoints(_ slides: [Slide]) -> [Slide] {
+        slides.map { slide in
+            guard let index = slide.objects.firstIndex(where: { $0.id == "\(themeID).points.text" }),
+                  slide.objects[index].textStyle?.autoShrink == nil
+            else { return slide }
+            var result = slide
+            result.objects[index].textStyle?.autoShrink = true
+            result.objects[index].textStyle?.minFontSize = Self.pointsFloor
+            return result
+        }
+    }
+
+    public func stayingPhotos(_ slides: [Slide]) -> [Slide] {
+        slides.map { slide in
+            guard slide.id.hasPrefix("\(themeID).photo") else { return slide }
+            var result = slide
+            let leaves = Set(slide.objects.flatMap { ($0.animationSteps ?? []).filter { $0.kind == .out }.map(\.id) })
+            guard !leaves.isEmpty else { return slide }
+            for index in result.objects.indices {
+                result.objects[index].animationSteps = result.objects[index].animationSteps?.filter { !leaves.contains($0.id) }
+            }
+            result.animationOrder = result.animationOrder?.filter { !leaves.contains($0) }
+            return result
+        }
+    }
+
+    private func photoSpot(_ id: String, x: Double, y: Double, w: Double, h: Double, radius: Double? = nil, animationSteps: [AnimationStep]) -> SlideObject {
+        var spot = block(id, "Photo", x: x, y: y, w: w, h: h, color: look.plate2, radius: radius,
+                         stroke: self == .boldBlocks ? ObjectStroke(colorHex: look.accent, width: 6) : nil,
+                         animationSteps: animationSteps)
+        spot.photoSpot = true
+        return spot
+    }
+
+    private func photoDesigns(folder: String) -> [Slide] {
+        let look = look
+        let caption = "Baptism Sunday"
+        switch folder {
+        case "Full Slide":
+            func photos(_ item: String, _ name: String, _ frames: [(Double, Double, Double, Double)]) -> Slide {
+                let b = "\(themeID).\(item)"
+                let ins = frames.indices.map { plateIn("\(b).spot\($0).in", delay: $0 == 0 ? nil : 0.12 * Double($0), edge: .left) }
+                let objects = frames.indices.map { index in
+                    let (x, y, w, h) = frames[index]
+                    return photoSpot("\(b).spot\(index)", x: x, y: y, w: w, h: h, animationSteps: [ins[index]])
+                }
+                return themeSlide(item, name, objects, order: ins.map(\.id), fullScreen: true)
+            }
+            let b = "\(themeID).photoText"
+            let spotIn = plateIn("\(b).spot.in", edge: .left)
+            let textIn = textIn("\(b).text.in", delay: -0.05, rise: 40)
+            let photoText = themeSlide("photoText", "Photo + Text", [
+                photoSpot("\(b).spot", x: 100, y: 100, w: 1000, h: 880, animationSteps: [spotIn]),
+                label("\(b).text", "Text", caption, x: 1180, y: 140, w: 640, h: 800, size: 72, display: true,
+                      tracking: self == .boldBlocks ? 2 : 0, uppercase: self == .boldBlocks, inset: 0, lineHeight: 1.08,
+                      animationSteps: [textIn]),
+            ], order: [spotIn.id, textIn.id], fullScreen: true)
+            return [
+                photos("photo", "Photo", [(120, 90, 1680, 900)]),
+                photoText,
+                photos("photo2", "2 Photos", [(100, 170, 840, 740), (980, 170, 840, 740)]),
+                photos("photo3", "3 Photos", [(100, 240, 550, 600), (685, 240, 550, 600), (1270, 240, 550, 600)]),
+            ]
+        case "Lower Thirds":
+            let b = "\(themeID).photoTextLower"
+            let bandIn = plateIn("\(b).band.in", edge: .bottom, big: true)
+            let spotIn = popIn("\(b).spot.in", delay: -0.05, from: 0.6)
+            let textIn = textIn("\(b).text.in", delay: -0.2, rise: 36)
+            let photoText = themeSlide("photoTextLower", "Photo + Text (Lower Third)", [
+                block("\(b).band", "Band", x: 0, y: 760, w: 1920, h: 240, fill: gradient(look.plate2, look.plate, angle: 90), radius: 0, animationSteps: [bandIn]),
+                photoSpot("\(b).spot", x: 160, y: 785, w: 190, h: 190, animationSteps: [spotIn]),
+                label("\(b).text", "Text", "Scan to give, or visit our website", x: 390, y: 800, w: 1370, h: 160, size: 48, display: true,
+                      tracking: self == .boldBlocks ? 2 : 0, uppercase: self == .boldBlocks, inset: 0, lineHeight: 1.08, shrink: true, page: true,
+                      animationSteps: [textIn]),
+            ], order: [bandIn.id, spotIn.id, textIn.id], fullScreen: false, folder: folder)
+            let f = "\(themeID).photoLower"
+            let frameIn = plateIn("\(f).frame.in", edge: .right)
+            let tileIn = popIn("\(f).spot.in", delay: -0.05, from: 0.6)
+            let photo = themeSlide("photoLower", "Photo (Lower Third)", [
+                block("\(f).frame", "Frame", x: 1540, y: 640, w: 300, h: 300, color: look.plate, animationSteps: [frameIn]),
+                photoSpot("\(f).spot", x: 1556, y: 656, w: 268, h: 268, animationSteps: [tileIn]),
+            ], order: [frameIn.id, tileIn.id], fullScreen: false, folder: folder)
+            return [photoText, photo]
+        default:
+            let push = VideoPush(zoom: 1.05, backdrop: true)
+            let s = "\(themeID).photoSide"
+            let spotIn = plateIn("\(s).spot.in", edge: .right, big: true, videoPush: push)
+            let photo = themeSlide("photoSide", "Photo (Side Third)", [
+                photoSpot("\(s).spot", x: 1280, y: 0, w: 640, h: 1080, radius: 0, animationSteps: [spotIn]),
+            ], order: [spotIn.id], fullScreen: false, folder: folder)
+            let b = "\(themeID).photoTextSide"
+            let panelIn = plateIn("\(b).panel.in", edge: .right, big: true, videoPush: push)
+            let barIn = ruleIn("\(b).bar.in", delay: -0.3, edge: .top, duration: 0.9)
+            let spotPop = popIn("\(b).spot.in", delay: -0.3, from: 0.8)
+            let textIn = textIn("\(b).text.in", delay: -0.05, rise: 40)
+            let photoText = themeSlide("photoTextSide", "Photo + Text (Side Third)", [
+                block("\(b).panel", "Panel", x: 1280, y: 0, w: 640, h: 1080, fill: gradient(look.plate2, look.plate, angle: 0), radius: 0, animationSteps: [panelIn]),
+                block("\(b).bar", "Bar", x: 1280, y: 0, w: self == .boldBlocks ? 18 : 6, h: 1080, color: look.accent, radius: 0, animationSteps: [barIn]),
+                photoSpot("\(b).spot", x: 1340, y: 120, w: 520, h: 440, animationSteps: [spotPop]),
+                label("\(b).text", "Text", caption, x: 1340, y: 600, w: 520, h: 380, size: 44, display: true, valign: .top,
+                      uppercase: self == .boldBlocks, inset: 0, lineHeight: 1.1, shrink: true, page: true, animationSteps: [textIn]),
+            ], order: [panelIn.id, barIn.id, spotPop.id, textIn.id], fullScreen: false, folder: folder)
+            return [photo, photoText]
+        }
     }
 
     private func themeSlide(_ item: String, _ name: String, _ objects: [SlideObject], order: [String], fullScreen: Bool, folder: String? = nil) -> Slide {
@@ -399,6 +514,8 @@ public enum StarterPack: String, CaseIterable, Sendable {
                        animationOrder: [panelIn.id, barIn.id, textIn.id, textOut.id, panelOut.id, barOut.id])
     }
 
+    static let pointsFloor = 64.0
+
     private func pointsSlide() -> Slide {
         let b = "\(themeID).points"
         let look = look
@@ -408,7 +525,9 @@ public enum StarterPack: String, CaseIterable, Sendable {
             x: 200, y: 220, width: 1520, height: 640,
             textStyle: TextStyle(fontName: look.body, fontSize: 80, colorHex: look.ink, lineHeightMultiple: 1.25,
                                  horizontalAlignment: .left, verticalAlignment: .middle,
-                                 lineFill: self == .boldBlocks ? TextLineFill(fill: fill(look.accent), widthMode: .lineWidth, verticalPadding: 4, horizontalPadding: 24) : nil),
+                                 autoShrink: true, minFontSize: Self.pointsFloor,
+                                 lineFill: self == .boldBlocks ? TextLineFill(fill: fill(look.accent), widthMode: .lineWidth, verticalPadding: 4, horizontalPadding: 24) : nil,
+                                 paragraphSpacing: 28),
             animationSteps: (0..<3).map { line in
                 var s = textIn("\(b).in\(line)", .onClick, delay: nil, rise: 36)
                 s.ranges = [AnimationRange(line: line, column: 0, length: 12)]
@@ -746,7 +865,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
         let away: AnimationEdge = layout == .sideThird ? .top : .bottom
         let stroked = self == .editorialSerif || self == .digital
         var cardIn = stroked
-            ? drawIn("\(b).card.in", .withPrevious, duration: 1.2)                 
+            ? drawIn("\(b).card.in", .withPrevious, duration: 1.2)
             : self == .cleanGeometric || layout == .full
                 ? step("\(b).card.in", .in, .scale, .withPrevious, duration: 0.55, ramp: .out, fade: true, fromScale: 0.9)
                 : plateIn("\(b).card.in", edge: cardEdge)

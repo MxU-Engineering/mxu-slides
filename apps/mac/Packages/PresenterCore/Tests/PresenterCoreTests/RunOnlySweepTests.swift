@@ -14,7 +14,7 @@ import Testing
     private func presentSurfaces(_ sweep: SourceSweep) -> [SourceSweep.File] {
         let named: Set<String> = [
             "AppShell.swift", "ServicePlannerView.swift", "ServiceContinuousView.swift",
-            "PresentGridView.swift", "LivePanel.swift", "ServiceControlsPanel.swift", "MediaCueMenu.swift",
+            "PresentGridView.swift", "LivePanel.swift", "NoteReaderView.swift", "ServiceControlsPanel.swift", "MediaCueMenu.swift",
         ]
         return sweep.files.filter { file in
             !Self.notShownInRunOnly.contains(file.name) && (
@@ -123,7 +123,7 @@ import Testing
         let sweep = try SourceSweep.app()
         let app = try #require(sweep.file("MxUSlidesApp.swift"))
         let placed: Set<String> = [
-            "\"main\"", "\"module\"", "\"serviceControls\"", "\"library\"", "\"preview\"", "\"outputs\"", "\"engine\"",
+            "\"main\"", "\"module\"", "\"serviceControls\"", "\"note\"", "\"library\"", "\"preview\"", "\"outputs\"", "\"engine\"",
         ]
         let scenePattern = /(?:Window|WindowGroup)\((?:"[^"]*",\s*)?id:\s*("[^"]+")/
         var unplaced: [String] = []

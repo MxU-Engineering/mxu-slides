@@ -7,6 +7,10 @@ public struct MediaImportDedupe: Sendable {
         case new
     }
 
+    public static func unattendedUsesExisting(_ match: Match) -> Bool {
+        if case .sameFile = match { true } else { false }
+    }
+
     private var byHash: [DocumentKind: [String: String]] = [:]
     private var byName: [DocumentKind: [String: (id: String, name: String)]] = [:]
 

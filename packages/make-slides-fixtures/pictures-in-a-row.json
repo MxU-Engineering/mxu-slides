@@ -1,0 +1,130 @@
+{
+  "name": "Pictures in a row",
+  "about": "Three pictures in a row (an empty line between the second and third) are one picture passage; with no theme each is a full-screen Scale and Blur slide (the default, one slide each). A picture after words starts its own passage; a video file never joins a picture row. Words beside the pictures, marked separately, stay their own slide.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "level": 1,
+        "runs": [
+          {
+            "text": "Baptism Sunday"
+          }
+        ],
+        "type": "heading"
+      },
+      {
+        "type": "image",
+        "url": "file:///Users/me/Pictures/river.jpg",
+        "width": 640
+      },
+      {
+        "type": "image",
+        "url": "file:///Users/me/Pictures/hands.jpg",
+        "width": 640
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "type": "image",
+        "url": "file:///Users/me/Pictures/smiles.jpg",
+        "width": 640
+      },
+      {
+        "runs": [
+          {
+            "text": "Big idea: New life starts here."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "type": "image",
+        "url": "file:///Users/me/Pictures/family.jpg",
+        "width": 640
+      },
+      {
+        "attachmentKind": "video",
+        "filename": "Baptism recap.mov",
+        "hexId": "f00dfeedf00dfeed",
+        "type": "attachment"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "title",
+      "text": "Baptism Sunday"
+    },
+    {
+      "type": "picture",
+      "text": "",
+      "media": [
+        "file:///Users/me/Pictures/river.jpg",
+        "file:///Users/me/Pictures/hands.jpg",
+        "file:///Users/me/Pictures/smiles.jpg"
+      ]
+    },
+    {
+      "type": "points",
+      "text": "Big idea: New life starts here."
+    },
+    {
+      "type": "picture",
+      "text": "",
+      "media": [
+        "file:///Users/me/Pictures/family.jpg"
+      ]
+    },
+    {
+      "type": "video",
+      "text": "",
+      "media": [
+        "hex:f00dfeedf00dfeed"
+      ]
+    }
+  ],
+  "slides": [
+    {
+      "kind": "title",
+      "text": "Baptism Sunday"
+    },
+    {
+      "kind": "picture",
+      "text": "",
+      "media": "file:///Users/me/Pictures/river.jpg",
+      "scale": "scaleAndBlur"
+    },
+    {
+      "kind": "picture",
+      "text": "",
+      "media": "file:///Users/me/Pictures/hands.jpg",
+      "scale": "scaleAndBlur"
+    },
+    {
+      "kind": "picture",
+      "text": "",
+      "media": "file:///Users/me/Pictures/smiles.jpg",
+      "scale": "scaleAndBlur"
+    },
+    {
+      "kind": "points",
+      "text": "Big idea\nNew life starts here."
+    },
+    {
+      "kind": "picture",
+      "text": "",
+      "media": "file:///Users/me/Pictures/family.jpg",
+      "scale": "scaleAndBlur"
+    },
+    {
+      "kind": "video",
+      "text": "",
+      "media": "hex:f00dfeedf00dfeed"
+    }
+  ]
+}

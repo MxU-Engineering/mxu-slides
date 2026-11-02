@@ -64,7 +64,8 @@
       "enum": [
         "fill",
         "fit",
-        "stretch"
+        "stretch",
+        "scaleAndBlur"
       ]
     },
     "MediaSourceRect": {
@@ -1053,6 +1054,9 @@
         },
         "keystoneMode": {
           "$ref": "#/components/schemas/KeystoneMode"
+        },
+        "photoSpot": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1092,6 +1096,13 @@
         "untilReplaced"
       ]
     },
+    "MediaEndFade": {
+      "type": "string",
+      "enum": [
+        "black",
+        "clear"
+      ]
+    },
     "CueMedia": {
       "type": "object",
       "properties": {
@@ -1109,6 +1120,12 @@
         },
         "classification": {
           "$ref": "#/components/schemas/MediaClassification"
+        },
+        "scaleMode": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        },
+        "endFade": {
+          "$ref": "#/components/schemas/MediaEndFade"
         },
         "layerId": {
           "type": "string"
@@ -3692,6 +3709,9 @@
         "slideId": {
           "type": "string"
         },
+        "slideState": {
+          "type": "string"
+        },
         "commentId": {
           "type": "string"
         }
@@ -3866,6 +3886,18 @@
         },
         "slide": {
           "$ref": "#/components/schemas/NoteSlideRef"
+        },
+        "slideGroup": {
+          "type": "string"
+        },
+        "slideType": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "slideState": {
+          "type": "string"
         }
       },
       "required": [
@@ -4113,12 +4145,57 @@
           "items": {
             "$ref": "#/components/schemas/NotePendingUpdate"
           }
+        },
+        "mediaImports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMediaImport"
+          }
+        },
+        "buildMode": {
+          "type": "string"
+        },
+        "skippedUpdates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteSkippedUpdate"
+          }
         }
       },
       "required": [
         "id",
         "name",
         "origin"
+      ]
+    },
+    "NoteSkippedUpdate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "NoteMediaImport": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "mediaId"
       ]
     },
     "StationSettings": {

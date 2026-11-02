@@ -66,14 +66,18 @@ import Testing
     for pack in StarterPack.allCases {
         let theme = pack.makeTheme()
         for folder in ["Lower Thirds", "Side Thirds"] {
-            for slide in theme.scoped(toSlideFolder: folder).slides ?? [] {
+            for slide in theme.scoped(toSlideFolder: folder).slides ?? [] where slide.objects.contains(where: { $0.objectKind == .text }) {
                 let primary = slide.objects.first { $0.objectKind == .text }
                 #expect(primary?.textStyle?.autoShrink == true, "\(pack.title)/\(slide.name) primary shrinks")
                 #expect(primary?.textStyle?.pageOnClick == true, "\(pack.title)/\(slide.name) primary pages")
             }
         }
         for slide in theme.scoped(toSlideFolder: "Full Slide").slides ?? [] {
-            #expect(slide.objects.allSatisfy { $0.textStyle?.autoShrink != true && $0.textStyle?.pageOnClick != true }, "\(pack.title)/\(slide.name) stays warn-only")
+            for object in slide.objects where object.id != "\(pack.themeID).points.text" {
+                #expect(object.textStyle?.autoShrink != true && object.textStyle?.pageOnClick != true, "\(pack.title)/\(slide.name) stays warn-only")
+            }
         }
+        let points = theme.slides?.first { $0.name == "Points" }?.objects.first { $0.id == "\(pack.themeID).points.text" }?.textStyle
+        #expect(points?.autoShrink == true && points?.minFontSize == 64 && points?.fontSize == 80 && points?.pageOnClick != true)
     }
 }

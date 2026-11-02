@@ -2054,6 +2054,12 @@ struct SlideObjectInspector: View {
 
     private func fillSection(_ object: SlideObject) -> some View {
         InspectorSection(fillIsMediaKind(object) ? "Media" : "Fill") {
+            if model.isThemeEditor, current(object).objectKind == .shape {
+                Toggle("Photo spot", isOn: Binding(
+                    get: { current(object).photoSpot == true },
+                    set: { on in commit(object) { $0.photoSpot = on ? true : nil } }))
+                    .help("Picture slides made from notes put their picture here. Several spots fill left to right, then top to bottom.")
+            }
             if fillIsMediaKind(object), fillIsLibrary(object),
                let mediaID = current(object).fill?.mediaId, !mediaID.isEmpty {
                 MediaPickCard(model: model.appModel, mediaID: mediaID, scope: replaceScope) {
@@ -2104,6 +2110,7 @@ struct SlideObjectInspector: View {
                     Text("Fill").tag(MediaScaleMode.fill)
                     Text("Fit").tag(MediaScaleMode.fit)
                     Text("Stretch").tag(MediaScaleMode.stretch)
+                    Text("Scale and Blur").tag(MediaScaleMode.scaleAndBlur)
                 }
                 if fillIsLibrary(object) {
 

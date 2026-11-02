@@ -17,7 +17,7 @@ import Testing
         #expect(chips[0].label == "Live Stream")
         #expect(chips[0].itemName == "Online Preservice Graphic")
 
-        let plain = Slide(id: "s2", name: "", objects: [], background: CueMedia(mediaId: "m1", layer: .stillGraphics, classification: .foreground))
+        let plain = Slide(id: "s2", name: "", objects: [], background: CueMedia.droppedAsNewSlide(mediaId: "m1", kind: .image))
         #expect(SlideLayerFacts.chips(for: plain, item: { _ in ("Pic", .image) }, layerName: { _ in "?" }).isEmpty)
         var gone = plain
         gone.background?.layerId = "deleted"

@@ -50,3 +50,23 @@ import Testing
     #expect(ScriptureReference.split("We read Psalm 23 together") == nil)
     #expect(ScriptureReference.split("Grace upon grace") == nil)
 }
+
+@Test func aPassageCutsAtTheVerseNumbersItsReferenceNames() {
+    #expect(ScriptureReference.verses(of: "Hebrews 12:27–28 (WEB)")! == ("Hebrews 12", 27 ... 28))
+    #expect(ScriptureReference.verses(of: "1 John 4:8")! == ("1 John 4", 8 ... 8))
+    #expect(ScriptureReference.verses(of: "Psalm 23") == nil && ScriptureReference.verses(of: "Mark 5:3-6:1") == nil)
+
+    let text = "He rose after 3 days. 2 Then he said\n3 Go."
+    #expect(ScriptureReference.verses(in: text, numbered: 1 ... 3) == [
+        .init(number: nil, text: "He rose after 3 days."), .init(number: 2, text: "Then he said"), .init(number: 3, text: "Go."),
+    ])
+    #expect(ScriptureReference.verses(in: "No numbers here", numbered: 4 ... 5) == [.init(number: nil, text: "No numbers here")])
+    #expect(ScriptureReference.removingVerseNumbers(from: "27 This phrase\n28 Therefore 3 days", numbered: 27 ... 28)
+        == "This phrase\nTherefore 3 days")
+    #expect(ScriptureReference.Verse(number: 4, text: "Rejoice").numbered == "4 Rejoice")
+}
+
+@Test func aReferenceThenASpacedDashLeadsTheVerseAndWEBIsATranslation() {
+    #expect(ScriptureReference.split("Psalm 46:1 – God is our refuge") == .init(verse: "God is our refuge", reference: "Psalm 46:1"))
+    #expect(ScriptureReference.isReferenceLine("Hebrews 12:27–28 (WEB)"))
+}
