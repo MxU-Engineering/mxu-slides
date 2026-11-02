@@ -1,0 +1,89 @@
+{
+  "name": "Bold lines only keeps the title",
+  "about": "A bold title with a plain subtitle line under it: Pick for me reads bold lines only, and the title passage (which takes the subtitle in) is kept like scripture and quotes.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "level": 1,
+        "runs": [
+          {
+            "bold": true,
+            "text": "Unshakable"
+          }
+        ],
+        "type": "heading"
+      },
+      {
+        "runs": [
+          {
+            "text": "Kingdom Come, week 4"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Tell the story of the morning of the earthquake and the sound before it hit."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "Everything that can be shaken will be shaken."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Talk about the things we thought were solid."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "What God builds can’t be shaken."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "title",
+      "text": "Unshakable\nKingdom Come, week 4"
+    },
+    {
+      "text": "Everything that can be shaken will be shaken."
+    },
+    {
+      "text": "What God builds can’t be shaken."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "title",
+      "text": "Unshakable\nKingdom Come, week 4"
+    },
+    {
+      "kind": "body",
+      "text": "Everything that can be shaken will be shaken."
+    },
+    {
+      "kind": "body",
+      "text": "What God builds can’t be shaken."
+    }
+  ]
+}

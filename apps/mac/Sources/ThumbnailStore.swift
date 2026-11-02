@@ -325,6 +325,15 @@ final class ThumbnailStore {
         Task {
             defer { thumbStillsInFlight.remove(stillID) }
 
+            if let key = NoteMedia.key(ofPendingId: id) {
+                guard let image = await NoteImageStore.shared.loaded(for: key)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                      (try? await render.media.showStill(image: image, cacheKey: "note|\(key)", id: stillID)) != nil
+                else { return }
+                thumbStillKeys[stillID] = "note|\(key)"
+                thumbStillsVersion += 1
+                return
+            }
+
             await model.resident.ready([.media])
 
             guard let item = model.media(id),
@@ -508,7 +517,7 @@ final class ThumbnailStore {
         }
     }
 
-    private nonisolated static func videoPoster(url: URL, at seconds: Double, maxPixels: Int) async -> CGImage? {
+    nonisolated static func videoPoster(url: URL, at seconds: Double, maxPixels: Int) async -> CGImage? {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maxPixels, height: maxPixels)

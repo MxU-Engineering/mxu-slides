@@ -781,7 +781,9 @@ public final class Compositor: @unchecked Sendable {
         let transform = SceneTransform(canvasSize: scene.canvasSize, targetSize: targetSize, inset: inset)
 
         let pictures = placedPictures(in: scene, transform: transform, commandBuffer: commandBuffer, hostTime: hostTime)
-        let resolved = AnimationEvaluator.resolve(scene, hostTime: hostTime)
+
+        let looks = MediaLooks.expanding(scene) { [mediaSource] in mediaSource?.playbackRemaining(for: $0, hostTime: hostTime) }
+        let resolved = AnimationEvaluator.resolve(looks, hostTime: hostTime)
         let scene = resolved.scene
         let motions = resolved.motions
 
@@ -2363,7 +2365,8 @@ public final class Compositor: @unchecked Sendable {
                 let visible = contentAspect / frameAspect
                 return (frame, CGRect(x: 0, y: (1 - visible) / 2, width: 1, height: visible))
             }
-        case .fit:
+        case .fit, .scaleAndBlur:
+
             var quad = frame
             if contentAspect > frameAspect {
                 quad.size.height = frame.width / contentAspect

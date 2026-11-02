@@ -1,0 +1,245 @@
+{
+  "name": "Slide markers",
+  "about": "Speakers mark what goes on screen with \"Slide\", \"Slide:\", \"Slide 1\" or \"SLIDE 4\" lines, like \"[slide]\". Under each marker its words up to the next marker or empty line are one passage; a picture is its own; a line that is only a linked video file's name is a video slide waiting for its video, the link in its notes. A short line ending in a colon over a list (\"Backyard Ultra - Rules:\", \"Cru's Four Root Idols:\") is Points, the line its heading without the colon. The greeting before the first marker, the aside in parentheses, and the talk after a section's empty line never reach a slide. A one-line marker (\"Slide 11: Welcome to Grace Church\") makes a slide of its words, the label cut off; \"Slide into the week with us.\" has no colon after the word and stays words.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "text": "Hi team, here are my slides for Sunday."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 1:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Backyard Ultra - Rules:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "items": [
+          {
+            "runs": [
+              {
+                "text": "Complete 4.167 miles, every hour, on the hour."
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "You win by being the last person standing."
+              }
+            ]
+          }
+        ],
+        "ordered": false,
+        "type": "list"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 2:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "(Snoop Dogg video - attached)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "href": "https://example.com/files/1dLx",
+            "text": " Snoop.mp4"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 3:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "What is it about prosperity that can cause us to forget God?"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "That's when I think about my grandfather's farm, and the summer the creek ran dry."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "SLIDE 4"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Cru's Four Root Idols:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "items": [
+          {
+            "runs": [
+              {
+                "text": "The idol of comfort"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "The idol of control"
+              }
+            ]
+          }
+        ],
+        "ordered": false,
+        "type": "list"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 10: (photo attached)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "type": "image",
+        "url": "file:///Users/me/Pictures/whiteboard.png",
+        "width": 640
+      },
+      {
+        "runs": [
+          {
+            "text": ""
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 11: Welcome to Grace Church"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide into the week with us."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "points",
+      "text": "Backyard Ultra - Rules:\nComplete 4.167 miles, every hour, on the hour.\nYou win by being the last person standing."
+    },
+    {
+      "type": "video",
+      "text": "Snoop.mp4"
+    },
+    {
+      "text": "What is it about prosperity that can cause us to forget God?"
+    },
+    {
+      "type": "points",
+      "text": "Cru's Four Root Idols:\nThe idol of comfort\nThe idol of control"
+    },
+    {
+      "type": "picture",
+      "text": "",
+      "media": [
+        "file:///Users/me/Pictures/whiteboard.png"
+      ]
+    },
+    {
+      "text": "Welcome to Grace Church\nSlide into the week with us."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "points",
+      "text": "Backyard Ultra - Rules\nComplete 4.167 miles, every hour, on the hour.\nYou win by being the last person standing."
+    },
+    {
+      "kind": "video",
+      "text": "",
+      "notes": "https://example.com/files/1dLx"
+    },
+    {
+      "kind": "body",
+      "text": "What is it about prosperity that can cause us to forget God?"
+    },
+    {
+      "kind": "points",
+      "text": "Cru's Four Root Idols\nThe idol of comfort\nThe idol of control"
+    },
+    {
+      "kind": "picture",
+      "text": "",
+      "media": "file:///Users/me/Pictures/whiteboard.png",
+      "scale": "scaleAndBlur"
+    },
+    {
+      "kind": "body",
+      "text": "Welcome to Grace Church\nSlide into the week with us."
+    }
+  ]
+}

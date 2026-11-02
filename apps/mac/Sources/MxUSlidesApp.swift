@@ -125,6 +125,7 @@ struct MxUSlidesApp: App {
         let model = AppModel()
         PresentationFileOpener.model = model
         ScheduledBackupController.shared.start(model: model)
+        NoteDocumentTextView.ownSlideTypes = { model.ownSlideTypes }
         #if DEBUG || MXU_PERF_HOOKS
 
         PerfHooks.start(model: model)
@@ -230,6 +231,14 @@ struct MxUSlidesApp: App {
                 .sheet(isPresented: $showFeedback) {
                     FeedbackView(model: appModel) { showFeedback = false }
                 }
+                .sheet(isPresented: Binding(
+                    get: { appModel.reviewingNoteID != nil },
+                    set: { shown in if !shown { appModel.reviewingNoteID = nil } }
+                )) {
+                    if let noteID = appModel.reviewingNoteID {
+                        NoteUpdatesReviewSheet(model: appModel, render: renderContext, controls: controls, noteID: noteID)
+                    }
+                }
                 .onChange(of: FeedbackController.shared.lastRunCrashed, initial: true) { _, crashed in
                     if crashed && !showWelcome && !presentLayout.runOnly {
                         showFeedback = true
@@ -300,6 +309,13 @@ struct MxUSlidesApp: App {
             }
         }
         .defaultSize(width: 360, height: 640)
+
+        WindowGroup(id: "note", for: String.self) { $noteID in
+            if let appModel, let noteID {
+                NoteWindowView(model: appModel, noteID: noteID, layout: presentLayout, render: renderContext, controls: controls)
+            }
+        }
+        .defaultSize(width: 440, height: 680)
 
         WindowGroup(id: "preview", for: String.self) { $target in
             PreviewWindowView(

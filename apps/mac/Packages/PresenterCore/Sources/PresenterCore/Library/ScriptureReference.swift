@@ -28,7 +28,7 @@ public enum ScriptureReference {
         "Revelation|Rev",
     ]
 
-    static let translations = "NIV|ESV|KJV|NKJV|NLT|NASB|CSB|HCSB|MSG|AMP|NRSV|NET|TPT|CEV|NCV"
+    static let translations = "NIV|ESV|KJV|NKJV|NLT|NASB|CSB|HCSB|MSG|AMP|NRSV|NET|TPT|CEV|NCV|WEB|ASV|RSV|BSB|LSB|NIRV|GNT|NABRE"
 
     private static let pattern: NSRegularExpression = {
         let names = books.flatMap { $0.split(separator: "|").map(String.init) }
@@ -100,7 +100,7 @@ public enum ScriptureReference {
             return Split(verse: before, reference: match.text)
         }
         if let lead = found.first, lead.range.lowerBound == line.startIndex {
-            let rest = String(line[lead.range.upperBound...])
+            let rest = String(line[lead.range.upperBound...]).trimmingCharacters(in: .whitespaces)
             let separator = rest.first.map { ":-–—".contains($0) } ?? false
             if separator {
                 let verse = String(rest.dropFirst()).trimmingCharacters(in: .whitespaces)
@@ -109,4 +109,63 @@ public enum ScriptureReference {
         }
         return nil
     }
+
+    public static func verses(of reference: String) -> (chapter: String, verses: ClosedRange<Int>)? {
+        let range = NSRange(reference.startIndex..., in: reference)
+        guard let match = versePattern.firstMatch(in: reference, range: range),
+              let chapter = Range(match.range(at: 1), in: reference),
+              let first = Range(match.range(at: 2), in: reference).flatMap({ Int(reference[$0]) }) else { return nil }
+        let last = Range(match.range(at: 3), in: reference).flatMap { Int(reference[$0]) } ?? first
+        guard last >= first else { return nil }
+        return (String(reference[chapter]), first ... last)
+    }
+
+    private static let versePattern = try! NSRegularExpression(
+        pattern: #"^\s*([^:]*?\d+)\s*:\s*(\d+)[a-c]?(?:\s*[-–—]\s*(\d+)[a-c]?)?\s*(?:\(?[A-Z]{2,6}\)?)?\s*$"#)
+
+    public struct Verse: Equatable, Sendable {
+        public var number: Int?
+        public var text: String
+
+        public var numbered: String { number.map { "\($0) \(text)" } ?? text }
+    }
+
+    public static func verses(in text: String, numbered verses: ClosedRange<Int>) -> [Verse] {
+        let cuts = verseNumbers(in: text, numbered: verses)
+        guard !cuts.isEmpty else { return [Verse(number: nil, text: text.trimmingCharacters(in: .whitespacesAndNewlines))] }
+        var result: [Verse] = []
+        let head = text[..<cuts[0].marker.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        if !head.isEmpty { result.append(Verse(number: nil, text: head)) }
+        for (index, cut) in cuts.enumerated() {
+            let end = index + 1 < cuts.count ? cuts[index + 1].marker.lowerBound : text.endIndex
+            let words = text[cut.marker.upperBound ..< end].trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append(Verse(number: cut.number, text: words))
+        }
+        return result
+    }
+
+    public static func removingVerseNumbers(from text: String, numbered verses: ClosedRange<Int>) -> String {
+        var text = text
+        for cut in verseNumbers(in: text, numbered: verses).reversed() { text.removeSubrange(cut.marker) }
+        return text
+    }
+
+    private static func verseNumbers(in text: String, numbered verses: ClosedRange<Int>) -> [(number: Int, marker: Range<String.Index>)] {
+        let whole = NSRange(text.startIndex..., in: text)
+        var cuts: [(number: Int, marker: Range<String.Index>)] = []
+        var expected = verses.lowerBound
+        for match in numberPattern.matches(in: text, range: whole) {
+            guard expected <= verses.upperBound, let range = Range(match.range, in: text),
+                  let digits = Range(match.range(at: 1), in: text), let number = Int(text[digits]) else { continue }
+            let leading = !text[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if number == expected || (cuts.isEmpty && leading && number == expected + 1 && number <= verses.upperBound) {
+                cuts.append((number, range))
+                expected = number + 1
+            }
+        }
+        return cuts
+    }
+
+    private static let numberPattern = try! NSRegularExpression(
+        pattern: #"(?:^|(?<=\s))(\d{1,3})\s+(?=[^\d\s])"#, options: [.anchorsMatchLines])
 }

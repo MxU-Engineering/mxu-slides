@@ -579,6 +579,15 @@ struct ServiceContinuousView: View {
                     }
                 }
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
+
+                CenterNoteSwitch(
+                    model: model, presentationID: presentation.id,
+                    showsNote: Binding(
+                        get: { CenterNoteMode.isNote(presentation.id) },
+                        set: { value in
+                            CenterNoteMode.set(value, presentation.id)
+                            noteModeVersion += 1
+                        }))
             } accessory: {
 
                 if SlideSceneBuilder.showsArrangements(for: presentation) {
@@ -708,6 +717,8 @@ struct ServiceContinuousView: View {
         }
     }
 
+    @State private var noteModeVersion = 0
+
     private func pointNewSlide(at itemID: String?) {
         if let itemID {
             NewSlideRouter.shared.route = NewSlideRoute(contextID: itemID)
@@ -718,6 +729,8 @@ struct ServiceContinuousView: View {
         _ item: ServiceItem, _ presentation: Presentation, _ slides: [Slide]
     ) -> some View {
         let theme = model.theme(presentation.themeId)
+        let _ = noteModeVersion
+        let noteID = CenterNoteMode.isNote(presentation.id) ? model.noteID(linkedToPresentation: presentation.id) : nil
 
         return VStack(alignment: .leading, spacing: 10) {
 
@@ -725,7 +738,11 @@ struct ServiceContinuousView: View {
                PresentationTimelineCards.shared.expanded.contains(item.id) {
                 PresentationTimelineLanes(context: context)
             }
-            SlideGridBody(
+            if let noteID {
+                NoteReaderView(model: model, noteID: noteID, host: .center, render: render, controls: controls, fitsContent: true)
+                    .id(noteID)
+            } else {
+                SlideGridBody(
                     model: model, render: render, controls: controls,
                     presentation: presentation, theme: theme,
                     slides: slides,
@@ -743,6 +760,7 @@ struct ServiceContinuousView: View {
                     sweep: sweep,
                     deleteEverySelection: { clipboardRequests.take(.delete) }
                 )
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -404,6 +404,11 @@ extension MediaEngine: MediaTextureSource {
         return stills.value[mediaID]?.surface
     }
 
+    public func playbackRemaining(for mediaID: String, hostTime: CFTimeInterval) -> Double? {
+        guard let transport = players.value[mediaID]?.transport, !transport.isLooping, transport.duration > 0 else { return nil }
+        return max(0, transport.duration - transport.position(at: Date())) / max(transport.rate, 0.01)
+    }
+
     public func liveCadence(for mediaID: String) -> LiveCadence? {
         captures.value[mediaID]?.cadence ?? liveSources.value[mediaID]?.cadence?()
     }

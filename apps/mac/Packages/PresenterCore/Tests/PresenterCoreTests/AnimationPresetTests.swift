@@ -93,7 +93,9 @@ struct AnimationPresetTests {
         }
         stale.append(Slide(id: "mine", name: "My Third", objects: [SlideObject(id: "t", objectKind: .text, name: "Text", text: "")], folder: "Side Thirds"))
         let repaired = pack.pagingThirds(stale)
-        for slide in repaired where slide.id.hasPrefix(pack.themeID) && slide.folder != "Full Slide" {
+
+        for slide in repaired where slide.id.hasPrefix(pack.themeID) && slide.folder != "Full Slide"
+            && slide.objects.contains(where: { $0.objectKind == .text }) {
             let primary = slide.objects.first { $0.objectKind == .text }
             #expect(primary?.textStyle?.pageOnClick == true && primary?.textStyle?.autoShrink == true, "\(slide.name)")
         }

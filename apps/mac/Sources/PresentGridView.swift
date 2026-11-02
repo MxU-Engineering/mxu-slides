@@ -82,6 +82,10 @@ struct PresentGridView: View {
                     .padding(.bottom, 8)
                 }
                 Divider()
+                if showsNote, let noteID = model.noteID(linkedToPresentation: presentation.id) {
+                    NoteReaderView(model: model, noteID: noteID, host: .center, render: render, controls: controls)
+                        .id(noteID)
+                } else {
                 ScrollView {
                     SlideGridBody(
                         model: model, render: render, controls: controls,
@@ -113,9 +117,14 @@ struct PresentGridView: View {
                 .onDeleteCommand { clipboardRequests.take(.delete) }
 
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
+                }
             }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                focused = true
+                showsNote = CenterNoteMode.isNote(presentation.id)
+            }
+            .onChange(of: showsNote) { _, value in CenterNoteMode.set(value, presentation.id) }
         } else if model.presentationExists(presentationID) {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -137,6 +146,7 @@ struct PresentGridView: View {
                     .background(.quaternary, in: Capsule())
             }
             SongKeyChip(model: model, controls: controls, presentation: presentation)
+            CenterNoteSwitch(model: model, presentationID: presentation.id, showsNote: $showsNote)
             Spacer()
 
             PresentationSettingsButton(model: model, render: render, controls: controls, presentation: presentation)
@@ -144,6 +154,8 @@ struct PresentGridView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
+
+    @State private var showsNote = false
 
 
     private func revealLive(_ proxy: ScrollViewProxy) {
@@ -532,17 +544,28 @@ struct SlideGridBody: View {
 
     private func tileRows(aspect: CGFloat, cell: CGSize?) -> some View {
         let across = SlidesAcross.clamped(slidesAcross)
+        let cells = gridCells
         return VStack(alignment: .leading, spacing: SlideGridMetrics.spacing) {
-            ForEach(SlidesAcross.rows(count: slides.count, across: across), id: \.indices.lowerBound) { row in
+            ForEach(SlidesAcross.rows(count: cells.count, across: across), id: \.indices.lowerBound) { row in
                 let built = cell != nil && builtRows.contains(row.indices.lowerBound / across)
                 HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
-                    ForEach(row.indices, id: \.self) { index in
-                        if built, let cell {
-                            gridTile(index: index, slide: slides[index], aspect: aspect)
-                                .frame(width: cell.width, height: cell.height, alignment: .top)
-                        } else {
-                            placeholderCell(cell: cell, aspect: aspect)
-                                .id(Self.tileAnchor(contextID: contextID, index: index))
+                    ForEach(row.indices, id: \.self) { position in
+                        switch cells[position] {
+                        case .slide(let index):
+                            if built, let cell {
+                                gridTile(index: index, slide: slides[index], aspect: aspect)
+                                    .frame(width: cell.width, height: cell.height, alignment: .top)
+                            } else {
+                                placeholderCell(cell: cell, aspect: aspect)
+                                    .id(Self.tileAnchor(contextID: contextID, index: index))
+                            }
+                        case .add(let id):
+                            if built, let cell {
+                                addTile(id, aspect: aspect)
+                                    .frame(width: cell.width, height: cell.height, alignment: .top)
+                            } else {
+                                placeholderCell(cell: cell, aspect: aspect)
+                            }
                         }
                     }
 
@@ -697,9 +720,15 @@ struct SlideGridBody: View {
                 tileRows(aspect: aspect, cell: cell)
             } else {
                 LazyVGrid(columns: SlideGridMetrics.columns(across: slidesAcross, cellWidth: cell?.width), alignment: .leading, spacing: SlideGridMetrics.spacing) {
-                    ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
-                        gridTile(index: index, slide: slide, aspect: aspect)
-                            .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                    ForEach(gridCells, id: \.self) { gridCell in
+                        switch gridCell {
+                        case .slide(let index):
+                            gridTile(index: index, slide: slides[index], aspect: aspect)
+                                .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                        case .add(let id):
+                            addTile(id, aspect: aspect)
+                                .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                        }
                     }
                 }
             }
@@ -1316,6 +1345,55 @@ struct SlideGridBody: View {
         }
     }
 
+    private var noteChanges: (noteID: String, updates: [NotePendingUpdate])? {
+        guard let noteID = model.liveNoteByDeck[presentation.id],
+              let updates = model.liveUpdates[noteID]?.updates, !updates.isEmpty else { return nil }
+        return (noteID, updates)
+    }
+
+    private var gridCells: [NoteLiveUpdates.Cell] {
+        let updates = runOnly ? [] : noteChanges?.updates ?? []
+        guard !updates.isEmpty else { return slides.indices.map { .slide($0) } }
+        return NoteLiveUpdates.cells(slideIds: slides.map(\.id), updates: updates)
+    }
+
+    private func noteUpdateKind(of slideID: String) -> String? {
+        guard !runOnly else { return nil }
+        return noteChanges?.updates.first { $0.slideId == slideID }?.kind
+    }
+
+    @ViewBuilder
+    private func addTile(_ id: String, aspect: CGFloat) -> some View {
+        if let changes = noteChanges, let update = changes.updates.first(where: { $0.id == id }), let proposed = update.proposed {
+            Button {
+                model.reviewingNoteID = changes.noteID
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    SlideThumbnailView(
+                        model: model, render: render, slide: proposed, presentation: presentation,
+                        theme: model.theme(for: proposed, in: presentation), arrangementId: nil,
+                        hideScopedBackgrounds: hideScopedBackgrounds,
+                        pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale))
+                    .aspectRatio(aspect, contentMode: .fit)
+                    .opacity(0.55)
+                    .clipShape(RoundedRectangle.standard(CornerStandard.element))
+                    .overlay(
+                        RoundedRectangle.standard(CornerStandard.element)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+                            .foregroundStyle(Color.accentColor))
+                    .overlay(alignment: .bottomLeading) { NoteUpdateBadge(kind: NotePendingUpdate.new).padding(5) }
+                    Text("New from the notes")
+                        .font(.caption2)
+                        .foregroundStyle(Color.accentColor)
+                        .lineLimit(1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("A new slide from the notes. Click to review it.")
+        }
+    }
+
     private func gridTile(index: Int, slide: Slide, aspect: CGFloat) -> some View {
         tile(index: index, slide: slide, aspect: aspect)
 
@@ -1345,7 +1423,9 @@ struct SlideGridBody: View {
             hideScopedBackgrounds: hideScopedBackgrounds,
             contextID: contextID,
             mediaMissing: !missingMedia(of: slide).isEmpty,
-            pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale)
+            pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale),
+            noteUpdate: noteUpdateKind(of: slide.id),
+            onNoteUpdate: noteChanges.map { changes in { model.reviewingNoteID = changes.noteID } }
         ) {
             handleTap(index: index, slide: slide)
         }
@@ -1756,10 +1836,16 @@ struct SlideTile: View {
     var mediaMissing = false
 
     var pixelWidth = ThumbnailResolution.base
+
+    var liveOverride: Bool? = nil
+
+    var noteUpdate: String? = nil
+    var onNoteUpdate: (() -> Void)? = nil
     let fire: () -> Void
 
     private var isLive: Bool {
-        contextID != nil && controls?.liveContextID == contextID && controls?.liveOccurrence == index
+        if let liveOverride { return liveOverride }
+        return contextID != nil && controls?.liveContextID == contextID && controls?.liveOccurrence == index
     }
 
     private var liveAnimationStep: Int? {
@@ -1818,8 +1904,13 @@ struct SlideTile: View {
             }
             .overlay(alignment: .bottomLeading) {
                 let chips = layerChips
-                if !chips.isEmpty {
+                if noteUpdate != nil || !chips.isEmpty {
                     HStack(spacing: 3) {
+                        if let noteUpdate, let onNoteUpdate {
+                            Button(action: onNoteUpdate) { NoteUpdateBadge(kind: noteUpdate) }
+                                .buttonStyle(.plain)
+                                .tileHelp("The note changed. Click to review.")
+                        }
                         ForEach(chips) { chip in
                             LayerChip(chip: chip)
                                 .onHover { over in
@@ -2238,7 +2329,7 @@ struct SlideThumbnailView: View {
             }
 
             ForEach([LayerKind.loopingVideos, .stillGraphics].compactMap { shown[$0] } + missing, id: \.self) { id in
-                posterLayer(mediaId: id)
+                posterLayer(mediaId: id, scaleMode: slide.background?.mediaId == id ? slide.background?.scaleMode : nil)
             }
             if let content = contentImage() {
                 Image(decorative: content, scale: 1)
@@ -2246,7 +2337,17 @@ struct SlideThumbnailView: View {
                     .aspectRatio(contentMode: .fit)
             }
             if let id = shown[.videos] {
-                posterLayer(mediaId: id)
+                posterLayer(mediaId: id, scaleMode: slide.background?.mediaId == id ? slide.background?.scaleMode : nil)
+            }
+
+            if slide.waitsForMedia {
+                VStack(spacing: 3) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                    Text("Drop a picture or video here").font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(4)
             }
         }
 
@@ -2272,13 +2373,13 @@ struct SlideThumbnailView: View {
         return .black
     }
 
-    private func posterLayer(mediaId: String) -> some View {
+    private func posterLayer(mediaId: String, scaleMode: MediaScaleMode?) -> some View {
         Color.clear
             .overlay {
                 PosterLookImage(
                     model: model, render: render, mediaId: mediaId,
                     canvas: SlideSceneBuilder.canvasSize(for: presentation),
-                    pixelWidth: pixelWidth)
+                    pixelWidth: pixelWidth, scaleMode: scaleMode)
             }
             .clipped()
     }
@@ -2309,6 +2410,8 @@ struct PosterImage: View {
 
     var maxPixels = PosterDecode.maxPixelSize
 
+    var scaleMode: MediaScaleMode? = nil
+
     @State private var image: CGImage?
     @State private var missing = false
 
@@ -2319,9 +2422,7 @@ struct PosterImage: View {
         let stamp = "\(mediaId)|\(model.media(mediaId)?.fileHash ?? "gone")"
         ZStack {
             if let image {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+                ScaledPicture(image: Image(decorative: image, scale: 1), mode: scaleMode)
                     .opacity(missing ? 0.4 : 1)
             } else {
                 Color.black
@@ -2360,6 +2461,7 @@ struct PosterLookImage: View {
     let mediaId: String
     var canvas = SlideSceneBuilder.canvasSize
     var pixelWidth = ThumbnailResolution.base
+    var scaleMode: MediaScaleMode? = nil
 
     var body: some View {
 
@@ -2373,13 +2475,37 @@ struct PosterLookImage: View {
                 : nil
         }
         if let look {
-            Image(decorative: look, scale: 1)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
+            ScaledPicture(image: Image(decorative: look, scale: 1), mode: scaleMode)
         } else {
             PosterImage(
                 model: model, mediaId: mediaId,
-                maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
+                maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth), scaleMode: scaleMode)
+        }
+    }
+}
+
+struct ScaledPicture: View {
+    let image: Image
+    let mode: MediaScaleMode?
+
+    var body: some View {
+        switch mode {
+        case .fit:
+            image.resizable().aspectRatio(contentMode: .fit)
+        case .stretch:
+            image.resizable()
+        case .scaleAndBlur:
+            ZStack {
+                Color.clear.overlay {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                        .scaleEffect(MediaLooks.backdropZoom)
+                        .visualEffect { content, proxy in content.blur(radius: proxy.size.width * MediaLooks.backdropBlurShare) }
+                }
+                .clipped()
+                image.resizable().aspectRatio(contentMode: .fit)
+            }
+        case .fill, .none:
+            image.resizable().aspectRatio(contentMode: .fill)
         }
     }
 }
@@ -2836,3 +2962,20 @@ struct LayerChipHover: View {
     }
 }
 
+struct NoteUpdateBadge: View {
+    let kind: String
+
+    var body: some View {
+        let (label, color): (String, Color) = switch kind {
+        case NotePendingUpdate.new: ("Add", .accentColor)
+        case NotePendingUpdate.words: ("Update", .orange)
+        default: ("Remove", .red)
+        }
+        Text(label)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color, in: Capsule())
+    }
+}

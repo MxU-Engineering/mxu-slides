@@ -64,7 +64,8 @@
       "cases": [
         "fill",
         "fit",
-        "stretch"
+        "stretch",
+        "scaleAndBlur"
       ]
     },
     "MediaSourceRect": {
@@ -1334,6 +1335,11 @@
           "name": "keystoneMode",
           "type": "KeystoneMode",
           "optional": true
+        },
+        {
+          "name": "photoSpot",
+          "type": "bool",
+          "optional": true
         }
       ]
     },
@@ -1367,6 +1373,13 @@
         "untilReplaced"
       ]
     },
+    "MediaEndFade": {
+      "kind": "enum",
+      "cases": [
+        "black",
+        "clear"
+      ]
+    },
     "CueMedia": {
       "kind": "record",
       "fields": [
@@ -1392,6 +1405,16 @@
         {
           "name": "classification",
           "type": "MediaClassification",
+          "optional": true
+        },
+        {
+          "name": "scaleMode",
+          "type": "MediaScaleMode",
+          "optional": true
+        },
+        {
+          "name": "endFade",
+          "type": "MediaEndFade",
           "optional": true
         },
         {
@@ -4313,6 +4336,11 @@
           "optional": true
         },
         {
+          "name": "slideState",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "commentId",
           "type": "string",
           "optional": true
@@ -4544,6 +4572,26 @@
         {
           "name": "slide",
           "type": "NoteSlideRef",
+          "optional": true
+        },
+        {
+          "name": "slideGroup",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideType",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideState",
+          "type": "string",
           "optional": true
         }
       ]
@@ -4796,6 +4844,47 @@
           "name": "pendingUpdates",
           "type": "list:NotePendingUpdate",
           "optional": true
+        },
+        {
+          "name": "mediaImports",
+          "type": "list:NoteMediaImport",
+          "optional": true
+        },
+        {
+          "name": "buildMode",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "skippedUpdates",
+          "type": "list:NoteSkippedUpdate",
+          "optional": true
+        }
+      ]
+    },
+    "NoteSkippedUpdate": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ]
+    },
+    "NoteMediaImport": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "mediaId",
+          "type": "string"
         }
       ]
     },

@@ -45,3 +45,9 @@ private func audio(_ id: String, name: String, hash: String) -> AudioItem {
     #expect(dedupe.availableName("Background 2", kind: .media) == "Background 3", "a numbered name counts on")
     #expect(dedupe.availableName("Background", kind: .audio) == "Background 2", "each kind numbers on its own")
 }
+
+@Test func anUnattendedImportReusesTheSameFileAndCopiesTheRest() {
+    #expect(MediaImportDedupe.unattendedUsesExisting(.sameFile(id: "m1")))
+    #expect(!MediaImportDedupe.unattendedUsesExisting(.sameName(id: "m1", name: "Announce")))
+    #expect(!MediaImportDedupe.unattendedUsesExisting(.new))
+}

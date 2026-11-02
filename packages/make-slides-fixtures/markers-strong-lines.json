@@ -1,0 +1,169 @@
+{
+  "name": "Markers note, strong lines outside the markers",
+  "about": "A note written with \"Slide N:\" markers makes its first deck from the markers alone: what sits outside them stays words. Once the deck is made, a line outside the markers that the structure rules read strongly is offered as an Add: a labelled line (\"Next step:\", a labelled point), a scripture reference with its verse, a quote, a bold-only line in a note that mixes bold. Plain talk stays notes either way (`liveAdds`).",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "text": "Hi team, here are my slides for Sunday."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 1:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Idols promise what only God can give."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "That's when I think about my grandfather's farm."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Next step: Write down one idol you'll hand back to God this week."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Slide 2:"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "God gives before we ask."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Romans 1:25"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "25 They exchanged the truth about God for a lie."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "blocks": [
+          {
+            "runs": [
+              {
+                "text": "We become what we worship."
+              }
+            ],
+            "type": "paragraph"
+          }
+        ],
+        "type": "quote"
+      },
+      {
+        "runs": [],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "Idols are good things made ultimate."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "So take a quiet moment with that this week."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "text": "Idols promise what only God can give."
+    },
+    {
+      "text": "God gives before we ask."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "body",
+      "text": "Idols promise what only God can give."
+    },
+    {
+      "kind": "body",
+      "text": "God gives before we ask."
+    }
+  ],
+  "liveAdds": [
+    {
+      "type": "points",
+      "text": "Next step: Write down one idol you'll hand back to God this week."
+    },
+    {
+      "type": "scripture",
+      "text": "Romans 1:25\n25 They exchanged the truth about God for a lie."
+    },
+    {
+      "type": "quote",
+      "text": "We become what we worship."
+    },
+    {
+      "text": "Idols are good things made ultimate."
+    }
+  ]
+}

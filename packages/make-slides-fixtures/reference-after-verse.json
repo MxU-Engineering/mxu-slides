@@ -1,0 +1,79 @@
+{
+  "name": "Reference after the verse",
+  "about": "A reference on the line after a verse attaches to that verse; verse numbers off takes the numbers the reference names out of the words, and Fit to box splits a verse too long for the box at its sentences, the reference on the last slide's last line (never alone), with no blank inside the passage.",
+  "mode": "pickForMe",
+  "options": {
+    "verseNumbers": false,
+    "scriptureSplit": "fitToBox"
+  },
+  "blanks": "afterSlide",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "text": "1 Blessed is the man who doesn’t walk in the counsel of the wicked, 2 but his delight is in Yahweh’s law. On his law he meditates day and night. 3 He will be like a tree planted by the streams of water."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Psalm 1:1–3"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Philippians 4:13"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "I can do all things through Christ, who strengthens me."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "scripture",
+      "text": "1 Blessed is the man who doesn’t walk in the counsel of the wicked, 2 but his delight is in Yahweh’s law. On his law he meditates day and night. 3 He will be like a tree planted by the streams of water.\nPsalm 1:1–3"
+    },
+    {
+      "type": "scripture",
+      "text": "Philippians 4:13\nI can do all things through Christ, who strengthens me."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "scripture",
+      "text": "Blessed is the man who doesn’t walk in the counsel of the wicked, but his delight is in Yahweh’s law.\nOn his law he meditates day and night."
+    },
+    {
+      "kind": "scripture",
+      "text": "He will be like a tree planted by the streams of water.\nPsalm 1:1–3"
+    },
+    {
+      "kind": "blank",
+      "text": ""
+    },
+    {
+      "kind": "scripture",
+      "text": "I can do all things through Christ, who strengthens me.\nPhilippians 4:13"
+    },
+    {
+      "kind": "blank",
+      "text": ""
+    }
+  ]
+}

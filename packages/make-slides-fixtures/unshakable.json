@@ -1,0 +1,319 @@
+{
+  "name": "Unshakable",
+  "about": "A sermon note. Run-sheet lines (Intro, a Video line with no link, Closing prayer) and the line in parentheses are not suggested; the picture is a full-screen Scale and Blur picture slide, the Video line with a link a video placeholder holding the link, and the video file a video slide; the reference line joins its verses; the labelled lines become points under their label.",
+  "mode": "pickForMe",
+  "options": {
+    "revealPoints": true,
+    "scriptureSplit": "oneVerse",
+    "verseNumbers": true,
+    "blanksBetweenVerses": false,
+    "keepUnderlines": true,
+    "parenthesesToNotes": true
+  },
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "level": 1,
+        "runs": [
+          {
+            "text": "Unshakable"
+          }
+        ],
+        "type": "heading"
+      },
+      {
+        "runs": [
+          {
+            "text": "Hebrews 12:25–29 · Kingdom Come, week 4"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "italic": true,
+            "text": "(Welcome back, ask everyone to stand for the reading)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "Hebrews 12:27–28 (WEB)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "27 This phrase, “Yet once more,” signifies the removing of those things that are shaken, as of things that have been made, that those things which are not shaken may remain. 28 Therefore, receiving a Kingdom that can’t be shaken, let us have grace, through which we serve God acceptably, with reverence and awe."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Intro: the morning of the 1989 earthquake. We were living in Santa Cruz, and the first thing I remember is the sound…"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Big idea: What can’t be shaken is what lasts."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "items": [
+          {
+            "runs": [
+              {
+                "text": "Everything that can be "
+              },
+              {
+                "text": "shaken",
+                "underline": true
+              },
+              {
+                "text": " will be shaken"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "What God builds "
+              },
+              {
+                "text": "can’t",
+                "underline": true
+              },
+              {
+                "text": " be shaken"
+              }
+            ]
+          },
+          {
+            "runs": [
+              {
+                "text": "So we worship with "
+              },
+              {
+                "text": "reverence and awe",
+                "underline": true
+              }
+            ]
+          }
+        ],
+        "ordered": true,
+        "type": "list"
+      },
+      {
+        "alt": "Pacific Garden Mall after the quake",
+        "type": "image",
+        "url": "file:///Users/me/Pictures/santa-cruz-1989.jpg",
+        "width": 640
+      },
+      {
+        "runs": [
+          {
+            "text": "Psalm 46:1 – God is our refuge and strength, a very present help in trouble."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "“Faith is taking the first step even when you don’t see the whole staircase.” — Martin Luther King Jr."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Video: Sarah’s story (2:40)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Video: Testimony – https://vimeo.com/76979871"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Next step: Write down one thing you’re holding onto that can be shaken."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Hebrews 12:29 – for our God is a consuming fire."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "attachmentKind": "video",
+        "filename": "Baptism Sunday recap.mp4",
+        "hexId": "a1b2c3d4e5f6a7b8",
+        "type": "attachment"
+      },
+      {
+        "runs": [
+          {
+            "text": "Closing prayer, worship team back up."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "title",
+      "text": "Unshakable\nHebrews 12:25–29 · Kingdom Come, week 4"
+    },
+    {
+      "type": "scripture",
+      "text": "Hebrews 12:27–28 (WEB)\n27 This phrase, “Yet once more,” signifies the removing of those things that are shaken, as of things that have been made, that those things which are not shaken may remain. 28 Therefore, receiving a Kingdom that can’t be shaken, let us have grace, through which we serve God acceptably, with reverence and awe."
+    },
+    {
+      "type": "points",
+      "text": "Big idea: What can’t be shaken is what lasts."
+    },
+    {
+      "type": "points",
+      "text": "Everything that can be shaken will be shaken\nWhat God builds can’t be shaken\nSo we worship with reverence and awe"
+    },
+    {
+      "type": "picture",
+      "text": "",
+      "media": [
+        "file:///Users/me/Pictures/santa-cruz-1989.jpg"
+      ]
+    },
+    {
+      "type": "scripture",
+      "text": "Psalm 46:1 – God is our refuge and strength, a very present help in trouble."
+    },
+    {
+      "type": "quote",
+      "text": "“Faith is taking the first step even when you don’t see the whole staircase.” — Martin Luther King Jr."
+    },
+    {
+      "type": "video",
+      "text": "Video: Testimony – https://vimeo.com/76979871"
+    },
+    {
+      "type": "points",
+      "text": "Next step: Write down one thing you’re holding onto that can be shaken."
+    },
+    {
+      "type": "scripture",
+      "text": "Hebrews 12:29 – for our God is a consuming fire."
+    },
+    {
+      "type": "video",
+      "text": "",
+      "media": [
+        "hex:a1b2c3d4e5f6a7b8"
+      ]
+    }
+  ],
+  "slides": [
+    {
+      "kind": "title",
+      "text": "Unshakable\nHebrews 12:25–29 · Kingdom Come, week 4"
+    },
+    {
+      "kind": "scripture",
+      "text": "27 This phrase, “Yet once more,” signifies the removing of those things that are shaken, as of things that have been made, that those things which are not shaken may remain.\nHebrews 12:27"
+    },
+    {
+      "kind": "scripture",
+      "text": "28 Therefore, receiving a Kingdom that can’t be shaken, let us have grace, through which we serve God acceptably, with reverence and awe.\nHebrews 12:27–28 (WEB)"
+    },
+    {
+      "kind": "points",
+      "text": "Big idea\nWhat can’t be shaken is what lasts."
+    },
+    {
+      "kind": "points",
+      "text": "Everything that can be shaken will be shaken\nWhat God builds can’t be shaken\nSo we worship with reverence and awe",
+      "reveal": [
+        0,
+        1,
+        2
+      ],
+      "underlines": [
+        {
+          "line": 0,
+          "column": 23,
+          "length": 6
+        },
+        {
+          "line": 1,
+          "column": 16,
+          "length": 5
+        },
+        {
+          "line": 2,
+          "column": 19,
+          "length": 17
+        }
+      ]
+    },
+    {
+      "kind": "picture",
+      "text": "",
+      "media": "file:///Users/me/Pictures/santa-cruz-1989.jpg",
+      "scale": "scaleAndBlur"
+    },
+    {
+      "kind": "scripture",
+      "text": "God is our refuge and strength, a very present help in trouble.\nPsalm 46:1"
+    },
+    {
+      "kind": "quote",
+      "text": "“Faith is taking the first step even when you don’t see the whole staircase.”\nMartin Luther King Jr."
+    },
+    {
+      "kind": "video",
+      "text": "",
+      "notes": "https://vimeo.com/76979871"
+    },
+    {
+      "kind": "points",
+      "text": "Next step\nWrite down one thing you’re holding onto that can be shaken."
+    },
+    {
+      "kind": "scripture",
+      "text": "for our God is a consuming fire.\nHebrews 12:29"
+    },
+    {
+      "kind": "video",
+      "text": "",
+      "media": "hex:a1b2c3d4e5f6a7b8"
+    }
+  ]
+}

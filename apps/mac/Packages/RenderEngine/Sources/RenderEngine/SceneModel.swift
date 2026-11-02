@@ -499,6 +499,12 @@ public enum SceneMediaScaleMode: String, Sendable, Hashable {
     case fill
     case fit
     case stretch
+    case scaleAndBlur
+}
+
+public enum SceneEndFade: String, Sendable, Hashable {
+    case black
+    case clear
 }
 
 public struct SceneSourceRect: Hashable, Sendable {
@@ -793,6 +799,8 @@ public struct RenderItem: Identifiable, Equatable, Sendable {
     public var animationContext: AnimationContext?
 
     public var crossfadeLeaving = false
+
+    public var endFade: SceneEndFade?
 
     public init(
         id: String,

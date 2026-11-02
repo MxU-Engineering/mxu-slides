@@ -1,0 +1,70 @@
+{
+  "name": "Words in parentheses",
+  "about": "Words in (parentheses) anywhere go to the slide notes; a translation and a reference in parentheses stay on the slide.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "text": "Grace is a gift, not a wage (hold up the envelope here)."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "For by grace you have been saved through faith (Ephesians 2:8)."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "(Pause for the video.)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Romans 5:8 (NIV) – But God demonstrates his own love for us in this: While we were still sinners, Christ died for us."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "text": "Grace is a gift, not a wage (hold up the envelope here)."
+    },
+    {
+      "text": "For by grace you have been saved through faith (Ephesians 2:8)."
+    },
+    {
+      "type": "scripture",
+      "text": "Romans 5:8 (NIV) – But God demonstrates his own love for us in this: While we were still sinners, Christ died for us."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "body",
+      "text": "Grace is a gift, not a wage.",
+      "notes": "hold up the envelope here"
+    },
+    {
+      "kind": "body",
+      "text": "For by grace you have been saved through faith (Ephesians 2:8)."
+    },
+    {
+      "kind": "scripture",
+      "text": "But God demonstrates his own love for us in this: While we were still sinners, Christ died for us.\nRomans 5:8 (NIV)"
+    }
+  ]
+}
