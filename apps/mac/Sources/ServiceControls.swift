@@ -438,6 +438,10 @@ final class ServiceControls {
 
     weak var actionRouter: ActionRouter?
 
+    weak var ink: InkController? {
+        didSet { ink?.onVisibilityChange = { [weak self] in self?.apply() } }
+    }
+
     weak var serviceTracking: ServiceTimingController?
 
     private(set) var mediaFireContexts: [String: String] = [:]
@@ -1422,6 +1426,7 @@ final class ServiceControls {
         state.clearAll(sweeping: swept, protecting: protecting)
         if swept.contains(.audio) { audio.stop() }
         if TracksClear.stopsTracks(sweeping: swept) { timeline.clearTracks() }
+        ink?.clear()
 
         if state.liveSlide == nil {
             liveContextID = nil
@@ -1649,21 +1654,25 @@ final class ServiceControls {
 
         pushConfidence()
         let now = Date()
-        let base = state.scene(
+        var base = state.scene(
             alertVisible: alertVisible,
             linkedText: render.confidenceInfo, at: now
         )
 
         .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
+        ink?.programDidChange(base)
+        ink?.overlay(on: &base)
 
         var variants: [String: RenderScene] = [:]
         for (themeID, theme) in slideThemeOverrides {
-            variants[themeID] = state.scene(
+            var variant = state.scene(
                 alertVisible: alertVisible,
                 linkedText: render.confidenceInfo,
                 slideThemeOverride: theme, at: now
             )
             .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
+            ink?.overlay(on: &variant)
+            variants[themeID] = variant
         }
         render.setLiveScenes(base, variants: variants)
         syncMedia()

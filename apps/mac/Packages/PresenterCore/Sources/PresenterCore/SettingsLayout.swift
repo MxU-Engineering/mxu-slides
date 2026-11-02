@@ -64,6 +64,7 @@ public enum SettingsLayout {
         Page(id: "api", sections: [
             Section(nil, ["network.ndi"]),
             Section("Local API", ["api.enabled", "api.port", "api.address", "api.tokens", "api.docs"]),
+            Section("iPad Ink", ["ink.enabled", "ink.port", "ink.area", "ink.connect"]),
         ]),
     ]
 

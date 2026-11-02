@@ -34,7 +34,7 @@ extension GlyphKind {
     init(action: SlideAction, model: AppModel) {
         self = switch action.kind {
         case .switchOutputPreset: .screens
-        case .clearLayer, .clearAll, .clearAudio: .clear
+        case .clearLayer, .clearAll, .clearAudio, .clearInk, .hideInk, .showInk: .clear
         case .fireMedia: .media
         case .fireAlert, .dismissAlert: .alerts
         case .timerStart, .timerPause, .timerReset, .timerConfigure: .timers
