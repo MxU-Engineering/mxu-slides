@@ -1,4 +1,5 @@
 import Foundation
+import LocalAPI
 import Observation
 import os
 import OutputEngine
@@ -25,7 +26,13 @@ final class StreamingController {
     }
 
     private(set) var live: LiveStream? {
-        didSet { onLiveChanged?() }
+        didSet {
+            onLiveChanged?()
+
+            if oldValue?.presetID != live?.presetID {
+                APIFireFeed.shared.publish(APIFireEvent(kind: .capture, id: live?.presetID))
+            }
+        }
     }
 
     var onLiveChanged: (() -> Void)?

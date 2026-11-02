@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import LocalAPI
 import Observation
 import PresenterCore
 import SlideScene
@@ -349,7 +350,11 @@ final class SchedulerController {
     }
 
     private func fire(_ trigger: ScheduleTrigger, source: RunRecord.Source, late: Bool) {
-        fireNow(trigger, source: source, late: late)
+        if FollowController.isBackingUp {
+            DiagnosticsStore.shared.note("follow.held", detail: "trigger \(trigger.name)")
+        } else {
+            fireNow(trigger, source: source, late: late)
+        }
     }
 
     private func fireNow(_ trigger: ScheduleTrigger, source: RunRecord.Source, late: Bool) {
@@ -363,7 +368,7 @@ final class SchedulerController {
             RunRecord(
                 triggerID: trigger.id, name: trigger.name, at: Date(),
                 outcome: late ? .late : .fired, source: source))
-        router.execute(trigger.actions)
+        APIFireSource.$current.withValue(APIFireSource(kind: .scheduler)) { router.execute(trigger.actions) }
 
         if ScheduleMath.spentOneOffDue(
             for: trigger, asOf: Date(), calendar: .current) != nil

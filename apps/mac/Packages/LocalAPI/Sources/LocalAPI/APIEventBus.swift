@@ -9,6 +9,8 @@ public enum APITopic: String, Codable, CaseIterable, Sendable {
     case library
     case scheduler
     case timecode
+
+    case fires
 }
 
 public struct APIEvent: Sendable {

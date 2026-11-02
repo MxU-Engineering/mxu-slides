@@ -1,4 +1,5 @@
 import CoreMIDI
+import LocalAPI
 import PresenterCore
 import RenderEngine
 import SlideScene
@@ -208,7 +209,8 @@ final class ActionRouter {
             return
         }
         model.markUsed(comboID)
-        execute(combo.actions, depth: 1, visited: [comboID])
+        let seq = APIFireFeed.shared.publish(APIFireEvent(kind: .combo, id: comboID))
+        APIFireFeed.$cause.withValue(seq) { execute(combo.actions, depth: 1, visited: [comboID]) }
     }
 
     func execute(_ actions: [SlideAction]) {
@@ -314,7 +316,11 @@ final class ActionRouter {
         _ action: SlideAction, depth: Int, visited: Set<String>,
         skippingPresetSwitches: Bool = false, protected: Set<String> = []
     ) {
-        performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
+        if FollowController.isBackingUp, Follow.holds(action.kind) {
+            DiagnosticsStore.shared.note("follow.held", detail: action.kind.rawValue)
+        } else {
+            performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
+        }
     }
 
     private func label(_ action: SlideAction) -> String {

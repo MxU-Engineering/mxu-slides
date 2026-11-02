@@ -1,4 +1,5 @@
 import Foundation
+import LocalAPI
 import Observation
 import PresenterCore
 import SlideScene
@@ -260,6 +261,7 @@ final class TimersController {
     }
 
     func start(id: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .timer, id: id, timer: .play))
         mutate(id) {
             guard !$0.isRunning else { return }
             $0.isRunning = true
@@ -268,6 +270,7 @@ final class TimersController {
     }
 
     func pause(id: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .timer, id: id, timer: .pause))
         mutate(id) {
             guard $0.isRunning else { return }
             $0.banked = $0.elapsed(at: Date())
@@ -282,6 +285,7 @@ final class TimersController {
     }
 
     func reset(id: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .timer, id: id, timer: .reset))
         mutate(id) {
             $0.banked = 0
             $0.isRunning = false

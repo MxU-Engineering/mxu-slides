@@ -1,6 +1,7 @@
 import AVFoundation
 import AudioEngine
 import Foundation
+import LocalAPI
 import MediaEngine
 import Observation
 import PresenterCore
@@ -173,6 +174,8 @@ final class AudioPlayer {
     }
 
     func togglePlayPause() {
+
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "playPause")))
         guard currentTrackName != nil else {
 
             if queue != nil, playlistID != nil {
@@ -191,6 +194,7 @@ final class AudioPlayer {
     }
 
     func next() {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "next")))
         guard queue != nil else { return }
         crossfadeArmedEntryID = nil
         if queue?.next() != nil {
@@ -201,6 +205,7 @@ final class AudioPlayer {
     }
 
     func previous() {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "previous")))
         crossfadeArmedEntryID = nil
         guard queue != nil else {
             if let singleItemID, let item = appModel.audio(singleItemID) {
@@ -218,6 +223,7 @@ final class AudioPlayer {
 
     func seek(to seconds: TimeInterval) {
         guard currentTrackName != nil, duration > 0 else { return }
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "seek", position: seconds)))
         if let entryID = currentEntryID, crossfadeArmedEntryID == entryID,
            queue?.currentEntryID == entryID {
             crossfadeArmedEntryID = nil
