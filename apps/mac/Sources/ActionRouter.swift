@@ -17,13 +17,17 @@ final class ActionRouter {
 
     init(
         model: AppModel, controls: ServiceControls, presets: OutputPresetsController,
-        confidenceMonitor: ConfidenceMonitorController? = nil
+        confidenceMonitor: ConfidenceMonitorController? = nil,
+        ink: InkController? = nil
     ) {
         self.model = model
         self.controls = controls
         self.presets = presets
         self.confidenceMonitor = confidenceMonitor
+        self.ink = ink
     }
+
+    private let ink: InkController?
 
     private let confidenceMonitor: ConfidenceMonitorController?
 
@@ -364,6 +368,12 @@ final class ActionRouter {
             controls.clearAll(protecting: protected, cancelsPendingActions: false)
         case .clearAudio:
             controls.clear(function: .audio)
+        case .clearInk:
+            ink?.clear()
+        case .hideInk:
+            ink?.hide()
+        case .showInk:
+            ink?.show()
         case .switchOutputPreset:
 
             guard !skippingPresetSwitches else { return }

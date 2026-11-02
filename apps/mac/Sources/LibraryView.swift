@@ -41,6 +41,7 @@ struct LibrarySidebar: View {
     @State private var applyThemeTarget: ApplyThemeTarget?
     @State private var creatingFolder = false
     @State private var importingLyrics = false
+    @State private var importingMessageNotes = false
     @State private var searchText = ""
 
     @AppStorage("library.audioTab") private var audioTab = 0
@@ -147,6 +148,10 @@ struct LibrarySidebar: View {
         .focusedSceneValue(\.presentLyricImport, MenuAction("importLyrics") { importingLyrics = true })
         .sheet(isPresented: $importingLyrics) {
             ImportLyricsSheet(model: model, render: render, onImported: showImported)
+        }
+        .focusedSceneValue(\.presentMessageNotesImport, MenuAction("importMessageNotes") { importingMessageNotes = true })
+        .sheet(isPresented: $importingMessageNotes) {
+            ImportMessageNotesSheet(model: model, render: render, onImported: showImported)
         }
         .sheet(item: $newFolderTarget) { entry in
             NewFolderSheet(model: model, entry: entry, parentPath: realPath(folderPath ?? []))
@@ -1343,9 +1348,11 @@ struct LibrarySidebar: View {
     private func showImported(_ id: String) {
         showHome(id)
         if appModeRaw == AppMode.edit.rawValue {
-            model.openInEditor(entryID: id)
+            model.openInEditor(entryID: id, slideID: model.pendingEditorSlideID)
             model.retargetPresentReturn(entryID: id)
         } else {
+            model.pendingEditorSlideID = nil
+            model.pendingEditorObjectID = nil
             model.openInPresent(entryID: id, presenting: appModeRaw == AppMode.present.rawValue)
             appModeRaw = AppMode.present.rawValue
         }
@@ -1516,6 +1523,7 @@ struct LibrarySidebar: View {
 struct LibraryCommands: Commands {
     @FocusedValue(\.presentLibrarySearch) private var presentSearch
     @FocusedValue(\.presentLyricImport) private var presentLyricImport
+    @FocusedValue(\.presentMessageNotesImport) private var presentMessageNotesImport
     @FocusedValue(\.presentWorkspaceImport) private var presentWorkspaceImport
     @FocusedValue(\.libraryModel) private var model
     @FocusedValue(\.slideEditor) private var slideEditor
@@ -1562,6 +1570,8 @@ struct LibraryCommands: Commands {
         CommandGroup(after: .importExport) {
             Button("Import Lyrics…") { presentLyricImport?() }
                 .disabled(presentLyricImport == nil || runOnly)
+            Button("Import Message Notes…") { presentMessageNotesImport?() }
+                .disabled(presentMessageNotesImport == nil || runOnly)
             Button("Import from ProPresenter…") { importProPresenter() }
                 .disabled(model == nil || runOnly)
             Button("Import ProPresenter Workspace…") { presentWorkspaceImport?() }

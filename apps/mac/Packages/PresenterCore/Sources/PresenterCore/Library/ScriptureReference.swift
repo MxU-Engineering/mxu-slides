@@ -22,7 +22,7 @@ public enum ScriptureReference {
         "Lamentations|Lam", "Ezekiel|Ezek", "Daniel|Dan", "Hosea|Hos", "Joel", "Amos", "Obadiah|Obad",
         "Jonah|Jon", "Micah|Mic", "Nahum|Nah", "Habakkuk|Hab", "Zephaniah|Zeph", "Haggai|Hag",
         "Zechariah|Zech", "Malachi|Mal",
-        "Matthew|Matt|Mt", "Mark|Mk", "Luke|Lk", "John|Jn", "Acts", "Romans|Rom", "Corinthians|Cor",
+        "Matthew|Matt|Mt", "Mark|Mk", "Luke|Lk|Lu", "John|Jn", "Acts", "Romans|Rom", "Corinthians|Cor",
         "Galatians|Gal", "Ephesians|Eph", "Philippians|Phil", "Colossians|Col", "Thessalonians|Thess",
         "Timothy|Tim", "Titus", "Philemon|Phlm", "Hebrews|Heb", "James|Jas", "Peter|Pet", "Jude",
         "Revelation|Rev",

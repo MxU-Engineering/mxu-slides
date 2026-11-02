@@ -43,6 +43,8 @@
 	<string>$(MXU_GIT_COMMIT)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>MxU Slides shows cameras and capture devices on your screens as live video inputs.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>MxU Slides uses Pages to convert imported Apple Pages documents to readable text.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>MxU Slides uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>

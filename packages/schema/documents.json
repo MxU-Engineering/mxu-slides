@@ -1627,7 +1627,8 @@
         "chartFile",
         "pastedLyrics",
         "slidesFile",
-        "duplicate"
+        "duplicate",
+        "messageNotes"
       ]
     },
     "PresentationOrigin": {
@@ -3346,6 +3347,9 @@
         "clearAll",
         "clearAudio",
         "clearSignage",
+        "clearInk",
+        "hideInk",
+        "showInk",
         "switchOutputPreset",
         "fireMedia",
         "fireAlert",

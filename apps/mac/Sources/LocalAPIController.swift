@@ -3,6 +3,7 @@ import LocalAPI
 import Observation
 import os
 import Security
+import SystemConfiguration
 
 enum NetworkInfo {
 
@@ -10,6 +11,8 @@ enum NetworkInfo {
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0, let first = head else { return nil }
         defer { freeifaddrs(head) }
+        let primary = primaryInterface()
+        var en0: String?
         var fallback: String?
         for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
             let flags = Int32(pointer.pointee.ifa_flags)
@@ -23,11 +26,18 @@ enum NetworkInfo {
                 &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST
             )
             let ip = String(cString: host)
+            guard !ip.hasPrefix("169.254.") else { continue }
             let name = String(cString: pointer.pointee.ifa_name)
-            if name == "en0" { return ip }
+            if name == primary { return ip }
+            if name == "en0" { en0 = ip }
             if fallback == nil, name.hasPrefix("en") { fallback = ip }
         }
-        return fallback
+        return en0 ?? fallback
+    }
+
+    private static func primaryInterface() -> String? {
+        let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString)
+        return (global as? [String: Any])?["PrimaryInterface"] as? String
     }
 }
 
