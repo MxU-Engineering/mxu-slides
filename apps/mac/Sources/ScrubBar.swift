@@ -16,6 +16,8 @@ struct ScrubBar: View {
 
     var liveSeekInterval: Duration = .milliseconds(120)
 
+    var position: ((Date) -> TimeInterval)? = nil
+
     let onSeek: (TimeInterval, _ final: Bool) -> Void
 
     @State private var draftFraction: Double?
@@ -60,8 +62,13 @@ struct ScrubBar: View {
     private var track: some View {
         GeometryReader { geo in
             let width = max(1, geo.size.width)
-            let fraction = draftFraction ?? (duration > 0 ? elapsed / duration : 0)
-            let clamped = min(max(fraction, 0), 1)
+            let draft = draftFraction, elapsed = elapsed, duration = duration, position = position
+
+            let fraction: (Date) -> Double = { now in
+                min(max(draft ?? (position?(now) ?? elapsed) / duration, 0), 1)
+            }
+            let gliding = isPlaying && position != nil && draft == nil
+            let ink: NSColor = isPlaying ? .systemGreen : .secondaryLabelColor
             let editable = onTrimChange != nil
 
             let baseTrim: ClosedRange<Double>? = trimRange ?? (editable ? 0 ... 1 : nil)
@@ -70,9 +77,14 @@ struct ScrubBar: View {
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
                     .frame(height: 3)
-                Capsule()
-                    .fill(isPlaying ? Color.green : Color.secondary)
-                    .frame(width: clamped * width, height: 3)
+                ClockLayers(running: gliding) { view, now in
+                    let fill = view.sublayer("fill") { CALayer() }
+                    fill.backgroundColor = ink.cgColor
+                    fill.cornerRadius = 1.5
+                    fill.frame = CGRect(x: 0, y: (view.bounds.height - 3) / 2, width: fraction(now) * width, height: 3)
+                }
+                .frame(width: width)
+                .allowsHitTesting(false)
                 ForEach(marks.indices, id: \.self) { index in
                     Rectangle()
                         .fill(marks[index].color)
@@ -104,10 +116,14 @@ struct ScrubBar: View {
                     }
                 }
                 if hovering || isDragging || draftFraction != nil {
-                    Circle()
-                        .fill(isPlaying ? Color.green : Color.secondary)
-                        .frame(width: 9, height: 9)
-                        .offset(x: clamped * width - 4.5)
+                    ClockLayers(running: gliding) { view, now in
+                        let knob = view.sublayer("knob") { CALayer() }
+                        knob.backgroundColor = ink.cgColor
+                        knob.cornerRadius = 4.5
+                        knob.frame = CGRect(x: fraction(now) * width - 4.5, y: (view.bounds.height - 9) / 2, width: 9, height: 9)
+                    }
+                    .frame(width: width)
+                    .allowsHitTesting(false)
                 }
             }
             .frame(maxHeight: .infinity)

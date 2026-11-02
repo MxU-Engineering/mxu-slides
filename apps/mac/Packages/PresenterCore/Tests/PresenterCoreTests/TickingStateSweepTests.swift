@@ -17,6 +17,7 @@ import Testing
         "PresentationTimelineController.swift": [.moves(["timelinePlayheadTime"])],
         "TimecodeInput.swift": [.moves(["timecodeReading", "timecodeLevel"])],
         "TimelineControls.swift": [
+            .quiet("ClockLayers' repaint moves CA layers off the wall clock, never observed state"),
             .quiet("the 45 Hz edge auto-scroll runs only under a live drag and scrolls the timeline that owns the drag"),
         ],
         "MediaTransportController.swift": [.quiet("refresh() writes rows and rowsVersion only when a row moved")],
@@ -250,6 +251,21 @@ import Testing
             let body = shared[start.upperBound...].prefix(600)
             #expect(body.contains("PlayheadLayers(source: source)"), "\(leaf) draws with layers")
         }
+    }
+
+    @Test func transportFooterClocksDrawWithLayers() throws {
+        let sweep = try SourceSweep.app()
+        let scrub = try #require(sweep.file("ScrubBar.swift")).text
+        #expect(scrub.components(separatedBy: "ClockLayers(running: gliding)").count - 1 == 2, "fill and knob glide on layers")
+        let strip = try #require(sweep.file("MediaTransportStrip.swift"))
+        #expect(strip.text.contains("position: { [state = target.state] in state.position(at: $0) }"))
+        #expect(strip.text.components(separatedBy: "ClockLayers(hz: 4").count - 1 == 2, "elapsed and loop digits tick on layers")
+        for index in strip.lines.indices where strip.code(index).contains("TimelineView(") {
+            #expect(strip.code(index).contains("minimumInterval: 1,"), "MediaTransportStrip.swift:\(index + 1) ticks faster than 1 Hz")
+        }
+        let chip = try #require(sweep.file("AutoAdvanceChip.swift")).text
+        #expect(!chip.contains("TimelineView("), "the chip's countdown ticks on layers")
+        #expect(chip.contains("ClockLayers("))
     }
 
     @Test func meterLeavesDrawWithLayers() throws {

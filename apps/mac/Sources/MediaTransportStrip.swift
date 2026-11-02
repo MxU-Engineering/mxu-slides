@@ -123,40 +123,47 @@ struct MediaTransportStrip: View {
                         : (target.state.isPlaying ? "Pause" : "Play")
                 )
 
-                TimelineView(
-                    .animation(minimumInterval: 1.0 / 30.0, paused: !target.state.isPlaying)
-                ) { context in
-                    let position = target.state.position(at: context.date)
-                    VStack(spacing: 1) {
-                        nameCaption(target, position: position)
-                        ScrubBar(
-                            elapsed: position,
-                            duration: target.state.duration,
-                            isPlaying: target.state.isPlaying,
-                            marks: target.state.duration > 0
-                                ? target.marks.map { ($0.at / target.state.duration, VideoMarkColor.color($0.colorHex)) } : []
-                        ) { seconds, final in
-                            media.seek(target.id, to: seconds, final: final)
+                VStack(spacing: 1) {
+                    if target.marks.isEmpty {
+                        nameCaption(target, position: nil)
+                    } else {
+
+                        TimelineView(.animation(minimumInterval: 1, paused: !target.state.isPlaying)) { context in
+                            nameCaption(target, position: target.state.position(at: context.date))
                         }
-                        HStack(spacing: 2) {
-                            GoToTimeReadout(media: media, row: target, position: position)
-                            Text("/ \(ScrubBar.timecode(target.state.duration))")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
+                    }
+                    ScrubBar(
+                        elapsed: target.state.position(at: now),
+                        duration: target.state.duration,
+                        isPlaying: target.state.isPlaying,
+                        marks: target.state.duration > 0
+                            ? target.marks.map { ($0.at / target.state.duration, VideoMarkColor.color($0.colorHex)) } : [],
+                        position: { [state = target.state] in state.position(at: $0) }
+                    ) { seconds, final in
+                        media.seek(target.id, to: seconds, final: final)
+                    }
+                    HStack(spacing: 2) {
+                        GoToTimeReadout(media: media, row: target)
+                        Text("/ \(ScrubBar.timecode(target.state.duration))")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 .frame(width: 240)
                 skipToEndButton(media, target: target)
             } else {
 
-                TimelineView(.animation(minimumInterval: 1, paused: !target.state.isPlaying)) { context in
-                    VStack(spacing: 1) {
-                        Text(ScrubBar.timecode(target.state.remaining(at: context.date)) + " left")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                        nameCaption(target, position: nil)
+                VStack(spacing: 1) {
+                    ClockLayers(hz: 4, running: target.state.isPlaying) { [state = target.state] view, now in
+                        playheadText(
+                            view, "left", ScrubBar.timecode(state.remaining(at: now)) + " left",
+                            font: .monospacedDigitSystemFont(ofSize: 10, weight: .regular), color: .tertiaryLabelColor,
+                            alignment: .center, frame: view.bounds)
                     }
+
+                    .frame(width: 80, height: 13)
+                    .allowsHitTesting(false)
+                    nameCaption(target, position: nil)
                 }
                 .help("Remaining in this pass — select the video in the picker to control it")
             }
@@ -299,7 +306,6 @@ struct MediaTransportStrip: View {
 private struct GoToTimeReadout: View {
     let media: MediaTransportController
     let row: MediaTransportController.Row
-    let position: Double
 
     @State private var editing = false
     @State private var minutes = 0
@@ -331,9 +337,18 @@ private struct GoToTimeReadout: View {
                 .help("Seek to this time (or press Return)")
             }
         } else {
-            Text(ScrubBar.timecode(position))
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
+
+            Color.clear
+                .frame(width: digitsWidth, height: 13)
+                .overlay {
+                    ClockLayers(hz: 4, running: row.state.isPlaying) { [state = row.state] view, now in
+                        playheadText(
+                            view, "elapsed", ScrubBar.timecode(state.position(at: now)),
+                            font: Self.digits, color: .secondaryLabelColor,
+                            alignment: .right, frame: view.bounds)
+                    }
+                    .allowsHitTesting(false)
+                }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     let at = Int(row.state.position(at: Date()))
@@ -343,6 +358,13 @@ private struct GoToTimeReadout: View {
                 }
                 .help("Click to type an exact time")
         }
+    }
+
+    private static let digits = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+
+    private var digitsWidth: CGFloat {
+        let widest = ScrubBar.timecode(row.state.duration).replacing(/\d/, with: "0")
+        return ceil((widest as NSString).size(withAttributes: [.font: Self.digits]).width)
     }
 
     private func commit() {

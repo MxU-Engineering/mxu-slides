@@ -226,8 +226,35 @@ private struct PlayheadLayers: NSViewRepresentable {
     }
 }
 
+struct ClockLayers: NSViewRepresentable {
+    var hz: Double = 30
+    let running: Bool
+    let draw: @MainActor (PlayheadLayerView, Date) -> Void
+
+    func makeNSView(context: Context) -> PlayheadLayerView { PlayheadLayerView() }
+
+    func updateNSView(_ view: PlayheadLayerView, context: Context) {
+        let draw = draw
+        view.draw = { view, t in draw(view, Date(timeIntervalSinceReferenceDate: t)) }
+        view.clock = true
+        view.hz = running ? hz : nil
+        view.paint()
+    }
+
+    static func dismantleNSView(_ view: PlayheadLayerView, coordinator: ()) {
+        view.hz = nil
+    }
+}
+
 final class PlayheadLayerView: NSView {
     fileprivate var draw: (@MainActor (PlayheadLayerView, Double) -> Void)?
+
+    fileprivate var clock = false
+
+    fileprivate var hz: Double? {
+        didSet { if hz != oldValue { restartTimer() } }
+    }
+    private var timer: Timer?
 
     fileprivate var source: (any TimelinePlayheadSource)? {
         didSet {
@@ -269,12 +296,29 @@ final class PlayheadLayerView: NSView {
         paint()
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        restartTimer()
+    }
+
     fileprivate func paint() {
         guard let draw else { return }
+        let t = clock ? Date().timeIntervalSinceReferenceDate : time
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        effectiveAppearance.performAsCurrentDrawingAppearance { draw(self, time) }
+        effectiveAppearance.performAsCurrentDrawingAppearance { draw(self, t) }
         CATransaction.commit()
+    }
+
+    private func restartTimer() {
+        timer?.invalidate()
+        timer = nil
+        guard let hz, window != nil else { return }
+        let timer = Timer(timeInterval: 1 / hz, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.paint() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     private func follow(_ generation: Int) {
@@ -287,29 +331,57 @@ final class PlayheadLayerView: NSView {
         paint()
     }
 
-    fileprivate func sublayer<L: CALayer>(_ name: String, _ make: () -> L) -> L {
+    func sublayer<L: CALayer>(_ name: String, _ make: () -> L) -> L {
         if let made = layers[name] as? L { return made }
         let made = make()
+
+        made.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "backgroundColor": NSNull()]
         layer?.addSublayer(made)
         layers[name] = made
         return made
     }
 
-    fileprivate var scale: CGFloat { window?.backingScaleFactor ?? 2 }
+    var scale: CGFloat { window?.backingScaleFactor ?? 2 }
 }
 
-@MainActor private func playheadText(
+@MainActor func playheadText(
     _ view: PlayheadLayerView, _ name: String, _ string: String, font: NSFont, color: NSColor,
     alignment: CATextLayerAlignmentMode, frame: CGRect
 ) {
-    let layer = view.sublayer(name) { CATextLayer() }
+    let layer = view.sublayer(name) { CALayer() }
+    if layer.frame != frame { layer.frame = frame }
+    let cgColor = color.cgColor
+    let key = "\(string)|\(font.fontName)|\(font.pointSize)|\(cgColor)|\(view.scale)|\(alignment.rawValue)|\(frame.size)"
+    guard layer.value(forKey: "drawn") as? String != key else { return }
+    layer.setValue(key, forKey: "drawn")
     layer.contentsScale = view.scale
-    layer.font = font
-    layer.fontSize = font.pointSize
-    layer.foregroundColor = color.cgColor
-    layer.alignmentMode = alignment
-    layer.string = string
-    layer.frame = frame
+    layer.contents = smoothedText(
+        NSAttributedString(string: string, attributes: [.font: font, .foregroundColor: color]),
+        alignment: alignment, size: frame.size, scale: view.scale)
+}
+
+@MainActor private func smoothedText(
+    _ text: NSAttributedString, alignment: CATextLayerAlignmentMode, size: CGSize, scale: CGFloat
+) -> CGImage? {
+    let pixels = (width: Int((size.width * scale).rounded(.up)), height: Int((size.height * scale).rounded(.up)))
+    guard pixels.width > 0, pixels.height > 0, let context = CGContext(
+        data: nil, width: pixels.width, height: pixels.height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    context.scaleBy(x: scale, y: scale)
+    context.setAllowsFontSmoothing(true)
+    context.setShouldSmoothFonts(true)
+    let measured = text.size()
+    let x: CGFloat = switch alignment {
+    case .right: size.width - measured.width
+    case .center: (size.width - measured.width) / 2
+    default: 0
+    }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    text.draw(at: CGPoint(x: x, y: size.height - measured.height))
+    NSGraphicsContext.restoreGraphicsState()
+    return context.makeImage()
 }
 
 struct TimelinePlayheadReadout<Source: TimelinePlayheadSource>: View {
