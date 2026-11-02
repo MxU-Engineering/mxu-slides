@@ -129,3 +129,18 @@ public enum ThemeExplorer {
         return matches
     }
 }
+
+public enum ThemeDesignDrag {
+    public static let prefix = "mxuthemedesign::"
+
+    public static func payload(themeId: String, designId: String) -> String {
+        prefix + themeId + "::" + designId
+    }
+
+    public static func parse(_ payload: String) -> (themeId: String, designId: String)? {
+        guard payload.hasPrefix(prefix) else { return nil }
+        let parts = payload.dropFirst(prefix.count).components(separatedBy: "::")
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+        return (parts[0], parts[1])
+    }
+}

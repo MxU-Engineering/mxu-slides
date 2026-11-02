@@ -65,7 +65,9 @@ struct GutterDropDelegate: DropDelegate {
     var performFilesAfter: (([URL]) -> Void)?
 
     private func zone(_ info: DropInfo) -> SlideDropZone {
-        if let tileWidth {
+        if Self.appliesToSlide(payload: NSPasteboard(name: .drag).string(forType: .string)) {
+            .on
+        } else if let tileWidth {
             SlideDropZone.tile(at: info.location, width: tileWidth(), reorder: isReorder, insertOnly: insertOnly)
         } else if let rowSize, !isReorder {
             SlideDropZone.row(at: info.location, size: rowSize(), insertOnly: insertOnly)
@@ -80,6 +82,10 @@ struct GutterDropDelegate: DropDelegate {
         guard let payload else { return false }
         return payload.hasPrefix("mxueditslide::") || payload.hasPrefix("mxuslide::")
             || payload.hasPrefix("mxuobj::")
+    }
+
+    static func appliesToSlide(payload: String?) -> Bool {
+        payload?.hasPrefix(ThemeDesignDrag.prefix) == true
     }
 
     private var isReorder: Bool {
@@ -260,8 +266,9 @@ struct GridGapDropDelegate: DropDelegate {
     let performFiles: ([URL], Int) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
-        enabled && info.hasItemsConforming(to: [.plainText, .fileURL])
-            && !GutterDropDelegate.forcesInsert(payload: NSPasteboard(name: .drag).string(forType: .string))
+        let payload = NSPasteboard(name: .drag).string(forType: .string)
+        return enabled && info.hasItemsConforming(to: [.plainText, .fileURL])
+            && !GutterDropDelegate.forcesInsert(payload: payload) && !GutterDropDelegate.appliesToSlide(payload: payload)
     }
 
     func dropEntered(info: DropInfo) { setTarget(spot(info.location)) }

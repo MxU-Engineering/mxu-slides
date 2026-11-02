@@ -51,6 +51,8 @@ struct LibrarySidebar: View {
     @FocusedValue(\.slideEditor) private var slideEditor
     @State private var slideDropTargetID: String?
 
+    @State private var openThemeID: String?
+
     var layout: PresentLayoutController? = nil
 
     var controls: ServiceControls? = nil
@@ -554,6 +556,10 @@ struct LibrarySidebar: View {
 
     private var viewModeKey: String { "library.viewMode.\(model.selectedSection.rawValue)" }
     @State private var viewModeBump = 0
+
+    private var hasGridMode: Bool {
+        AppModel.folderableSections.contains(model.selectedSection) || model.selectedSection == .themes
+    }
     private var isGridMode: Bool {
         _ = viewModeBump
         return UserDefaults.standard.bool(forKey: viewModeKey)
@@ -566,8 +572,19 @@ struct LibrarySidebar: View {
             if folderable, folderPath != [] {
                 breadcrumbBar
             }
-            if isGridMode, folderable {
-                browserGrid
+            if model.selectedSection == .themes, let themeID = openThemeID, let theme = model.indexEntry(themeID) {
+                LibraryThemeDesigns(
+                    model: model, render: render, entry: theme,
+                    editor: slideEditor?.presentation.id == theme.id ? slideEditor : nil,
+                    gridColumns: isGridMode ? gridColumns : nil,
+                    opensOnClick: appModeRaw == AppMode.edit.rawValue,
+                    close: { openThemeID = nil }
+                ) { designID in
+                    model.openInEditor(entryID: theme.id, slideID: designID)
+                    appModeRaw = AppMode.edit.rawValue
+                }
+            } else if isGridMode, hasGridMode {
+                browserGrid(folderable: folderable)
             } else {
                 browserList(folderable: folderable)
             }
@@ -835,8 +852,8 @@ struct LibrarySidebar: View {
         return stored == 0 ? 2 : min(max(stored, 1), 6)
     }
 
-    private var browserGrid: some View {
-        let contents = browserContents(folderable: true)
+    private func browserGrid(folderable: Bool) -> some View {
+        let contents = browserContents(folderable: folderable)
         let path = contents.path
         let folders = contents.folders
         let items = contents.items
@@ -845,7 +862,7 @@ struct LibrarySidebar: View {
         )
         return ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
-                if folderPath == [] {
+                if folderable, folderPath == [] {
                     let all = model.browserEntries(in: model.selectedSection)
                     FolderPreviewCard(
                         model: model, render: render,
@@ -923,6 +940,10 @@ struct LibrarySidebar: View {
                 model.librarySelection = selection
             } else {
                 model.librarySelection = [entry.id]
+
+                if entry.kind == .theme, !NSEvent.modifierFlags.contains(.shift) {
+                    openThemeID = entry.id
+                }
             }
         } content: {
             LibraryItemCard(model: model, render: render, entry: entry)
@@ -955,10 +976,19 @@ struct LibrarySidebar: View {
             .draggablePayload(runOnly ? nil : entry.id)
             .contextMenu { entryMenu(entry, menus: menus) }
             .modifier(slideDropTarget(entry))
+
+            .simultaneousGesture(TapGesture().onEnded {
+                if entry.kind == .theme, NSEvent.modifierFlags.isDisjoint(with: [.command, .shift]) {
+                    model.librarySelection = [entry.id]
+                    openThemeID = entry.id
+                }
+            }, including: entry.kind == .theme ? .all : .subviews)
     }
 
     private func fireActions(_ entry: LibraryIndex.Entry) -> LibraryFireActions? {
-        guard appModeRaw == AppMode.present.rawValue, LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }
+
+        guard appModeRaw == AppMode.present.rawValue || entry.kind == .theme,
+              LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }
         return LibraryFireActions(model: model, controls: controls, entry: entry) {
             model.openInEditor(entryID: entry.id)
             appModeRaw = AppMode.edit.rawValue
@@ -1337,7 +1367,7 @@ struct LibrarySidebar: View {
                     .disabled(folderPath == nil || (folderPath.map(isUnfiled) ?? false))
                 }
                 Spacer()
-                if AppModel.folderableSections.contains(model.selectedSection) {
+                if hasGridMode {
                     Button {
                         UserDefaults.standard.set(!isGridMode, forKey: viewModeKey)
                         viewModeBump += 1
@@ -1735,6 +1765,12 @@ private struct EntryRow: View {
             if let fire {
                 LibraryRowFireControls(actions: fire, hovering: hovering)
             }
+            if entry.kind == .theme {
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .onHover { hovering = $0 }
     }
@@ -1861,6 +1897,7 @@ struct LibraryItemFace: View {
         case presentation(Presentation, Theme?)
         case overlay(Overlay)
         case confidenceLayout(ConfidenceLayout)
+        case theme(Theme)
     }
 
     @State private var loaded: Face?
@@ -1881,6 +1918,24 @@ struct LibraryItemFace: View {
         switch entry.kind {
         case .media:
             PosterImage(model: model, mediaId: entry.id)
+        case .theme:
+
+            if case .theme(let theme) = loaded, let design = theme.slides?.first {
+                let slide = NewSlide.preview(of: design, themeId: theme.id)
+                SlideThumbnailView(
+                    model: model, render: render,
+                    slide: slide,
+                    presentation: Presentation(
+                        id: "newSlide|\(theme.id)", name: theme.name, presentationKind: .deck,
+                        themeId: theme.id, slides: [slide]),
+                    theme: theme,
+                    arrangementId: nil,
+                    hideScopedBackgrounds: false,
+                    contentStamp: loadedStamp
+                )
+            } else {
+                glyphFace
+            }
         case .presentation, .overlay, .confidenceLayout:
             switch loaded {
             case .presentation(let presentation, let theme):
@@ -1930,7 +1985,7 @@ struct LibraryItemFace: View {
                     hideScopedBackgrounds: false,
                     contentStamp: loadedStamp
                 )
-            case nil:
+            case .theme, nil:
                 glyphFace
             }
         default:
@@ -1964,6 +2019,13 @@ struct LibraryItemFace: View {
                 Overlay.self, id: entry.id, updatedAt: stamp, client: client
             ) {
                 loaded = .overlay(overlay)
+                loadedStamp = "\(stamp)"
+            }
+        case .theme:
+            if let theme = await ThumbnailStore.shared.faceValue(
+                Theme.self, id: entry.id, updatedAt: stamp, client: client
+            ) {
+                loaded = .theme(theme)
                 loadedStamp = "\(stamp)"
             }
         case .confidenceLayout:

@@ -1475,6 +1475,11 @@ struct SlideGridBody: View {
             return dropSlide(payload, before: slide)
         }
 
+        if let dropped = model.themeDesign(payload) {
+            model.applyTheme(to: presentation.id, slideIDs: [slide.id], themeID: dropped.themeId, design: dropped.design.name)
+            return true
+        }
+
         let resolved = model.indexEntry(payload)
         DiagnosticsStore.shared.note(
             "grid.drop.text",

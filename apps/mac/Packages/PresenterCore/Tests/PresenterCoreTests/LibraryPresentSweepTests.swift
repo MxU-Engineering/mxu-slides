@@ -12,7 +12,7 @@ import Testing
 
     @Test func rowsAndCardsFireInPresentOnly() throws {
         let library = try #require(SourceSweep.app().file("LibraryView.swift")).text
-        #expect(library.contains("guard appModeRaw == AppMode.present.rawValue, LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }"))
+        #expect(library.contains("guard appModeRaw == AppMode.present.rawValue || entry.kind == .theme,\n              LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }"))
         #expect(library.contains("LibraryRowFireControls(actions: fire, hovering: hovering)"))
         #expect(library.contains(".modifier(LibraryCardFireOverlay(actions: fireActions(entry)))"))
         #expect(library.contains(".modifier(LibraryRowFireTrailing(actions: fireActions(hit.entry)))"), "search hits play too")
