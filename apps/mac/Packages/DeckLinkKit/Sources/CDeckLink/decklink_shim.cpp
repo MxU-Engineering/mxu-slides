@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -764,6 +765,16 @@ HRESULT DLKInputCallback::VideoInputFrameArrived(
     frame.hostTime = hostSeconds();
     frame.captureHostTime = frame.hostTime;
     frame.interlaced = owner->interlaced.load();
+    frame.audioMinusVideoSeconds = NAN;
+    frame.stampAgeSeconds = -1;
+    frame.queuedVideoFrames = -1;
+    frame.queuedAudioFrames = -1;
+    uint32_t queuedVideo = 0;
+    uint32_t queuedAudio = 0;
+    if (owner->input->GetAvailableVideoFrameCount(&queuedVideo) == S_OK)
+        frame.queuedVideoFrames = (int32_t)queuedVideo;
+    if (owner->input->GetAvailableAudioSampleFrameCount(&queuedAudio) == S_OK)
+        frame.queuedAudioFrames = (int32_t)queuedAudio;
 
     if (video) {
         BMDTimeValue frameTime = 0;
@@ -775,9 +786,21 @@ HRESULT DLKInputCallback::VideoInputFrameArrived(
                 1000000, &frameTime, &frameDuration) == S_OK &&
             owner->input->GetHardwareReferenceClock(
                 1000000, &hardwareNow, &timeInFrame, &ticksPerFrame) == S_OK &&
-            hardwareNow >= frameTime && hardwareNow - frameTime < 1000000) {
-            frame.captureHostTime =
-                frame.hostTime - (double)(hardwareNow - frameTime) / 1e6;
+            hardwareNow >= frameTime) {
+            frame.stampAgeSeconds = (double)(hardwareNow - frameTime) / 1e6;
+            if (hardwareNow - frameTime < 1000000) {
+                frame.captureHostTime = frame.hostTime - frame.stampAgeSeconds;
+            }
+        }
+
+        BMDTimeValue pictureTime = 0;
+        BMDTimeValue pictureDuration = 0;
+        BMDTimeValue soundTime = 0;
+        if (audio &&
+            video->GetStreamTime(&pictureTime, &pictureDuration, 48000) == S_OK &&
+            audio->GetPacketTime(&soundTime, 48000) == S_OK) {
+            frame.audioMinusVideoSeconds =
+                (double)(soundTime - pictureTime) / 48000.0;
         }
     }
     IDeckLinkVideoBuffer *buffer = nullptr;

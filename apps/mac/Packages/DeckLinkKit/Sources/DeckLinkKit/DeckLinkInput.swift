@@ -29,6 +29,11 @@ public struct DeckLinkInputArrival {
     public let audioFrames: Int
     public let audioChannels: Int
 
+    public let audioMinusVideoSeconds: Double?
+    public let queuedVideoFrames: Int?
+    public let queuedAudioFrames: Int?
+    public let stampAgeSeconds: Double?
+
     init(_ raw: DLKInputFrame) {
         video = raw.bytes.map { UnsafeRawPointer($0) }
         rowBytes = raw.rowBytes
@@ -41,6 +46,10 @@ public struct DeckLinkInputArrival {
         audio = raw.audio
         audioFrames = Int(raw.audioFrames)
         audioChannels = Int(raw.audioChannels)
+        audioMinusVideoSeconds = raw.audioMinusVideoSeconds.isNaN ? nil : raw.audioMinusVideoSeconds
+        queuedVideoFrames = raw.queuedVideoFrames < 0 ? nil : Int(raw.queuedVideoFrames)
+        queuedAudioFrames = raw.queuedAudioFrames < 0 ? nil : Int(raw.queuedAudioFrames)
+        stampAgeSeconds = raw.stampAgeSeconds < 0 ? nil : raw.stampAgeSeconds
     }
 }
 
