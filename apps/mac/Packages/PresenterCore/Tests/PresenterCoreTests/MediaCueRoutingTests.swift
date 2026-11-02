@@ -110,3 +110,10 @@ private func item(_ kind: MediaKind, _ classification: MediaClassification) -> M
     #expect(RunOrderMediaDrop.libraryBatch(["m1"]) { library[$0] }.isEmpty, "one item keeps its media row")
     #expect(RunOrderMediaDrop.libraryBatch(["m1", "deck"]) { library[$0] }.isEmpty, "a mix adds per item")
 }
+
+@Test func droppedAsNewSlideByIdMatchesTheItemRule() {
+    for kind in [MediaKind.image, .video] {
+        let media = item(kind, .background)
+        #expect(CueMedia.droppedAsNewSlide(mediaId: media.id, kind: kind) == CueMedia.droppedAsNewSlide(for: media))
+    }
+}

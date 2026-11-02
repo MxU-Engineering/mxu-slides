@@ -70,7 +70,7 @@ public enum LyricPhrasing {
         let first = key(words.first)
         let cue = runsOn.contains(key(previousWords.last))
             || continuations.contains(first)
-            || (words.count <= 2 && !interjections.contains(first)
+            || (words.count <= 2 && !interjections.contains(first) && !phraseOpeners.contains(first)
                 && next.map { Self.words(of: $0).count > 3 } ?? true)
         return fits && cue
     }
@@ -112,6 +112,8 @@ public enum LyricPhrasing {
                     var cost = best[start] + 1
                     if size < limit { cost += end == count || ends[end - 1] ? 0.7 : 0.9 }
                     if slideEndsBadly.contains(key(words(of: lines[end - 1]).last)) { cost += 5 }
+
+                    if end < count, leadsOn(lines[end - 1]) { cost += 0.5 }
                     cost += Double((start..<(end - 1)).filter { ends[$0] }.count) * 3
                     if cost < best[end] {
                         best[end] = cost
@@ -129,11 +131,16 @@ public enum LyricPhrasing {
         }
     }
 
+    static func leadsOn(_ line: String) -> Bool {
+        let words = words(of: line)
+        return words.count <= 2 && !interjections.contains(key(words.first))
+    }
+
     static func endsPhrase(_ index: Int, _ bare: [String]) -> Bool {
         let line = bare[index]
         let after = index + 1 < bare.count ? bare[index + 1] : nil
         let besideItself = (index > 0 && bare[index - 1] == line) || after == line
-        return !line.isEmpty && !besideItself && bare.indices.contains { other in
+        return !line.isEmpty && !besideItself && bare.first != line && bare.indices.contains { other in
             abs(other - index) > 1 && bare[other] == line
                 && (other + 1 < bare.count ? bare[other + 1] : nil) != after
         }
@@ -181,6 +188,11 @@ public enum LyricPhrasing {
     static let slideEndsBadly: Set<String> = [
         "the", "a", "an", "of", "to", "for", "and", "or", "but", "with", "in", "on", "at", "by",
         "from", "into", "about", "than", "that", "my", "your", "our", "his", "her", "their", "its",
+    ]
+
+    static let phraseOpeners: Set<String> = [
+        "in", "on", "at", "by", "from", "into", "with", "for", "to", "and", "or", "but", "so", "when",
+        "if", "as", "the", "a", "an", "my", "your", "his", "our", "their", "this", "that", "who",
     ]
 
     static let interjections: Set<String> = ["oh", "o", "hallelujah", "alleluia", "amen", "hosanna", "whoa", "yeah"]

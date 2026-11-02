@@ -1,5 +1,6 @@
 import FlyingFox
 import Foundation
+import os
 
 public final class LocalAPIServer: @unchecked Sendable {
     public struct Configuration: Sendable {
@@ -9,11 +10,36 @@ public final class LocalAPIServer: @unchecked Sendable {
         public var advertise: Bool
         public var info: APIServerInfo
 
-        public init(port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo) {
+        public var beat: (@Sendable () -> UInt64)?
+
+        public var hold: (@Sendable (APIRoute) -> APIError?)?
+
+        public var pair: (@Sendable (Data) async -> APIHandlerResponse)?
+
+        public var blob: (@Sendable (String) -> URL?)?
+
+        public var heard: (@Sendable (String) -> Void)?
+
+        public var unpair: (@Sendable (APIToken) -> Void)?
+
+        public init(
+            port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo,
+            beat: (@Sendable () -> UInt64)? = nil, hold: (@Sendable (APIRoute) -> APIError?)? = nil,
+            pair: (@Sendable (Data) async -> APIHandlerResponse)? = nil,
+            blob: (@Sendable (String) -> URL?)? = nil,
+            heard: (@Sendable (String) -> Void)? = nil,
+            unpair: (@Sendable (APIToken) -> Void)? = nil
+        ) {
             self.port = port
             self.serviceName = serviceName
             self.advertise = advertise
             self.info = info
+            self.beat = beat
+            self.hold = hold
+            self.pair = pair
+            self.blob = blob
+            self.heard = heard
+            self.unpair = unpair
         }
     }
 
@@ -25,17 +51,34 @@ public final class LocalAPIServer: @unchecked Sendable {
     private let http: HTTPServer
     private let bonjour = BonjourAdvertiser()
 
+    private let info: OSAllocatedUnfairLock<APIServerInfo>
+
     public init(configuration: Configuration, routes: [APIRoute], tokens: APITokenStore) {
         self.configuration = configuration
         self.router = APIRouter(routes: routes)
         self.tokens = tokens
         self.http = HTTPServer(port: configuration.port)
+        self.info = OSAllocatedUnfairLock(initialState: configuration.info)
+    }
+
+    public func update(stationHexId: String?, stationName: String? = nil) {
+        let changed = info.withLock { info -> APIServerInfo? in
+            guard info.stationHexId != stationHexId || info.stationName != stationName else { return nil }
+            info.stationHexId = stationHexId
+            info.stationName = stationName
+            return info
+        }
+        if let changed, configuration.advertise {
+            bonjour.update(txt: BonjourAdvertiser.txt(for: changed))
+        }
     }
 
     public func run() async throws {
         await registerRoutes()
         if configuration.advertise {
-            bonjour.start(name: configuration.serviceName, port: configuration.port)
+            bonjour.start(
+                name: configuration.serviceName, port: configuration.port,
+                txt: BonjourAdvertiser.txt(for: info.withLock { $0 }))
         }
         defer { bonjour.stop() }
         try await http.run()
@@ -51,11 +94,11 @@ public final class LocalAPIServer: @unchecked Sendable {
     }
 
     private func registerRoutes() async {
-        let info = configuration.info
+        let info = self.info
         let specVersion = OpenAPIDocument.documentSchemaVersion()
 
         await http.appendRoute(HTTPRoute("GET /v1/ping")) { _ in
-            Self.jsonResponse(APIHandlerResponse.json(info))
+            Self.jsonResponse(APIHandlerResponse.json(info.withLock { $0 }))
         }
         let openAPIRoutes = router.routes
         await http.appendRoute(HTTPRoute("GET /openapi.json")) { _ in
@@ -78,16 +121,52 @@ public final class LocalAPIServer: @unchecked Sendable {
             )
         }
 
+        if let pair = configuration.pair {
+            await http.appendRoute(HTTPRoute("POST /v1/follow/pair")) { request in
+                let body = (try? await request.bodyData) ?? Data()
+                return Self.jsonResponse(await pair(body))
+            }
+        }
+
+        if let unpair = configuration.unpair {
+            let tokens = self.tokens
+            await http.appendRoute(HTTPRoute("POST /v1/follow/unpair")) { request in
+                guard let token = Self.authenticate(request, tokens: tokens) else {
+                    return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
+                }
+                unpair(token)
+                return Self.jsonResponse(.ok)
+            }
+        }
+
+        if let blob = configuration.blob {
+            let tokens = self.tokens
+            await http.appendRoute(HTTPRoute("GET /v1/follow/blobs/*")) { request in
+                guard let token = Self.authenticate(request, tokens: tokens) else {
+                    return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
+                }
+                guard token.scope.allows(.control) else {
+                    return Self.jsonResponse(.json(APIError.forbidden(.control), status: 403))
+                }
+                let hash = String(request.path.split(separator: "/").last ?? "")
+                guard FollowFiles.isHash(hash), let url = blob(hash), let body = try? HTTPBodySequence(file: url) else {
+                    return Self.jsonResponse(.json(APIError.notFound("No such file here."), status: 404))
+                }
+                return HTTPResponse(statusCode: .ok, headers: [.contentType: "application/octet-stream"], body: body)
+            }
+        }
+
         let router = self.router
         let events = self.events
         let tokens = self.tokens
+        let beat = configuration.beat
+        let hold = configuration.hold
+        let heard = configuration.heard
         await http.appendRoute(HTTPRoute("GET /v1/ws")) { request in
-            guard let secret = request.query["token"],
-                  let token = tokens.verify(secret: secret)
-            else {
+            guard let token = Self.authenticate(request, tokens: tokens) else {
                 return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
             }
-            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens)
+            let handler = APIWebSocketHandler(router: router, events: events, token: token, tokens: tokens, beat: beat, hold: hold, heard: heard)
             let webSocket = WebSocketHTTPHandler(handler: MessageFrameWSHandler(handler: handler))
             return try await webSocket.handleRequest(request)
         }
@@ -111,12 +190,15 @@ public final class LocalAPIServer: @unchecked Sendable {
                 : APIError.notFound("No such endpoint. The contract is served at /openapi.json.")
             return Self.jsonResponse(.json(error, status: error.status))
         }
-        guard let token = authenticate(request) else {
+        guard let token = Self.authenticate(request, tokens: tokens) else {
             return Self.jsonResponse(.json(APIError.unauthorized(), status: 401))
         }
         guard token.scope.allows(match.route.scope) else {
             let error = APIError.forbidden(match.route.scope)
             return Self.jsonResponse(.json(error, status: error.status))
+        }
+        if let held = configuration.hold?(match.route) {
+            return Self.jsonResponse(.json(held, status: held.status))
         }
         var query: [String: String] = [:]
         for item in request.query {
@@ -136,7 +218,7 @@ public final class LocalAPIServer: @unchecked Sendable {
         }
     }
 
-    private func authenticate(_ request: HTTPRequest) -> APIToken? {
+    private static func authenticate(_ request: HTTPRequest, tokens: APITokenStore) -> APIToken? {
         if let header = request.headers[.authorization], header.hasPrefix("Bearer ") {
             return tokens.verify(secret: String(header.dropFirst("Bearer ".count)))
         }

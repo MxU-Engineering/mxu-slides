@@ -103,3 +103,65 @@ struct SlideThemeSheet: View {
         dismiss()
     }
 }
+
+struct DesignPickSheet: View {
+    let appModel: AppModel
+    let render: RenderContext?
+
+    let deckThemeId: String
+
+    let current: SlideDesignMap.Entry?
+
+    let scope: String
+
+    let automatic: String
+
+    var photoSpotsOnly = false
+    let onPick: (SlideDesignMap.Entry?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var looks: [ThemeLook]?
+
+    var body: some View {
+        let firstThemeId = current?.themeId ?? deckThemeId
+        VStack(spacing: 0) {
+            ThemeExplorerView(
+                appModel: appModel, render: render, deckThemeId: firstThemeId, looks: looks,
+                currentBadge: current == nil ? "This deck" : "Current",
+                currentDesign: current?.themeSlideName
+            ) { themeId, design in
+                pick(SlideDesignMap.Entry(themeId: themeId, themeSlideName: design.name))
+            }
+            Divider()
+            HStack {
+                Text(scope).font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button(automatic) { pick(nil) }
+                    .help("Back to the type's own design in the deck's theme")
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(12)
+        }
+        .frame(width: 820, height: 600)
+        .task {
+            let all = await ThemeLook.load(appModel, firstThemeId: firstThemeId)
+            looks = photoSpotsOnly ? all.compactMap(\.photoSpotsOnly) : all
+        }
+    }
+
+    private func pick(_ entry: SlideDesignMap.Entry?) {
+        onPick(entry)
+        dismiss()
+    }
+}
+
+extension ThemeLook {
+    var photoSpotsOnly: ThemeLook? {
+        var theme = theme
+        theme.slides = theme.slides?.filter { !$0.photoSpots.isEmpty }
+        guard theme.slides?.isEmpty == false else { return nil }
+        return ThemeLook(theme: theme, deck: deck, previews: previews, stamp: stamp)
+    }
+}

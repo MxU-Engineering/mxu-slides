@@ -5,6 +5,15 @@ public typealias AnyCodingKey = Automerge.AnyCodingKey
 
 public typealias ScalarValue = Automerge.ScalarValue
 
+func encodeRootField<Value: Encodable>(_ value: Value, key: String, in document: Document, with encoder: AutomergeEncoder) throws {
+    if wholeValueKeys.contains(key) {
+        try document.delete(obj: ObjId.ROOT, key: key)
+    }
+    try encoder.encode(value, at: [AnyCodingKey(key)])
+}
+
+let wholeValueKeys: Set<String> = ["arrangements"]
+
 struct ReplicaParts<Entity: DocumentEntity>: Sendable {
     let document: Document
     let value: Entity
@@ -148,7 +157,7 @@ struct ReplicaParts<Entity: DocumentEntity>: Sendable {
             write = { document, cached in
                 if let value {
                     let encoder = AutomergeEncoder(doc: document, strategy: .createWhenNeeded, cautiousWrite: true)
-                    try encoder.encode(value, at: [AnyCodingKey(key)])
+                    try encodeRootField(value, key: key, in: document, with: encoder)
                 } else {
                     try document.delete(obj: ObjId.ROOT, key: key)
                 }
@@ -455,7 +464,7 @@ final class ReplicaCore<Entity: DocumentEntity> {
             let before = document.heads()
             if let value {
                 let encoder = AutomergeEncoder(doc: document, strategy: .createWhenNeeded, cautiousWrite: true)
-                try encoder.encode(value, at: [AnyCodingKey(key)])
+                try encodeRootField(value, key: key, in: document, with: encoder)
             } else {
                 try document.delete(obj: ObjId.ROOT, key: key)
             }

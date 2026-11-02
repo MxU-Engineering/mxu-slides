@@ -31,12 +31,31 @@ public extension SlideBuildingSettings {
 
     mutating func setLyricsLook(themeId: String, design: String?) {
         let themeChanged = themeId != (lyricsImportThemeId ?? "")
-        lyricsImportThemeId = themeId.isEmpty ? nil : themeId
+        lyricsImportThemeId = themeId
         if let design {
             lyricsImportDesign = design.isEmpty || themeId.isEmpty ? nil : design
         } else if themeChanged {
             lyricsImportDesign = nil
         }
+    }
+
+    mutating func startOnTheme(_ themeId: String) {
+        guard lyricsImportThemeId == nil else { return }
+        setLyricsLook(themeId: themeId, design: nil)
+    }
+
+    var slideDesignMap: SlideDesignMap {
+        SlideDesignMap.decode(designMap?.data(using: .utf8))
+    }
+
+    mutating func setSlideDesignMap(_ map: SlideDesignMap) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        designMap = (try? encoder.encode(map)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    func notesThemeId(starter: String?) -> String {
+        lyricsImportThemeId ?? starter ?? ""
     }
 
     mutating func fillUnset(from own: SlideBuildingSettings) {

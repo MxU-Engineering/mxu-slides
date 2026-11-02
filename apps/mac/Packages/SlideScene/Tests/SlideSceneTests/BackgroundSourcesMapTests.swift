@@ -45,13 +45,13 @@ private func expectEquivalent(
             id: "p", name: "Song", presentationKind: .deck, themeId: "",
             slides: [
                 slide("a", background: cue("ocean", mode: .untilReplaced)),
-                slide("b"),                                             
-                slide("c", background: cue("bumper", layer: .videos)),  
-                slide("d"),                                             
-                slide("e", background: cue("logo", mode: .slideOnly)),  
-                slide("f"),                                             
+                slide("b"),
+                slide("c", background: cue("bumper", layer: .videos)),
+                slide("d"),
+                slide("e", background: cue("logo", mode: .slideOnly)),
+                slide("f"),
                 slide("g", background: cue("fire", mode: .untilReplaced)),
-                slide("h"),                                             
+                slide("h"),
             ],
             background: cue("song-wide")
         )
@@ -64,9 +64,9 @@ private func expectEquivalent(
             slides: [
                 slide("v1", background: cue("ocean", mode: .untilReplaced), sectionId: "verse"),
                 slide("v2", sectionId: "verse"),
-                slide("c1", sectionId: "chorus"),                        
-                slide("br", sectionId: "bridge"),                        
-                slide("out"),                                            
+                slide("c1", sectionId: "chorus"),
+                slide("br", sectionId: "bridge"),
+                slide("out"),
             ],
             background: cue("song-wide"),
             sections: [
@@ -80,7 +80,7 @@ private func expectEquivalent(
             ]
         )
         expectEquivalent(deck, arrangementId: "arr")
-        expectEquivalent(deck)  
+        expectEquivalent(deck)
     }
 
     @Test func noBackgroundsAnywhereYieldsEmptyMap() {
@@ -118,7 +118,7 @@ private func expectEquivalent(
     }
 
     @Test func absentBackgroundLayerProtectsTheDefaultLayer() {
-        var deck = slide("s", background: cue("bg"))  
+        var deck = slide("s", background: cue("bg"))
         deck.actions = [clear("loopingVideos"), clear("videos")]
         #expect(SlideSceneBuilder.fireActions(for: deck).map(\.layer) == ["videos"])
     }
@@ -132,9 +132,16 @@ private func expectEquivalent(
         let protected = SlideSceneBuilder.protectedLayers(for: deck) { id in
             id == "logo" ? .stillGraphics : nil
         }
-        #expect(protected == [.slide, .loopingVideos, .stillGraphics])
+        #expect(protected == ["slide", "loopingVideos", "stillGraphics"])
         let fired = SlideSceneBuilder.fireActions(for: deck, protected: protected)
         #expect(fired.map { $0.layer ?? $0.kind.rawValue } == ["fireMedia", "videos"])
+    }
+
+    @Test func aCustomLayerBackgroundProtectsItsIdAndItsFallback() {
+        var bg = cue("bg")
+        bg.layerId = "lower"
+        let deck = slide("s", background: bg)
+        #expect(SlideSceneBuilder.protectedLayers(for: deck) == ["slide", "loopingVideos", "lower"])
     }
 
     @Test func unresolvedFireMediaProtectsNothingExtra() {
@@ -143,6 +150,6 @@ private func expectEquivalent(
         var fire = SlideAction(id: "f", kind: .fireMedia)
         fire.mediaId = "ghost"
         deck.actions = [fire]
-        #expect(SlideSceneBuilder.protectedLayers(for: deck) { _ in nil } == [.slide])
+        #expect(SlideSceneBuilder.protectedLayers(for: deck) { _ in nil } == ["slide"])
     }
 }

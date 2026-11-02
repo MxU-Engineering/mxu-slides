@@ -50,8 +50,8 @@ final class GoldenParityTests: XCTestCase {
 
         let compositor = try makeCompositor()
         var scene = RenderScene.sampleLyricScene()
-        for layer in scene.layers {
-            scene.setLayerHidden(true, kind: layer.kind)
+        for index in scene.layers.indices {
+            scene.layers[index].isHidden = true
         }
 
         let frame = try compositor.renderFrame(scene: scene, width: 192, height: 108)
@@ -81,7 +81,7 @@ final class GoldenParityTests: XCTestCase {
 
     func testAspectMismatchLetterboxesInBlack() throws {
         let compositor = try makeCompositor()
-        var scene = RenderScene() 
+        var scene = RenderScene()
         scene.background = .white
 
         let frame = try compositor.renderFrame(scene: scene, width: 200, height: 200)

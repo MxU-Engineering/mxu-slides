@@ -12,7 +12,7 @@ import Testing
 
     @Test func layerPostersShowTheItemLook() throws {
         let grid = try source("PresentGridView.swift")
-        let layer = try #require(grid.range(of: "private func posterLayer(mediaId: String) -> some View {"))
+        let layer = try #require(grid.range(of: "private func posterLayer(mediaId: String, scaleMode: MediaScaleMode?) -> some View {"))
         #expect(grid[layer.upperBound...].prefix(400).contains("PosterLookImage("))
         let pane = try #require(grid.range(of: "struct MediaFireView: View {"))
         #expect(grid[pane.upperBound...].prefix(3000).contains("PosterLookImage("))

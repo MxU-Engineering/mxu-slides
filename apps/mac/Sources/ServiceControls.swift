@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import AudioEngine
 import Foundation
+import LocalAPI
 import MediaEngine
 import NDIKit
 import Observation
@@ -55,6 +56,8 @@ final class ServiceControls {
         self.mixer = AudioMixerController(audio: audio)
         self.timeline.controls = self
         self.timecode.controls = self
+
+        media.runVideoActions = { [weak self] actions in self?.actionRouter?.execute(actions) }
         tracks.model = appModel
         tracks.mixer = mixer
         mixer.tracks = tracks
@@ -78,6 +81,7 @@ final class ServiceControls {
         }
 
         NDIScreenOutputs.shared.restore(render: render)
+        SyphonScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
 
         VideoInputInventory.shared.warmUp(render: render)
@@ -443,6 +447,23 @@ final class ServiceControls {
         contextID: String? = nil, occurrence: Int? = nil, slideActions: Bool = true
     ) {
 
+        let seq = APIFireFeed.shared.publish(APIFireEvent(
+            kind: .slide,
+            slide: APIFireSlideCommand(
+                presentationId: presentation.id, slideId: slide.id, arrangementId: arrangementId,
+                serviceItemId: contextID, occurrence: occurrence),
+            settled: nextFireArrivesSettled ? true : nil, slideActions: slideActions ? nil : false))
+        APIFireFeed.$cause.withValue(seq) {
+            dispatch(
+                slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
+                occurrence: occurrence, slideActions: slideActions)
+        }
+    }
+
+    private func dispatch(
+        slide: Slide, in presentation: Presentation, arrangementId: String?,
+        contextID: String?, occurrence: Int?, slideActions: Bool
+    ) {
         settlePending()
         let routed = slideActions ? slide : Self.withoutActions(slide)
         let incoming = actionRouter?.predictedOverrideThemes(for: routed, contextID: contextID) ?? Array(slideThemeOverrides.values)
@@ -458,7 +479,7 @@ final class ServiceControls {
                 self.pendingHandoff = nil
                 self.nextFireArrivesSettled = settled
                 defer { self.nextFireArrivesSettled = false }
-                self.fire(
+                self.dispatch(
                     slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
                     occurrence: occurrence, slideActions: slideActions)
             }
@@ -504,7 +525,7 @@ final class ServiceControls {
 
         if let entrance = RenderContext.sceneTransition(
             from: TransitionEdit.entrance(own: slide.transition, presentation: presentation.transition)) {
-            render.nextLiveTransitions[.slide] = entrance
+            render.nextLiveTransitions[LayerKind.slide.rawValue] = entrance
         }
         let deckWasLive = livePresentationID == presentation.id
         state.fire(
@@ -516,7 +537,7 @@ final class ServiceControls {
             arrivesSettled: nextFireArrivesSettled
         )
 
-        for (layer, cue) in state.liveMedia where layer != .slide {
+        for (layer, cue) in state.liveMedia {
             if let entrance = RenderContext.sceneTransition(
                 from: TransitionEdit.entrance(own: appModel.media(cue.mediaId)?.transition, presentation: presentation.transition)) {
                 render.nextLiveTransitions[layer] = entrance
@@ -568,11 +589,13 @@ final class ServiceControls {
         }
         if steps > 0 {
             if state.advanceStep(atHostTime: CACurrentMediaTime()) {
+                APIFireFeed.shared.publish(APIFireEvent(kind: .step, steps: 1))
                 apply()
                 syncAutoAdvanceArming()
                 return
             }
         } else if state.unadvanceStep() {
+            APIFireFeed.shared.publish(APIFireEvent(kind: .step, steps: -1))
             apply()
             syncAutoAdvanceArming()
             return
@@ -1104,6 +1127,7 @@ final class ServiceControls {
     }
 
     func fire(overlay: Overlay) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .overlay, id: overlay.id))
         state.fire(overlay: overlay, atHostTime: CACurrentMediaTime())
         apply()
 
@@ -1137,15 +1161,19 @@ final class ServiceControls {
         }
 
         let contextID: String? = if case .serviceItem(let id) = context { id } else { nil }
+
+        let seq = APIFireFeed.shared.publish(APIFireEvent(
+            kind: .media, id: mediaItem.id, serviceItemId: contextID, loops: loopsOverride))
+
         if let contextID {
             mediaFireContexts[mediaItem.id] = contextID
         } else {
             mediaFireContexts[mediaItem.id] = nil
         }
-        actionRouter?.applyPresetSwitches(forMedia: mediaItem, contextID: contextID)
+        APIFireFeed.$cause.withValue(seq) { actionRouter?.applyPresetSwitches(forMedia: mediaItem, contextID: contextID) }
 
         if let own = RenderContext.sceneTransition(from: mediaItem.transition) {
-            render.nextLiveTransitions[layer] = own
+            render.nextLiveTransitions[layer.rawValue] = own
         }
         state.fire(
             media: CueMedia(
@@ -1158,7 +1186,7 @@ final class ServiceControls {
             restart(mediaID: mediaItem.id)
         }
 
-        actionRouter?.mediaDidFire(mediaItem, on: layer)
+        APIFireFeed.$cause.withValue(seq) { actionRouter?.mediaDidFire(mediaItem, on: layer) }
         switch context {
         case .direct: cancelMediaAdvance()
         case .serviceItem(let id):
@@ -1170,11 +1198,13 @@ final class ServiceControls {
     }
 
     func dismissOverlay(id: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .dismissOverlay, id: id))
         state.dismissOverlay(id: id, atHostTime: CACurrentMediaTime())
         apply()
     }
 
     func dismissAllOverlays() {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .dismissOverlay))
         let now = CACurrentMediaTime()
         for overlay in state.liveOverlays {
             state.dismissOverlay(id: overlay.id, atHostTime: now)
@@ -1196,6 +1226,7 @@ final class ServiceControls {
     }
 
     func fire(playlist: Playlist, startAt entryID: String? = nil, repeatOverride: Bool? = nil) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioPlaylist, id: playlist.id, entryId: entryID))
         let replaced = audio.play(
             playlist: playlist, startAt: entryID, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }
@@ -1205,11 +1236,13 @@ final class ServiceControls {
     }
 
     func stopAudio(playlistID: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(playlistId: playlistID)))
         if let cue = audio.stop(playlistID: playlistID) { state.dismissAudio(cue) }
         apply()
     }
 
     func stopAudio(audioItemID: String, fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(audioItemId: audioItemID)))
         if let cue = audio.stop(audioItemID: audioItemID, fade: fade, curve: curve) { state.dismissAudio(cue) }
         apply()
     }
@@ -1222,6 +1255,7 @@ final class ServiceControls {
     }
 
     func fire(audioItem: AudioItem, repeatOverride: Bool? = nil) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioItem, id: audioItem.id))
         let replaced = audio.play(audioItem: audioItem, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }
         state.fire(audio: CueAudio(audioItemId: audioItem.id))
@@ -1240,6 +1274,11 @@ final class ServiceControls {
     ) {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        APIFireFeed.shared.publish(APIFireEvent(
+            kind: .alert,
+            alert: APIFireAlertCommand(
+                presetId: id, message: trimmed, behavior: behavior.rawValue, target: target.rawValue, themeId: themeId),
+            layer: layer?.rawValue))
         pendingAlertTheme?.cancel()
         pendingAlertTheme = nil
 
@@ -1324,6 +1363,7 @@ final class ServiceControls {
     }
 
     func clear(function: ShowFunction) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .clear, clear: APIClearCommand(function: function.rawValue)))
         settlePending()
         if function == .media || function == .inputs {
             stashExitTransition(for: state.liveMedia.filter { $0.value.showFunction == function }.keys)
@@ -1342,7 +1382,7 @@ final class ServiceControls {
         if function == .alerts { syncFlashClock() }
     }
 
-    private func stashExitTransition(for layers: some Sequence<LayerKind>) {
+    private func stashExitTransition(for layers: some Sequence<String>) {
         for layer in layers {
             guard let cue = state.liveMedia[layer],
                   let item = appModel.media(cue.mediaId),
@@ -1354,20 +1394,27 @@ final class ServiceControls {
     }
 
     func clear(layer: LayerKind) {
+        clear(layerID: layer.rawValue)
+    }
+
+    func clear(layerID: String) {
+        guard let layer = layerStack.first(where: { $0.id == layerID }) else { return }
+        APIFireFeed.shared.publish(APIFireEvent(kind: .clear, clear: APIClearCommand(layer: layerID)))
         settlePending()
-        stashExitTransition(for: [layer])
-        state.clear(layer: layer, atHostTime: CACurrentMediaTime())
-        if layer == .slide, state.liveSlide == nil {
+        stashExitTransition(for: [layerID])
+        state.clear(layerID: layerID, atHostTime: CACurrentMediaTime())
+        if layer.kind == .slide, state.liveSlide == nil {
             liveContextID = nil
             liveOccurrence = nil
             cancelAutoAdvance()
             refreshNextSlide()
         }
         apply()
-        if layer == .alerts { syncFlashClock() }
+        if layer.kind == .alerts { syncFlashClock() }
     }
 
-    func clearAll(protecting: Set<LayerKind> = [], cancelsPendingActions: Bool = true) {
+    func clearAll(protecting: Set<String> = [], cancelsPendingActions: Bool = true) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .clearAll))
         settlePending()
         if cancelsPendingActions { actionRouter?.cancelPendingDelayedActions() }
 
@@ -1401,11 +1448,11 @@ final class ServiceControls {
         }
     }
 
-    func hasContent(layer: LayerKind) -> Bool {
-        switch layer {
-        case .loopingVideos, .stillGraphics, .videos, .videoInput:
+    func hasContent(layerID: String) -> Bool {
+        switch LayerKind(rawValue: layerID) {
+        case .loopingVideos, .stillGraphics, .videos, .videoInput, nil:
 
-            state.liveMedia[layer] != nil
+            state.liveMedia[layerID] != nil
         case .slide:
             state.liveSlide != nil
         case .overlays:
@@ -1425,6 +1472,12 @@ final class ServiceControls {
 
     func isMediaLive(_ mediaID: String) -> Bool {
         state.liveMedia.values.contains { $0.mediaId == mediaID }
+    }
+
+    func stopMedia(id mediaID: String) {
+        for (layer, cue) in state.liveMedia where cue.mediaId == mediaID {
+            if let kind = LayerKind(rawValue: layer) { clear(layer: kind) }
+        }
     }
 
     private(set) var nextSlideInfo: ConfidenceInfo.SlideText?
@@ -1622,6 +1675,15 @@ final class ServiceControls {
 
     private var slideThemeOverrides: [String: Theme] = [:]
 
+    private(set) var layerStack = ShowState().layerStackTopFirst
+
+    func setCustomLayers(_ layers: [CustomLayer]) {
+        guard layers != state.customLayers else { return }
+        state.setCustomLayers(layers)
+        layerStack = state.layerStackTopFirst
+        apply()
+    }
+
     func setSlideThemeOverrides(_ overrides: [String: Theme]) {
         guard overrides != slideThemeOverrides else { return }
         slideThemeOverrides = overrides
@@ -1757,7 +1819,7 @@ final class ServiceControls {
 
         pushLiveInputVisibility(liveNamedInputs)
         let seeds = state.transportSeeds()
-        media.refresh(seeds: seeds)
+        media.refresh(seeds: seeds, layers: layerStack)
         guard !added.isEmpty, let blobs else { return }
         Task { [render, appModel, media] in
             for mediaID in added {

@@ -13,7 +13,7 @@ final class MediaTransportTargetTests: XCTestCase {
         looping: Bool = false, firedAt offset: TimeInterval = 0
     ) -> TransportCandidate {
         TransportCandidate(
-            mediaID: id, layer: layer, origin: origin,
+            mediaID: id, layerID: layer.rawValue, origin: origin,
             isLooping: looping, firedAt: t0.addingTimeInterval(offset)
         )
     }
@@ -39,7 +39,7 @@ final class MediaTransportTargetTests: XCTestCase {
         )
         XCTAssertEqual(
             TransportTarget.countdownTarget(
-                candidates: [background, foreground], layer: .loopingVideos
+                candidates: [background, foreground], layer: LayerKind.loopingVideos.rawValue
             )?.mediaID, "bg",
             "a layer-targeted box reads ITS layer's video"
         )
@@ -54,7 +54,7 @@ final class MediaTransportTargetTests: XCTestCase {
             "the default read is the foreground — an idle foreground is silent"
         )
         XCTAssertNil(
-            TransportTarget.countdownTarget(candidates: [background, foreground], layer: .slide),
+            TransportTarget.countdownTarget(candidates: [background, foreground], layer: LayerKind.slide.rawValue),
             "an idle layer renders nothing"
         )
     }
@@ -73,13 +73,13 @@ final class MediaTransportTargetTests: XCTestCase {
         let cueVideo = candidate("cue", layer: .slide, origin: .foregroundCue, firedAt: 0)
         let slideVideo = candidate("slide", layer: .slide, origin: .slides, firedAt: 0.5)
         XCTAssertEqual(
-            TransportTarget.resolve(candidates: [cueVideo, slideVideo], viewedLayer: .slide)?.mediaID,
+            TransportTarget.resolve(candidates: [cueVideo, slideVideo], viewedLayer: LayerKind.slide.rawValue)?.mediaID,
             "slide"
         )
 
         let lateSlide = candidate("late", layer: .slide, origin: .slides, firedAt: 2)
         XCTAssertEqual(
-            TransportTarget.resolve(candidates: [cueVideo, lateSlide], viewedLayer: .slide)?.mediaID,
+            TransportTarget.resolve(candidates: [cueVideo, lateSlide], viewedLayer: LayerKind.slide.rawValue)?.mediaID,
             "cue"
         )
     }
@@ -89,10 +89,10 @@ final class MediaTransportTargetTests: XCTestCase {
         let a = candidate("a", layer: .slide, origin: .slides, firedAt: 0)
         let b = candidate("b", layer: .slide, origin: .slides, firedAt: 0)
         XCTAssertEqual(
-            TransportTarget.resolve(candidates: [a, b], viewedLayer: .slide)?.mediaID, "a"
+            TransportTarget.resolve(candidates: [a, b], viewedLayer: LayerKind.slide.rawValue)?.mediaID, "a"
         )
         XCTAssertEqual(
-            TransportTarget.resolve(candidates: [b, a], viewedLayer: .slide)?.mediaID, "b"
+            TransportTarget.resolve(candidates: [b, a], viewedLayer: LayerKind.slide.rawValue)?.mediaID, "b"
         )
     }
 
@@ -142,7 +142,7 @@ final class MediaTransportTargetTests: XCTestCase {
         state.clear(layer: .videos)
         seeds = state.transportSeeds()
         XCTAssertNil(seeds.first { $0.mediaID == "direct-fg" }, "cleared layer must drop its seed")
-        XCTAssertEqual(seeds.first { $0.mediaID == "cue-bg" }?.layer, .loopingVideos)
+        XCTAssertEqual(seeds.first { $0.mediaID == "cue-bg" }?.layerID, LayerKind.loopingVideos.rawValue)
     }
 
     func testSlideObjectSeedsCoverFillsAndLegacyMediaObjects() {
@@ -158,6 +158,32 @@ final class MediaTransportTargetTests: XCTestCase {
         let ids = state.transportSeeds().map(\.mediaID)
         XCTAssertTrue(ids.contains("fill-video"))
         XCTAssertTrue(ids.contains("object-video"))
+    }
+
+    func testACustomLayerSeedsItsVideoAndJoinsThePickerOnlyWhileCarryingOne() {
+        var state = ShowState()
+        state.setCustomLayers([CustomLayer(id: "lower", name: "Lower Third", above: "slide")])
+        var cue = CueMedia(mediaId: "band", mode: nil, layer: .loopingVideos, loops: nil)
+        cue.layerId = "lower"
+        state.fire(slide: Slide(id: "a", name: "A", objects: [], background: cue))
+        let seed = state.transportSeeds().first { $0.mediaID == "band" }
+        XCTAssertEqual(seed?.layerID, "lower")
+        XCTAssertEqual(seed?.origin, .foregroundCue)
+
+        let stack = state.layerStackTopFirst
+        XCTAssertEqual(stack.map(\.id), ["alerts", "overlays", "lower", "slide", "videos", "stillGraphics", "loopingVideos", "videoInput"])
+        XCTAssertEqual(stack.first { $0.id == "lower" }?.name, "Lower Third")
+        XCTAssertEqual(
+            TransportTarget.pickerLayers(stack: stack, carrying: ["lower"]).map(\.id),
+            ["alerts", "overlays", "lower", "slide", "videos", "loopingVideos"]
+        )
+        XCTAssertFalse(
+            TransportTarget.pickerLayers(stack: stack, carrying: []).contains { $0.id == "lower" },
+            "an empty custom layer stays out, like Still Graphics"
+        )
+        let row = TransportCandidate(mediaID: "band", layerID: "lower", origin: .foregroundCue, isLooping: false, firedAt: t0)
+        XCTAssertEqual(TransportTarget.resolve(candidates: [row], viewedLayer: "lower")?.mediaID, "band")
+        XCTAssertNil(TransportTarget.resolve(candidates: [row]), "the default viewport stays Foreground")
     }
 
     func testVideoCountdownFreezesWhilePausedAndClampsAtZero() {

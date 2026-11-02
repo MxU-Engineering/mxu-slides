@@ -56,7 +56,7 @@ extension RenderScene {
         }
     }
 
-    private static func bleeds(_ item: RenderItem, in kind: LayerKind) -> Bool {
+    private static func bleeds(_ item: RenderItem, in kind: LayerKind?) -> Bool {
         kind == .loopingVideos || (kind == .slide && item.id.hasSuffix("-backdrop"))
     }
 }

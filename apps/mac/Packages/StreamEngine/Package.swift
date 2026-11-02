@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "StreamEngine", targets: ["StreamEngine"])
     ],
     dependencies: [
-        .package(url: "https://github.com/HaishinKit/HaishinKit.swift", from: "2.2.5")
+        .package(url: "https://github.com/HaishinKit/HaishinKit.swift", .upToNextMinor(from: "2.2.5"))
     ],
     targets: [
         .target(

@@ -324,6 +324,15 @@ struct ShellView: View {
 
     @AppStorage("editor.inspectorWidth") private var editorPanelWidth = PanelWidthGrip.minPanelWidth
 
+    @AppStorage("shell.notesPanelWidth") private var notesPanelWidth = 340.0
+    @AppStorage("shell.notesBelowHeight") private var notesBelowHeight = 260.0
+    @State private var draftNotesPanelWidth: Double?
+    @State private var notesDragStartWidth: Double?
+    @State private var notesWidthGripHovering = false
+    @State private var draftNotesBelowHeight: Double?
+    @State private var notesDragStartHeight: Double?
+    @State private var notesHeightGripHovering = false
+
     @State private var shellWidth: CGFloat = 1480
 
     @State private var isFullScreen = false
@@ -475,6 +484,10 @@ struct ShellView: View {
 
                 HStack(spacing: 0) {
 
+                    if FollowController.shared.pairing == nil, !FollowController.shared.backups.isEmpty {
+                        BackupStatusChip(follow: FollowController.shared)
+                        Spacer().frame(width: 4)
+                    }
                     BroadcastStatusChip(controls: controls)
 
                     if let presets {
@@ -509,6 +522,9 @@ struct ShellView: View {
 
         .modifier(VolunteerMenuRequests(layout: layout))
 
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FollowBanner(follow: FollowController.shared)
+        }
         .task {
             await model.resident.ready([.service, .serviceLinkRules, .media, .audio, .playlist])
         }
@@ -521,8 +537,14 @@ struct ShellView: View {
             for target in layout.openPreviews.sorted() {
                 openWindow(id: "preview", value: target)
             }
+            for noteID in layout.openNotes.sorted() {
+                openWindow(id: "note", value: noteID)
+            }
             if layout.serviceControlsWindowOpen {
                 openWindow(id: "serviceControls")
+            }
+            if layout.libraryWindowOpen {
+                openWindow(id: "library")
             }
         }
         .onAppear {
@@ -553,6 +575,10 @@ struct ShellView: View {
         }
         .onChange(of: model.selectedEntryID) { _, entryID in
 
+            if mode == .present, let entryID, let entry = model.indexEntry(entryID),
+               !LibraryPresentLogic.takesCenter(entry.kind) {
+                return
+            }
             presentFocusScroll.reset()
             if mode == .present, entryID != nil {
                 serviceItemID = nil
@@ -671,6 +697,10 @@ struct ShellView: View {
         }
     }
 
+    private var libraryInSidebar: Bool {
+        !(layout?.libraryWindowOpen ?? false) && layout?.volunteerLibraryKinds?.isEmpty != true
+    }
+
     private var sidebar: some View {
         GeometryReader { geo in
             let gap = CornerStandard.panelInset
@@ -694,11 +724,11 @@ struct ShellView: View {
                     Divider()
                     serviceSection
                 }
-                .frame(height: isRunOnly ? nil : topHeight)
-                .frame(maxHeight: isRunOnly ? .infinity : nil)
+                .frame(height: libraryInSidebar ? topHeight : nil)
+                .frame(maxHeight: libraryInSidebar ? nil : .infinity)
                 .floatingPanel()
 
-                if !isRunOnly {
+                if libraryInSidebar {
                     splitGrip(available: available)
                         .frame(height: gap)
 
@@ -1374,6 +1404,12 @@ struct ShellView: View {
             }
 
             HStack(spacing: 0) {
+                if let noteID = notesPanelNoteID, layout?.notesPanel == .beside {
+                    notesPanelCard(noteID)
+                        .frame(width: draftNotesPanelWidth ?? notesPanelWidth)
+                        .padding(.leading, CornerStandard.panelInset)
+                        .overlay(alignment: .trailing) { notesWidthGrip }
+                }
                 centerContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.horizontal, CornerStandard.panelInset)
@@ -1384,6 +1420,13 @@ struct ShellView: View {
 
             }
 
+            if let noteID = notesPanelNoteID, layout?.notesPanel == .below {
+                notesHeightGrip
+                notesPanelCard(noteID)
+                    .frame(height: draftNotesBelowHeight ?? notesBelowHeight)
+                    .padding(.horizontal, CornerStandard.panelInset + 12)
+                    .padding(.bottom, CornerStandard.panelInset)
+            }
             if mode == .present, !editorTakesOver {
                 presentFooter
             }
@@ -1403,6 +1446,85 @@ struct ShellView: View {
                     .padding(.bottom, 60)
             }
         }
+    }
+
+    private var notesPanelNoteID: String? {
+        guard mode == .present, !editorTakesOver, let layout, layout.notesPanel != .hidden,
+              let id = layout.notesPanelNoteID,
+              model.indexEntry(id)?.kind == .note
+        else { return nil }
+        return id
+    }
+
+    private func notesPanelCard(_ noteID: String) -> some View {
+        NoteReaderView(
+            model: model, noteID: noteID, host: .panel, layout: layout, render: render, controls: controls)
+            .background(Color.cardSurface, in: RoundedRectangle.standard(CornerStandard.element))
+            .clipShape(RoundedRectangle.standard(CornerStandard.element))
+    }
+
+    private var notesWidthGrip: some View {
+        ZStack {
+            Color.clear
+            if notesWidthGripHovering || draftNotesPanelWidth != nil {
+                Capsule()
+                    .fill(.tertiary.opacity(0.6))
+                    .frame(width: 3, height: 28)
+            }
+        }
+        .frame(width: 10)
+        .contentShape(Rectangle().inset(by: -3))
+        .onHover { inside in
+            notesWidthGripHovering = inside
+            guard draftNotesPanelWidth == nil else { return }
+            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.shellSpace))
+                .onChanged { value in
+                    let start = notesDragStartWidth ?? notesPanelWidth
+                    notesDragStartWidth = start
+                    draftNotesPanelWidth = min(max(start + value.translation.width, 280), 640)
+                }
+                .onEnded { _ in
+                    if let draft = draftNotesPanelWidth { notesPanelWidth = draft }
+                    draftNotesPanelWidth = nil
+                    notesDragStartWidth = nil
+                    if !notesWidthGripHovering { NSCursor.pop() }
+                }
+        )
+    }
+
+    private var notesHeightGrip: some View {
+        ZStack {
+            Color.clear
+            if notesHeightGripHovering || draftNotesBelowHeight != nil {
+                Capsule()
+                    .fill(.tertiary.opacity(0.6))
+                    .frame(width: 28, height: 3)
+            }
+        }
+        .frame(height: CornerStandard.panelInset)
+        .contentShape(Rectangle().inset(by: -3))
+        .onHover { inside in
+            notesHeightGripHovering = inside
+            guard draftNotesBelowHeight == nil else { return }
+            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.shellSpace))
+                .onChanged { value in
+                    let start = notesDragStartHeight ?? notesBelowHeight
+                    notesDragStartHeight = start
+                    draftNotesBelowHeight = min(max(start - value.translation.height, 140), 640)
+                }
+                .onEnded { _ in
+                    if let draft = draftNotesBelowHeight { notesBelowHeight = draft }
+                    draftNotesBelowHeight = nil
+                    notesDragStartHeight = nil
+                    if !notesHeightGripHovering { NSCursor.pop() }
+                }
+        )
     }
 
     private var presentFooter: some View {
@@ -1508,20 +1630,13 @@ struct ShellView: View {
 
             if let id = model.selectedEntryID,
                let entry = model.indexEntry(id),
-               entry.kind == .presentation || entry.kind == .media || entry.kind == .audio {
-                if entry.kind == .presentation {
-                    PresentGridView(
-                        model: model, render: render, controls: controls,
-                        presentationID: entry.id, arrangementId: nil
-                    )
-                    .id(entry.id)
-                    .inputRegion("single deck")
-                } else if entry.kind == .media {
-                    MediaFireView(model: model, controls: controls, mediaID: entry.id)
-                } else {
-
-                    AudioFireView(model: model, controls: controls, audioID: entry.id)
-                }
+               LibraryPresentLogic.takesCenter(entry.kind) {
+                PresentGridView(
+                    model: model, render: render, controls: controls,
+                    presentationID: entry.id, arrangementId: nil
+                )
+                .id(entry.id)
+                .inputRegion("single deck")
             } else if let serviceID = model.currentServiceID {
                 if continuousPresent {
 
@@ -1572,6 +1687,10 @@ struct ShellView: View {
                     model: model, render: render, controls: controls,
                     serviceID: entry.id, itemID: serviceItemID
                 )
+            case .note:
+
+                NoteEditorView(model: model, render: render, controls: controls, noteID: entry.id)
+                    .id(entry.id)
             case .media, .audio:
 
                 MediaEditorView(model: model, entry: entry)

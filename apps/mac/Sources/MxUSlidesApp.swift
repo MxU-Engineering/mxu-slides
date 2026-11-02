@@ -42,6 +42,10 @@ enum WindowBridge {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows flag: Bool
     ) -> Bool {
@@ -55,7 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 WindowBridge.openMain?()
             }
         }
-        return true
+
+        return false
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -119,6 +124,8 @@ struct MxUSlidesApp: App {
         UserDefaults.standard.set(AppMode.present.rawValue, forKey: "appMode")
         let model = AppModel()
         PresentationFileOpener.model = model
+        ScheduledBackupController.shared.start(model: model)
+        NoteDocumentTextView.ownSlideTypes = { model.ownSlideTypes }
         #if DEBUG || MXU_PERF_HOOKS
 
         PerfHooks.start(model: model)
@@ -126,6 +133,7 @@ struct MxUSlidesApp: App {
         _renderContext = State(initialValue: render)
         _appModel = State(initialValue: model)
         if let render {
+            DiagnosticsStore.shared.attach(media: render.media)
             let controls = ServiceControls(appModel: model, render: render)
             #if DEBUG || MXU_PERF_HOOKS
             PerfHooks.controls = controls
@@ -155,6 +163,7 @@ struct MxUSlidesApp: App {
                 scheduler: schedulerController
             )
             _localAPI = State(initialValue: api)
+            api.identity = { [machineID = model.machineID, computerName = model.computerName] in (machineID, computerName()) }
             MIDIDeviceInventory.shared.configure(model: model)
 
             let midiIn = MIDIInController(
@@ -171,12 +180,14 @@ struct MxUSlidesApp: App {
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)
             controls.serviceTracking = tracking
             _serviceTracking = State(initialValue: tracking)
+            FollowController.shared.useKeys(of: api)
+            FollowController.shared.configure(bridge: api.bridge, controls: controls)
         }
     }
 
     var body: some Scene {
 
-        WindowGroup("MxU Slides", id: "main") {
+        Window("MxU Slides", id: "main") {
             if let appModel, appModel.libraryOpenError != nil {
 
                 Text("Could not open the library.")
@@ -219,6 +230,14 @@ struct MxUSlidesApp: App {
 
                 .sheet(isPresented: $showFeedback) {
                     FeedbackView(model: appModel) { showFeedback = false }
+                }
+                .sheet(isPresented: Binding(
+                    get: { appModel.reviewingNoteID != nil },
+                    set: { shown in if !shown { appModel.reviewingNoteID = nil } }
+                )) {
+                    if let noteID = appModel.reviewingNoteID {
+                        NoteUpdatesReviewSheet(model: appModel, render: renderContext, controls: controls, noteID: noteID)
+                    }
                 }
                 .onChange(of: FeedbackController.shared.lastRunCrashed, initial: true) { _, crashed in
                     if crashed && !showWelcome && !presentLayout.runOnly {
@@ -280,6 +299,24 @@ struct MxUSlidesApp: App {
         }
         .defaultSize(width: 420, height: 520)
 
+        Window("Library", id: "library") {
+            if let appModel, appModel.isLibraryReady {
+                LibraryWindowView(
+                    model: appModel, render: renderContext,
+                    controls: controls, layout: presentLayout
+                )
+                .environment(\.actionRouter, actionRouter)
+            }
+        }
+        .defaultSize(width: 360, height: 640)
+
+        WindowGroup(id: "note", for: String.self) { $noteID in
+            if let appModel, let noteID {
+                NoteWindowView(model: appModel, noteID: noteID, layout: presentLayout, render: renderContext, controls: controls)
+            }
+        }
+        .defaultSize(width: 440, height: 680)
+
         WindowGroup(id: "preview", for: String.self) { $target in
             PreviewWindowView(
                 render: renderContext, controls: controls, layout: presentLayout,
@@ -299,7 +336,7 @@ struct MxUSlidesApp: App {
                     .background(NonRestorableWindow())
             }
         }
-        .defaultSize(width: 780, height: 540)
+        .defaultSize(width: 1080, height: 680)
 
         Window("Engine", id: "engine") {
             if presentLayout.runOnly {

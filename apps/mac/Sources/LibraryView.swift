@@ -1,6 +1,7 @@
 import PPTXImport
 import PresenterCore
 import ProImport
+import RenderEngine
 import SlideScene
 import SwiftUI
 import UniformTypeIdentifiers
@@ -51,6 +52,8 @@ struct LibrarySidebar: View {
     @FocusedValue(\.slideEditor) private var slideEditor
     @State private var slideDropTargetID: String?
 
+    @State private var openThemeID: String?
+
     var layout: PresentLayoutController? = nil
 
     var controls: ServiceControls? = nil
@@ -68,23 +71,36 @@ struct LibrarySidebar: View {
     var body: some View {
         let _ = BodyMeter.tick(.librarySidebar)
         VStack(spacing: 0) {
-            headerRow
-            sectionPicker
-            if model.selectedSection == .audio, searchText.isEmpty {
-                ChipPicker(options: [(0, "Music"), (1, "Tracks")], selection: $audioTab)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 6)
-            }
-            Divider()
-            if searchText.isEmpty, model.selectedSection == .audio, audioTab == 1 {
-                TrackSetList(model: model)
-            } else if searchText.isEmpty {
-                entryList
+            if model.selectedSection == .notes, let noteID = model.openNoteID, appModeRaw != AppMode.edit.rawValue,
+               model.indexEntry(noteID)?.kind == .note {
+                NoteReaderView(
+                    model: model, noteID: noteID, host: .library,
+                    onBack: {
+                        model.openNoteID = nil
+                        model.selectedEntryID = nil
+                    },
+                    layout: layout, render: render, controls: controls)
             } else {
-                searchResults
+                headerRow
+                sectionPicker
+                if model.selectedSection == .audio, searchText.isEmpty {
+                    ChipPicker(options: [(0, "Music"), (1, "Tracks")], selection: $audioTab)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 6)
+                }
+                Divider()
+                if searchText.isEmpty, model.selectedSection == .audio, audioTab == 1 {
+                    TrackSetList(model: model)
+                } else if searchText.isEmpty {
+                    entryList
+                } else {
+                    searchResults
+                }
+                if !runOnly {
+                    Divider()
+                    footer
+                }
             }
-            Divider()
-            footer
         }
         .onChange(of: viewedFolder, initial: true) { _, viewed in
             model.viewedLibraryFolder = viewed
@@ -97,6 +113,15 @@ struct LibrarySidebar: View {
                 model.libraryRevealID = nil
                 showHome(id)
             }
+        }
+        .onChange(of: model.selectedEntryID) { _, id in
+            guard let id, let entry = model.indexEntry(id), entry.kind == .note
+            else { return }
+            model.selectedSection = .notes
+            model.markUsed(id)
+
+            guard appModeRaw != AppMode.edit.rawValue else { return }
+            model.openNoteID = id
         }
         .overlay {
             if findSpotlight.active {
@@ -195,11 +220,15 @@ struct LibrarySidebar: View {
                 ReplaceMediaFileFlow.chooseFile(model: model, id: request.id, name: request.name)
             }
         }
+        .sheet(item: $deleteUsesRequest) { request in
+            DeleteMediaSheet(request: request) { model.delete(request.entry) }
+        }
         .mediaCueSheets(model: model, state: mediaMenuState)
     }
 
     @State private var deleteBatch: [LibraryIndex.Entry] = []
     @State private var deleteUsedCount = 0
+    @State private var deleteUsesRequest: DeleteMediaRequest?
 
     @State private var locatePanelShown = false
 
@@ -212,16 +241,17 @@ struct LibrarySidebar: View {
     }
 
     private func requestDelete(_ entries: [LibraryIndex.Entry]) {
-
         let mediaIds = Set(entries.filter { $0.kind == .media }.map(\.id))
         Task {
-            let used = await model.mediaReferenceDocumentCount(of: mediaIds)
-            if entries.count > 1 || used > 0 {
-                deleteUsedCount = used
-                deleteBatch = entries
-            } else if let entry = entries.first {
-                model.delete(entry)
+            if entries.count == 1, let entry = entries.first, entry.kind == .media {
+                let groups = MediaUsage.groups(await model.mediaUses(of: entry.id))
+                if !groups.isEmpty {
+                    deleteUsesRequest = DeleteMediaRequest(entry: entry, groups: groups)
+                    return
+                }
             }
+            deleteUsedCount = await model.mediaReferenceDocumentCount(of: mediaIds)
+            deleteBatch = entries
         }
     }
 
@@ -306,6 +336,20 @@ struct LibrarySidebar: View {
             } else {
                 filterMenu
             }
+
+            if let layout, !layout.libraryWindowOpen, !runOnly {
+                Button {
+                    openWindow(id: "library")
+                } label: {
+                    Image(systemName: "arrow.up.forward.square")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open the library in its own window")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
@@ -341,7 +385,7 @@ struct LibrarySidebar: View {
             : upcoming ? "Sort, or show only what's used in an upcoming service" : "Sort")
     }
 
-    private func searchHitRow(_ hit: LibraryIndex.Hit) -> some View {
+    private func searchHitRow(_ hit: LibraryIndex.Hit, menus: RowMenuLists) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Glyph(kind: section(for: hit.entry)?.glyph ?? .presentations, size: 13)
                 .foregroundStyle(.secondary)
@@ -357,25 +401,40 @@ struct LibrarySidebar: View {
                 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(section(for: hit.entry)?.displayName ?? hit.entry.kind.rawValue)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HiddenWhileRowFires {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(section(for: hit.entry)?.displayName ?? hit.entry.kind.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                if let used = hit.entry.lastUsedAt {
-                    Text("Used \(used, format: .relative(presentation: .named))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    if let used = hit.entry.lastUsedAt {
+                        Text("Used \(used, format: .relative(presentation: .named))")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
         }
+        .modifier(LibraryRowFireTrailing(actions: fireActions(hit.entry)))
         .tag(hit.entry.id)
-        .draggable(hit.entry.id)
+        .draggablePayload(runOnly ? nil : hit.entry.id)
         .contextMenu {
-            if [.presentation, .media, .audio].contains(hit.entry.kind) {
-                Button("Add to Service") { model.addToCurrentService(hit.entry) }
-            }
+            Button("Show in Library") { showInLibrary(hit.entry) }
+            Divider()
+            entryMenu(hit.entry, menus: menus)
         }
+    }
+
+    private func showInLibrary(_ entry: LibraryIndex.Entry) {
+        guard let section = section(for: entry) else { return }
+        searchText = ""
+        model.selectedSection = section
+        folderPath = nil
+        showHome(entry.id)
+        if folderPath == [], !model.childFolders(in: section, under: []).isEmpty {
+            folderPath = [Self.unfiledToken]
+        }
+        model.librarySelection = [entry.id]
     }
 
     @ViewBuilder
@@ -390,11 +449,13 @@ struct LibrarySidebar: View {
         let cloudHits = cloudSearchHits.filter { item in
             searchScopes.isEmpty || searchScopes.contains { $0.kind == item.kind }
         }
+
+        let menus = Dictionary(uniqueKeysWithValues: Set(hits.compactMap { section(for: $0.entry) }).map { ($0, rowMenuLists(for: $0)) })
         List(selection: $model.selectedEntryID) {
             ForEach(TeamDriveLogic.searchRows(hits: hits, cloud: cloudHits, query: searchText)) { row in
                 switch row {
                 case .hit(let hit):
-                    searchHitRow(hit)
+                    searchHitRow(hit, menus: section(for: hit.entry).flatMap { menus[$0] } ?? RowMenuLists(folders: [], playlists: [], selection: []))
                 case .cloud(let item):
                     HStack(alignment: .firstTextBaseline) {
                         Glyph(kind: LibrarySection.libraryTabs.first { $0.kind == item.kind }?.glyph ?? .presentations, size: 13)
@@ -445,6 +506,9 @@ struct LibrarySidebar: View {
     }
 
     private var visibleTabs: [LibrarySection] {
+        if let allowed = layout?.volunteerLibraryKinds {
+            return orderedTabs.filter { allowed.contains($0.kind) }
+        }
         let visible = orderedTabs.filter { !hiddenTabs.contains($0) }
         return visible.isEmpty ? orderedTabs : visible
     }
@@ -467,29 +531,30 @@ struct LibrarySidebar: View {
                 }
             },
             onReorder: { movedID, beforeID in
-                guard let moved = LibrarySection(rawValue: movedID) else { return }
+                guard !runOnly, let moved = LibrarySection(rawValue: movedID) else { return }
                 reorderTab(moved, before: beforeID.flatMap(LibrarySection.init(rawValue:)))
             }
         ) { _ in
-            Section("Libraries") {
-                ForEach(orderedTabs) { candidate in
-                    Toggle(candidate.displayName, isOn: Binding(
-                        get: { !hiddenTabs.contains(candidate) },
-                        set: { show in setTab(candidate, visible: show) }
-                    ))
+            if !runOnly {
+                Section("Libraries") {
+                    ForEach(orderedTabs) { candidate in
+                        Toggle(candidate.displayName, isOn: Binding(
+                            get: { !hiddenTabs.contains(candidate) },
+                            set: { show in setTab(candidate, visible: show) }
+                        ))
+                    }
                 }
-            }
-            Divider()
-            Button("Reset Tabs") {
-                tabOrderRaw = ""
-                hiddenTabsRaw = ""
+                Divider()
+                Button("Reset Tabs") {
+                    tabOrderRaw = ""
+                    hiddenTabsRaw = ""
+                }
             }
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 5)
-        .onChange(of: hiddenTabsRaw) { _, _ in
-            if hiddenTabs.contains(model.selectedSection),
-               let first = visibleTabs.first {
+        .onChange(of: visibleTabs, initial: true) { _, tabs in
+            if !tabs.contains(model.selectedSection), let first = tabs.first {
                 model.switchLibrarySection(first)
             }
         }
@@ -516,6 +581,10 @@ struct LibrarySidebar: View {
 
     private var viewModeKey: String { "library.viewMode.\(model.selectedSection.rawValue)" }
     @State private var viewModeBump = 0
+
+    private var hasGridMode: Bool {
+        AppModel.folderableSections.contains(model.selectedSection) || model.selectedSection == .themes
+    }
     private var isGridMode: Bool {
         _ = viewModeBump
         return UserDefaults.standard.bool(forKey: viewModeKey)
@@ -528,14 +597,29 @@ struct LibrarySidebar: View {
             if folderable, folderPath != [] {
                 breadcrumbBar
             }
-            if isGridMode, folderable {
-                browserGrid
+            if model.selectedSection == .themes, let themeID = openThemeID, let theme = model.indexEntry(themeID) {
+                LibraryThemeDesigns(
+                    model: model, render: render, entry: theme,
+                    editor: slideEditor?.presentation.id == theme.id ? slideEditor : nil,
+                    gridColumns: isGridMode ? gridColumns : nil,
+                    opensOnClick: appModeRaw == AppMode.edit.rawValue,
+                    close: { openThemeID = nil }
+                ) { designID in
+                    model.openInEditor(entryID: theme.id, slideID: designID)
+                    appModeRaw = AppMode.edit.rawValue
+                }
+            } else if isGridMode, hasGridMode {
+                browserGrid(folderable: folderable)
             } else {
                 browserList(folderable: folderable)
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard acceptsImport else { return false }
+            if model.selectedSection == .notes, !runOnly {
+                Task { await model.importNotes(urls) }
+                return true
+            }
+            guard !runOnly, acceptsImport else { return false }
 
             let presentations = urls.filter(AppModel.isPresentationFile)
             let files = urls.filter { !AppModel.isPresentationFile($0) }
@@ -686,7 +770,15 @@ struct LibrarySidebar: View {
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .onDeleteCommand {
-            requestDelete(model.selectedEntries())
+            if !runOnly { requestDelete(model.selectedEntries()) }
+        }
+        .onPasteCommand(of: model.selectedSection == .notes && !runOnly ? [.plainText, .rtfd, .flatRTFD, .png, .tiff] : []) { _ in
+            if let media = NoteDocumentTextView.pastedMedia(from: .general) {
+                let text = NSPasteboard.general.string(forType: .string) ?? "Pasted Notes"
+                Task { await model.newPastedNote(name: LocalNotes.pastedName(text), body: media) }
+            } else if let text = NSPasteboard.general.string(forType: .string) {
+                Task { await model.pasteNotes(text) }
+            }
         }
         .overlay {
             if contents.items.isEmpty, contents.cloud.isEmpty, contents.folders.isEmpty {
@@ -720,25 +812,23 @@ struct LibrarySidebar: View {
 
     private func folderRow(_ name: String, count: Int, path: [String]) -> some View {
         HStack(spacing: 6) {
-            Button {
-                folderPath = path
-            } label: {
-                HStack(spacing: 8) {
-                    Glyph(kind: .folder, size: 14)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18)
-                    Text(name)
-                    Spacer()
-                    Text("\(count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                Glyph(kind: .folder, size: 14)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                Text(name)
+                Spacer()
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .onTapGesture { folderPath = path }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
         }
         .contextMenu { folderMenu(path) }
-        .draggable(isUnfiled(path) ? "" : TeamDriveLogic.folderPayload(path: path, area: shownArea))
+        .draggablePayload(runOnly || isUnfiled(path) ? nil : TeamDriveLogic.folderPayload(path: path, area: shownArea))
         .dropDestination(for: String.self) { payloads, _ in
             handleDrop(payloads, into: path)
         }
@@ -747,11 +837,35 @@ struct LibrarySidebar: View {
     @ViewBuilder
     private func folderMenu(_ path: [String]) -> some View {
         if !isUnfiled(path), !runOnly {
+            folderMoveMenu(path, folders: rowMenuLists(for: model.selectedSection).folders)
             Button("Rename Folder…") { folderRenameTarget = FolderRenameTarget(path: path) }
         }
     }
 
+    private func folderMoveMenu(_ path: [String], folders: [String]) -> some View {
+        let moving = path.joined(separator: "/")
+        let targets = folders.filter { !TeamDriveLogic.isUnder($0, prefix: moving) }
+        let nested = path.count > 1
+        return Menu("Move to Folder") {
+            if nested {
+                Button("Top Level") { moveFolder(path, into: []) }
+            }
+            if nested, !targets.isEmpty {
+                Divider()
+            }
+            FolderTreeMenu(nodes: TeamDriveLogic.folderTree(targets), current: path.dropLast().joined(separator: "/")) { folder in
+                moveFolder(path, into: folder.split(separator: "/").map(String.init))
+            }
+        }
+        .disabled(!nested && targets.isEmpty)
+    }
+
+    private func moveFolder(_ path: [String], into destination: [String]) {
+        _ = handleDrop([TeamDriveLogic.folderPayload(path: path, area: shownArea)], into: destination)
+    }
+
     private func handleDrop(_ payloads: [String], into path: [String]) -> Bool {
+        guard !runOnly else { return false }
         let destination = realPath(path)
         var handled = false
         for payload in payloads where !payload.isEmpty {
@@ -775,8 +889,8 @@ struct LibrarySidebar: View {
         return stored == 0 ? 2 : min(max(stored, 1), 6)
     }
 
-    private var browserGrid: some View {
-        let contents = browserContents(folderable: true)
+    private func browserGrid(folderable: Bool) -> some View {
+        let contents = browserContents(folderable: folderable)
         let path = contents.path
         let folders = contents.folders
         let items = contents.items
@@ -785,7 +899,7 @@ struct LibrarySidebar: View {
         )
         return ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
-                if folderPath == [] {
+                if folderable, folderPath == [] {
                     let all = model.browserEntries(in: model.selectedSection)
                     FolderPreviewCard(
                         model: model, render: render,
@@ -809,7 +923,7 @@ struct LibrarySidebar: View {
                         folderPath = folderFull
                     }
                     .contextMenu { folderMenu(folderFull) }
-                    .draggable(TeamDriveLogic.folderPayload(path: folderFull, area: shownArea))
+                    .draggablePayload(runOnly ? nil : TeamDriveLogic.folderPayload(path: folderFull, area: shownArea))
                     .dropDestination(for: String.self) { payloads, _ in
                         handleDrop(payloads, into: folderFull)
                     }
@@ -863,11 +977,16 @@ struct LibrarySidebar: View {
                 model.librarySelection = selection
             } else {
                 model.librarySelection = [entry.id]
+
+                if entry.kind == .theme, !NSEvent.modifierFlags.contains(.shift) {
+                    openThemeID = entry.id
+                }
             }
         } content: {
             LibraryItemCard(model: model, render: render, entry: entry)
+                .modifier(LibraryCardFireOverlay(actions: fireActions(entry)))
         }
-        .draggable(entry.id)
+        .draggablePayload(runOnly ? nil : entry.id)
         .contextMenu { entryMenu(entry, menus: menus) }
         .modifier(slideDropTarget(entry))
     }
@@ -889,11 +1008,26 @@ struct LibrarySidebar: View {
     }
 
     private func entryRow(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
-        EntryRow(model: model, entry: entry)
+        EntryRow(model: model, render: render, entry: entry, fire: fireActions(entry))
             .tag(entry.id)
-            .draggable(entry.id)
+            .draggablePayload(runOnly ? nil : entry.id)
             .contextMenu { entryMenu(entry, menus: menus) }
             .modifier(slideDropTarget(entry))
+            .simultaneousGesture(TapGesture().onEnded {
+                if entry.kind == .theme, NSEvent.modifierFlags.isDisjoint(with: [.command, .shift]) {
+                    model.librarySelection = [entry.id]
+                    openThemeID = entry.id
+                }
+            }, including: entry.kind == .theme ? .all : .subviews)
+    }
+
+    private func fireActions(_ entry: LibraryIndex.Entry) -> LibraryFireActions? {
+        guard appModeRaw == AppMode.present.rawValue || entry.kind == .theme,
+              LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }
+        return LibraryFireActions(model: model, controls: controls, entry: entry) {
+            model.openInEditor(entryID: entry.id)
+            appModeRaw = AppMode.edit.rawValue
+        }
     }
 
     private func slideDropTarget(_ entry: LibraryIndex.Entry) -> SlideDropTarget {
@@ -937,6 +1071,13 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private func entryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
+        if !runOnly {
+            entryMenuItems(entry, menus: menus)
+        }
+    }
+
+    @ViewBuilder
+    private func entryMenuItems(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
         let batch = selectionBatch(for: entry, selection: menus.selection)
         if batch.count > 1 {
             massEntryMenu(batch, menus: menus)
@@ -957,6 +1098,12 @@ struct LibrarySidebar: View {
                 for entry in addable { model.addToCurrentService(entry) }
             }
         }
+        let media = batch.filter { $0.kind == .media }
+        if !media.isEmpty {
+            Section("Cue") {
+                LibraryMediaPlaybackRows(model: model, ids: media.map(\.id))
+            }
+        }
         let tracks = batch.filter { $0.kind == .media || $0.kind == .audio }
         let folderable = batch.filter { entry in
             AppModel.folderableSections.contains { $0.kind == entry.kind }
@@ -971,7 +1118,7 @@ struct LibrarySidebar: View {
                     }
                     if !menus.playlists.isEmpty { Divider() }
                     Button("New Playlist…") {
-                        if let id = model.createPlaylist(in: model.selectedSection) {
+                        if let id = model.createPlaylist(in: .audio) {
                             for entry in tracks { model.addToPlaylist(id, itemID: entry.id) }
                         }
                     }
@@ -984,10 +1131,8 @@ struct LibrarySidebar: View {
                     }
                     if !menus.folders.isEmpty {
                         Divider()
-                        ForEach(menus.folders, id: \.self) { folder in
-                            Button(folder) {
-                                for entry in folderable { model.moveToFolder(entry, folder: folder) }
-                            }
+                        FolderTreeMenu(nodes: TeamDriveLogic.folderTree(menus.folders), current: nil) { folder in
+                            for entry in folderable { model.moveToFolder(entry, folder: folder) }
                         }
                     }
                 }
@@ -1008,6 +1153,18 @@ struct LibrarySidebar: View {
 
     @ViewBuilder
     private func singleEntryMenu(_ entry: LibraryIndex.Entry, menus: RowMenuLists) -> some View {
+        if entry.kind == .note {
+            Button("Open") { model.selectedEntryID = entry.id }
+            if !runOnly {
+                Button("Pop Out") { openWindow(id: "note", value: entry.id) }
+            }
+            if let layout, !runOnly {
+                Menu("Show With Slides") {
+                    Button("Beside") { layout.showNotesPanel(.beside, noteID: entry.id) }
+                    Button("Below") { layout.showNotesPanel(.below, noteID: entry.id) }
+                }
+            }
+        }
         if [.presentation, .media, .audio].contains(entry.kind) {
             Button("Add to Service") { model.addToCurrentService(entry) }
         }
@@ -1018,9 +1175,25 @@ struct LibrarySidebar: View {
                 appModeRaw = AppMode.edit.rawValue
             }
         }
+        if entry.kind == .overlay, !runOnly, let overlay = model.overlay(entry.id) {
+            let assigned = overlay.layer.flatMap(LayerKind.init(rawValue:)) ?? .overlays
+            Menu("Layer") {
+                ForEach(Array(LayerKind.allCases.reversed()), id: \.self) { layer in
+                    Toggle(layer.displayName, isOn: Binding(
+                        get: { assigned == layer },
+                        set: { _ in
+                            model.updateOverlay(entry.id) {
+                                $0.layer = layer == .overlays ? nil : layer.rawValue
+                            }
+                        }
+                    ))
+                }
+            }
+        }
         if entry.kind == .media {
 
             Section("Cue") {
+                LibraryMediaPlaybackRows(model: model, ids: [entry.id])
                 MediaCueGrammarItems(
                     model: model, actionRouter: nil,
                     mediaID: entry.id, state: mediaMenuState
@@ -1039,9 +1212,8 @@ struct LibrarySidebar: View {
                         .disabled(entry.subkind.isEmpty)
                     if !menus.folders.isEmpty {
                         Divider()
-                        ForEach(menus.folders, id: \.self) { folder in
-                            Button(folder) { model.moveToFolder(entry, folder: folder) }
-                                .disabled(entry.subkind == folder)
+                        FolderTreeMenu(nodes: TeamDriveLogic.folderTree(menus.folders), current: entry.subkind) { folder in
+                            model.moveToFolder(entry, folder: folder)
                         }
                     }
                     Divider()
@@ -1056,7 +1228,7 @@ struct LibrarySidebar: View {
                     }
                     if !menus.playlists.isEmpty { Divider() }
                     Button("New Playlist…") {
-                        if let id = model.createPlaylist(in: model.selectedSection) {
+                        if let id = model.createPlaylist(in: .audio) {
                             model.addToPlaylist(id, itemID: entry.id)
                         }
                     }
@@ -1115,10 +1287,6 @@ struct LibrarySidebar: View {
                         Button("Locate Missing Media…") { locatePanelShown = true }
                     }
                 }
-                if entry.kind == .media, let item = model.media(entry.id),
-                   RecordingLibrary.isRecording(item), !model.isMediaFileMissing(item) {
-                    Button("Export To…") { model.exportRecording(entry.id) }
-                }
                 Button("Show in Finder") { showInFinder([entry]) }
             }
         }
@@ -1139,7 +1307,7 @@ struct LibrarySidebar: View {
         case .alertPreset: nil
         case .actionCombo: nil
         case .confidenceLayout: .confidence
-        case .note: nil
+        case .note: .notes
         case .midiDevice: nil
         case .streamDestination: nil
         case .scheduleTrigger, .schedulerBoard, .controlBoard, .groupPalette,
@@ -1148,12 +1316,13 @@ struct LibrarySidebar: View {
     }
 
     private var acceptsImport: Bool {
-        model.selectedSection == .media || model.selectedSection == .audio
+        !runOnly && (model.selectedSection == .media || model.selectedSection == .audio)
     }
 
     private var emptyDescription: String {
         switch model.selectedSection {
         case .media, .audio: "Drop files here or use Import."
+        case .notes: "Use New, paste, or drop a Word, PDF or text file."
         default: "Use New to create one."
         }
     }
@@ -1232,6 +1401,14 @@ struct LibrarySidebar: View {
                         Label("New", systemImage: "plus")
                     }
                     .fixedSize()
+                } else if model.selectedSection == .notes {
+                    Button {
+                        Task { await model.newNote() }
+                    } label: {
+                        Label("New", systemImage: "plus")
+                    }
+                    .disabled(runOnly)
+                    .help("New note")
                 } else {
                     Button {
                         fileNewEntry(model.createEntity(in: model.selectedSection))
@@ -1239,7 +1416,7 @@ struct LibrarySidebar: View {
                         Label("New", systemImage: "plus")
                     }
                 }
-                if AppModel.folderableSections.contains(model.selectedSection) {
+                if AppModel.folderableSections.contains(model.selectedSection), model.selectedSection != .notes {
                     Button {
                         creatingFolder = true
                     } label: {
@@ -1248,7 +1425,7 @@ struct LibrarySidebar: View {
                     .disabled(folderPath == nil || (folderPath.map(isUnfiled) ?? false))
                 }
                 Spacer()
-                if AppModel.folderableSections.contains(model.selectedSection) {
+                if hasGridMode {
                     Button {
                         UserDefaults.standard.set(!isGridMode, forKey: viewModeKey)
                         viewModeBump += 1
@@ -1403,6 +1580,8 @@ struct LibraryCommands: Commands {
                 .disabled(model == nil || runOnly)
             Button("Import MxU Slides Presentation…") { model?.presentPresentationFileImport() }
                 .disabled(model == nil || runOnly)
+            Button("Import Notes…") { model?.presentNotesImport() }
+                .disabled(model == nil || runOnly)
             Divider()
             Button("Export Library Backup…") { exportBackup() }
                 .disabled(model == nil || runOnly)
@@ -1464,6 +1643,71 @@ struct LibraryCommands: Commands {
         if let model {
             BackupTransferRunner(model: model).presentImport()
         }
+    }
+}
+
+extension AppModel {
+    static let noteFileTypes: [UTType] = NoteFileReader.fileExtensions.compactMap { UTType(filenameExtension: $0) }
+    static let autoMarkKey = "makeSlides.autoMark"
+
+    var ownSlideTypes: [String] { slideBuilding.slideDesignMap.options.ownTypes.map(\.name) }
+
+    var autoMark: NoteSlideMarks.AutoMark {
+        UserDefaults.standard.string(forKey: Self.autoMarkKey).flatMap(NoteSlideMarks.AutoMark.init) ?? .pickForMe
+    }
+
+    func presentNotesImport() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = Self.noteFileTypes
+        panel.message = "Choose notes"
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in await self.importNotes(urls) }
+        }
+    }
+
+    func importNotes(_ urls: [URL]) async {
+        var unread: [String] = []
+        let mode = autoMark
+        let ownTypes = ownSlideTypes
+        for url in urls {
+            if let body = await Self.noteBody(of: url, save: NoteMediaFiles.save) {
+                await newNote(name: url.deletingPathExtension().lastPathComponent, body: mode.marking(body, ownTypes: ownTypes))
+            } else {
+                unread.append(url.lastPathComponent)
+            }
+        }
+        if !unread.isEmpty {
+            noteImportSummary("Can't read \(unread.joined(separator: ", ")) as notes. MxU Slides reads Word, RTF, ODT, PDF, PowerPoint and text files.")
+        }
+    }
+
+    func pasteNotes(_ text: String) async {
+        let mode = autoMark
+        let ownTypes = ownSlideTypes
+        let body = await Task.detached(priority: .userInitiated) { mode.marking(Self.noteBody(text: text), ownTypes: ownTypes) }.value
+        await newNote(name: LocalNotes.pastedName(text), body: body)
+    }
+
+    func newPastedNote(name: String, body: NoteBody) async {
+        let mode = autoMark
+        let ownTypes = ownSlideTypes
+        let marked = await Task.detached(priority: .userInitiated) { mode.marking(body, ownTypes: ownTypes) }.value
+        await newNote(name: name, body: marked)
+    }
+
+    nonisolated static func noteBody(of url: URL, save: NoteFileReader.SaveMedia? = nil) async -> NoteBody? {
+        await Task.detached(priority: .userInitiated) {
+            url.pathExtension.lowercased() == "pptx"
+                ? (try? PPTXNoteText.body(ofFile: url)).flatMap { $0.blocks.isEmpty ? nil : $0 }
+                : NoteFileReader.body(ofFile: url, save: save)
+        }.value
+    }
+
+    nonisolated static func noteBody(text: String) -> NoteBody {
+        NoteFileReader.body(text: text)
     }
 }
 
@@ -1590,12 +1834,40 @@ struct MultiViewBadge: View {
 
 private struct EntryRow: View {
     let model: AppModel
+    let render: RenderContext?
     let entry: LibraryIndex.Entry
 
+    let fire: LibraryFireActions?
+    @State private var hovering = false
+
     var body: some View {
-        HStack {
-            Text(entry.name)
-            Spacer()
+        HStack(spacing: 8) {
+            if LibraryPresentLogic.showsThumbnail(entry.kind) {
+                ZStack {
+                    Color.black.opacity(0.35)
+                    LibraryItemFace(model: model, render: render, entry: entry)
+                }
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .frame(width: 46)
+                .clipShape(RoundedRectangle.standard(CornerStandard.element))
+                .overlay(
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(fire?.isLive == true ? Color.green : Color.separator.opacity(0.5),
+                                      lineWidth: fire?.isLive == true ? 1.5 : 1)
+                )
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(entry.name)
+                        .lineLimit(1)
+                }
+                if LibraryPresentLogic.showsLastUsed(entry.kind) {
+                    Text(LibraryPresentLogic.lastUsedText(entry.lastUsedAt))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer(minLength: 4)
             switch entry.kind {
             case .media:
                 if let item = model.media(entry.id) {
@@ -1618,7 +1890,16 @@ private struct EntryRow: View {
             default:
                 EmptyView()
             }
+            if let fire {
+                LibraryRowFireControls(actions: fire, hovering: hovering)
+            }
+            if entry.kind == .theme {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .onHover { hovering = $0 }
     }
 
     private var star: some View {
@@ -1743,6 +2024,7 @@ struct LibraryItemFace: View {
         case presentation(Presentation, Theme?)
         case overlay(Overlay)
         case confidenceLayout(ConfidenceLayout)
+        case theme(Theme)
     }
 
     @State private var loaded: Face?
@@ -1763,6 +2045,24 @@ struct LibraryItemFace: View {
         switch entry.kind {
         case .media:
             PosterImage(model: model, mediaId: entry.id)
+        case .theme:
+
+            if case .theme(let theme) = loaded, let design = theme.slides?.first {
+                let slide = NewSlide.preview(of: design, themeId: theme.id)
+                SlideThumbnailView(
+                    model: model, render: render,
+                    slide: slide,
+                    presentation: Presentation(
+                        id: "newSlide|\(theme.id)", name: theme.name, presentationKind: .deck,
+                        themeId: theme.id, slides: [slide]),
+                    theme: theme,
+                    arrangementId: nil,
+                    hideScopedBackgrounds: false,
+                    contentStamp: loadedStamp
+                )
+            } else {
+                glyphFace
+            }
         case .presentation, .overlay, .confidenceLayout:
             switch loaded {
             case .presentation(let presentation, let theme):
@@ -1812,7 +2112,7 @@ struct LibraryItemFace: View {
                     hideScopedBackgrounds: false,
                     contentStamp: loadedStamp
                 )
-            case nil:
+            case .theme, nil:
                 glyphFace
             }
         default:
@@ -1846,6 +2146,13 @@ struct LibraryItemFace: View {
                 Overlay.self, id: entry.id, updatedAt: stamp, client: client
             ) {
                 loaded = .overlay(overlay)
+                loadedStamp = "\(stamp)"
+            }
+        case .theme:
+            if let theme = await ThumbnailStore.shared.faceValue(
+                Theme.self, id: entry.id, updatedAt: stamp, client: client
+            ) {
+                loaded = .theme(theme)
                 loadedStamp = "\(stamp)"
             }
         case .confidenceLayout:
@@ -1971,14 +2278,38 @@ struct FolderPreviewCard: View {
     }
 }
 
+struct FolderTreeMenu: View {
+    let nodes: [TeamDriveLogic.FolderNode]
+    let current: String?
+    let pick: (String) -> Void
+
+    var body: some View {
+        ForEach(nodes) { node in
+            if node.children.isEmpty {
+                Button(node.name) { pick(node.path) }
+                    .disabled(node.path == current)
+            } else {
+                Menu(node.name) {
+                    Button(node.name) { pick(node.path) }
+                        .disabled(node.path == current)
+                    Divider()
+                    FolderTreeMenu(nodes: node.children, current: current, pick: pick)
+                }
+            }
+        }
+    }
+}
+
 struct SlideDropTarget: ViewModifier {
     let enabled: Bool
     let accepts: (String) -> Bool
     let perform: ([String]) -> Bool
     @Binding var targeted: Bool
 
+    @Environment(\.runOnly) private var runOnly
+
     func body(content: Content) -> some View {
-        if enabled {
+        if enabled, !runOnly {
             content
                 .dropDestination(for: String.self) { payloads, _ in
                     perform(payloads)

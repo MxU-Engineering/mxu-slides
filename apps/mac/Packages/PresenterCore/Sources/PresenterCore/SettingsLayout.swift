@@ -24,6 +24,10 @@ public enum SettingsLayout {
         Page(id: "general", sections: [
             Section(nil, ["appearance.scheme"]),
         ]),
+        Page(id: "backup", sections: [
+            Section("Backup computer", ["station.backup", "station.beBackup"]),
+            Section("Restore", ["library.scheduledBackup"]),
+        ]),
         Page(id: "present", sections: [
             Section("Transitions", ["present.slideTransition", "present.mediaTransition"]),
             Section(nil, ["present.clearAllAudio"]),
@@ -36,7 +40,7 @@ public enum SettingsLayout {
                 "present.transparencyGrid", "present.scopedBackgrounds",
             ]),
             Section("Layouts", ["present.layouts"]),
-            Section("Volunteers", ["present.runOnly", "present.volunteerTabs"]),
+            Section("Volunteers", ["present.runOnly", "present.volunteerTabs", "present.volunteerLibraries"]),
         ]),
         Page(id: "edit", sections: [
             Section("Editing", ["edit.hideSidebar"]),

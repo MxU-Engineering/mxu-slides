@@ -120,12 +120,14 @@ import Testing
 
     @Test func importsAskWithAPictureAndNeverSwapAFile() throws {
         let app = try source("AppModel.swift")
-        let start = try #require(app.range(of: "func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {"))
+        let start = try #require(app.range(of: "func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil, unattended: Bool = false) async -> [String] {"))
         let end = try #require(app.range(of: "func importMediaForPick(", range: start.upperBound..<app.endIndex))
         let body = String(app[start.upperBound..<end.lowerBound])
         #expect(!body.contains("replaceMediaFile(") && !body.contains("replaceAudioFile("))
         #expect(body.contains("case .sameFile(let id): (id, media(id)?.name ?? audio(id)?.name ?? name, .sameFile)"))
         #expect(body.contains("let answer = await MediaImportPrompt.ask("))
+
+        #expect(body.contains("if unattended {\n                    useExisting = MediaImportDedupe.unattendedUsesExisting(match)"))
         let prompt = try source("MediaImportPrompt.swift")
         #expect(prompt.contains("Button(\"Add as New Copy\") { finish(0) }"))
         #expect(prompt.contains("Button(\"Use Existing\") { finish(1) }\n                    .keyboardShortcut(.defaultAction)"))

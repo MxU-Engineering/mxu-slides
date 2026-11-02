@@ -114,3 +114,20 @@ private func theme(_ id: String, _ designs: [Slide]) -> Theme {
     #expect(deck.slides(["a", "b"], allFollow: "scripture", design: "reference"))
     #expect(!deck.slides(["a", "b"], allFollow: "scripture", design: "Verse"))
 }
+
+@Test func madeSlidesTakeTheirNamedDesignsActions() {
+    let worship = theme("worship", [design("Lyrics", [preset("l", "full")]), design("Verse", [preset("v", "sideThird")])])
+    let scripture = theme("scripture", [design("Verse", [preset("s", "lowerThird")])])
+    var fromOther = Slide(id: "b", name: "", objects: [])
+    fromOther.themeSlideName = "Verse"
+    fromOther.themeId = "scripture"
+    var deckVerse = Slide(id: "a", name: "", objects: [], actions: [preset("switch", "sideThird")])
+    deckVerse.themeSlideName = "Verse"
+    let media = Slide(id: "c", name: "", objects: [])
+    var built = NoteSlideBuilder.Built(slides: [deckVerse, fromOther, media], sections: [], arrangement: nil, groupBySlideId: [:])
+
+    NoteSlideBuilder.attachingDesignActions(to: &built, deckThemeId: "worship") { ["worship": worship, "scripture": scripture][$0] }
+    #expect(built.slides[0].actions?.count == 1, "the type's switch already gives the same preset")
+    #expect(built.slides[1].actions?.compactMap(\.presetId) == ["lowerThird"], "read through the slide's own theme")
+    #expect(built.slides[2].actions == nil, "a slide naming no design takes nothing")
+}

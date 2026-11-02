@@ -1,0 +1,120 @@
+{
+  "name": "A church's own slide types",
+  "about": "Two own types: a line labelled with a type's name is that type, case-insensitively, ahead of the run-sheet words and the labelled-point rule, and never joins a title as its subtitle. Announcement splits one line per slide; Big Question fits the box and reveals a line per click. Built-in labels and run-sheet lines keep their rules.",
+  "mode": "pickForMe",
+  "options": {
+    "ownTypes": [
+      {
+        "name": "Announcement",
+        "split": "line"
+      },
+      {
+        "name": "Big Question",
+        "reveal": true
+      }
+    ]
+  },
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "level": 1,
+        "runs": [
+          {
+            "text": "Family Sunday"
+          }
+        ],
+        "type": "heading"
+      },
+      {
+        "runs": [
+          {
+            "text": "Announcement: Youth camp signups close Friday"
+          },
+          {
+            "text": "\n"
+          },
+          {
+            "text": "Bring a friend"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Big question: What are you rooted in?"
+          },
+          {
+            "text": "\n"
+          },
+          {
+            "text": "What holds when the storm comes?"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Next step: Write it down."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Announcements"
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "title",
+      "text": "Family Sunday"
+    },
+    {
+      "type": "Announcement",
+      "text": "Announcement: Youth camp signups close Friday\nBring a friend"
+    },
+    {
+      "type": "Big Question",
+      "text": "Big question: What are you rooted in?\nWhat holds when the storm comes?"
+    },
+    {
+      "type": "points",
+      "text": "Next step: Write it down."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "title",
+      "text": "Family Sunday"
+    },
+    {
+      "kind": "body",
+      "text": "Youth camp signups close Friday"
+    },
+    {
+      "kind": "body",
+      "text": "Bring a friend"
+    },
+    {
+      "kind": "body",
+      "text": "What are you rooted in?\nWhat holds when the storm comes?",
+      "reveal": [
+        0,
+        1
+      ]
+    },
+    {
+      "kind": "points",
+      "text": "Next step\nWrite it down."
+    }
+  ]
+}

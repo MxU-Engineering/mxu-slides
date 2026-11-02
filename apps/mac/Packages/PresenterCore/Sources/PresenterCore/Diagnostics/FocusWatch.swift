@@ -46,4 +46,21 @@ public enum FocusWatch {
             ].compactMap { $0 }.joined(separator: ", ")
         }
     }
+
+    public struct Front: Equatable, Sendable {
+        public var appActive: Bool
+
+        public var frontIsSelf: Bool
+
+        public init(appActive: Bool, frontIsSelf: Bool) {
+            self.appActive = appActive
+            self.frontIsSelf = frontIsSelf
+        }
+
+        public var resyncs: Bool { !appActive && frontIsSelf }
+
+        public var summary: String {
+            (appActive ? "app active" : "app inactive") + ", system front: " + (frontIsSelf ? "this app" : "another app")
+        }
+    }
 }

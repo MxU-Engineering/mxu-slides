@@ -48,10 +48,16 @@ public struct PDFPageText: Equatable, Sendable {
     public var marks: [PDFMark]
     public var bounds: CGRect
 
-    public init(glyphs: [PDFGlyph], marks: [PDFMark] = [], bounds: CGRect = .zero) {
+    public var rules: [CGRect]
+
+    public var images: [CGRect]
+
+    public init(glyphs: [PDFGlyph], marks: [PDFMark] = [], bounds: CGRect = .zero, rules: [CGRect] = [], images: [CGRect] = []) {
         self.glyphs = glyphs
         self.marks = marks
         self.bounds = bounds
+        self.rules = rules
+        self.images = images
     }
 }
 
@@ -64,7 +70,8 @@ public enum PDFGlyphReader {
             let state = ScanState()
             let stream = CGPDFContentStreamCreateWithPage(page)
             state.scan(stream)
-            return PDFPageText(glyphs: state.glyphs, marks: state.marks, bounds: page.getBoxRect(.mediaBox))
+            return PDFPageText(
+                glyphs: state.glyphs, marks: state.marks, bounds: page.getBoxRect(.mediaBox), rules: state.rules, images: state.images)
         }
     }
 
@@ -123,7 +130,7 @@ public enum PDFGlyphReader {
         var unicode: [Int: String] = [:]
         var hasUnicodeMap = false
 
-        var macRoman = false
+        var encoding = String.Encoding.windowsCP1252
 
         init(_ dictionary: CGPDFDictionaryRef) {
             var subtype: UnsafePointer<CChar>?
@@ -146,14 +153,15 @@ public enum PDFGlyphReader {
                 }
             } else {
                 readSimpleWidths(dictionary)
-                var encoding: UnsafePointer<CChar>?
-                var encodingDictionary: CGPDFDictionaryRef?
-                if !CGPDFDictionaryGetName(dictionary, "Encoding", &encoding),
-                   CGPDFDictionaryGetDictionary(dictionary, "Encoding", &encodingDictionary), let encodingDictionary {
-                    CGPDFDictionaryGetName(encodingDictionary, "BaseEncoding", &encoding)
-                }
-                macRoman = encoding.map { String(cString: $0) } == "MacRomanEncoding"
             }
+
+            var encodingName: UnsafePointer<CChar>?
+            var encodingDictionary: CGPDFDictionaryRef?
+            if !CGPDFDictionaryGetName(dictionary, "Encoding", &encodingName),
+               CGPDFDictionaryGetDictionary(dictionary, "Encoding", &encodingDictionary), let encodingDictionary {
+                CGPDFDictionaryGetName(encodingDictionary, "BaseEncoding", &encodingName)
+            }
+            if let encodingName, String(cString: encodingName) == "MacRomanEncoding" { encoding = .macOSRoman }
             var toUnicode: CGPDFStreamRef?
             if CGPDFDictionaryGetStream(dictionary, "ToUnicode", &toUnicode), let toUnicode {
                 var format = CGPDFDataFormat.raw
@@ -212,7 +220,7 @@ public enum PDFGlyphReader {
             } else {
 
                 let byte = UInt8(truncatingIfNeeded: code)
-                return String(bytes: [byte], encoding: macRoman ? .macOSRoman : .windowsCP1252) ?? ""
+                return String(bytes: [byte], encoding: encoding) ?? ""
             }
         }
 
@@ -296,6 +304,8 @@ public enum PDFGlyphReader {
     struct GraphicsState {
         var ctm = CGAffineTransform.identity
         var fillLuminance: CGFloat = 0
+        var strokeLuminance: CGFloat = 0
+        var lineWidth: CGFloat = 1
 
         var fillComponents = 1
     }
@@ -315,6 +325,8 @@ public enum PDFGlyphReader {
         var rise: CGFloat = 0
         var fonts: [String: Font] = [:]
         var marks: [PDFMark] = []
+        var rules: [CGRect] = []
+        var images: [CGRect] = []
         var path = CGMutablePath()
 
         var contentStreams: [CGPDFContentStreamRef] = []
@@ -394,7 +406,21 @@ public enum PDFGlyphReader {
                bounds.width > 0.5, bounds.height > 0.5 {
                 marks.append(PDFMark(bounds: bounds, accidental: PDFGlyphReader.accidental(of: path)))
             }
+            if !path.isEmpty, graphics.fillLuminance < 0.35 { addRule(bounds) }
             endPath()
+        }
+
+        func strokePath() {
+            let bounds = path.boundingBoxOfPath
+            let width = hypot(graphics.ctm.c, graphics.ctm.d) * graphics.lineWidth
+            if !path.isEmpty, graphics.strokeLuminance < 0.35, bounds.height < 0.5 {
+                addRule(bounds.insetBy(dx: 0, dy: -width / 2))
+            }
+            endPath()
+        }
+
+        private func addRule(_ bounds: CGRect) {
+            if bounds.height > 0, bounds.height <= 3, bounds.width > bounds.height * 4 { rules.append(bounds) }
         }
 
         func endPath() {
@@ -622,8 +648,20 @@ public enum PDFGlyphReader {
             for fill in ["f", "F", "f*", "B", "B*", "b", "b*"] {
                 CGPDFOperatorTableSetCallback(table, fill) { _, info in ScanState.state(info).fillPath() }
             }
-            for other in ["S", "s", "n"] {
-                CGPDFOperatorTableSetCallback(table, other) { _, info in ScanState.state(info).endPath() }
+            for stroke in ["S", "s"] {
+                CGPDFOperatorTableSetCallback(table, stroke) { _, info in ScanState.state(info).strokePath() }
+            }
+            CGPDFOperatorTableSetCallback(table, "n") { _, info in ScanState.state(info).endPath() }
+            CGPDFOperatorTableSetCallback(table, "w") { scanner, info in
+                if let value = ScanState.numbers(scanner, 1) { ScanState.state(info).graphics.lineWidth = value[0] }
+            }
+            CGPDFOperatorTableSetCallback(table, "G") { scanner, info in
+                if let value = ScanState.numbers(scanner, 1) { ScanState.state(info).graphics.strokeLuminance = value[0] }
+            }
+            CGPDFOperatorTableSetCallback(table, "RG") { scanner, info in
+                if let v = ScanState.numbers(scanner, 3) {
+                    ScanState.state(info).graphics.strokeLuminance = 0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2]
+                }
             }
             CGPDFOperatorTableSetCallback(table, "Do") { scanner, info in
                 let state = ScanState.state(info)
@@ -636,9 +674,12 @@ public enum PDFGlyphReader {
                       let dictionary = CGPDFStreamGetDictionary(stream)
                 else { return }
                 var subtype: UnsafePointer<CChar>?
-                guard CGPDFDictionaryGetName(dictionary, "Subtype", &subtype), let subtype,
-                      String(cString: subtype) == "Form"
-                else { return }
+                guard CGPDFDictionaryGetName(dictionary, "Subtype", &subtype), let subtype else { return }
+                if String(cString: subtype) == "Image" {
+                    state.images.append(CGRect(x: 0, y: 0, width: 1, height: 1).applying(state.graphics.ctm))
+                    return
+                }
+                guard String(cString: subtype) == "Form" else { return }
                 var resources: CGPDFDictionaryRef?
                 CGPDFDictionaryGetDictionary(dictionary, "Resources", &resources)
                 let saved = state.graphics

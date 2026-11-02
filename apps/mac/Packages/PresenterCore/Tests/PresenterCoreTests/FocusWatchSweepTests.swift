@@ -29,6 +29,15 @@ import Testing
         #expect(recorder.contains("\"focus.lost\""), "the moment key goes nowhere is its own line")
     }
 
+    @Test func aStuckClickNamesTheFrontAppAndResyncsOnlyByTheRule() throws {
+        let recorder = try source("FocusWatchRecorder.swift")
+        #expect(recorder.contains("frontmostApplication"), "the line names who the system has in front")
+        #expect(recorder.contains("eventSourceUnixProcessID"), "a click posted by another process names it")
+        let resync = try #require(recorder.range(of: "if front.resyncs {"))
+        #expect(recorder[resync.upperBound...].prefix(120).contains("NSApp.deactivate()"))
+        #expect(recorder.components(separatedBy: "NSApp.deactivate()").count == 2, "deactivation only under the rule")
+    }
+
     @Test func sendFeedbacksNoteTakesTheCaret() throws {
         let feedback = try source("FeedbackView.swift")
         #expect(feedback.contains(".focused($noteFocused)"))

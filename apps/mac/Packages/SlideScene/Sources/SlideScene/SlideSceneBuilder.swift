@@ -489,14 +489,7 @@ public enum SlideSceneBuilder {
             slide: slide, presentation: presentation, arrangementId: arrangementId
         )
         if let background {
-            scene.addItem(
-                RenderItem(
-                    id: "\(slide.id)-cue-background",
-                    frame: CGRect(origin: .zero, size: canvasSize),
-                    content: .media(id: background.mediaId, scaleMode: .fill)
-                ),
-                to: layerKind(background.layer)
-            )
+            scene.addItem(cueItem(background, id: "\(slide.id)-cue-background", canvasSize: canvasSize), to: layerKind(background.layer))
         }
 
         let cueBackground = background.map { (layer: layerKind($0.layer), mediaId: $0.mediaId) }
@@ -600,10 +593,18 @@ public enum SlideSceneBuilder {
     ) -> [ComposedEntry] {
         guard let template else { return objects.map { ComposedEntry(object: $0, fromTheme: false) } }
         let placeholders = placeholderAssignments(for: objects, in: template)
+
+        let photos = Dictionary(
+            zip(template.photoSpots.map(\.id), objects.filter(\.isPhotoSpot)), uniquingKeysWith: { first, _ in first })
         var stack: [ComposedEntry] = []
         var bound = Set<String>()
         for templateObject in template.objects {
-            if templateObject.objectKind == .text {
+            if templateObject.isPhotoSpot {
+                if let photo = photos[templateObject.id] {
+                    bound.insert(photo.id)
+                    stack.append(ComposedEntry(object: templateObject.filled(with: photo), fromTheme: false))
+                }
+            } else if templateObject.objectKind == .text {
                 var boundAny = false
                 for object in objects where placeholders[object.id]?.id == templateObject.id {
                     bound.insert(object.id)
@@ -634,26 +635,27 @@ public enum SlideSceneBuilder {
 
     public static func protectedLayers(
         for slide: Slide, mediaLayer: (String) -> LayerKind? = { _ in nil }
-    ) -> Set<LayerKind> {
-        var protected: Set<LayerKind> = [.slide]
+    ) -> Set<String> {
+        var protected: Set<String> = [LayerKind.slide.rawValue]
         if let background = slide.background, !background.mediaId.isEmpty {
-            protected.insert(layerKind(background.layer))
+            protected.insert(layerKind(background.layer).rawValue)
+            if let id = background.layerId, !id.isEmpty { protected.insert(id) }
         }
         for action in slide.actions ?? [] where action.kind == .fireMedia {
             if let id = action.mediaId, let layer = mediaLayer(id) {
-                protected.insert(layer)
+                protected.insert(layer.rawValue)
             }
         }
         return protected
     }
 
     public static func fireActions(
-        for slide: Slide, protected: Set<LayerKind>
+        for slide: Slide, protected: Set<String>
     ) -> [SlideAction] {
         guard let actions = slide.actions else { return [] }
         return actions.filter { action in
             guard action.kind == .clearLayer, !waitsBeforeFiring(action),
-                  let layer = action.layer.flatMap(LayerKind.init(rawValue:))
+                  let layer = action.layer
             else { return true }
             return !protected.contains(layer)
         }
@@ -1112,7 +1114,8 @@ public enum SlideSceneBuilder {
                     fontName: run.fontName, fontSize: run.fontSize,
                     color: run.colorHex.flatMap(ColorHex.color),
                     highlightColor: run.highlightColorHex.flatMap(ColorHex.color),
-                    tracking: run.tracking
+                    tracking: run.tracking,
+                    transform: run.textTransform.map { $0 == .uppercase ? .uppercase : .none }
                 )
             },
 
@@ -1335,12 +1338,21 @@ public enum SlideSceneBuilder {
         }
     }
 
-    private static func scaleMode(_ mode: MediaScaleMode?) -> SceneMediaScaleMode {
+    static func scaleMode(_ mode: MediaScaleMode?) -> SceneMediaScaleMode {
         switch mode {
         case .none, .fill: .fill
         case .fit: .fit
         case .stretch: .stretch
+        case .scaleAndBlur: .scaleAndBlur
         }
+    }
+
+    static func cueItem(_ cue: CueMedia, id: String, canvasSize: CGSize) -> RenderItem {
+        var item = RenderItem(
+            id: id, frame: CGRect(origin: .zero, size: canvasSize),
+            content: .media(id: cue.mediaId, scaleMode: scaleMode(cue.scaleMode)))
+        item.endFade = cue.endFade.map { $0 == .black ? .black : .clear }
+        return item
     }
 
     private static func sourceRect(_ rect: MediaSourceRect?) -> SceneSourceRect? {

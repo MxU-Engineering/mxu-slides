@@ -1,0 +1,112 @@
+{
+  "name": "Bold lines only",
+  "about": "A note mixing bold and plain lines: Pick for me suggests the bold lines, plus scripture and quotes, and leaves the talking notes alone.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "level": 1,
+        "runs": [
+          {
+            "text": "Rooted"
+          }
+        ],
+        "type": "heading"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "God plants us where we can grow."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Tell the story of the oak in my grandmother’s yard and how it survived the storm."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "Roots go down before fruit comes up."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Most of the growth happens where no one sees it."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Colossians 2:7 – rooted and built up in him and established in the faith."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "“The tree that never had to fight for its sun never grew tall.”"
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "title",
+      "text": "Rooted"
+    },
+    {
+      "text": "God plants us where we can grow."
+    },
+    {
+      "text": "Roots go down before fruit comes up."
+    },
+    {
+      "type": "scripture",
+      "text": "Colossians 2:7 – rooted and built up in him and established in the faith."
+    },
+    {
+      "type": "quote",
+      "text": "“The tree that never had to fight for its sun never grew tall.”"
+    }
+  ],
+  "slides": [
+    {
+      "kind": "title",
+      "text": "Rooted"
+    },
+    {
+      "kind": "body",
+      "text": "God plants us where we can grow."
+    },
+    {
+      "kind": "body",
+      "text": "Roots go down before fruit comes up."
+    },
+    {
+      "kind": "scripture",
+      "text": "rooted and built up in him and established in the faith.\nColossians 2:7"
+    },
+    {
+      "kind": "quote",
+      "text": "“The tree that never had to fight for its sun never grew tall.”"
+    }
+  ]
+}

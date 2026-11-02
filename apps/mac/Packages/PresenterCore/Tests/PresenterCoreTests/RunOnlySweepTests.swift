@@ -14,7 +14,7 @@ import Testing
     private func presentSurfaces(_ sweep: SourceSweep) -> [SourceSweep.File] {
         let named: Set<String> = [
             "AppShell.swift", "ServicePlannerView.swift", "ServiceContinuousView.swift",
-            "PresentGridView.swift", "LivePanel.swift", "ServiceControlsPanel.swift", "MediaCueMenu.swift",
+            "PresentGridView.swift", "LivePanel.swift", "NoteReaderView.swift", "ServiceControlsPanel.swift", "MediaCueMenu.swift",
         ]
         return sweep.files.filter { file in
             !Self.notShownInRunOnly.contains(file.name) && (
@@ -24,7 +24,7 @@ import Testing
         }
     }
 
-    private static let notShownInRunOnly: Set<String> = ["LibraryView.swift"]
+    private static let notShownInRunOnly: Set<String> = []
 
     private func neighborhood(_ file: SourceSweep.File, at index: Int) -> String {
         let end = min(index + Self.reach, file.codeLines.count - 1)
@@ -123,7 +123,7 @@ import Testing
         let sweep = try SourceSweep.app()
         let app = try #require(sweep.file("MxUSlidesApp.swift"))
         let placed: Set<String> = [
-            "\"main\"", "\"module\"", "\"serviceControls\"", "\"preview\"", "\"outputs\"", "\"engine\"",
+            "\"main\"", "\"module\"", "\"serviceControls\"", "\"note\"", "\"library\"", "\"preview\"", "\"outputs\"", "\"engine\"",
         ]
         let scenePattern = /(?:Window|WindowGroup)\((?:"[^"]*",\s*)?id:\s*("[^"]+")/
         var unplaced: [String] = []
@@ -134,5 +134,6 @@ import Testing
         }
         #expect(unplaced.isEmpty, "decide what run-only shows in: \(unplaced)")
         #expect(app.text.contains("RunOnlyLockedPlaceholder(surface: \"Settings\")"))
+        #expect(try #require(sweep.file("ModuleWindow.swift")).text.contains("RunOnlyLockedPlaceholder(surface: \"The library\")"))
     }
 }

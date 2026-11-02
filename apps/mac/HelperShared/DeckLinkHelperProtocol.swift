@@ -39,6 +39,10 @@ import IOSurface
 
     func inputAudio(_ samples: Data, frames: Int32, channels: Int32, hostTime: Double)
 
+    func inputTiming(
+        audioMinusVideo: Double, queuedAudioFrames: Int32, queuedVideoFrames: Int32,
+        stampAge: Double, droppedPictures: Int64)
+
     func inputFormat(_ name: String, interlaced: Bool)
 
     func inputSignal(_ present: Bool)

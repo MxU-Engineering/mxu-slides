@@ -522,6 +522,7 @@ extension LibrarySection {
         case .audio: .audio
         case .themes: .themes
         case .confidence: .confidence
+        case .notes: .notes
         }
     }
 }

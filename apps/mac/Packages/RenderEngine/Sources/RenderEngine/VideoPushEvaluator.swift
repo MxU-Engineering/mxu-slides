@@ -15,7 +15,7 @@ public enum VideoPushEvaluator {
 
     public static func activeState(_ scene: RenderScene, now: Double) -> State? {
         var best: (anchor: Double, state: State)?
-        for layer in scene.layers where !layer.isHidden && !pushedLayers.contains(layer.kind) {
+        for layer in scene.layers where !layer.isHidden && !(layer.kind.map(pushedLayers.contains) ?? false) {
             for item in layer.items {
                 guard let context = item.animationContext, !item.animationSteps.isEmpty else { continue }
                 var amount: Double?
@@ -49,10 +49,10 @@ public enum VideoPushEvaluator {
         let clipped = frame.intersection(full)
         guard !clipped.isEmpty else { return full.insetBy(dx: margin, dy: margin) }
         let candidates = [
-            CGRect(x: 0, y: 0, width: clipped.minX, height: canvas.height),                                    
-            CGRect(x: clipped.maxX, y: 0, width: canvas.width - clipped.maxX, height: canvas.height),          
-            CGRect(x: 0, y: 0, width: canvas.width, height: clipped.minY),                                     
-            CGRect(x: 0, y: clipped.maxY, width: canvas.width, height: canvas.height - clipped.maxY),          
+            CGRect(x: 0, y: 0, width: clipped.minX, height: canvas.height),
+            CGRect(x: clipped.maxX, y: 0, width: canvas.width - clipped.maxX, height: canvas.height),
+            CGRect(x: 0, y: 0, width: canvas.width, height: clipped.minY),
+            CGRect(x: 0, y: clipped.maxY, width: canvas.width, height: canvas.height - clipped.maxY),
         ]
         let bestRect = candidates.max(by: { $0.width * $0.height < $1.width * $1.height }) ?? full
         let inset = bestRect.insetBy(dx: CGFloat(margin), dy: CGFloat(margin))

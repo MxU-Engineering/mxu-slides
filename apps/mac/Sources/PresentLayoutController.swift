@@ -12,26 +12,44 @@ final class PresentLayoutController {
 
     private(set) var openPreviews: Set<String> = []
 
+    private(set) var openNotes: Set<String> = []
+
     private(set) var serviceControlsWindowOpen = false
     static let serviceControlsAutosaveName = "serviceControls.panel"
+
+    private(set) var libraryWindowOpen = false
+    static let libraryAutosaveName = "library.panel"
     static let rightRailHiddenKey = "shell.rightRailHidden"
 
     private(set) var layouts: [PresentLayout] = []
 
     private(set) var activeLayoutID: String?
 
+    enum NotesPanelPlacement: String, CaseIterable {
+        case hidden, beside, below
+    }
+    private(set) var notesPanel: NotesPanelPlacement = .hidden
+    private(set) var notesPanelNoteID: String?
+
     private(set) var runOnly = false
 
     private(set) var runOnlyModules: [ServiceControlsModule]?
 
+    private(set) var runOnlyLibraryKinds = LibraryPresentLogic.volunteerDefaultKinds
+
     private static let poppedKey = "serviceControls.poppedOut"
     private static let previewKey = "present.previewPopped"  
     private static let previewsKey = "present.openPreviewTargets"
+    private static let notesKey = "present.openNotes"
     private static let serviceControlsWindowKey = "present.serviceControlsWindow"
+    private static let libraryWindowKey = "present.libraryWindow"
     private static let layoutsKey = "present.layouts"
     private static let activeKey = "present.activeLayoutID"
+    private static let notesPanelKey = "present.notesPanel"
+    private static let notesPanelNoteKey = "present.notesPanelNoteID"
     static let lockedKey = "present.runOnly"
     private static let runOnlyModulesKey = "present.runOnlyModules"
+    private static let runOnlyLibrariesKey = "present.runOnlyLibraries"
 
     private static let retiredPINKey = "present.runOnlyPIN"
     private static let preRunOnlyKey = "present.preRunOnly"
@@ -62,6 +80,18 @@ final class PresentLayoutController {
         save()
     }
 
+    func noteWindowOpened(_ noteID: String) {
+        guard !openNotes.contains(noteID) else { return }
+        openNotes.insert(noteID)
+        save()
+    }
+
+    func noteWindowClosed(_ noteID: String) {
+        guard openNotes.contains(noteID) else { return }
+        openNotes.remove(noteID)
+        save()
+    }
+
     func serviceControlsWindowOpened() {
         if !serviceControlsWindowOpen {
             serviceControlsWindowOpen = true
@@ -77,17 +107,51 @@ final class PresentLayoutController {
         }
     }
 
+    func libraryWindowOpened() {
+        if !libraryWindowOpen {
+            libraryWindowOpen = true
+            save()
+        }
+    }
+
+    func libraryWindowClosed() {
+        if libraryWindowOpen {
+            libraryWindowOpen = false
+            save()
+        }
+    }
+
+    func showNotesPanel(_ placement: NotesPanelPlacement, noteID: String) {
+        notesPanel = placement
+        notesPanelNoteID = noteID
+        save()
+    }
+
+    func hideNotesPanel() {
+        notesPanel = .hidden
+        save()
+    }
+
     private func save() {
         UserDefaults.standard.set(poppedOut.map(\.rawValue).sorted(), forKey: Self.poppedKey)
         UserDefaults.standard.set(openPreviews.sorted(), forKey: Self.previewsKey)
+        UserDefaults.standard.set(openNotes.sorted(), forKey: Self.notesKey)
         UserDefaults.standard.set(serviceControlsWindowOpen, forKey: Self.serviceControlsWindowKey)
+        UserDefaults.standard.set(libraryWindowOpen, forKey: Self.libraryWindowKey)
+        UserDefaults.standard.set(notesPanel.rawValue, forKey: Self.notesPanelKey)
+        UserDefaults.standard.set(notesPanelNoteID, forKey: Self.notesPanelNoteKey)
     }
 
     private func restore() {
         let raw = UserDefaults.standard.stringArray(forKey: Self.poppedKey) ?? []
         poppedOut = Set(raw.compactMap(ServiceControlsModule.init(rawValue:)))
         openPreviews = Set(UserDefaults.standard.stringArray(forKey: Self.previewsKey) ?? [])
+        openNotes = Set(UserDefaults.standard.stringArray(forKey: Self.notesKey) ?? [])
         serviceControlsWindowOpen = UserDefaults.standard.bool(forKey: Self.serviceControlsWindowKey)
+        libraryWindowOpen = UserDefaults.standard.bool(forKey: Self.libraryWindowKey)
+        notesPanel = UserDefaults.standard.string(forKey: Self.notesPanelKey)
+            .flatMap(NotesPanelPlacement.init(rawValue:)) ?? .hidden
+        notesPanelNoteID = UserDefaults.standard.string(forKey: Self.notesPanelNoteKey)
 
         if openPreviews.isEmpty, UserDefaults.standard.bool(forKey: Self.previewKey) {
             openPreviews = [""]
@@ -102,6 +166,8 @@ final class PresentLayoutController {
         UserDefaults.standard.removeObject(forKey: Self.retiredPINKey)
         runOnlyModules = UserDefaults.standard.string(forKey: Self.runOnlyModulesKey)
             .map(Self.modules(from:))
+        runOnlyLibraryKinds = LibraryPresentLogic.volunteerKinds(
+            stored: UserDefaults.standard.string(forKey: Self.runOnlyLibrariesKey))
     }
 
     func enterRunOnly(applying apply: (() -> Void)? = nil) {
@@ -122,6 +188,15 @@ final class PresentLayoutController {
         let hidden = Self.modules(from: UserDefaults.standard.string(forKey: "serviceControls.hiddenModules") ?? "")
         return runOnlyModules
             ?? ServiceControlsModule.defaultOrder.filter { !hidden.contains($0) }
+    }
+
+    var volunteerLibraryKinds: Set<DocumentKind>? {
+        runOnly ? Set(runOnlyLibraryKinds) : nil
+    }
+
+    func setRunOnlyLibraryKinds(_ kinds: [DocumentKind]) {
+        runOnlyLibraryKinds = kinds
+        UserDefaults.standard.set(kinds.map(\.rawValue).joined(separator: ","), forKey: Self.runOnlyLibrariesKey)
     }
 
     func setRunOnlyModules(_ modules: [ServiceControlsModule]) {
@@ -227,6 +302,11 @@ final class PresentLayoutController {
                     forKey: "NSWindow Frame \(PreviewWindowView.autosaveName(for: preview.target))")
             }
         }
+        for note in layout.openNotes ?? [] {
+            if let frame = note.frame {
+                defaults.set(frame, forKey: "NSWindow Frame \(NoteWindowView.autosaveName(for: note.id))")
+            }
+        }
 
         let wanted = Set(layout.poppedOut.compactMap {
             ServiceControlsModule(rawValue: $0.module)
@@ -258,6 +338,19 @@ final class PresentLayoutController {
         }
         openPreviews = wantedPreviews
 
+        let wantedNotes = Set((layout.openNotes ?? []).map(\.id))
+        for noteID in openNotes.subtracting(wantedNotes) {
+            dismissWindow(id: "note", value: noteID)
+        }
+        for note in layout.openNotes ?? [] {
+            openWindow(id: "note", value: note.id)
+            if let frame = note.frame,
+               let window = Self.window(autosaveName: NoteWindowView.autosaveName(for: note.id)) {
+                window.setFrame(from: frame)
+            }
+        }
+        openNotes = wantedNotes
+
         let wantsServiceControls = layout.serviceControlsWindowOpen ?? false
         serviceControlsWindowOpen = wantsServiceControls
         if wantsServiceControls {
@@ -269,6 +362,12 @@ final class PresentLayoutController {
         } else {
             dismissWindow(id: "serviceControls")
         }
+        if let raw = layout.notesPanel {
+            notesPanel = NotesPanelPlacement(rawValue: raw) ?? .hidden
+            notesPanelNoteID = layout.notesPanelNoteID
+        }
+        if let width = layout.notesPanelWidth { defaults.set(width, forKey: "shell.notesPanelWidth") }
+        if let height = layout.notesBelowHeight { defaults.set(height, forKey: "shell.notesBelowHeight") }
         activeLayoutID = layout.id
         save()
         saveLayouts()
@@ -296,6 +395,16 @@ final class PresentLayoutController {
                         autosaveName: PreviewWindowView.autosaveName(for: target))
                 )
             },
+            openNotes: openNotes.sorted().map { noteID in
+                PresentLayout.PoppedNote(
+                    id: noteID,
+                    frame: Self.frameDescriptor(autosaveName: NoteWindowView.autosaveName(for: noteID))
+                )
+            },
+            notesPanel: notesPanel.rawValue,
+            notesPanelNoteID: notesPanelNoteID,
+            notesPanelWidth: defaults.object(forKey: "shell.notesPanelWidth") as? Double,
+            notesBelowHeight: defaults.object(forKey: "shell.notesBelowHeight") as? Double,
             rightRailWidth: defaults.object(forKey: "shell.rightRailWidth") as? Double ?? 280,
             rightSplit: defaults.object(forKey: "shell.rightSplit") as? Double ?? 0.5,
             sidebarWidth: defaults.object(forKey: "shell.sidebarWidth") as? Double ?? 272,

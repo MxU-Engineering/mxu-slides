@@ -82,6 +82,10 @@ struct PresentGridView: View {
                     .padding(.bottom, 8)
                 }
                 Divider()
+                if showsNote, let noteID = model.noteID(linkedToPresentation: presentation.id) {
+                    NoteReaderView(model: model, noteID: noteID, host: .center, render: render, controls: controls)
+                        .id(noteID)
+                } else {
                 ScrollView {
                     SlideGridBody(
                         model: model, render: render, controls: controls,
@@ -113,9 +117,14 @@ struct PresentGridView: View {
                 .onDeleteCommand { clipboardRequests.take(.delete) }
 
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
+                }
             }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                focused = true
+                showsNote = CenterNoteMode.isNote(presentation.id)
+            }
+            .onChange(of: showsNote) { _, value in CenterNoteMode.set(value, presentation.id) }
         } else if model.presentationExists(presentationID) {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -137,6 +146,7 @@ struct PresentGridView: View {
                     .background(.quaternary, in: Capsule())
             }
             SongKeyChip(model: model, controls: controls, presentation: presentation)
+            CenterNoteSwitch(model: model, presentationID: presentation.id, showsNote: $showsNote)
             Spacer()
 
             PresentationSettingsButton(model: model, render: render, controls: controls, presentation: presentation)
@@ -144,6 +154,8 @@ struct PresentGridView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
+
+    @State private var showsNote = false
 
 
     private func revealLive(_ proxy: ScrollViewProxy) {
@@ -532,17 +544,28 @@ struct SlideGridBody: View {
 
     private func tileRows(aspect: CGFloat, cell: CGSize?) -> some View {
         let across = SlidesAcross.clamped(slidesAcross)
+        let cells = gridCells
         return VStack(alignment: .leading, spacing: SlideGridMetrics.spacing) {
-            ForEach(SlidesAcross.rows(count: slides.count, across: across), id: \.indices.lowerBound) { row in
+            ForEach(SlidesAcross.rows(count: cells.count, across: across), id: \.indices.lowerBound) { row in
                 let built = cell != nil && builtRows.contains(row.indices.lowerBound / across)
                 HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
-                    ForEach(row.indices, id: \.self) { index in
-                        if built, let cell {
-                            gridTile(index: index, slide: slides[index], aspect: aspect)
-                                .frame(width: cell.width, height: cell.height, alignment: .top)
-                        } else {
-                            placeholderCell(cell: cell, aspect: aspect)
-                                .id(Self.tileAnchor(contextID: contextID, index: index))
+                    ForEach(row.indices, id: \.self) { position in
+                        switch cells[position] {
+                        case .slide(let index):
+                            if built, let cell {
+                                gridTile(index: index, slide: slides[index], aspect: aspect)
+                                    .frame(width: cell.width, height: cell.height, alignment: .top)
+                            } else {
+                                placeholderCell(cell: cell, aspect: aspect)
+                                    .id(Self.tileAnchor(contextID: contextID, index: index))
+                            }
+                        case .add(let id):
+                            if built, let cell {
+                                addTile(id, aspect: aspect)
+                                    .frame(width: cell.width, height: cell.height, alignment: .top)
+                            } else {
+                                placeholderCell(cell: cell, aspect: aspect)
+                            }
                         }
                     }
 
@@ -697,9 +720,15 @@ struct SlideGridBody: View {
                 tileRows(aspect: aspect, cell: cell)
             } else {
                 LazyVGrid(columns: SlideGridMetrics.columns(across: slidesAcross, cellWidth: cell?.width), alignment: .leading, spacing: SlideGridMetrics.spacing) {
-                    ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
-                        gridTile(index: index, slide: slide, aspect: aspect)
-                            .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                    ForEach(gridCells, id: \.self) { gridCell in
+                        switch gridCell {
+                        case .slide(let index):
+                            gridTile(index: index, slide: slides[index], aspect: aspect)
+                                .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                        case .add(let id):
+                            addTile(id, aspect: aspect)
+                                .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                        }
                     }
                 }
             }
@@ -1040,6 +1069,14 @@ struct SlideGridBody: View {
                 }
             }
             Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
+            Button("Merge \(slideIDs.count) Slides") {
+                confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
+                    model.updateSlides(presentationID: presentation.id, undoLabel: "Merge Slides") {
+                        SlideBulkEdit.mergeSlides(slideIDs, in: &$0)
+                    }
+                    clearSelection()
+                }
+            }
         }
         Divider()
         deleteButton(slideIDs, inSelection: true)
@@ -1254,7 +1291,19 @@ struct SlideGridBody: View {
                             SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
                         }
                     },
-                    inheritedTransition: presentation.transition
+                    inheritedTransition: presentation.transition,
+                    layer: slide.background?.mediaId == mediaID
+                        ? slide.background.flatMap { cue in
+                            model.media(mediaID).map { item in
+                                SpotLayer(cue: cue, kind: item.mediaKind, customLayers: actionRouter?.customLayers ?? []) {
+                                    [presentationID = presentation.id, slideID = slide.id] layerId in
+                                    model.updateSlide(presentationID: presentationID, slideID: slideID, undoLabel: "Set Layer") {
+                                        $0.background?.setRoutingLayer(layerId)
+                                    }
+                                }
+                            }
+                        }
+                        : nil
                 )
             }
         }
@@ -1296,6 +1345,55 @@ struct SlideGridBody: View {
         }
     }
 
+    private var noteChanges: (noteID: String, updates: [NotePendingUpdate])? {
+        guard let noteID = model.liveNoteByDeck[presentation.id],
+              let updates = model.liveUpdates[noteID]?.updates, !updates.isEmpty else { return nil }
+        return (noteID, updates)
+    }
+
+    private var gridCells: [NoteLiveUpdates.Cell] {
+        let updates = runOnly ? [] : noteChanges?.updates ?? []
+        guard !updates.isEmpty else { return slides.indices.map { .slide($0) } }
+        return NoteLiveUpdates.cells(slideIds: slides.map(\.id), updates: updates)
+    }
+
+    private func noteUpdateKind(of slideID: String) -> String? {
+        guard !runOnly else { return nil }
+        return noteChanges?.updates.first { $0.slideId == slideID }?.kind
+    }
+
+    @ViewBuilder
+    private func addTile(_ id: String, aspect: CGFloat) -> some View {
+        if let changes = noteChanges, let update = changes.updates.first(where: { $0.id == id }), let proposed = update.proposed {
+            Button {
+                model.reviewingNoteID = changes.noteID
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    SlideThumbnailView(
+                        model: model, render: render, slide: proposed, presentation: presentation,
+                        theme: model.theme(for: proposed, in: presentation), arrangementId: nil,
+                        hideScopedBackgrounds: hideScopedBackgrounds,
+                        pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale))
+                    .aspectRatio(aspect, contentMode: .fit)
+                    .opacity(0.55)
+                    .clipShape(RoundedRectangle.standard(CornerStandard.element))
+                    .overlay(
+                        RoundedRectangle.standard(CornerStandard.element)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+                            .foregroundStyle(Color.accentColor))
+                    .overlay(alignment: .bottomLeading) { NoteUpdateBadge(kind: NotePendingUpdate.new).padding(5) }
+                    Text("New from the notes")
+                        .font(.caption2)
+                        .foregroundStyle(Color.accentColor)
+                        .lineLimit(1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("A new slide from the notes. Click to review it.")
+        }
+    }
+
     private func gridTile(index: Int, slide: Slide, aspect: CGFloat) -> some View {
         tile(index: index, slide: slide, aspect: aspect)
 
@@ -1325,7 +1423,9 @@ struct SlideGridBody: View {
             hideScopedBackgrounds: hideScopedBackgrounds,
             contextID: contextID,
             mediaMissing: !missingMedia(of: slide).isEmpty,
-            pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale)
+            pixelWidth: ThumbnailResolution.pixelWidth(tileWidth: cell?.width, scale: displayScale),
+            noteUpdate: noteUpdateKind(of: slide.id),
+            onNoteUpdate: noteChanges.map { changes in { model.reviewingNoteID = changes.noteID } }
         ) {
             handleTap(index: index, slide: slide)
         }
@@ -1453,6 +1553,11 @@ struct SlideGridBody: View {
         if payload.hasPrefix("mxuslide::") {
 
             return dropSlide(payload, before: slide)
+        }
+
+        if let dropped = model.themeDesign(payload) {
+            model.applyTheme(to: presentation.id, slideIDs: [slide.id], themeID: dropped.themeId, design: dropped.design.name)
+            return true
         }
 
         let resolved = model.indexEntry(payload)
@@ -1609,13 +1714,15 @@ struct SlideGridBody: View {
         let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : slides.last?.sectionId
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
+
+        let beforeID = index == 0 ? slides.first?.id : nil
         if items.isEmpty {
             return false
         } else {
             model.insertSlides(
                 presentation.id,
                 slides: items.map { Slide.droppedMedia($0, sectionId: anchorSection) },
-                afterSlideID: afterID)
+                afterSlideID: afterID, beforeSlideID: beforeID)
             return true
         }
     }
@@ -1729,10 +1836,16 @@ struct SlideTile: View {
     var mediaMissing = false
 
     var pixelWidth = ThumbnailResolution.base
+
+    var liveOverride: Bool? = nil
+
+    var noteUpdate: String? = nil
+    var onNoteUpdate: (() -> Void)? = nil
     let fire: () -> Void
 
     private var isLive: Bool {
-        contextID != nil && controls?.liveContextID == contextID && controls?.liveOccurrence == index
+        if let liveOverride { return liveOverride }
+        return contextID != nil && controls?.liveContextID == contextID && controls?.liveOccurrence == index
     }
 
     private var liveAnimationStep: Int? {
@@ -1789,6 +1902,37 @@ struct SlideTile: View {
                         .padding(4)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                let chips = layerChips
+                if noteUpdate != nil || !chips.isEmpty {
+                    HStack(spacing: 3) {
+                        if let noteUpdate, let onNoteUpdate {
+                            Button(action: onNoteUpdate) { NoteUpdateBadge(kind: noteUpdate) }
+                                .buttonStyle(.plain)
+                                .tileHelp("The note changed. Click to review.")
+                        }
+                        ForEach(chips) { chip in
+                            LayerChip(chip: chip)
+                                .onHover { over in
+                                    if over {
+                                        hoveredChipID = chip.id
+                                    } else if hoveredChipID == chip.id {
+                                        hoveredChipID = nil
+                                    }
+                                }
+                                .popover(
+                                    isPresented: Binding(
+                                        get: { hoveredChipID == chip.id },
+                                        set: { if !$0, hoveredChipID == chip.id { hoveredChipID = nil } }
+                                    ), arrowEdge: .bottom
+                                ) {
+                                    LayerChipHover(chip: chip, actionRouter: actionRouter)
+                                }
+                        }
+                    }
+                    .padding(5)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if mediaMissing {
                     Image(systemName: "exclamationmark.triangle")
@@ -1797,7 +1941,7 @@ struct SlideTile: View {
                         .padding(3)
                         .background(Color.orange, in: Circle())
                         .padding(4)
-                        .help("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
+                        .tileHelp("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
                 }
             }
             .overlay {
@@ -1881,7 +2025,8 @@ struct SlideTile: View {
                                 .tileHelp(slideActionLabel(
                                     action, model: model,
                                     timers: actionRouter?.timerChoices ?? [],
-                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
+                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? [],
+                                    layers: actionRouter?.layerStack ?? []))
                         }
                         if actionBadges.count > 3 {
                             Text("+\(actionBadges.count - 3)")
@@ -1897,6 +2042,10 @@ struct SlideTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
+        .environment(\.tileTip, $tip)
+        .overlay(alignment: .bottomTrailing) {
+            if let tip { TileTipLabel(text: tip) }
+        }
 
         .task(id: clippedTextKey) {
             let slide = slide
@@ -1925,6 +2074,18 @@ struct SlideTile: View {
     @State private var hasClippedText = false
     @State private var pageLooks: [PageLook] = []
     @State private var pagesHovered = false
+
+    @State private var hoveredChipID: String?
+
+    private var layerChips: [SlideLayerFacts.Chip] {
+        guard slide.background?.storedRoutingLayerId != nil else { return [] }
+        return SlideLayerFacts.chips(
+            for: slide,
+            item: { id in model.media(id).map { ($0.name, $0.mediaKind) } },
+            layerName: { id in actionRouter?.layerName(id) ?? LayerKind(rawValue: id)?.displayName })
+    }
+
+    @State private var tip: String?
 
     struct PageLook: Identifiable {
         let id: String
@@ -2019,7 +2180,8 @@ struct SlideTile: View {
         (slide.actions ?? []).map {
             slideActionLabel(
                 $0, model: model, timers: actionRouter?.timerChoices ?? [],
-                confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])
+                confidenceScreens: actionRouter?.confidenceScreenChoices ?? [],
+                layers: actionRouter?.layerStack ?? [])
         }.joined(separator: "\n")
     }
 }
@@ -2028,7 +2190,8 @@ struct SlideTile: View {
 func slideActionLabel(
     _ action: SlideAction, model: AppModel,
     timers: [(id: String, name: String)] = [],
-    confidenceScreens: [(id: String, name: String)] = []
+    confidenceScreens: [(id: String, name: String)] = [],
+    layers: [RenderLayer] = []
 ) -> String {
     func entryName(_ id: String?) -> String {
         guard let id, !id.isEmpty else { return "not set" }
@@ -2070,7 +2233,7 @@ func slideActionLabel(
     case .switchOutputPreset:
         "Switch Output Preset: \(entryName(action.presetId))"
     case .clearLayer:
-        "Clear \(action.layer.flatMap(LayerKind.init(rawValue:))?.displayName ?? "Layer")"
+        "Clear \(action.layer.flatMap { id in layers.first { $0.id == id }?.name ?? LayerKind(rawValue: id)?.displayName } ?? "Layer")"
     case .clearAll: "Clear All"
     case .clearAudio: "Clear Music"
     case .fireMedia: "Fire Media: \(entryName(action.mediaId))"
@@ -2166,7 +2329,7 @@ struct SlideThumbnailView: View {
             }
 
             ForEach([LayerKind.loopingVideos, .stillGraphics].compactMap { shown[$0] } + missing, id: \.self) { id in
-                posterLayer(mediaId: id)
+                posterLayer(mediaId: id, scaleMode: slide.background?.mediaId == id ? slide.background?.scaleMode : nil)
             }
             if let content = contentImage() {
                 Image(decorative: content, scale: 1)
@@ -2174,7 +2337,17 @@ struct SlideThumbnailView: View {
                     .aspectRatio(contentMode: .fit)
             }
             if let id = shown[.videos] {
-                posterLayer(mediaId: id)
+                posterLayer(mediaId: id, scaleMode: slide.background?.mediaId == id ? slide.background?.scaleMode : nil)
+            }
+
+            if slide.waitsForMedia {
+                VStack(spacing: 3) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                    Text("Drop a picture or video here").font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(4)
             }
         }
 
@@ -2200,13 +2373,13 @@ struct SlideThumbnailView: View {
         return .black
     }
 
-    private func posterLayer(mediaId: String) -> some View {
+    private func posterLayer(mediaId: String, scaleMode: MediaScaleMode?) -> some View {
         Color.clear
             .overlay {
                 PosterLookImage(
                     model: model, render: render, mediaId: mediaId,
                     canvas: SlideSceneBuilder.canvasSize(for: presentation),
-                    pixelWidth: pixelWidth)
+                    pixelWidth: pixelWidth, scaleMode: scaleMode)
             }
             .clipped()
     }
@@ -2237,6 +2410,8 @@ struct PosterImage: View {
 
     var maxPixels = PosterDecode.maxPixelSize
 
+    var scaleMode: MediaScaleMode? = nil
+
     @State private var image: CGImage?
     @State private var missing = false
 
@@ -2247,9 +2422,7 @@ struct PosterImage: View {
         let stamp = "\(mediaId)|\(model.media(mediaId)?.fileHash ?? "gone")"
         ZStack {
             if let image {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+                ScaledPicture(image: Image(decorative: image, scale: 1), mode: scaleMode)
                     .opacity(missing ? 0.4 : 1)
             } else {
                 Color.black
@@ -2288,6 +2461,7 @@ struct PosterLookImage: View {
     let mediaId: String
     var canvas = SlideSceneBuilder.canvasSize
     var pixelWidth = ThumbnailResolution.base
+    var scaleMode: MediaScaleMode? = nil
 
     var body: some View {
 
@@ -2301,13 +2475,37 @@ struct PosterLookImage: View {
                 : nil
         }
         if let look {
-            Image(decorative: look, scale: 1)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
+            ScaledPicture(image: Image(decorative: look, scale: 1), mode: scaleMode)
         } else {
             PosterImage(
                 model: model, mediaId: mediaId,
-                maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth))
+                maxPixels: ThumbnailResolution.posterPixels(forWidth: pixelWidth), scaleMode: scaleMode)
+        }
+    }
+}
+
+struct ScaledPicture: View {
+    let image: Image
+    let mode: MediaScaleMode?
+
+    var body: some View {
+        switch mode {
+        case .fit:
+            image.resizable().aspectRatio(contentMode: .fit)
+        case .stretch:
+            image.resizable()
+        case .scaleAndBlur:
+            ZStack {
+                Color.clear.overlay {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                        .scaleEffect(MediaLooks.backdropZoom)
+                        .visualEffect { content, proxy in content.blur(radius: proxy.size.width * MediaLooks.backdropBlurShare) }
+                }
+                .clipped()
+                image.resizable().aspectRatio(contentMode: .fit)
+            }
+        case .fill, .none:
+            image.resizable().aspectRatio(contentMode: .fill)
         }
     }
 }
@@ -2635,9 +2833,149 @@ struct SongKeyChip: View {
     }
 }
 
+private struct TileTipKey: EnvironmentKey {
+    static let defaultValue: Binding<String?>? = nil
+}
+
+extension EnvironmentValues {
+    var tileTip: Binding<String?>? {
+        get { self[TileTipKey.self] }
+        set { self[TileTipKey.self] = newValue }
+    }
+}
+
+private struct TileHelp: ViewModifier {
+    let text: () -> String
+    @Environment(\.tileTip) private var tip
+    @State private var wait: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content.onHover { over in
+            wait?.cancel()
+            guard let tip else { return }
+            if over {
+                wait = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !Task.isCancelled else { return }
+                    let text = text()
+                    if !text.isEmpty { tip.wrappedValue = text }
+                }
+            } else if tip.wrappedValue != nil {
+                tip.wrappedValue = nil
+            }
+        }
+    }
+}
+
 extension View {
+    func tileHelp(_ text: @autoclosure @escaping () -> String) -> some View {
+        modifier(TileHelp(text: text))
+    }
+}
+
+struct TileTipLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.trailing)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(.sRGB, white: 0.12).opacity(0.92), in: RoundedRectangle.standard(CornerStandard.element))
+            .padding(.horizontal, 4)
+            .padding(.bottom, SlideGridMetrics.labelHeight + SlideGridMetrics.labelGap + 4)
+            .allowsHitTesting(false)
+    }
+}
+
+struct LayerChip: View {
+    let chip: SlideLayerFacts.Chip
+
+    static let layerTint = Color(red: 0.54, green: 0.71, blue: 1)
+
+    var body: some View {
+        let tint = Self.layerTint
+        Text(chip.label)
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(Color.black.opacity(0.7), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint, lineWidth: 1))
+    }
+}
+
+struct LayerChipHover: View {
+    let chip: SlideLayerFacts.Chip
+    let actionRouter: ActionRouter?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            lines
+        }
+        .padding(10)
+        .frame(width: 300, alignment: .leading)
+    }
+
     @ViewBuilder
-    func tileHelp(_ text: @autoclosure () -> String) -> some View {
-        self
+    private var lines: some View {
+        Group {
+                Text("\(chip.itemName) · \(chip.label) layer")
+                    .font(.caption.weight(.semibold))
+                if let destinations = actionRouter?.activeDestinations(layerId: chip.targetId) {
+                    Text("under \(Text(destinations.preset).bold()) (active) lands on")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if destinations.screens.isEmpty {
+                        Text("nowhere")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 5) {
+                            ForEach(destinations.screens, id: \.self) { screen in
+                                Text(screen)
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .overlay(RoundedRectangle.standard(CornerStandard.element).strokeBorder(Color.green, lineWidth: 1))
+                            }
+                        }
+                    }
+                    let rest = actionRouter?.activeDestinations(layerId: LayerKind.slide.rawValue)?.screens ?? []
+                    Text("Everything else on this slide: Slide layer → \(rest.isEmpty ? "nowhere" : rest.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No preset is active — every screen composites every layer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Nothing here is saved on the slide — the preset decides.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct NoteUpdateBadge: View {
+    let kind: String
+
+    var body: some View {
+        let (label, color): (String, Color) = switch kind {
+        case NotePendingUpdate.new: ("Add", .accentColor)
+        case NotePendingUpdate.words: ("Update", .orange)
+        default: ("Remove", .red)
+        }
+        Text(label)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color, in: Capsule())
     }
 }

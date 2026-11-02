@@ -113,7 +113,7 @@ public enum AnimationEvaluator {
                 ? VideoPushEvaluator.backdropTransform(canvas: scene.canvasSize, state: state) : nil
         }
         for layerIndex in out.layers.indices {
-            let pushed = VideoPushEvaluator.pushedLayers.contains(out.layers[layerIndex].kind)
+            let pushed = out.layers[layerIndex].kind.map(VideoPushEvaluator.pushedLayers.contains) ?? false
             var items: [RenderItem] = []
             items.reserveCapacity(out.layers[layerIndex].items.count)
             for item in out.layers[layerIndex].items {
@@ -214,7 +214,7 @@ public enum AnimationEvaluator {
         whole.motion.skewY += base.skewY
         whole.motion.translate.dx += morphMotion.translate.dx
         whole.motion.translate.dy += morphMotion.translate.dy
-        let uniform = whole.motion.scale 
+        let uniform = whole.motion.scale
         whole.motion.scale = uniform * morphMotion.scale
         whole.motion.scaleY = morphMotion.scaleY.map { uniform * $0 }
         base.opacity = min(max(base.opacity * whole.opacity, 0), 1)
@@ -268,7 +268,7 @@ public enum AnimationEvaluator {
             piece.id = "\(item.id)#step\(pieceIndex)"
             pieceIndex += 1
             piece.content = .text(pieceText)
-            piece.matteGroup = nil 
+            piece.matteGroup = nil
             let animated = animate(
                 steps: [step], context: context, now: hostTime,
                 frame: item.frame, canvasSize: canvasSize
@@ -623,7 +623,7 @@ public enum AnimationEvaluator {
             }
             switch step.kind {
             case .morph:
-                break 
+                break
             case .enter where step.fromItem != nil:
 
                 if step.withFade { out.opacity *= progress }
@@ -665,7 +665,7 @@ public enum AnimationEvaluator {
                     out.opacity *= r
                 }
             case .emphasis:
-                let envelope = sin(progress * .pi) 
+                let envelope = sin(progress * .pi)
                 switch step.animation {
                 case .pulse, .scale:
                     out.motion.scale *= 1 + (step.amount - 1) * envelope

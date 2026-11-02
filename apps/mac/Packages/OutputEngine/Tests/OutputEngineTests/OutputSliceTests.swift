@@ -29,6 +29,34 @@ final class OutputSliceTests: XCTestCase {
         XCTAssertEqual(info.height, 108)
     }
 
+    func testNetworkCarryFeedNamesAndSizesTheOutput() throws {
+        let outputs = try makeManager()
+        let screen = try makeScreen(outputs)
+        XCTAssertEqual(
+            outputs.networkCarryFeed(forSlice: screen.id),
+            NetworkCarryFeed(
+                name: "Wide", width: 384, height: 108,
+                framesPerSecond: screen.framesPerSecond, sourceRect: nil, placement: nil))
+
+        let left = try XCTUnwrap(outputs.addSlice(
+            toScreen: screen.id, name: "Left",
+            sourceRect: CGRect(x: 0, y: 0, width: 0.5, height: 1)))
+        let sliceFeed = try XCTUnwrap(outputs.networkCarryFeed(forSlice: left.id))
+        XCTAssertEqual(sliceFeed.name, "Wide — Left")
+        XCTAssertEqual(sliceFeed.width, 192)
+        XCTAssertEqual(sliceFeed.sourceRect, CGRect(x: 0, y: 0, width: 0.5, height: 1))
+
+        outputs.setPlacement(
+            OutputPlacement(frameWidth: 1920, frameHeight: 1080, x: 0, y: 540, width: 192, height: 108),
+            forSlice: left.id)
+        let placed = try XCTUnwrap(outputs.networkCarryFeed(forSlice: left.id))
+        XCTAssertEqual(placed.width, 1920, "a placement declares the carry frame")
+        XCTAssertEqual(placed.height, 1080)
+        XCTAssertEqual(placed.placement, CGRect(x: 0, y: 0.5, width: 0.1, height: 0.1))
+
+        XCTAssertNil(outputs.networkCarryFeed(forSlice: UUID()), "no such output")
+    }
+
     func testExtraSlicesResolveRegionAndPixelSize() throws {
         let outputs = try makeManager()
         let screen = try makeScreen(outputs)
@@ -274,6 +302,18 @@ final class PackedFrameTests: XCTestCase {
         XCTAssertNil(outputs.placeholderDevices[wall.id])
         XCTAssertNil(outputs.placeholderDevices[strip.id])
         XCTAssertEqual(outputs.placeholderDevices[projector.id], "FRAME-4K")
+    }
+
+    func testRestoredClaimsJoinADisplayInsteadOfStealingIt() throws {
+        let outputs = try makeManager()
+        let wall = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Wall", width: 832, height: 416))
+        let strip = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Strip", width: 3840, height: 540))
+        outputs.restoreDisplayClaim(placeholderID: wall.id, displayUUID: "FRAME-4K", displayName: nil)
+        outputs.restoreDisplayClaim(placeholderID: strip.id, displayUUID: "FRAME-4K", displayName: nil)
+        XCTAssertEqual(outputs.placeholderDevices[wall.id], "FRAME-4K")
+        XCTAssertEqual(outputs.placeholderDevices[strip.id], "FRAME-4K")
     }
 
     func testCompositeMirrorPacksTwoScreensIntoOneFeed() throws {

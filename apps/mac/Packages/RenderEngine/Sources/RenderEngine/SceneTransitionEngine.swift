@@ -30,7 +30,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         var previous: RenderScene
         var startedAt: Date
 
-        var transitions: [LayerKind: SceneTransition]
+        var transitions: [String: SceneTransition]
 
         var duration: Double
     }
@@ -65,7 +65,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                   date.timeIntervalSince(active.startedAt) < active.duration
             else { return [] }
             var ids = Set<String>()
-            for layer in active.previous.layers where active.transitions.keys.contains(layer.kind) {
+            for layer in active.previous.layers where active.transitions.keys.contains(layer.id) {
                 for item in layer.items {
 
                     if let id = item.content.mediaID { ids.insert(id) }
@@ -79,7 +79,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         push(scene) { _ in transition }
     }
 
-    public func push(_ scene: RenderScene, transitionFor: (LayerKind) -> SceneTransition?) {
+    public func push(_ scene: RenderScene, transitionFor: (String) -> SceneTransition?) {
         state.withLock { s in
             let changed = Self.changedLayers(from: s.target, to: scene)
 
@@ -87,7 +87,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 s.target = scene
                 return
             }
-            var transitions: [LayerKind: SceneTransition] = [:]
+            var transitions: [String: SceneTransition] = [:]
             for layer in changed {
                 if let transition = transitionFor(layer), transition.kind != .cut {
                     transitions[layer] = transition
@@ -100,11 +100,11 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 return
             }
 
-            let base = s.active.map { Self.composite(
+            let base = s.active.map { Self.flattened(Self.composite(
                 previous: $0.previous, target: s.target,
                 transitions: $0.transitions,
-                progress: Self.progress(of: $0, at: Date())
-            ) } ?? s.target
+                elapsed: Date().timeIntervalSince($0.startedAt)
+            )) } ?? s.target
             s.active = Active(
                 previous: base, startedAt: Date(),
                 transitions: transitions,
@@ -125,7 +125,8 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             }
             return Self.composite(
                 previous: active.previous, target: s.target,
-                transitions: active.transitions, progress: progress
+                transitions: active.transitions,
+                elapsed: date.timeIntervalSince(active.startedAt)
             )
         }
     }
@@ -140,14 +141,16 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         return item.id
     }
 
-    static func changedLayers(from old: RenderScene, to new: RenderScene) -> Set<LayerKind> {
-        var changed = Set<LayerKind>()
-        for kind in LayerKind.allCases {
-            let oldIDs = old.layers.first { $0.kind == kind }
+    static func changedLayers(from old: RenderScene, to new: RenderScene) -> Set<String> {
+        var changed = Set<String>()
+        let ids = old.layers.map(\.id) + new.layers.map(\.id)
+        var seen = Set<String>()
+        for id in ids where seen.insert(id).inserted {
+            let oldIDs = old.layers.first { $0.id == id }
                 .map { Set($0.items.map(membershipKey)) } ?? []
-            let newIDs = new.layers.first { $0.kind == kind }
+            let newIDs = new.layers.first { $0.id == id }
                 .map { Set($0.items.map(membershipKey)) } ?? []
-            if oldIDs != newIDs { changed.insert(kind) }
+            if oldIDs != newIDs { changed.insert(id) }
         }
         return changed
     }
@@ -159,20 +162,22 @@ public final class SceneTransitionEngine: @unchecked Sendable {
     ) -> RenderScene {
         composite(
             previous: previous, target: target,
-            transitions: Dictionary(uniqueKeysWithValues: layers.map { ($0, transition) }),
-            progress: progress
+            transitions: Dictionary(uniqueKeysWithValues: layers.map { ($0.rawValue, transition) }),
+            elapsed: progress * transition.duration
         )
     }
 
     static func composite(
         previous: RenderScene, target: RenderScene,
-        transitions: [LayerKind: SceneTransition], progress: Double
+        transitions: [String: SceneTransition], elapsed: Double
     ) -> RenderScene {
         var scene = target
         for index in scene.layers.indices {
-            let kind = scene.layers[index].kind
-            guard let transition = transitions[kind] else { continue }
-            let oldItems = previous.layers.first { $0.kind == kind }?.items ?? []
+            let layerID = scene.layers[index].id
+            guard let transition = transitions[layerID] else { continue }
+            let progress = min(max(elapsed / transition.duration, 0), 1)
+            guard progress < 1 else { continue }
+            let oldItems = previous.layers.first { $0.id == layerID }?.items ?? []
             let newItems = scene.layers[index].items
 
             let oldKeys = Set(oldItems.map(membershipKey))
@@ -193,12 +198,27 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 }
             }
 
+            let isMedia = scene.layers[index].isMediaLayer
             let hasArrivals = newItems.contains { !oldKeys.contains(membershipKey($0)) }
-            let holdsUnder = hasArrivals
-                && (kind == .loopingVideos || kind == .stillGraphics || kind == .videos)
+            let holdsUnder = hasArrivals && isMedia
+
+            let outgoing = oldItems.map { item in
+                var out = item
+                out.id += "::leaving"
+                out.crossfadeLeaving = true
+                return out
+            }
             switch transition.kind {
             case .cut:
                 continue
+            case .dissolve where !isMedia:
+                scene.layers[index].items = outgoing + newItems
+                scene.layers[index].crossfadeProgress = progress
+            case .blurDissolve where !isMedia:
+                let swell = (1 - abs(progress * 2 - 1)) * 60
+                scene.layers[index].items =
+                    blurred(outgoing, radius: swell) + blurred(newItems, radius: swell)
+                scene.layers[index].crossfadeProgress = progress
             case .dissolve:
                 scene.layers[index].items =
                     (holdsUnder ? leaving : faded(leaving, to: 1 - progress))
@@ -209,7 +229,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 let plateOpacity = firstHalf ? progress * 2 : (1 - progress) * 2
                 var items = firstHalf ? oldItems : newItems
                 items.append(RenderItem(
-                    id: "transition-plate-\(kind.rawValue)",
+                    id: "transition-plate-\(layerID)",
                     frame: CGRect(origin: .zero, size: scene.canvasSize),
                     content: .solid(SceneColor(
                         red: plate.red, green: plate.green, blue: plate.blue,
@@ -230,11 +250,37 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 let arriving = burned(arrivingFaded(newItems, to: progress), amount: peak, phase: progress)
                 var items = leaving + arriving
                 items.append(RenderItem(
-                    id: "transition-plate-\(kind.rawValue)",
+                    id: "transition-plate-\(layerID)",
                     frame: CGRect(origin: .zero, size: scene.canvasSize),
                     content: .solid(SceneColor(red: 1, green: 0.72, blue: 0.42, alpha: peak * 0.35))
                 ))
                 scene.layers[index].items = items
+            }
+        }
+        return scene
+    }
+
+    static func flattened(_ scene: RenderScene) -> RenderScene {
+        var scene = scene
+        for index in scene.layers.indices {
+            guard let progress = scene.layers[index].crossfadeProgress else { continue }
+            let items = scene.layers[index].items
+            func key(_ item: RenderItem) -> String {
+                var original = item
+                if item.crossfadeLeaving { original.id = String(item.id.dropLast("::leaving".count)) }
+                return membershipKey(original)
+            }
+            let before = Set(items.filter(\.crossfadeLeaving).map(key))
+            let after = Set(items.filter { !$0.crossfadeLeaving }.map(key))
+            scene.layers[index].crossfadeProgress = nil
+            scene.layers[index].items = items.compactMap { item in
+                var out = item
+                out.crossfadeLeaving = false
+                if before.contains(key(item)), after.contains(key(item)) {
+                    return item.crossfadeLeaving ? nil : out
+                }
+                out.opacity *= item.crossfadeLeaving ? 1 - progress : progress
+                return out
             }
         }
         return scene

@@ -146,3 +146,15 @@ import Testing
         #expect(admitted == HitchCaptureGate.linesPerMinute)
     }
 }
+
+@Suite struct ProcessFootprintTests {
+    @Test func readsTheFootprintAndSeesItGrow() throws {
+        let before = try #require(ProcessFootprint.megabytes())
+        let held = [UInt8](repeating: 1, count: 64 << 20)
+        let after = try #require(ProcessFootprint.megabytes())
+        #expect(before.now > 0)
+        #expect(after.now - before.now > 48, "64 MB touched shows up")
+        #expect(after.peak >= after.now)
+        withExtendedLifetime(held) {}
+    }
+}

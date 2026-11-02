@@ -22,15 +22,15 @@ public enum StarterPack: String, CaseIterable, Sendable {
     public static let retiredOverlayItems = ["quote", "scripture", "section"]
 
     struct Look {
-        var body: String       
-        var display: String    
-        var accent: String     
-        var accent2: String    
-        var ink: String        
+        var body: String
+        var display: String
+        var accent: String
+        var accent2: String
+        var ink: String
         var inkOnAccent: String
-        var plate: String      
-        var plate2: String     
-        var backdrop: String   
+        var plate: String
+        var plate2: String
+        var backdrop: String
         var radius: Double
     }
 
@@ -230,6 +230,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
         slides.append(contentsOf: [
             lyricsSlide(), pointsSlide(), sectionTitleSlide(), verseSlide(), pointSlide(), quoteSlide(),
             fromOverlay(callToAction(base: "\(themeID).ctaFull", layout: .full), "ctaFull", "Call to Action", primary: "\(themeID).ctaFull.head", fullScreen: true),
+        ] + photoDesigns(folder: "Full Slide") + [
 
             simplifiedThird("lowerDefault", "Lower Third",
                             pointLowerThird(base: "\(themeID).lowerDefault"),
@@ -241,6 +242,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
             fromOverlay(verseLowerThird(base: "\(themeID).verseLower"), "verseLower", "Verse + Reference (Lower Third)", primary: "\(themeID).verseLower.verse", folder: "Lower Thirds"),
             fromOverlay(pointLowerThird(base: "\(themeID).pointLower"), "pointLower", "Point (Lower Third)", primary: "\(themeID).pointLower.text", folder: "Lower Thirds"),
             fromOverlay(callToAction(base: "\(themeID).ctaLower", layout: .lowerThird), "ctaLower", "Call to Action (Lower Third)", primary: "\(themeID).ctaLower.head", folder: "Lower Thirds"),
+        ] + photoDesigns(folder: "Lower Thirds") + [
             simplifiedThird("sideDefault", "Side Third",
                             pointSideThird(base: "\(themeID).sideDefault"),
                             primary: "\(themeID).sideDefault.text",
@@ -250,7 +252,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
             fromOverlay(pointSideThird(base: "\(themeID).pointSide"), "pointSide", "Point (Side Third)", primary: "\(themeID).pointSide.text", folder: "Side Thirds"),
             fromOverlay(verseSideThird(base: "\(themeID).verseSide"), "verseSide", "Verse + Reference (Side Third)", primary: "\(themeID).verseSide.verse", folder: "Side Thirds"),
             fromOverlay(callToAction(base: "\(themeID).ctaSide", layout: .sideThird), "ctaSide", "Call to Action (Side Third)", primary: "\(themeID).ctaSide.head", folder: "Side Thirds"),
-        ])
+        ] + photoDesigns(folder: "Side Thirds"))
         return Theme(id: themeID, name: title, fontFamily: look.body, fontSize: 72, textColorHex: look.ink,
                      backgroundColorHex: look.backdrop, slides: slides)
     }
@@ -277,15 +279,22 @@ public enum StarterPack: String, CaseIterable, Sendable {
     }
 
     public func addingLyricsDesigns(to slides: [Slide]) -> [Slide] {
+        addingDesigns(idPrefix: "\(themeID).lyrics", to: slides, fullSlideLeads: true)
+    }
+
+    public func addingPhotoDesigns(to slides: [Slide]) -> [Slide] {
+        addingDesigns(idPrefix: "\(themeID).photo", to: slides, fullSlideLeads: false)
+    }
+
+    private func addingDesigns(idPrefix: String, to slides: [Slide], fullSlideLeads: Bool) -> [Slide] {
         var result = slides
-        let designs = (makeTheme().slides ?? []).filter { $0.id.hasPrefix("\(themeID).lyrics") }
+        let designs = (makeTheme().slides ?? []).filter { $0.id.hasPrefix(idPrefix) }
         for design in designs
         where !result.contains(where: { $0.name.caseInsensitiveCompare(design.name) == .orderedSame }) {
-            if let folder = design.folder, folder != "Full Slide",
-               let last = result.lastIndex(where: { $0.folder == folder }) {
-                result.insert(design, at: last + 1)
-            } else if design.folder == "Full Slide" {
+            if fullSlideLeads, design.folder == "Full Slide" {
                 result.insert(design, at: 0)
+            } else if let folder = design.folder, let last = result.lastIndex(where: { $0.folder == folder }) {
+                result.insert(design, at: last + 1)
             } else {
                 result.append(design)
             }
@@ -334,6 +343,112 @@ public enum StarterPack: String, CaseIterable, Sendable {
         let primary = result.remove(at: primaryIndex)
         result.insert(primary, at: firstTextIndex)
         return result
+    }
+
+    public func shrinkingPoints(_ slides: [Slide]) -> [Slide] {
+        slides.map { slide in
+            guard let index = slide.objects.firstIndex(where: { $0.id == "\(themeID).points.text" }),
+                  slide.objects[index].textStyle?.autoShrink == nil
+            else { return slide }
+            var result = slide
+            result.objects[index].textStyle?.autoShrink = true
+            result.objects[index].textStyle?.minFontSize = Self.pointsFloor
+            return result
+        }
+    }
+
+    public func stayingPhotos(_ slides: [Slide]) -> [Slide] {
+        slides.map { slide in
+            guard slide.id.hasPrefix("\(themeID).photo") else { return slide }
+            var result = slide
+            let leaves = Set(slide.objects.flatMap { ($0.animationSteps ?? []).filter { $0.kind == .out }.map(\.id) })
+            guard !leaves.isEmpty else { return slide }
+            for index in result.objects.indices {
+                result.objects[index].animationSteps = result.objects[index].animationSteps?.filter { !leaves.contains($0.id) }
+            }
+            result.animationOrder = result.animationOrder?.filter { !leaves.contains($0) }
+            return result
+        }
+    }
+
+    private func photoSpot(_ id: String, x: Double, y: Double, w: Double, h: Double, radius: Double? = nil, animationSteps: [AnimationStep]) -> SlideObject {
+        var spot = block(id, "Photo", x: x, y: y, w: w, h: h, color: look.plate2, radius: radius,
+                         stroke: self == .boldBlocks ? ObjectStroke(colorHex: look.accent, width: 6) : nil,
+                         animationSteps: animationSteps)
+        spot.photoSpot = true
+        return spot
+    }
+
+    private func photoDesigns(folder: String) -> [Slide] {
+        let look = look
+        let caption = "Baptism Sunday"
+        switch folder {
+        case "Full Slide":
+            func photos(_ item: String, _ name: String, _ frames: [(Double, Double, Double, Double)]) -> Slide {
+                let b = "\(themeID).\(item)"
+                let ins = frames.indices.map { plateIn("\(b).spot\($0).in", delay: $0 == 0 ? nil : 0.12 * Double($0), edge: .left) }
+                let objects = frames.indices.map { index in
+                    let (x, y, w, h) = frames[index]
+                    return photoSpot("\(b).spot\(index)", x: x, y: y, w: w, h: h, animationSteps: [ins[index]])
+                }
+                return themeSlide(item, name, objects, order: ins.map(\.id), fullScreen: true)
+            }
+            let b = "\(themeID).photoText"
+            let spotIn = plateIn("\(b).spot.in", edge: .left)
+            let textIn = textIn("\(b).text.in", delay: -0.05, rise: 40)
+            let photoText = themeSlide("photoText", "Photo + Text", [
+                photoSpot("\(b).spot", x: 100, y: 100, w: 1000, h: 880, animationSteps: [spotIn]),
+                label("\(b).text", "Text", caption, x: 1180, y: 140, w: 640, h: 800, size: 72, display: true,
+                      tracking: self == .boldBlocks ? 2 : 0, uppercase: self == .boldBlocks, inset: 0, lineHeight: 1.08,
+                      animationSteps: [textIn]),
+            ], order: [spotIn.id, textIn.id], fullScreen: true)
+            return [
+                photos("photo", "Photo", [(120, 90, 1680, 900)]),
+                photoText,
+                photos("photo2", "2 Photos", [(100, 170, 840, 740), (980, 170, 840, 740)]),
+                photos("photo3", "3 Photos", [(100, 240, 550, 600), (685, 240, 550, 600), (1270, 240, 550, 600)]),
+            ]
+        case "Lower Thirds":
+            let b = "\(themeID).photoTextLower"
+            let bandIn = plateIn("\(b).band.in", edge: .bottom, big: true)
+            let spotIn = popIn("\(b).spot.in", delay: -0.05, from: 0.6)
+            let textIn = textIn("\(b).text.in", delay: -0.2, rise: 36)
+            let photoText = themeSlide("photoTextLower", "Photo + Text (Lower Third)", [
+                block("\(b).band", "Band", x: 0, y: 760, w: 1920, h: 240, fill: gradient(look.plate2, look.plate, angle: 90), radius: 0, animationSteps: [bandIn]),
+                photoSpot("\(b).spot", x: 160, y: 785, w: 190, h: 190, animationSteps: [spotIn]),
+                label("\(b).text", "Text", "Scan to give, or visit our website", x: 390, y: 800, w: 1370, h: 160, size: 48, display: true,
+                      tracking: self == .boldBlocks ? 2 : 0, uppercase: self == .boldBlocks, inset: 0, lineHeight: 1.08, shrink: true, page: true,
+                      animationSteps: [textIn]),
+            ], order: [bandIn.id, spotIn.id, textIn.id], fullScreen: false, folder: folder)
+            let f = "\(themeID).photoLower"
+            let frameIn = plateIn("\(f).frame.in", edge: .right)
+            let tileIn = popIn("\(f).spot.in", delay: -0.05, from: 0.6)
+            let photo = themeSlide("photoLower", "Photo (Lower Third)", [
+                block("\(f).frame", "Frame", x: 1540, y: 640, w: 300, h: 300, color: look.plate, animationSteps: [frameIn]),
+                photoSpot("\(f).spot", x: 1556, y: 656, w: 268, h: 268, animationSteps: [tileIn]),
+            ], order: [frameIn.id, tileIn.id], fullScreen: false, folder: folder)
+            return [photoText, photo]
+        default:
+            let push = VideoPush(zoom: 1.05, backdrop: true)
+            let s = "\(themeID).photoSide"
+            let spotIn = plateIn("\(s).spot.in", edge: .right, big: true, videoPush: push)
+            let photo = themeSlide("photoSide", "Photo (Side Third)", [
+                photoSpot("\(s).spot", x: 1280, y: 0, w: 640, h: 1080, radius: 0, animationSteps: [spotIn]),
+            ], order: [spotIn.id], fullScreen: false, folder: folder)
+            let b = "\(themeID).photoTextSide"
+            let panelIn = plateIn("\(b).panel.in", edge: .right, big: true, videoPush: push)
+            let barIn = ruleIn("\(b).bar.in", delay: -0.3, edge: .top, duration: 0.9)
+            let spotPop = popIn("\(b).spot.in", delay: -0.3, from: 0.8)
+            let textIn = textIn("\(b).text.in", delay: -0.05, rise: 40)
+            let photoText = themeSlide("photoTextSide", "Photo + Text (Side Third)", [
+                block("\(b).panel", "Panel", x: 1280, y: 0, w: 640, h: 1080, fill: gradient(look.plate2, look.plate, angle: 0), radius: 0, animationSteps: [panelIn]),
+                block("\(b).bar", "Bar", x: 1280, y: 0, w: self == .boldBlocks ? 18 : 6, h: 1080, color: look.accent, radius: 0, animationSteps: [barIn]),
+                photoSpot("\(b).spot", x: 1340, y: 120, w: 520, h: 440, animationSteps: [spotPop]),
+                label("\(b).text", "Text", caption, x: 1340, y: 600, w: 520, h: 380, size: 44, display: true, valign: .top,
+                      uppercase: self == .boldBlocks, inset: 0, lineHeight: 1.1, shrink: true, page: true, animationSteps: [textIn]),
+            ], order: [panelIn.id, barIn.id, spotPop.id, textIn.id], fullScreen: false, folder: folder)
+            return [photo, photoText]
+        }
     }
 
     private func themeSlide(_ item: String, _ name: String, _ objects: [SlideObject], order: [String], fullScreen: Bool, folder: String? = nil) -> Slide {
@@ -399,6 +514,8 @@ public enum StarterPack: String, CaseIterable, Sendable {
                        animationOrder: [panelIn.id, barIn.id, textIn.id, textOut.id, panelOut.id, barOut.id])
     }
 
+    static let pointsFloor = 64.0
+
     private func pointsSlide() -> Slide {
         let b = "\(themeID).points"
         let look = look
@@ -408,7 +525,9 @@ public enum StarterPack: String, CaseIterable, Sendable {
             x: 200, y: 220, width: 1520, height: 640,
             textStyle: TextStyle(fontName: look.body, fontSize: 80, colorHex: look.ink, lineHeightMultiple: 1.25,
                                  horizontalAlignment: .left, verticalAlignment: .middle,
-                                 lineFill: self == .boldBlocks ? TextLineFill(fill: fill(look.accent), widthMode: .lineWidth, verticalPadding: 4, horizontalPadding: 24) : nil),
+                                 autoShrink: true, minFontSize: Self.pointsFloor,
+                                 lineFill: self == .boldBlocks ? TextLineFill(fill: fill(look.accent), widthMode: .lineWidth, verticalPadding: 4, horizontalPadding: 24) : nil,
+                                 paragraphSpacing: 28),
             animationSteps: (0..<3).map { line in
                 var s = textIn("\(b).in\(line)", .onClick, delay: nil, rise: 36)
                 s.ranges = [AnimationRange(line: line, column: 0, length: 12)]
@@ -546,82 +665,96 @@ public enum StarterPack: String, CaseIterable, Sendable {
     }
 
     private func namePlate(timed: Bool, base b: String) -> Overlay {
-        let look = look
-        var objects: [SlideObject] = []
-        var order: [String] = []
 
         let outTrigger: AnimationTrigger = timed ? .afterPrevious : .onClick
         let outDelay: Double? = timed ? 6 : nil
 
-        switch self {
-        case .cleanGeometric:
-            let accentIn = plateIn("\(b).accent.in"), accentOut = plateOut("\(b).accent.out", .afterPrevious, delay: -0.2)
-            let plateIn = step("\(b).plate.in", .in, .wipe, .afterPrevious, delay: -0.3, duration: 0.5, ramp: .out, edge: .left, softEdge: 40)
-            let plateOut = step("\(b).plate.out", .out, .wipe, .withPrevious, delay: 0.05, duration: 0.4, ramp: .in, edge: .left, softEdge: 40)
-            let nameIn = textIn("\(b).name.in", delay: -0.15, rise: 90), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay, distance: 90)
-            let ruleIn = ruleIn("\(b).rule.in", delay: -0.35, duration: 0.45), ruleOut = ruleOut("\(b).rule.out", edge: .left)
-            let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.1, rise: -60), titleOut = textOut("\(b).title.out", .withPrevious, distance: 60)
-            objects = [
-                block("\(b).plate", "Plate", x: 160, y: 820, w: 960, h: 170, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [plateIn, plateOut]),
-                block("\(b).accent", "Accent Bar", x: 120, y: 820, w: 40, h: 170, color: look.accent, radius: 0, animationSteps: [accentIn, accentOut]),
-                matte("\(b).mask.name", x: 160, y: 812, w: 960, h: 98),
-                label("\(b).name", "Name", "Full Name", x: 160, y: 824, w: 960, h: 84, size: 60, display: true, inset: 40, maskedBy: "\(b).mask.name", shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                block("\(b).rule", "Rule", x: 200, y: 910, w: 300, h: 4, color: look.accent2, radius: 0, animationSteps: [ruleIn, ruleOut]),
-                matte("\(b).mask.title", x: 160, y: 914, w: 960, h: 80),
-                label("\(b).title", "Title", "Title or role", x: 160, y: 920, w: 960, h: 60, size: 32, color: look.accent2, tracking: 2, inset: 40, maskedBy: "\(b).mask.title", animationSteps: [titleIn, titleOut]),
-            ]
-            order = [accentIn.id, plateIn.id, nameIn.id, ruleIn.id, titleIn.id, nameOut.id, titleOut.id, ruleOut.id, plateOut.id, accentOut.id]
-
-        case .editorialSerif:
-            let bandIn = plateIn("\(b).band.in"), bandOut = plateOut("\(b).band.out", .afterPrevious, delay: -0.3)
-            let topIn = ruleIn("\(b).top.in", delay: -0.7, duration: 0.8), topOut = ruleOut("\(b).top.out")
-            let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
-            let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.2), titleOut = textOut("\(b).title.out", .withPrevious)
-            let bottomIn = ruleIn("\(b).bottom.in", .withPrevious, delay: 0.1, duration: 0.8), bottomOut = ruleOut("\(b).bottom.out", edge: .left)
-            objects = [
-                block("\(b).band", "Band", x: 0, y: 800, w: 1300, h: 220, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
-                block("\(b).top", "Hairline", x: 140, y: 828, w: 720, h: 2, color: look.accent, radius: 0, animationSteps: [topIn, topOut]),
-                label("\(b).name", "Name", "Full Name", x: 140, y: 840, w: 1000, h: 92, size: 66, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                label("\(b).title", "Title", "Title or role", x: 140, y: 930, w: 1000, h: 50, size: 28, color: look.accent, tracking: kickerTracking, uppercase: true, inset: 0, animationSteps: [titleIn, titleOut]),
-                block("\(b).bottom", "Hairline", x: 140, y: 992, w: 220, h: 2, color: look.accent, radius: 0, animationSteps: [bottomIn, bottomOut]),
-            ]
-            order = [bandIn.id, topIn.id, nameIn.id, titleIn.id, bottomIn.id, nameOut.id, titleOut.id, topOut.id, bottomOut.id, bandOut.id]
-
-        case .boldBlocks:
-            let yellowIn = plateIn("\(b).yellow.in"), yellowOut = plateOut("\(b).yellow.out", .afterPrevious, delay: -0.2)
-            let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
-            let blackIn = plateIn("\(b).black.in", .withPrevious, delay: 0.1), blackOut = plateOut("\(b).black.out", .withPrevious, delay: 0.05)
-            let titleIn = textIn("\(b).title.in"), titleOut = textOut("\(b).title.out", .withPrevious)
-            let chipIn = popIn("\(b).chip.in", delay: -0.1, duration: 0.35, from: 0), chipOut = popOut("\(b).chip.out")
-            objects = [
-                block("\(b).yellow", "Yellow Block", x: 120, y: 800, w: 820, h: 140, color: look.accent, skew: -12, animationSteps: [yellowIn, yellowOut]),
-                label("\(b).name", "Name", "Full Name", x: 150, y: 800, w: 790, h: 140, size: 72, display: true, color: look.inkOnAccent, tracking: 2, uppercase: true, inset: 40, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                block("\(b).black", "Black Block", x: 200, y: 940, w: 680, h: 64, color: look.accent2, skew: -12, animationSteps: [blackIn, blackOut]),
-                label("\(b).title", "Title", "Title or role", x: 230, y: 940, w: 650, h: 64, size: 30, color: look.ink, tracking: 5, uppercase: true, inset: 40, animationSteps: [titleIn, titleOut]),
-                block("\(b).chip", "Chip", x: 94, y: 940, w: 64, h: 64, color: look.accent, skew: -12, animationSteps: [chipIn, chipOut]),
-            ]
-            order = [yellowIn.id, nameIn.id, blackIn.id, titleIn.id, chipIn.id, nameOut.id, titleOut.id, chipOut.id, blackOut.id, yellowOut.id]
-
-        case .digital:
-            let plateIn = plateIn("\(b).plate.in"), plateOut = plateOut("\(b).plate.out", .afterPrevious, delay: -0.3)
-            let lbIn = popIn("\(b).lb.in", .afterPrevious, delay: -0.05, duration: 0.5, from: 0.2), lbOut = popOut("\(b).lb.out")
-            let rbIn = popIn("\(b).rb.in", .withPrevious, delay: 0, duration: 0.5, from: 0.2), rbOut = popOut("\(b).rb.out")
-            let kickIn = typeIn("\(b).kicker.in", delay: -0.3, duration: 0.8), kickOut = textOut("\(b).kicker.out", .withPrevious)
-            let nameIn = textIn("\(b).name.in", delay: -0.3), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
-            let bandIn = ruleIn("\(b).band.in", delay: -0.5, duration: 0.6), bandOut = ruleOut("\(b).band.out")
-            let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.15), titleOut = textOut("\(b).title.out", .withPrevious)
-            objects = [
-                block("\(b).plate", "Plate", x: 120, y: 810, w: 960, h: 190, color: look.plate, stroke: ObjectStroke(colorHex: look.accent, width: 1.5), animationSteps: [plateIn, plateOut]),
-                label("\(b).lb", "Bracket", "[", x: 96, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [lbIn, lbOut]),
-                label("\(b).rb", "Bracket", "]", x: 1014, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [rbIn, rbOut]),
-                label("\(b).kicker", "Kicker", "// speaker", x: 160, y: 822, w: 800, h: 40, size: 22, color: look.accent2, tracking: 4, inset: 0, animationSteps: [kickIn, kickOut]),
-                label("\(b).name", "Name", "Full Name", x: 160, y: 858, w: 880, h: 80, size: 58, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
-                block("\(b).band", "Band", x: 160, y: 942, w: 760, h: 36, fill: gradient(look.accent, look.accent2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
-                label("\(b).title", "Title", "Title or role", x: 160, y: 942, w: 760, h: 36, size: 22, color: look.inkOnAccent, tracking: 3, uppercase: true, inset: 16, animationSteps: [titleIn, titleOut]),
-            ]
-            order = [plateIn.id, lbIn.id, rbIn.id, kickIn.id, nameIn.id, bandIn.id, titleIn.id, nameOut.id, titleOut.id, kickOut.id, bandOut.id, lbOut.id, rbOut.id, plateOut.id]
+        let plate = switch self {
+        case .cleanGeometric: namePlateCleanGeometric(b, outTrigger: outTrigger, outDelay: outDelay)
+        case .editorialSerif: namePlateEditorialSerif(b, outTrigger: outTrigger, outDelay: outDelay)
+        case .boldBlocks: namePlateBoldBlocks(b, outTrigger: outTrigger, outDelay: outDelay)
+        case .digital: namePlateDigital(b, outTrigger: outTrigger, outDelay: outDelay)
         }
-        return Overlay(id: b, name: timed ? "Name + Title (timed)" : "Name + Title", objects: objects, animationOrder: order)
+        return Overlay(id: b, name: timed ? "Name + Title (timed)" : "Name + Title", objects: plate.objects, animationOrder: plate.order)
+    }
+
+    private func namePlateCleanGeometric(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let accentIn = plateIn("\(b).accent.in"), accentOut = plateOut("\(b).accent.out", .afterPrevious, delay: -0.2)
+        let plateIn = step("\(b).plate.in", .in, .wipe, .afterPrevious, delay: -0.3, duration: 0.5, ramp: .out, edge: .left, softEdge: 40)
+        let plateOut = step("\(b).plate.out", .out, .wipe, .withPrevious, delay: 0.05, duration: 0.4, ramp: .in, edge: .left, softEdge: 40)
+        let nameIn = textIn("\(b).name.in", delay: -0.15, rise: 90), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay, distance: 90)
+        let ruleIn = ruleIn("\(b).rule.in", delay: -0.35, duration: 0.45), ruleOut = ruleOut("\(b).rule.out", edge: .left)
+        let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.1, rise: -60), titleOut = textOut("\(b).title.out", .withPrevious, distance: 60)
+        let objects: [SlideObject] = [
+            block("\(b).plate", "Plate", x: 160, y: 820, w: 960, h: 170, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [plateIn, plateOut]),
+            block("\(b).accent", "Accent Bar", x: 120, y: 820, w: 40, h: 170, color: look.accent, radius: 0, animationSteps: [accentIn, accentOut]),
+            matte("\(b).mask.name", x: 160, y: 812, w: 960, h: 98),
+            label("\(b).name", "Name", "Full Name", x: 160, y: 824, w: 960, h: 84, size: 60, display: true, inset: 40, maskedBy: "\(b).mask.name", shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            block("\(b).rule", "Rule", x: 200, y: 910, w: 300, h: 4, color: look.accent2, radius: 0, animationSteps: [ruleIn, ruleOut]),
+            matte("\(b).mask.title", x: 160, y: 914, w: 960, h: 80),
+            label("\(b).title", "Title", "Title or role", x: 160, y: 920, w: 960, h: 60, size: 32, color: look.accent2, tracking: 2, inset: 40, maskedBy: "\(b).mask.title", animationSteps: [titleIn, titleOut]),
+        ]
+        let order = [accentIn.id, plateIn.id, nameIn.id, ruleIn.id, titleIn.id, nameOut.id, titleOut.id, ruleOut.id, plateOut.id, accentOut.id]
+        return (objects, order)
+    }
+
+    private func namePlateEditorialSerif(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let bandIn = plateIn("\(b).band.in"), bandOut = plateOut("\(b).band.out", .afterPrevious, delay: -0.3)
+        let topIn = ruleIn("\(b).top.in", delay: -0.7, duration: 0.8), topOut = ruleOut("\(b).top.out")
+        let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
+        let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.2), titleOut = textOut("\(b).title.out", .withPrevious)
+        let bottomIn = ruleIn("\(b).bottom.in", .withPrevious, delay: 0.1, duration: 0.8), bottomOut = ruleOut("\(b).bottom.out", edge: .left)
+        let objects: [SlideObject] = [
+            block("\(b).band", "Band", x: 0, y: 800, w: 1300, h: 220, fill: gradient(look.plate, look.plate2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
+            block("\(b).top", "Hairline", x: 140, y: 828, w: 720, h: 2, color: look.accent, radius: 0, animationSteps: [topIn, topOut]),
+            label("\(b).name", "Name", "Full Name", x: 140, y: 840, w: 1000, h: 92, size: 66, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            label("\(b).title", "Title", "Title or role", x: 140, y: 930, w: 1000, h: 50, size: 28, color: look.accent, tracking: kickerTracking, uppercase: true, inset: 0, animationSteps: [titleIn, titleOut]),
+            block("\(b).bottom", "Hairline", x: 140, y: 992, w: 220, h: 2, color: look.accent, radius: 0, animationSteps: [bottomIn, bottomOut]),
+        ]
+        let order = [bandIn.id, topIn.id, nameIn.id, titleIn.id, bottomIn.id, nameOut.id, titleOut.id, topOut.id, bottomOut.id, bandOut.id]
+        return (objects, order)
+    }
+
+    private func namePlateBoldBlocks(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let yellowIn = plateIn("\(b).yellow.in"), yellowOut = plateOut("\(b).yellow.out", .afterPrevious, delay: -0.2)
+        let nameIn = textIn("\(b).name.in"), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
+        let blackIn = plateIn("\(b).black.in", .withPrevious, delay: 0.1), blackOut = plateOut("\(b).black.out", .withPrevious, delay: 0.05)
+        let titleIn = textIn("\(b).title.in"), titleOut = textOut("\(b).title.out", .withPrevious)
+        let chipIn = popIn("\(b).chip.in", delay: -0.1, duration: 0.35, from: 0), chipOut = popOut("\(b).chip.out")
+        let objects: [SlideObject] = [
+            block("\(b).yellow", "Yellow Block", x: 120, y: 800, w: 820, h: 140, color: look.accent, skew: -12, animationSteps: [yellowIn, yellowOut]),
+            label("\(b).name", "Name", "Full Name", x: 150, y: 800, w: 790, h: 140, size: 72, display: true, color: look.inkOnAccent, tracking: 2, uppercase: true, inset: 40, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            block("\(b).black", "Black Block", x: 200, y: 940, w: 680, h: 64, color: look.accent2, skew: -12, animationSteps: [blackIn, blackOut]),
+            label("\(b).title", "Title", "Title or role", x: 230, y: 940, w: 650, h: 64, size: 30, color: look.ink, tracking: 5, uppercase: true, inset: 40, animationSteps: [titleIn, titleOut]),
+            block("\(b).chip", "Chip", x: 94, y: 940, w: 64, h: 64, color: look.accent, skew: -12, animationSteps: [chipIn, chipOut]),
+        ]
+        let order = [yellowIn.id, nameIn.id, blackIn.id, titleIn.id, chipIn.id, nameOut.id, titleOut.id, chipOut.id, blackOut.id, yellowOut.id]
+        return (objects, order)
+    }
+
+    private func namePlateDigital(_ b: String, outTrigger: AnimationTrigger, outDelay: Double?) -> (objects: [SlideObject], order: [String]) {
+        let look = look
+        let plateIn = plateIn("\(b).plate.in"), plateOut = plateOut("\(b).plate.out", .afterPrevious, delay: -0.3)
+        let lbIn = popIn("\(b).lb.in", .afterPrevious, delay: -0.05, duration: 0.5, from: 0.2), lbOut = popOut("\(b).lb.out")
+        let rbIn = popIn("\(b).rb.in", .withPrevious, delay: 0, duration: 0.5, from: 0.2), rbOut = popOut("\(b).rb.out")
+        let kickIn = typeIn("\(b).kicker.in", delay: -0.3, duration: 0.8), kickOut = textOut("\(b).kicker.out", .withPrevious)
+        let nameIn = textIn("\(b).name.in", delay: -0.3), nameOut = textOut("\(b).name.out", outTrigger, delay: outDelay)
+        let bandIn = ruleIn("\(b).band.in", delay: -0.5, duration: 0.6), bandOut = ruleOut("\(b).band.out")
+        let titleIn = textIn("\(b).title.in", .withPrevious, delay: 0.15), titleOut = textOut("\(b).title.out", .withPrevious)
+        let objects: [SlideObject] = [
+            block("\(b).plate", "Plate", x: 120, y: 810, w: 960, h: 190, color: look.plate, stroke: ObjectStroke(colorHex: look.accent, width: 1.5), animationSteps: [plateIn, plateOut]),
+            label("\(b).lb", "Bracket", "[", x: 96, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [lbIn, lbOut]),
+            label("\(b).rb", "Bracket", "]", x: 1014, y: 800, w: 90, h: 210, size: 150, display: true, color: look.accent, align: .center, inset: 0, animationSteps: [rbIn, rbOut]),
+            label("\(b).kicker", "Kicker", "// speaker", x: 160, y: 822, w: 800, h: 40, size: 22, color: look.accent2, tracking: 4, inset: 0, animationSteps: [kickIn, kickOut]),
+            label("\(b).name", "Name", "Full Name", x: 160, y: 858, w: 880, h: 80, size: 58, display: true, inset: 0, shrink: true, page: true, animationSteps: [nameIn, nameOut]),
+            block("\(b).band", "Band", x: 160, y: 942, w: 760, h: 36, fill: gradient(look.accent, look.accent2, angle: 0), radius: 0, animationSteps: [bandIn, bandOut]),
+            label("\(b).title", "Title", "Title or role", x: 160, y: 942, w: 760, h: 36, size: 22, color: look.inkOnAccent, tracking: 3, uppercase: true, inset: 16, animationSteps: [titleIn, titleOut]),
+        ]
+        let order = [plateIn.id, lbIn.id, rbIn.id, kickIn.id, nameIn.id, bandIn.id, titleIn.id, nameOut.id, titleOut.id, kickOut.id, bandOut.id, lbOut.id, rbOut.id, plateOut.id]
+        return (objects, order)
     }
 
     private func verseLowerThird(base b: String) -> Overlay {
@@ -732,7 +865,7 @@ public enum StarterPack: String, CaseIterable, Sendable {
         let away: AnimationEdge = layout == .sideThird ? .top : .bottom
         let stroked = self == .editorialSerif || self == .digital
         var cardIn = stroked
-            ? drawIn("\(b).card.in", .withPrevious, duration: 1.2)                 
+            ? drawIn("\(b).card.in", .withPrevious, duration: 1.2)
             : self == .cleanGeometric || layout == .full
                 ? step("\(b).card.in", .in, .scale, .withPrevious, duration: 0.55, ramp: .out, fade: true, fromScale: 0.9)
                 : plateIn("\(b).card.in", edge: cardEdge)

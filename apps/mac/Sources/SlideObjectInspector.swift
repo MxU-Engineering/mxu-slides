@@ -856,6 +856,34 @@ struct SlideObjectInspector: View {
                 }
             }
             if let link {
+                if link.source == .videoCountdown || link.source == .videoMarkName {
+                    let counting = link.source == .videoCountdown
+                    InspectorPicker(
+                        counting ? "Counts To" : "Action",
+                        selection: linkWrite(object, \.videoTarget, default: counting ? .end : .nextMark)
+                    ) {
+                        if counting { Text("End of Video").tag(VideoCountdownTarget.end) }
+                        Text("Next Video Action").tag(VideoCountdownTarget.nextMark)
+                        Text("Video Action Named…").tag(VideoCountdownTarget.namedMark)
+                    }
+                    .help(counting
+                        ? "What this box counts to on the playing video. A video action counts to the end once none is left."
+                        : "Which video action's name this box shows; empty once none is left")
+                    if link.videoTarget == .namedMark {
+                        LabeledContent("Action Name") {
+                            CommittedTextField("", text: linkWrite(object, \.videoMarkName, default: ""))
+                                .multilineTextAlignment(.trailing)
+                        }
+                        .help("The video action to count to, matched by name (any capitalization) in whichever video is playing")
+                    }
+                    if counting {
+                        InspectorPicker("Direction", selection: linkWrite(object, \.countsUp, default: false)) {
+                            Text("Down").tag(false)
+                            Text("Up").tag(true)
+                        }
+                        .help("Up counts from the previous video action (or the start of the video) and stops at the target")
+                    }
+                }
                 if link.source == .timer {
                     InspectorPicker("Timer", selection: linkWrite(object, \.timerId, default: "")) {
 
@@ -910,6 +938,15 @@ struct SlideObjectInspector: View {
                     )
                     .help("Read the timer's amber/red warning ink when it applies")
                 }
+                if link.source == .videoMarkName {
+                    InspectorPicker("Video From", selection: linkWrite(object, \.videoLayer, default: "")) {
+                        Text(LayerKind.videos.displayName).tag("")
+                        Text(LayerKind.loopingVideos.displayName).tag(LayerKind.loopingVideos.rawValue)
+                        Text(LayerKind.slide.displayName).tag(LayerKind.slide.rawValue)
+                        Text(LayerKind.overlays.displayName).tag(LayerKind.overlays.rawValue)
+                    }
+                    .help("The render layer whose playing video this box reads; Foreground Videos is the room default")
+                }
                 if link.source == .videoCountdown {
                     Toggle(
                         "Show Video Name",
@@ -960,22 +997,23 @@ struct SlideObjectInspector: View {
     private func typographySection(_ object: SlideObject, forShape: Bool = false) -> some View {
         let onEdge = forShape && (current(object).shapeTextPlacement ?? .inside) != .inside
         InspectorSection("Typography") {
+            let base = model.baseStyle(for: current(object))
             FontFaceRows(
-                fontName: styleWrite(object, \.fontName, default: model.theme?.fontFamily ?? "HelveticaNeue-Bold")
+                fontName: styleWrite(object, \.fontName, default: base.fontName)
             )
-            .mixedValue(styleMixed(\.fontName, default: model.theme?.fontFamily ?? "HelveticaNeue-Bold"))
+            .mixedValue(styleMixed(\.fontName, default: base.fontName))
 
             HStack(spacing: 12) {
-                numberField("Size", styleWrite(object, \.fontSize, default: model.theme?.fontSize ?? 96), range: 1...500)
+                numberField("Size", styleWrite(object, \.fontSize, default: base.fontSize), range: 1...500)
                     .frame(width: 112)
-                    .mixedValue(styleMixed(\.fontSize, default: model.theme?.fontSize ?? 96))
+                    .mixedValue(styleMixed(\.fontSize, default: base.fontSize))
                 Spacer(minLength: 8)
                 HexColorRow(
                     label: "Color",
-                    hex: styleWrite(object, \.colorHex, default: model.theme?.textColorHex ?? "#FFFFFFFF"),
+                    hex: styleWrite(object, \.colorHex, default: base.colorHex),
                     labelHidden: true
                 )
-                .mixedValue(styleMixed(\.colorHex, default: model.theme?.textColorHex ?? "#FFFFFFFF"))
+                .mixedValue(styleMixed(\.colorHex, default: base.colorHex))
             }
             HStack(spacing: 6) {
                 Text("Alignment")
@@ -1228,21 +1266,21 @@ struct SlideObjectInspector: View {
     private func selectionSection(_ object: SlideObject) -> some View {
         if model.canvasTextEditID == object.id, (model.canvasTextSelection?.length ?? 0) > 0 {
             let run = model.canvasSelectionRun
-            let base = current(object).textStyle
+            let base = model.baseStyle(for: current(object))
             InspectorSection("Selection") {
                 FontFaceRows(fontName: Binding(
-                    get: { run?.fontName ?? base?.fontName ?? model.theme?.fontFamily ?? "HelveticaNeue-Bold" },
+                    get: { run?.fontName ?? base.fontName },
                     set: { name in model.applyStyleToSelection { $0.fontName = name.isEmpty ? nil : name } }
                 ))
                 HStack(spacing: 12) {
                     numberField("Size", Binding(
-                        get: { run?.fontSize ?? base?.fontSize ?? model.theme?.fontSize ?? 96 },
+                        get: { run?.fontSize ?? base.fontSize },
                         set: { size in model.applyStyleToSelection { $0.fontSize = size } }
                     ), range: 1...500)
                     .frame(width: 112)
                     Spacer(minLength: 8)
                     HexColorRow(label: "Color", hex: Binding(
-                        get: { run?.colorHex ?? base?.colorHex ?? model.theme?.textColorHex ?? "#FFFFFFFF" },
+                        get: { run?.colorHex ?? base.colorHex },
                         set: { hex in model.applyStyleToSelection { $0.colorHex = hex } }
                     ), labelHidden: true)
                 }
@@ -1257,7 +1295,7 @@ struct SlideObjectInspector: View {
                     ))
                 }
                 numberField("Tracking", Binding(
-                    get: { run?.tracking ?? base?.tracking ?? 0 },
+                    get: { run?.tracking ?? base.tracking },
                     set: { tracking in model.applyStyleToSelection { $0.tracking = tracking } }
                 ), range: -50...200)
                 LabeledContent("Style") {
@@ -1270,6 +1308,12 @@ struct SlideObjectInspector: View {
                             get: { run?.strikethrough == true },
                             set: { on in model.applyStyleToSelection { $0.strikethrough = on ? true : nil } }
                         )),
+                        (.allCaps, Binding(
+                            get: { (run?.textTransform ?? base.textTransform) == .uppercase },
+                            set: { on in model.applyStyleToSelection {
+                                $0.textTransform = on ? .uppercase : (base.textTransform == .uppercase ? TextTransform.none : nil)
+                            } }
+                        )),
                     ])
                 }
                 Button("Clear Selection Style") {
@@ -1281,6 +1325,7 @@ struct SlideObjectInspector: View {
                         run.colorHex = nil
                         run.highlightColorHex = nil
                         run.tracking = nil
+                        run.textTransform = nil
                     }
                 }
             }
@@ -1767,6 +1812,7 @@ struct SlideObjectInspector: View {
         let lines = current(object).text.components(separatedBy: "\n")
         if lines.count > 1 {
             let line = min(selectedLineIndex, lines.count - 1)
+            let base = model.baseStyle(for: current(object))
             InspectorSection("Line Styles") {
                 InspectorPicker("Line", selection: Binding(
                     get: { min(selectedLineIndex, lines.count - 1) },
@@ -1782,25 +1828,14 @@ struct SlideObjectInspector: View {
                 HStack(spacing: 12) {
                     numberField(
                         "Size",
-                        lineWrite(
-                            object, line: line, \.fontSize,
-                            default: current(object).textStyle?.fontSize ?? model.theme?.fontSize ?? 96
-                        ),
+                        lineWrite(object, line: line, \.fontSize, default: base.fontSize),
                         range: 1...500
                     )
                     .frame(width: 112)
                     Spacer(minLength: 8)
-                    HexColorRow(label: "Color", hex: lineWrite(
-                        object, line: line, \.colorHex,
-                        default: current(object).textStyle?.colorHex
-                            ?? model.theme?.textColorHex ?? "#FFFFFFFF"
-                    ), labelHidden: true)
+                    HexColorRow(label: "Color", hex: lineWrite(object, line: line, \.colorHex, default: base.colorHex), labelHidden: true)
                 }
-                numberField(
-                    "Tracking",
-                    lineWrite(object, line: line, \.tracking, default: 0),
-                    range: -50...200
-                )
+                numberField("Tracking", lineWrite(object, line: line, \.tracking, default: base.tracking), range: -50...200)
                 if lineOverride(object, line: line) != nil {
                     Button("Reset Line") { resetLineOverride(object, line: line) }
                 }
@@ -2019,6 +2054,12 @@ struct SlideObjectInspector: View {
 
     private func fillSection(_ object: SlideObject) -> some View {
         InspectorSection(fillIsMediaKind(object) ? "Media" : "Fill") {
+            if model.isThemeEditor, current(object).objectKind == .shape {
+                Toggle("Photo spot", isOn: Binding(
+                    get: { current(object).photoSpot == true },
+                    set: { on in commit(object) { $0.photoSpot = on ? true : nil } }))
+                    .help("Picture slides made from notes put their picture here. Several spots fill left to right, then top to bottom.")
+            }
             if fillIsMediaKind(object), fillIsLibrary(object),
                let mediaID = current(object).fill?.mediaId, !mediaID.isEmpty {
                 MediaPickCard(model: model.appModel, mediaID: mediaID, scope: replaceScope) {
@@ -2069,6 +2110,7 @@ struct SlideObjectInspector: View {
                     Text("Fill").tag(MediaScaleMode.fill)
                     Text("Fit").tag(MediaScaleMode.fit)
                     Text("Stretch").tag(MediaScaleMode.stretch)
+                    Text("Scale and Blur").tag(MediaScaleMode.scaleAndBlur)
                 }
                 if fillIsLibrary(object) {
 
@@ -2849,6 +2891,7 @@ extension TextSourceKind {
         case .currentPresentation: "Presentation Name"
         case .nextServiceTitle: "Next Service Title"
         case .timecode: "Timecode"
+        case .videoMarkName: "Video Action Name"
         }
     }
 }

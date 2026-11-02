@@ -48,6 +48,7 @@ public enum MediaScaleMode: String, Codable, Sendable, CaseIterable, Equatable {
     case fill
     case fit
     case stretch
+    case scaleAndBlur
 }
 
 public struct MediaSourceRect: Codable, Sendable, Equatable {
@@ -369,8 +370,9 @@ public struct TextStyleRun: Codable, Sendable, Equatable {
     public var colorHex: String?
     public var highlightColorHex: String?
     public var tracking: Double?
+    public var textTransform: TextTransform?
 
-    public init(line: Int, column: Int, length: Int, underline: Bool? = nil, strikethrough: Bool? = nil, fontName: String? = nil, fontSize: Double? = nil, colorHex: String? = nil, highlightColorHex: String? = nil, tracking: Double? = nil) {
+    public init(line: Int, column: Int, length: Int, underline: Bool? = nil, strikethrough: Bool? = nil, fontName: String? = nil, fontSize: Double? = nil, colorHex: String? = nil, highlightColorHex: String? = nil, tracking: Double? = nil, textTransform: TextTransform? = nil) {
         self.line = line
         self.column = column
         self.length = length
@@ -381,6 +383,7 @@ public struct TextStyleRun: Codable, Sendable, Equatable {
         self.colorHex = colorHex
         self.highlightColorHex = highlightColorHex
         self.tracking = tracking
+        self.textTransform = textTransform
     }
 }
 
@@ -654,8 +657,9 @@ public struct SlideObject: Codable, Sendable, Equatable, Identifiable {
     public var skewX: Double?
     public var skewY: Double?
     public var keystoneMode: KeystoneMode?
+    public var photoSpot: Bool?
 
-    public init(id: String, objectKind: SlideObjectKind, name: String, text: String, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil, rotationDegrees: Double? = nil, hidden: Bool? = nil, visibilityMatch: VisibilityMatch? = nil, visibilityConditions: [VisibilityCondition]? = nil, flipHorizontal: Bool? = nil, flipVertical: Bool? = nil, opacity: Double? = nil, blendMode: BlendMode? = nil, groupId: String? = nil, maskObjectId: String? = nil, maskMode: MaskMode? = nil, effects: [Effect]? = nil, effectsApplyBelow: Bool? = nil, textLink: TextLink? = nil, textStyle: TextStyle? = nil, chords: [ChordPlacement]? = nil, styleRuns: [TextStyleRun]? = nil, shapeKind: ShapeKind? = nil, cornerRadius: Double? = nil, pathData: String? = nil, shapeTextPlacement: ShapeTextPlacement? = nil, shapeTextCornerRadius: Double? = nil, fill: ObjectFill? = nil, stroke: ObjectStroke? = nil, shadow: ObjectShadow? = nil, mediaId: String? = nil, mediaScaleMode: MediaScaleMode? = nil, mediaSourceRect: MediaSourceRect? = nil, loops: Bool? = nil, captureSourceKind: CaptureSourceKind? = nil, captureSourceId: String? = nil, screenSourceId: String? = nil, liveInputId: String? = nil, keepFromSlide: KeepFromSlideOptions? = nil, animationSteps: [AnimationStep]? = nil, builds: [AnimationStep]? = nil, tilt: Double? = nil, swing: Double? = nil, tiltPivot: TiltPivot? = nil, keystoneTop: Double? = nil, keystoneBottom: Double? = nil, skewX: Double? = nil, skewY: Double? = nil, keystoneMode: KeystoneMode? = nil) {
+    public init(id: String, objectKind: SlideObjectKind, name: String, text: String, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil, rotationDegrees: Double? = nil, hidden: Bool? = nil, visibilityMatch: VisibilityMatch? = nil, visibilityConditions: [VisibilityCondition]? = nil, flipHorizontal: Bool? = nil, flipVertical: Bool? = nil, opacity: Double? = nil, blendMode: BlendMode? = nil, groupId: String? = nil, maskObjectId: String? = nil, maskMode: MaskMode? = nil, effects: [Effect]? = nil, effectsApplyBelow: Bool? = nil, textLink: TextLink? = nil, textStyle: TextStyle? = nil, chords: [ChordPlacement]? = nil, styleRuns: [TextStyleRun]? = nil, shapeKind: ShapeKind? = nil, cornerRadius: Double? = nil, pathData: String? = nil, shapeTextPlacement: ShapeTextPlacement? = nil, shapeTextCornerRadius: Double? = nil, fill: ObjectFill? = nil, stroke: ObjectStroke? = nil, shadow: ObjectShadow? = nil, mediaId: String? = nil, mediaScaleMode: MediaScaleMode? = nil, mediaSourceRect: MediaSourceRect? = nil, loops: Bool? = nil, captureSourceKind: CaptureSourceKind? = nil, captureSourceId: String? = nil, screenSourceId: String? = nil, liveInputId: String? = nil, keepFromSlide: KeepFromSlideOptions? = nil, animationSteps: [AnimationStep]? = nil, builds: [AnimationStep]? = nil, tilt: Double? = nil, swing: Double? = nil, tiltPivot: TiltPivot? = nil, keystoneTop: Double? = nil, keystoneBottom: Double? = nil, skewX: Double? = nil, skewY: Double? = nil, keystoneMode: KeystoneMode? = nil, photoSpot: Bool? = nil) {
         self.id = id
         self.objectKind = objectKind
         self.name = name
@@ -708,6 +712,7 @@ public struct SlideObject: Codable, Sendable, Equatable, Identifiable {
         self.skewX = skewX
         self.skewY = skewY
         self.keystoneMode = keystoneMode
+        self.photoSpot = photoSpot
     }
 }
 
@@ -733,19 +738,30 @@ public enum CueMediaMode: String, Codable, Sendable, CaseIterable, Equatable {
     case untilReplaced
 }
 
+public enum MediaEndFade: String, Codable, Sendable, CaseIterable, Equatable {
+    case black
+    case clear
+}
+
 public struct CueMedia: Codable, Sendable, Equatable {
     public var mediaId: String
     public var mode: CueMediaMode?
     public var layer: CueMediaLayer?
     public var loops: Bool?
     public var classification: MediaClassification?
+    public var scaleMode: MediaScaleMode?
+    public var endFade: MediaEndFade?
+    public var layerId: String?
 
-    public init(mediaId: String, mode: CueMediaMode? = nil, layer: CueMediaLayer? = nil, loops: Bool? = nil, classification: MediaClassification? = nil) {
+    public init(mediaId: String, mode: CueMediaMode? = nil, layer: CueMediaLayer? = nil, loops: Bool? = nil, classification: MediaClassification? = nil, scaleMode: MediaScaleMode? = nil, endFade: MediaEndFade? = nil, layerId: String? = nil) {
         self.mediaId = mediaId
         self.mode = mode
         self.layer = layer
         self.loops = loops
         self.classification = classification
+        self.scaleMode = scaleMode
+        self.endFade = endFade
+        self.layerId = layerId
     }
 }
 
@@ -1093,8 +1109,9 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var recordedByPresetId: String?
     public var actions: [SlideAction]?
     public var autoAdvance: AutoAdvance?
+    public var marks: [VideoMark]?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, importedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, marks: [VideoMark]? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -1122,6 +1139,23 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.recordedByPresetId = recordedByPresetId
         self.actions = actions
         self.autoAdvance = autoAdvance
+        self.marks = marks
+    }
+}
+
+public struct VideoMark: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var at: Double
+    public var actions: [SlideAction]
+    public var colorHex: String?
+
+    public init(id: String, name: String, at: Double, actions: [SlideAction], colorHex: String? = nil) {
+        self.id = id
+        self.name = name
+        self.at = at
+        self.actions = actions
+        self.colorHex = colorHex
     }
 }
 
@@ -1521,11 +1555,15 @@ public struct OutputPreset: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var assignments: [OutputAssignment]
+    public var placements: [LayerPlacement]?
+    public var layers: [CustomLayer]?
 
-    public init(id: String, name: String, assignments: [OutputAssignment]) {
+    public init(id: String, name: String, assignments: [OutputAssignment], placements: [LayerPlacement]? = nil, layers: [CustomLayer]? = nil) {
         self.id = id
         self.name = name
         self.assignments = assignments
+        self.placements = placements
+        self.layers = layers
     }
 }
 
@@ -1715,6 +1753,8 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
     public var height: Int?
     public var frameRate: Int?
     public var videoBitrateKbps: Int?
+    public var adaptBitrate: Bool?
+    public var minBitrateKbps: Int?
     public var canvasScreenId: String?
     public var recordWhileStreaming: Bool?
     public var recordCodec: String?
@@ -1733,7 +1773,7 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
     public var recordLibraryFolder: String?
     public var recordExportFolder: String?
 
-    public init(id: String, name: String, destinations: [StreamPresetDestination], destinationIds: [String]? = nil, presetKind: StreamPresetKind? = nil, width: Int? = nil, height: Int? = nil, frameRate: Int? = nil, videoBitrateKbps: Int? = nil, canvasScreenId: String? = nil, recordWhileStreaming: Bool? = nil, recordCodec: String? = nil, title: String? = nil, streamDescription: String? = nil, recordFolder: String? = nil, audioInputUid: String? = nil, audioIncludesProgram: Bool? = nil, audioInputId: String? = nil, audioMixId: String? = nil, audioDelayMs: Int? = nil, sourceKind: StreamSourceKind? = nil, sourceMediaId: String? = nil, sourceFolder: String? = nil, sourceMaxAgeHours: Int? = nil, recordLibraryFolder: String? = nil, recordExportFolder: String? = nil) {
+    public init(id: String, name: String, destinations: [StreamPresetDestination], destinationIds: [String]? = nil, presetKind: StreamPresetKind? = nil, width: Int? = nil, height: Int? = nil, frameRate: Int? = nil, videoBitrateKbps: Int? = nil, adaptBitrate: Bool? = nil, minBitrateKbps: Int? = nil, canvasScreenId: String? = nil, recordWhileStreaming: Bool? = nil, recordCodec: String? = nil, title: String? = nil, streamDescription: String? = nil, recordFolder: String? = nil, audioInputUid: String? = nil, audioIncludesProgram: Bool? = nil, audioInputId: String? = nil, audioMixId: String? = nil, audioDelayMs: Int? = nil, sourceKind: StreamSourceKind? = nil, sourceMediaId: String? = nil, sourceFolder: String? = nil, sourceMaxAgeHours: Int? = nil, recordLibraryFolder: String? = nil, recordExportFolder: String? = nil) {
         self.id = id
         self.name = name
         self.destinations = destinations
@@ -1743,6 +1783,8 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
         self.height = height
         self.frameRate = frameRate
         self.videoBitrateKbps = videoBitrateKbps
+        self.adaptBitrate = adaptBitrate
+        self.minBitrateKbps = minBitrateKbps
         self.canvasScreenId = canvasScreenId
         self.recordWhileStreaming = recordWhileStreaming
         self.recordCodec = recordCodec
@@ -2169,12 +2211,19 @@ public enum TextSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case currentPresentation
     case nextServiceTitle
     case timecode
+    case videoMarkName
 }
 
 public enum TimerTextFormat: String, Codable, Sendable, CaseIterable, Equatable {
     case digits
     case abbreviated
     case words
+}
+
+public enum VideoCountdownTarget: String, Codable, Sendable, CaseIterable, Equatable {
+    case end
+    case nextMark
+    case namedMark
 }
 
 public struct TextLink: Codable, Sendable, Equatable {
@@ -2190,8 +2239,11 @@ public struct TextLink: Codable, Sendable, Equatable {
     public var videoLayer: String?
     public var timerFormat: TimerTextFormat?
     public var timerPattern: String?
+    public var videoTarget: VideoCountdownTarget?
+    public var videoMarkName: String?
+    public var countsUp: Bool?
 
-    public init(source: TextSourceKind, timerId: String? = nil, clockFormat: String? = nil, usesWarningColor: Bool? = nil, maxLines: Int? = nil, includeSteps: Bool? = nil, includeBuilds: Bool? = nil, sourceObjectName: String? = nil, showsVideoName: Bool? = nil, videoLayer: String? = nil, timerFormat: TimerTextFormat? = nil, timerPattern: String? = nil) {
+    public init(source: TextSourceKind, timerId: String? = nil, clockFormat: String? = nil, usesWarningColor: Bool? = nil, maxLines: Int? = nil, includeSteps: Bool? = nil, includeBuilds: Bool? = nil, sourceObjectName: String? = nil, showsVideoName: Bool? = nil, videoLayer: String? = nil, timerFormat: TimerTextFormat? = nil, timerPattern: String? = nil, videoTarget: VideoCountdownTarget? = nil, videoMarkName: String? = nil, countsUp: Bool? = nil) {
         self.source = source
         self.timerId = timerId
         self.clockFormat = clockFormat
@@ -2204,6 +2256,9 @@ public struct TextLink: Codable, Sendable, Equatable {
         self.videoLayer = videoLayer
         self.timerFormat = timerFormat
         self.timerPattern = timerPattern
+        self.videoTarget = videoTarget
+        self.videoMarkName = videoMarkName
+        self.countsUp = countsUp
     }
 }
 
@@ -2307,9 +2362,10 @@ public struct NoteRun: Codable, Sendable, Equatable {
     public var slideGroup: String?
     public var slideType: String?
     public var slideId: String?
+    public var slideState: String?
     public var commentId: String?
 
-    public init(text: String, bold: Bool? = nil, italic: Bool? = nil, underline: Bool? = nil, strike: Bool? = nil, code: Bool? = nil, highlight: String? = nil, color: String? = nil, size: String? = nil, href: String? = nil, slideGroup: String? = nil, slideType: String? = nil, slideId: String? = nil, commentId: String? = nil) {
+    public init(text: String, bold: Bool? = nil, italic: Bool? = nil, underline: Bool? = nil, strike: Bool? = nil, code: Bool? = nil, highlight: String? = nil, color: String? = nil, size: String? = nil, href: String? = nil, slideGroup: String? = nil, slideType: String? = nil, slideId: String? = nil, slideState: String? = nil, commentId: String? = nil) {
         self.text = text
         self.bold = bold
         self.italic = italic
@@ -2323,6 +2379,7 @@ public struct NoteRun: Codable, Sendable, Equatable {
         self.slideGroup = slideGroup
         self.slideType = slideType
         self.slideId = slideId
+        self.slideState = slideState
         self.commentId = commentId
     }
 }
@@ -2419,8 +2476,12 @@ public struct NoteBlock: Codable, Sendable, Equatable {
     public var hexId: String?
     public var filename: String?
     public var slide: NoteSlideRef?
+    public var slideGroup: String?
+    public var slideType: String?
+    public var slideId: String?
+    public var slideState: String?
 
-    public init(type: NoteBlockType, level: Int? = nil, runs: [NoteRun]? = nil, ordered: Bool? = nil, items: [NoteListItem]? = nil, blocks: [NoteBlock]? = nil, language: String? = nil, text: String? = nil, url: String? = nil, width: Int? = nil, alt: String? = nil, attachmentKind: String? = nil, hexId: String? = nil, filename: String? = nil, slide: NoteSlideRef? = nil) {
+    public init(type: NoteBlockType, level: Int? = nil, runs: [NoteRun]? = nil, ordered: Bool? = nil, items: [NoteListItem]? = nil, blocks: [NoteBlock]? = nil, language: String? = nil, text: String? = nil, url: String? = nil, width: Int? = nil, alt: String? = nil, attachmentKind: String? = nil, hexId: String? = nil, filename: String? = nil, slide: NoteSlideRef? = nil, slideGroup: String? = nil, slideType: String? = nil, slideId: String? = nil, slideState: String? = nil) {
         self.type = type
         self.level = level
         self.runs = runs
@@ -2436,6 +2497,10 @@ public struct NoteBlock: Codable, Sendable, Equatable {
         self.hexId = hexId
         self.filename = filename
         self.slide = slide
+        self.slideGroup = slideGroup
+        self.slideType = slideType
+        self.slideId = slideId
+        self.slideState = slideState
     }
 }
 
@@ -2564,8 +2629,11 @@ public struct NoteDocument: Codable, Sendable, Equatable, Identifiable {
     public var madePassages: [NoteMadePassage]?
     public var markedByStructure: Bool?
     public var pendingUpdates: [NotePendingUpdate]?
+    public var mediaImports: [NoteMediaImport]?
+    public var buildMode: String?
+    public var skippedUpdates: [NoteSkippedUpdate]?
 
-    public init(id: String, name: String, folder: String? = nil, origin: String, mxuDocumentHexId: String? = nil, mxuVersion: String? = nil, mxuUpdatedAt: String? = nil, mxuIconEmoji: String? = nil, body: NoteBody? = nil, anchors: [SlideAnchor]? = nil, removedFromMxU: Bool? = nil, presentationId: String? = nil, slidesMadeFromSubmittedAt: String? = nil, madePassages: [NoteMadePassage]? = nil, markedByStructure: Bool? = nil, pendingUpdates: [NotePendingUpdate]? = nil) {
+    public init(id: String, name: String, folder: String? = nil, origin: String, mxuDocumentHexId: String? = nil, mxuVersion: String? = nil, mxuUpdatedAt: String? = nil, mxuIconEmoji: String? = nil, body: NoteBody? = nil, anchors: [SlideAnchor]? = nil, removedFromMxU: Bool? = nil, presentationId: String? = nil, slidesMadeFromSubmittedAt: String? = nil, madePassages: [NoteMadePassage]? = nil, markedByStructure: Bool? = nil, pendingUpdates: [NotePendingUpdate]? = nil, mediaImports: [NoteMediaImport]? = nil, buildMode: String? = nil, skippedUpdates: [NoteSkippedUpdate]? = nil) {
         self.id = id
         self.name = name
         self.folder = folder
@@ -2582,6 +2650,29 @@ public struct NoteDocument: Codable, Sendable, Equatable, Identifiable {
         self.madePassages = madePassages
         self.markedByStructure = markedByStructure
         self.pendingUpdates = pendingUpdates
+        self.mediaImports = mediaImports
+        self.buildMode = buildMode
+        self.skippedUpdates = skippedUpdates
+    }
+}
+
+public struct NoteSkippedUpdate: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var text: String
+
+    public init(id: String, text: String) {
+        self.id = id
+        self.text = text
+    }
+}
+
+public struct NoteMediaImport: Codable, Sendable, Equatable {
+    public var key: String
+    public var mediaId: String
+
+    public init(key: String, mediaId: String) {
+        self.key = key
+        self.mediaId = mediaId
     }
 }
 
@@ -2706,5 +2797,35 @@ public struct TrackSet: Codable, Sendable, Equatable, Identifiable {
         self.key = key
         self.tempo = tempo
         self.source = source
+    }
+}
+
+public struct LayerPlacement: Codable, Sendable, Equatable {
+    public var layerId: String
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+    public var scale: MediaScaleMode?
+
+    public init(layerId: String, x: Double, y: Double, width: Double, height: Double, scale: MediaScaleMode? = nil) {
+        self.layerId = layerId
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.scale = scale
+    }
+}
+
+public struct CustomLayer: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+    public var above: String?
+
+    public init(id: String, name: String, above: String? = nil) {
+        self.id = id
+        self.name = name
+        self.above = above
     }
 }

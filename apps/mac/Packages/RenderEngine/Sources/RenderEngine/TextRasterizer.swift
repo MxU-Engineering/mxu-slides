@@ -73,6 +73,7 @@ public enum TextRasterizer {
         plain.chords = []
         plain.balancedLineInsets = []
         plain.transform = .none
+        plain.styleRuns = plain.styleRuns.map { var run = $0; run.transform = nil; return run }
         let attributed = attributedString(for: plain, fontScale: scale, pixelScale: 1)
         let framesetter = CTFramesetterCreateWithAttributedString(attributed)
         let source = text.string as NSString
@@ -187,10 +188,7 @@ public enum TextRasterizer {
         plain.balancedLineInsets = []
         let attributed = attributedString(for: plain, fontScale: fontScale, pixelScale: 1)
             as NSAttributedString
-        let displayString: String = switch text.transform {
-        case .none: text.string
-        case .uppercase: text.string.uppercased()
-        }
+        let displayString = text.displayString
         var insets: [BalancedLineInset] = []
         var location = 0
         for (index, line) in displayString.components(separatedBy: "\n").enumerated() {
@@ -270,10 +268,7 @@ public enum TextRasterizer {
         let ctLines = (CTFrameGetLines(frame) as? [CTLine]) ?? []
         guard !ctLines.isEmpty || text.string.isEmpty else { return nil }
 
-        let displayString: String = switch text.transform {
-        case .none: text.string
-        case .uppercase: text.string.uppercased()
-        }
+        let displayString = text.displayString
         let display = displayString as NSString
         let sourceLines = displayString.components(separatedBy: "\n")
         var sourceStartUTF16: [Int] = []
@@ -569,10 +564,7 @@ public enum TextRasterizer {
         colorSpace: CGColorSpace? = nil,
         includeOutline: Bool = true
     ) -> CFAttributedString {
-        let displayString: String = switch text.transform {
-        case .none: text.string
-        case .uppercase: text.string.uppercased()
-        }
+        let displayString = text.displayString
         let lines = displayString.components(separatedBy: "\n")
         let overridesByLine = Dictionary(
             text.lineOverrides.map { ($0.lineIndex, $0) },

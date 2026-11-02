@@ -5,9 +5,7 @@ struct AutoAdvanceChip: View {
 
     var body: some View {
         if controls.autoAdvancePending != nil {
-            TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                let remaining = controls.autoAdvanceRemaining(at: context.date)
-                Button {
+            Button {
                     controls.setAutoAdvancePaused(!controls.autoAdvancePaused)
                 } label: {
                     HStack(spacing: 5) {
@@ -18,8 +16,15 @@ struct AutoAdvanceChip: View {
                             Text(controls.autoAdvancePaused ? "Advance held" : "Auto advance")
                                 .font(.system(size: 8))
                                 .foregroundStyle(.secondary)
-                            Text(remaining.map(Self.timecode) ?? "–:––")
-                                .font(.caption2.monospacedDigit())
+
+                            ClockLayers(hz: 4, running: true) { [controls] view, now in
+                                playheadText(
+                                    view, "remaining", controls.autoAdvanceRemaining(at: now).map(Self.timecode) ?? "–:––",
+                                    font: .monospacedDigitSystemFont(ofSize: 10, weight: .regular), color: .labelColor,
+                                    alignment: .left, frame: view.bounds)
+                            }
+                            .frame(width: 30, height: 13)
+                            .allowsHitTesting(false)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -33,7 +38,6 @@ struct AutoAdvanceChip: View {
                 .help(controls.autoAdvancePaused
                     ? "Auto advance is held — the video keeps playing, the room stays. Click to re-arm (an end that already passed stays skipped)."
                     : "Time until this slide advances on its own — click to hold (the video keeps playing)")
-            }
         }
     }
 

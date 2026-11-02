@@ -192,6 +192,14 @@ struct AppSettingsView: View {
                 )
             ),
             SettingsRowSpec(
+                id: "library.scheduledBackup",
+                title: "Back up every night",
+                caption: ScheduledBackupController.shared.caption,
+                keywords: "backup nightly schedule automatic disk drive folder time machine mxubackup local keep 7",
+                control: AnyView(ScheduledBackupControl(backup: ScheduledBackupController.shared)),
+                stacked: true
+            ),
+            SettingsRowSpec(
                 id: "present.mediaTransition",
                 title: "Media transition",
                 caption: "How backgrounds and media come in.",
@@ -323,6 +331,13 @@ struct AppSettingsView: View {
                 keywords: "volunteer tabs service controls modules timers combos alerts",
                 control: AnyView(VolunteerTabsControl(layout: layout))
             ))
+            rows.append(SettingsRowSpec(
+                id: "present.volunteerLibraries",
+                title: "Libraries volunteers keep",
+                caption: "Volunteers can play from these libraries but not edit or reorganize them.",
+                keywords: "volunteer library libraries slides overlays media music play",
+                control: AnyView(VolunteerLibrariesControl(layout: layout))
+            ))
         }
         rows.append(contentsOf: groupsRows)
         rows.append(contentsOf: audioRows)
@@ -433,8 +448,34 @@ struct AppSettingsView: View {
             control: AnyView(NDINetworkScopeControl())
         ))
         rows.append(contentsOf: apiRows)
+        rows.append(contentsOf: backupComputerRows)
         return rows
             .sorted { SettingsLayout.order(ofRow: $0.id) < SettingsLayout.order(ofRow: $1.id) }
+    }
+
+    private var backupComputerRows: [SettingsRowSpec] {
+        let follow = FollowController.shared
+        let keywords = "follow failover backup standby mirror pair pairing code take over booth redundant spare second computer"
+        if let pairing = follow.pairing {
+            let line = Follow.backupSettingsLine(
+                following: pairing.name, state: follow.state, inCharge: follow.inCharge, standby: follow.standingBy,
+                automatic: pairing.automatic ?? true, copied: follow.copiedItems, boothQuit: follow.boothQuit)
+            return [SettingsRowSpec(
+                id: "station.backup", title: line.title, caption: line.detail, keywords: keywords,
+                control: AnyView(BackupSideControl()), dot: follow.inCharge ? .blue : FollowBanner.color(follow))]
+        }
+        let line = Follow.boothSettingsLine(backups: follow.backups, connected: follow.connectedBackups, tookOver: follow.steppedDown?.backupName)
+        let dot: Color = follow.steppedDown != nil ? .orange : follow.connectedBackups.isEmpty ? .secondary : .green
+        var rows = [SettingsRowSpec(
+            id: "station.backup", title: line.title, caption: line.detail, keywords: keywords,
+            control: AnyView(BoothSideControl(api: api)), dot: dot)]
+        if follow.backups.isEmpty, follow.steppedDown == nil {
+            rows.append(SettingsRowSpec(
+                id: "station.beBackup", title: "Make this the backup",
+                caption: "Is this Mac the spare? Pair it with the main computer from here.", keywords: keywords,
+                control: AnyView(FollowSettingsControl())))
+        }
+        return rows
     }
 
     private var groupsRows: [SettingsRowSpec] {
@@ -553,6 +594,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     case general
 
+    case backup
+
     case present
 
     case edit
@@ -581,6 +624,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .streamRecord: "Stream & Record"
 
         case .api: "Network & API"
+        case .backup: "Backup"
         }
     }
 
@@ -595,6 +639,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .screens: "display"
         case .streamRecord: "record.circle"
         case .api: "network"
+        case .backup: "display.2"
         }
     }
 }
@@ -631,6 +676,8 @@ struct SettingsRowSpec: Identifiable {
     let control: AnyView
 
     var stacked: Bool = false
+
+    var dot: Color? = nil
 
     var help: String? { Self.help[id] }
 
@@ -863,6 +910,29 @@ private struct VolunteerTabsControl: View {
             }
         } label: {
             Text(chosen.count == ServiceControlsModule.defaultOrder.count ? "All tabs" : "\(chosen.count) tab\(chosen.count == 1 ? "" : "s")")
+        }
+        .fixedSize()
+    }
+}
+
+private struct VolunteerLibrariesControl: View {
+    let layout: PresentLayoutController
+
+    var body: some View {
+        let all = LibraryPresentLogic.volunteerDefaultKinds
+        let chosen = Set(layout.runOnlyLibraryKinds)
+        Menu {
+            ForEach(all, id: \.self) { kind in
+                Toggle(LibrarySection.allCases.first { $0.kind == kind }?.displayName ?? kind.rawValue, isOn: Binding(
+                    get: { chosen.contains(kind) },
+                    set: { on in
+                        let next = on ? chosen.union([kind]) : chosen.subtracting([kind])
+                        layout.setRunOnlyLibraryKinds(all.filter(next.contains))
+                    }
+                ))
+            }
+        } label: {
+            Text(chosen.isEmpty ? "None" : chosen.count == all.count ? "All libraries" : "\(chosen.count) librar\(chosen.count == 1 ? "y" : "ies")")
         }
         .fixedSize()
     }

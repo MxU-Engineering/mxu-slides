@@ -28,7 +28,6 @@ struct ModuleWindowView: View {
                         case .timers: TimersModule(model: model, controls: controls)
                         case .tracking: ServiceTrackingModule(model: model, controls: controls)
                         case .alerts: AlertsModule(model: model, controls: controls)
-                        case .overlays: OverlaysModule(model: model, controls: controls)
                         case .combos: ActionCombosModule(model: model, controls: controls)
                         case .confidence: ConfidenceModule(model: model, controls: controls)
                         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
@@ -98,6 +97,42 @@ struct ServiceControlsWindowView: View {
                 layout?.serviceControlsWindowOpened()
                 WindowBridge.openMain = { openWindow(id: "main") }
             }
+    }
+}
+
+struct LibraryWindowView: View {
+    let model: AppModel
+    let render: RenderContext?
+    let controls: ServiceControls?
+    let layout: PresentLayoutController?
+
+    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Group {
+            if layout?.volunteerLibraryKinds?.isEmpty == true {
+                RunOnlyLockedPlaceholder(surface: "The library")
+            } else {
+                LibrarySidebar(model: model, render: render, layout: layout, controls: controls)
+            }
+        }
+        .frame(minWidth: 300, minHeight: 360)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.cardSurface)
+        .environment(\.runOnly, layout?.runOnly ?? false)
+        .focusedSceneValue(\.serviceControls, controls)
+        .background(
+            ModuleWindowConfigurator(autosaveName: PresentLayoutController.libraryAutosaveName) {
+                layout?.libraryWindowClosed()
+            }
+        )
+        .navigationTitle("Library")
+        .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
+        .onAppear {
+            layout?.libraryWindowOpened()
+            WindowBridge.openMain = { openWindow(id: "main") }
+        }
     }
 }
 

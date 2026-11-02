@@ -90,6 +90,12 @@ private func transformed(
     #expect(carried.fontSize == nil && carried.colorHex == nil)
 }
 
+@Test func allCapsWordCarriesAsContent() {
+    let run = TextStyleRun(line: 0, column: 0, length: 7, textTransform: .uppercase)
+    let result = transformed(lyricsObject(runs: [run]), keep: KeepFromSlideOptions(bold: false))
+    #expect(result.styleRuns?.first?.textTransform == .uppercase)
+}
+
 @Test func allBoldBaseCarriesNothing() {
 
     var base = TextStyle()
@@ -156,7 +162,7 @@ private func transformed(
 
     #expect(ThemeOverride.traits(ofFontNamed: carried.fontName ?? "").bold)
     let size = try! #require(carried.fontSize)
-    #expect(abs(size - 63) < 0.01) 
+    #expect(abs(size - 63) < 0.01)
 
     #expect(carried.colorHex == nil)
     #expect(carried.tracking == nil)
@@ -212,4 +218,25 @@ private func transformed(
     state.fire(slide: slide, theme: originalTheme)
     #expect(state.wantedMedia()["motion-strip"] == nil)
     #expect(state.wantedMedia(slideThemeOverrides: [theme]).keys.contains("motion-strip"))
+}
+
+@Test func baseStyleReadsThePlaceholderBeforeTheTheme() {
+    var placeholder = SlideObject(id: "ph", objectKind: .text, name: "Default", text: "Sample")
+    placeholder.textStyle = TextStyle(fontName: "Gotham-Black", fontSize: 70, colorHex: "#111111FF")
+    placeholder.textStyle?.textTransform = .uppercase
+    let theme = Theme(
+        id: "t", name: "Series", fontFamily: "Gotham-Book", fontSize: 45,
+        textColorHex: "#FFFFFFFF", backgroundColorHex: "#000000FF"
+    )
+    let made = SlideObject(id: "o", objectKind: .text, name: "Default", text: "Giving generously")
+    let base = ThemeOverride.BaseStyle(object: made, placeholder: placeholder, theme: theme)
+    #expect(base.fontName == "Gotham-Black" && base.fontSize == 70 && base.colorHex == "#111111FF")
+    #expect(base.textTransform == .uppercase)
+
+    var own = made
+    own.textStyle = TextStyle(fontName: "Gotham-Book")
+    #expect(ThemeOverride.BaseStyle(object: own, placeholder: placeholder, theme: theme).fontName == "Gotham-Book")
+
+    #expect(ThemeOverride.BaseStyle(object: made, placeholder: nil, theme: theme).fontName == "Gotham-Book")
+    #expect(ThemeOverride.BaseStyle(object: placeholder, placeholder: placeholder, theme: theme).fontName == "Gotham-Black")
 }

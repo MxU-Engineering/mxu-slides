@@ -106,6 +106,13 @@ final class RecordingController {
             averageBitrate: bitrateKbps.map { $0 * 1000 },
             includesAudio: true)
         let recorder = try Recorder(url: url, configuration: configuration)
+        recorder.onBlackSpan = { start, seconds in
+            DiagnosticsStore.shared.note(
+                "recording.black",
+                detail: "\(targetName): black above the lower third at "
+                    + String(format: "%d:%05.2f", Int(start) / 60, start.truncatingRemainder(dividingBy: 60))
+                    + " in the file for \(Int(seconds * 1000))ms")
+        }
 
         guard !targetID.isEmpty else { return }
         let provider = render.outputs.previewProvider(for: targetID)
@@ -163,11 +170,14 @@ final class RecordingController {
                     detail: "\(live.targetName) state=\(status.state) "
                         + "frames=\(status.appendedFrames) dropped=\(status.droppedFrames) "
                         + "audioDropped=\(status.droppedAudioBuffers) "
+                        + String(format: "video=%.2fs audio=%.2fs ", status.elapsedSeconds, status.audioSeconds)
+                        + (AudioMixerController.current?.feedLossSummary ?? "")
                         + (AudioMixerController.current?.worstFeedBacklogMilliseconds
                             .map { "mixBacklog=\(Int($0))ms " } ?? "")
                         + (AudioMixerController.current
                             .map { "mixTrimmed=\(Int($0.feedTrimmedMilliseconds))ms " } ?? "")
-                        + "freeDiskMB=\(status.freeDiskBytes / 1_000_000)")
+                        + "freeDiskMB=\(status.freeDiskBytes / 1_000_000)"
+                        + [DeckLinkDirectInputs.shared.ageSummary].filter { !$0.isEmpty }.map { " " + $0 }.joined())
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
             }
         }

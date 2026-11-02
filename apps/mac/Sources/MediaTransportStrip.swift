@@ -1,4 +1,6 @@
+import PresenterCore
 import RenderEngine
+import SlideScene
 import SwiftUI
 
 struct MediaTransportStrip: View {
@@ -121,37 +123,45 @@ struct MediaTransportStrip: View {
                         : (target.state.isPlaying ? "Pause" : "Play")
                 )
 
-                TimelineView(
-                    .animation(minimumInterval: 1.0 / 30.0, paused: !target.state.isPlaying)
-                ) { context in
-                    VStack(spacing: 1) {
-                        nameCaption(target)
-                        ScrubBar(
-                            elapsed: target.state.position(at: context.date),
-                            duration: target.state.duration,
-                            isPlaying: target.state.isPlaying
-                        ) { seconds, final in
-                            media.seek(target.id, to: seconds, final: final)
+                VStack(spacing: 1) {
+                    if target.marks.isEmpty {
+                        nameCaption(target, position: nil)
+                    } else {
+                        TimelineView(.animation(minimumInterval: 1, paused: !target.state.isPlaying)) { context in
+                            nameCaption(target, position: target.state.position(at: context.date))
                         }
-                        HStack(spacing: 2) {
-                            GoToTimeReadout(media: media, row: target)
-                            Text("/ \(ScrubBar.timecode(target.state.duration))")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
+                    }
+                    ScrubBar(
+                        elapsed: target.state.position(at: now),
+                        duration: target.state.duration,
+                        isPlaying: target.state.isPlaying,
+                        marks: target.state.duration > 0
+                            ? target.marks.map { ($0.at / target.state.duration, VideoMarkColor.color($0.colorHex)) } : [],
+                        position: { [state = target.state] in state.position(at: $0) }
+                    ) { seconds, final in
+                        media.seek(target.id, to: seconds, final: final)
+                    }
+                    HStack(spacing: 2) {
+                        GoToTimeReadout(media: media, row: target)
+                        Text("/ \(ScrubBar.timecode(target.state.duration))")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 .frame(width: 240)
                 skipToEndButton(media, target: target)
             } else {
 
-                TimelineView(.animation(minimumInterval: 1, paused: !target.state.isPlaying)) { context in
-                    VStack(spacing: 1) {
-                        Text(ScrubBar.timecode(target.state.remaining(at: context.date)) + " left")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                        nameCaption(target)
+                VStack(spacing: 1) {
+                    ClockLayers(hz: 4, running: target.state.isPlaying) { [state = target.state] view, now in
+                        playheadText(
+                            view, "left", ScrubBar.timecode(state.remaining(at: now)) + " left",
+                            font: .monospacedDigitSystemFont(ofSize: 10, weight: .regular), color: .tertiaryLabelColor,
+                            alignment: .center, frame: view.bounds)
                     }
+                    .frame(width: 80, height: 13)
+                    .allowsHitTesting(false)
+                    nameCaption(target, position: nil)
                 }
                 .help("Remaining in this pass — select the video in the picker to control it")
             }
@@ -186,8 +196,9 @@ struct MediaTransportStrip: View {
         .help("Jump to \(skipToEndOffset)s before the end — long-press to change the amount")
     }
 
-    private func nameCaption(_ target: MediaTransportController.Row) -> some View {
-        HStack(spacing: 4) {
+    private func nameCaption(_ target: MediaTransportController.Row, position: Double?) -> some View {
+        let next = position.flatMap { VideoMarks.target(target.marks, after: $0, target: .nextMark, name: nil) }
+        return HStack(spacing: 4) {
             Text(
                 nameHovering || target.name.count <= 20
                     ? target.name
@@ -197,6 +208,13 @@ struct MediaTransportStrip: View {
             .foregroundStyle(.tertiary)
             .lineLimit(1)
             .onHover { nameHovering = $0 }
+            if let next, let position {
+                Text("· Next: \(next.name.count <= 16 ? next.name : String(next.name.prefix(16)) + "…") \(ScrubBar.timecode(next.at - position))")
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(VideoMarkColor.color(next.colorHex))
+                    .lineLimit(1)
+                    .help(next.name)
+            }
             if target.candidate.isLooping {
                 Image(systemName: "repeat")
                     .font(.system(size: 7, weight: .medium))
@@ -240,20 +258,16 @@ struct MediaTransportStrip: View {
     private func pickerMenu(
         _ media: MediaTransportController, target: MediaTransportController.Row?, now: Date
     ) -> some View {
-        let byLayer = Dictionary(grouping: media.rows, by: \.candidate.layer)
-
-        let fixed: Set<LayerKind> = [.alerts, .overlays, .slide, .videos, .loopingVideos]
-        let layers = LayerKind.allCases.reversed().filter { layer in
-            fixed.contains(layer) || byLayer[layer] != nil
-        }
+        let byLayer = Dictionary(grouping: media.rows, by: \.candidate.layerID)
+        let layers = TransportTarget.pickerLayers(stack: media.layerStack, carrying: Set(byLayer.keys))
         return Menu {
-            ForEach(layers, id: \.self) { layer in
-                Section(layer.displayName) {
-                    Toggle("View \(layer.displayName)", isOn: Binding(
-                        get: { media.viewedLayer == layer },
-                        set: { _ in media.select(layer: layer) }
+            ForEach(layers) { layer in
+                Section(layer.name) {
+                    Toggle("View \(layer.name)", isOn: Binding(
+                        get: { media.viewedLayer == layer.id },
+                        set: { _ in media.select(layer: layer.id) }
                     ))
-                    ForEach(byLayer[layer] ?? []) { row in
+                    ForEach(byLayer[layer.id] ?? []) { row in
                         Toggle(isOn: Binding(
                             get: { media.pinnedID == row.id },
                             set: { _ in media.pin(row.id) }
@@ -268,7 +282,7 @@ struct MediaTransportStrip: View {
             HStack(spacing: 4) {
                 Image(systemName: "square.3.layers.3d")
                     .font(.system(size: 10))
-                Text((target?.candidate.layer ?? media.viewedLayer).displayName)
+                Text(media.layerName(target?.candidate.layerID ?? media.viewedLayer))
                     .font(.caption)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7, weight: .semibold))
@@ -321,18 +335,33 @@ private struct GoToTimeReadout: View {
                 .help("Seek to this time (or press Return)")
             }
         } else {
-            Text(ScrubBar.timecode(row.state.position(at: Date())))
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
+            Color.clear
+                .frame(width: digitsWidth, height: 13)
+                .overlay {
+                    ClockLayers(hz: 4, running: row.state.isPlaying) { [state = row.state] view, now in
+                        playheadText(
+                            view, "elapsed", ScrubBar.timecode(state.position(at: now)),
+                            font: Self.digits, color: .secondaryLabelColor,
+                            alignment: .right, frame: view.bounds)
+                    }
+                    .allowsHitTesting(false)
+                }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    let position = Int(row.state.position(at: Date()))
-                    minutes = position / 60
-                    seconds = position % 60
+                    let at = Int(row.state.position(at: Date()))
+                    minutes = at / 60
+                    seconds = at % 60
                     editing = true
                 }
                 .help("Click to type an exact time")
         }
+    }
+
+    private static let digits = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+
+    private var digitsWidth: CGFloat {
+        let widest = ScrubBar.timecode(row.state.duration).replacing(/\d/, with: "0")
+        return ceil((widest as NSString).size(withAttributes: [.font: Self.digits]).width)
     }
 
     private func commit() {

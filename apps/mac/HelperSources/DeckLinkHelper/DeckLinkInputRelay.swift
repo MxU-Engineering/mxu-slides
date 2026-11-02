@@ -13,6 +13,8 @@ final class DeckLinkInputRelay: @unchecked Sendable {
 
     private var inFlight: [UUID: CVPixelBuffer] = [:]
     private var pendingSlots = 0
+
+    private var droppedPictures: Int64 = 0
     private var pool: CVPixelBufferPool?
     private var poolDimensions = (width: 0, height: 0)
     private var lastSignal: Bool?
@@ -40,7 +42,15 @@ final class DeckLinkInputRelay: @unchecked Sendable {
                 frames: Int32(arrival.audioFrames), channels: Int32(arrival.audioChannels),
                 hostTime: arrival.captureHostTime)
         }
-        if let video = arrival.video, arrival.hasSignal, reserveSlot() {
+        let pictureFree = arrival.video == nil || !arrival.hasSignal || reserveSlot()
+        if !pictureFree { droppedPictures += 1 }
+        sink.inputTiming(
+            audioMinusVideo: arrival.audioMinusVideoSeconds ?? .nan,
+            queuedAudioFrames: Int32(arrival.queuedAudioFrames ?? -1),
+            queuedVideoFrames: Int32(arrival.queuedVideoFrames ?? -1),
+            stampAge: arrival.stampAgeSeconds ?? -1,
+            droppedPictures: droppedPictures)
+        if let video = arrival.video, arrival.hasSignal, pictureFree {
             if let buffer = nextBuffer(width: arrival.width, height: arrival.height),
                 converter.convert(
                     video, rowBytes: arrival.rowBytes, width: arrival.width,

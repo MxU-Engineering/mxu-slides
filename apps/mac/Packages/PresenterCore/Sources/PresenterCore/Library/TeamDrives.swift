@@ -160,6 +160,30 @@ public enum TeamDriveLogic {
         return newBase + folder.dropFirst(fromPath.count)
     }
 
+    public struct FolderNode: Equatable, Identifiable, Sendable {
+        public let path: String
+        public var name: String { path.split(separator: "/").last.map(String.init) ?? path }
+        public var children: [FolderNode] = []
+        public var id: String { path }
+    }
+
+    public static func folderTree(_ folders: [String]) -> [FolderNode] {
+        var roots: [FolderNode] = []
+        func insert(_ components: ArraySlice<String>, prefix: String, into nodes: inout [FolderNode]) {
+            guard let head = components.first else { return }
+            let path = prefix.isEmpty ? head : prefix + "/" + head
+            let index = nodes.firstIndex { $0.path == path } ?? {
+                nodes.append(FolderNode(path: path))
+                return nodes.count - 1
+            }()
+            insert(components.dropFirst(), prefix: path, into: &nodes[index].children)
+        }
+        for folder in folders.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
+            insert(folder.split(separator: "/").map(String.init)[...], prefix: "", into: &roots)
+        }
+        return roots
+    }
+
     public static func renamed(folder: String, from: [String], to name: String) -> String {
         rebased(folder: folder, from: from.dropLast() + [name], into: Array(from.dropLast()), movedFrom: from)
     }

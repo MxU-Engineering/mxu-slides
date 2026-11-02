@@ -1,0 +1,103 @@
+{
+  "name": "Pasted plain text",
+  "about": "Notes pasted as plain lines (no headings, no lists): the first short line is the title with the line under it, and numbered lines typed as paragraphs are one list of points.",
+  "mode": "pickForMe",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "text": "Unshakable"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Hebrews 12:25–29 · Kingdom Come, week 4"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "(Welcome back, ask everyone to stand)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "1. Everything that can be shaken will be shaken"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "2. What God builds can’t be shaken"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "3. So we worship with reverence and awe"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Video: Sarah’s story (2:40)"
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Next step: Write down one thing you’re holding onto."
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "type": "title",
+      "text": "Unshakable\nHebrews 12:25–29 · Kingdom Come, week 4"
+    },
+    {
+      "type": "points",
+      "text": "1. Everything that can be shaken will be shaken\n2. What God builds can’t be shaken\n3. So we worship with reverence and awe"
+    },
+    {
+      "type": "points",
+      "text": "Next step: Write down one thing you’re holding onto."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "title",
+      "text": "Unshakable\nHebrews 12:25–29 · Kingdom Come, week 4"
+    },
+    {
+      "kind": "points",
+      "text": "1. Everything that can be shaken will be shaken\n2. What God builds can’t be shaken\n3. So we worship with reverence and awe"
+    },
+    {
+      "kind": "points",
+      "text": "Next step\nWrite down one thing you’re holding onto."
+    }
+  ]
+}

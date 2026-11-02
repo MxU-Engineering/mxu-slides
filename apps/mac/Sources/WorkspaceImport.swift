@@ -161,6 +161,7 @@ struct WorkspaceImportRunner {
                   mayConfigure(screenID) else { continue }
             for slice in render.outputs.screenSlices[screenID] ?? [] {
                 NDIScreenOutputs.shared.disable(screenID: slice.id)
+                SyphonScreenOutputs.shared.disable(screenID: slice.id)
                 DeckLinkScreenOutputs.shared.disable(screenID: slice.id)
                 render.outputs.removeSlice(id: slice.id)
             }

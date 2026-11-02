@@ -1,0 +1,69 @@
+{
+  "name": "By structure",
+  "about": "The same mixed note with By structure: every line is a suggestion, kind by the planner's ladder.",
+  "mode": "structure",
+  "blanks": "none",
+  "body": {
+    "blocks": [
+      {
+        "runs": [
+          {
+            "bold": true,
+            "text": "God plants us where we can grow."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Tell the story of the oak in my grandmother’s yard."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Prayer is our lifeline."
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "runs": [
+          {
+            "text": "Offering"
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "plainText": ""
+  },
+  "suggestions": [
+    {
+      "text": "God plants us where we can grow."
+    },
+    {
+      "text": "Tell the story of the oak in my grandmother’s yard."
+    },
+    {
+      "text": "Prayer is our lifeline."
+    }
+  ],
+  "slides": [
+    {
+      "kind": "body",
+      "text": "God plants us where we can grow."
+    },
+    {
+      "kind": "body",
+      "text": "Tell the story of the oak in my grandmother’s yard."
+    },
+    {
+      "kind": "body",
+      "text": "Prayer is our lifeline."
+    }
+  ]
+}

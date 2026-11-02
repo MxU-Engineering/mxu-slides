@@ -14,6 +14,10 @@ struct PresentLayout: Codable, Equatable, Identifiable {
         var frame: String?
     }
 
+    struct PoppedNote: Codable, Equatable {
+        var id: String
+        var frame: String?
+    }
 
     var id: String
     var name: String
@@ -25,6 +29,13 @@ struct PresentLayout: Codable, Equatable, Identifiable {
     var previewFrame: String?
 
     var openPreviews: [PoppedPreview]?
+
+    var openNotes: [PoppedNote]?
+
+    var notesPanel: String?
+    var notesPanelNoteID: String?
+    var notesPanelWidth: Double?
+    var notesBelowHeight: Double?
 
     var rightRailWidth: Double
     var rightSplit: Double

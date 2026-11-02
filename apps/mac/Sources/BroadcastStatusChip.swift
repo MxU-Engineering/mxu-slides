@@ -162,7 +162,7 @@ struct BroadcastStatusChip: View {
             Section("Status") {
                 if let liveStream {
                     ForEach(liveStream.sessions, id: \.destination.id) { session in
-                        Text(healthLine(session))
+                        TickingMenuText { healthLine(session) }
                     }
                 }
 
@@ -206,29 +206,36 @@ struct BroadcastStatusChip: View {
         liveStream: StreamingController.LiveStream?, headered: Bool
     ) -> some View {
 
-        Section(headered ? "End one at a time" : "") {
-            if let liveStream {
-                if runOnly {
-                    Text("Streaming — \(liveStream.presetName)")
-                } else {
-                    Button("End Stream — \(liveStream.presetName)") {
-                        controls.streaming.endStream()
-                    }
+        if headered {
+            Section("End one at a time") { stopItems(liveStream: liveStream) }
+        } else {
+            Section { stopItems(liveStream: liveStream) }
+        }
+    }
+
+    @ViewBuilder
+    private func stopItems(liveStream: StreamingController.LiveStream?) -> some View {
+        if let liveStream {
+            if runOnly {
+                Text("Streaming — \(liveStream.presetName)")
+            } else {
+                Button("End Stream — \(liveStream.presetName)") {
+                    controls.streaming.endStream()
                 }
             }
-            ForEach(controls.recording.sessions) { session in
-                if session.isRecording {
-                    if runOnly {
-                        Text("Recording \(session.targetName)")
-                    } else {
-                        Button("Stop Recording — \(session.targetName)") {
-                            controls.recording.stop(session)
-                        }
-                    }
+        }
+        ForEach(controls.recording.sessions) { session in
+            if session.isRecording {
+                if runOnly {
+                    Text("Recording \(session.targetName)")
                 } else {
-                    Button("Dismiss stopped recording — \(session.targetName)") {
-                        controls.recording.dismiss(session)
+                    Button("Stop Recording — \(session.targetName)") {
+                        controls.recording.stop(session)
                     }
+                }
+            } else {
+                Button("Dismiss stopped recording — \(session.targetName)") {
+                    controls.recording.dismiss(session)
                 }
             }
         }
@@ -248,7 +255,28 @@ struct BroadcastStatusChip: View {
         if status.framesDropped > 0 {
             parts.append("\(status.framesDropped) dropped")
         }
+        let full = session.video.bitrateKbps
+        if let health = NetworkHealth.of(status, fullKbps: full) {
+            parts.append("Network \(health.rawValue)")
+        }
+        if status.state == .publishing, let upload = status.uploadKbps {
+            parts.append("sending \(Self.fixedMbps(upload)) Mbps")
+        }
+        if let videoKbps = status.videoKbps, videoKbps < full * 9 / 10 {
+            parts.append("quality lowered to \(Self.mbps(videoKbps)) of \(Self.mbps(full)) Mbps")
+        } else if status.state == .publishing, status.uploadKbps != nil {
+            parts.append("max \(Self.mbps(full)) Mbps")
+        }
         return parts.joined(separator: " \u{B7} ")
+    }
+
+    static func fixedMbps(_ kbps: Int) -> String {
+        let text = String(format: "%.2f", Double(min(kbps, 99_990)) / 1000)
+        return String(repeating: "\u{2007}", count: max(0, 5 - text.count)) + text
+    }
+
+    private static func mbps(_ kbps: Int) -> String {
+        String(format: "%.1f", Double(kbps) / 1000)
     }
 
     private static func recordingHealthLine(_ session: RecordingController.Session) -> String {
@@ -445,5 +473,22 @@ private struct CaptureFromPresetPicker: View {
             .keyboardShortcut(.defaultAction)
         }
         .padding(.top, 2)
+    }
+}
+
+private struct TickingMenuText: View {
+    let line: () -> String
+    @State private var tick = 0
+
+    var body: some View {
+        let _ = tick
+        Text(line())
+            .monospacedDigit()
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    tick &+= 1
+                }
+            }
     }
 }

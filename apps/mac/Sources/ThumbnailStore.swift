@@ -22,15 +22,15 @@ final class ThumbnailStore {
         init(_ image: CGImage) { self.image = image }
     }
 
-    private static let largeImageLimit = 384 * 1024 * 1024
+    private static let imageCostLimit = 384 * 1024 * 1024
 
-    private static func cost(of image: CGImage, large: Bool) -> Int {
-        large ? image.bytesPerRow * image.height : 0
+    private static func cost(of image: CGImage) -> Int {
+        image.bytesPerRow * image.height
     }
 
     private static func boundedCache() -> NSCache<NSString, Box> {
         let cache = NSCache<NSString, Box>()
-        cache.totalCostLimit = largeImageLimit
+        cache.totalCostLimit = imageCostLimit
         return cache
     }
 
@@ -149,7 +149,7 @@ final class ThumbnailStore {
             )
             Task { @MainActor in
                 ThumbnailStore.shared.landContent(
-                    key: cacheKey, identity: identity, frame: frame, large: large,
+                    key: cacheKey, identity: identity, frame: frame,
                     usedPlaceholder: usedPlaceholderAtBuild, pendingStill: pendingStillAtBuild,
                     stillsVersionAtBuild: stillsVersionAtBuild, readyAtBuild: readyAtBuild,
                     mediaFilesAtBuild: mediaFilesAtBuild
@@ -209,7 +209,7 @@ final class ThumbnailStore {
     }
 
     private func landContent(
-        key: String, identity: String?, frame: RenderedFrame?, large: Bool,
+        key: String, identity: String?, frame: RenderedFrame?,
         usedPlaceholder: Bool, pendingStill: Bool,
         stillsVersionAtBuild: Int, readyAtBuild: Bool, mediaFilesAtBuild: Int
     ) {
@@ -218,11 +218,11 @@ final class ThumbnailStore {
         guard let image = frame?.cgImage, mediaFilesAtBuild == mediaFilesGeneration else { return }
 
         if (!usedPlaceholder || readyAtBuild), !pendingStill {
-            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
+            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image))
             provisionalContents.removeValue(forKey: key)
 
             if let identity {
-                lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image, large: large))
+                lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image))
             }
         } else {
 
@@ -325,6 +325,15 @@ final class ThumbnailStore {
         Task {
             defer { thumbStillsInFlight.remove(stillID) }
 
+            if let key = NoteMedia.key(ofPendingId: id) {
+                guard let image = await NoteImageStore.shared.loaded(for: key)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                      (try? await render.media.showStill(image: image, cacheKey: "note|\(key)", id: stillID)) != nil
+                else { return }
+                thumbStillKeys[stillID] = "note|\(key)"
+                thumbStillsVersion += 1
+                return
+            }
+
             await model.resident.ready([.media])
 
             guard let item = model.media(id),
@@ -364,7 +373,6 @@ final class ThumbnailStore {
                         mediaID: mediaID, stillID: stillID, canvas: canvas, effects: effects)
                     let height = max(1, Int((CGFloat(pixelWidth) * canvas.height
                         / max(1, canvas.width)).rounded()))
-                    let large = pixelWidth > ThumbnailResolution.base
                     let mediaFilesAtBuild = mediaFilesGeneration
                     Self.renderQueue.async {
                         let frame = try? compositor.renderFrame(
@@ -373,7 +381,7 @@ final class ThumbnailStore {
                         )
                         Task { @MainActor in
                             ThumbnailStore.shared.landLook(
-                                key: key, identity: identity, frame: frame, large: large,
+                                key: key, identity: identity, frame: frame,
                                 mediaFilesAtBuild: mediaFilesAtBuild
                             )
                         }
@@ -388,13 +396,13 @@ final class ThumbnailStore {
     }
 
     private func landLook(
-        key: String, identity: String, frame: RenderedFrame?, large: Bool, mediaFilesAtBuild: Int
+        key: String, identity: String, frame: RenderedFrame?, mediaFilesAtBuild: Int
     ) {
         looksInFlight.remove(key)
 
         if let image = frame?.cgImage, mediaFilesAtBuild == mediaFilesGeneration {
-            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
-            lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image, large: large))
+            contents.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image))
+            lastFrames.setObject(Box(image), forKey: identity as NSString, cost: Self.cost(of: image))
             scheduleContentsBump()
         }
     }
@@ -419,7 +427,7 @@ final class ThumbnailStore {
             let image = await Task.detached(priority: priority) {
                 Self.downsampledImage(url: diskURL)
             }.value
-            if let image { posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large)) }
+            if let image { posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image)) }
             return image
         }
         let kind = item.mediaKind
@@ -443,7 +451,7 @@ final class ThumbnailStore {
         let image = await extraction.value
         postersInFlight[key] = nil
         if let image {
-            posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image, large: large))
+            posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image))
             if !large { persistPoster(image, for: item) }
         }
         return image
@@ -483,7 +491,7 @@ final class ThumbnailStore {
         let image = await Task.detached(priority: .userInitiated) {
             Self.downsampledImage(url: url)
         }.value
-        if let image { posters.setObject(Box(image), forKey: key as NSString) }
+        if let image { posters.setObject(Box(image), forKey: key as NSString, cost: Self.cost(of: image)) }
         return image
     }
 
@@ -509,7 +517,7 @@ final class ThumbnailStore {
         }
     }
 
-    private nonisolated static func videoPoster(url: URL, at seconds: Double, maxPixels: Int) async -> CGImage? {
+    nonisolated static func videoPoster(url: URL, at seconds: Double, maxPixels: Int) async -> CGImage? {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maxPixels, height: maxPixels)

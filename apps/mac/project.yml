@@ -40,6 +40,8 @@ packages:
     path: Packages/StreamEngine
   DeckLinkKit:
     path: Packages/DeckLinkKit
+  SyphonKit:
+    path: Packages/SyphonKit
 
 targets:
   MxUSlides:
@@ -67,6 +69,7 @@ targets:
       - package: PPTXImport
       - package: StreamEngine
       - package: NDIKit
+      - package: SyphonKit
       - target: NDIHelper
         embed: true
       - target: DeckLinkHelper

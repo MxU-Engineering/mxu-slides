@@ -33,7 +33,7 @@ final class RenderContext {
         didSet { sceneBox.value = scene }
     }
 
-    var nextLiveTransitions: [LayerKind: SceneTransition] = [:]
+    var nextLiveTransitions: [String: SceneTransition] = [:]
 
     static func roomDefault(for layer: LayerKind) -> SceneTransition? {
         let defaults = UserDefaults.standard
@@ -64,6 +64,10 @@ final class RenderContext {
         }
     }
 
+    static func roomDefault(forLayerID id: String) -> SceneTransition? {
+        roomDefault(for: LayerKind(rawValue: id) ?? .videos)
+    }
+
     static func sceneTransition(from transition: MediaTransition?) -> SceneTransition? {
         guard let transition else { return nil }
         let duration = transition.durationSeconds ?? 0.5
@@ -88,7 +92,7 @@ final class RenderContext {
             let stash = nextLiveTransitions
             nextLiveTransitions = [:]
             transitions.push(liveScene) { layer in
-                stash[layer] ?? Self.roomDefault(for: layer)
+                stash[layer] ?? Self.roomDefault(forLayerID: layer)
             }
         }
     }
@@ -103,7 +107,7 @@ final class RenderContext {
                 let engine = engines[themeID] ?? SceneTransitionEngine(initial: variant)
                 engines[themeID] = engine
                 engine.push(variant) { layer in
-                    stash[layer] ?? Self.roomDefault(for: layer)
+                    stash[layer] ?? Self.roomDefault(forLayerID: layer)
                 }
             }
         }
@@ -139,6 +143,10 @@ final class RenderContext {
         else { return nil }
         self.compositor = compositor
         self.media = media
+        media.onLiveDropout = { id, seconds, reason in
+            DiagnosticsStore.shared.note(
+                "input.render", detail: "\(id): nothing to draw for \(Int(seconds * 1000))ms — \(reason)")
+        }
         self.outputs = OutputManager(compositor: compositor)
         let initialScene = RenderScene.sampleLyricScene()
         self.scene = initialScene
@@ -186,6 +194,26 @@ final class RenderContext {
         outputs.placeholderConfigurationChanged = { [weak self] in
             self?.savePlaceholderScreens()
         }
+        restoreScreenMap()
+        outputs.screenMapChanged = { [weak self] in self?.saveScreenMap() }
+    }
+
+    private static let screenMapKey = "outputs.screenMap"
+
+    private func saveScreenMap() {
+        let defaults = UserDefaults.standard
+        if let map = outputs.screenMap, let data = try? JSONEncoder().encode(map) {
+            defaults.set(data, forKey: Self.screenMapKey)
+        } else {
+            defaults.removeObject(forKey: Self.screenMapKey)
+        }
+    }
+
+    private func restoreScreenMap() {
+        guard let data = UserDefaults.standard.data(forKey: Self.screenMapKey),
+              let map = try? JSONDecoder().decode(ScreenMap.self, from: data)
+        else { return }
+        outputs.setScreenMap(map)
     }
 
     private struct PlaceholderScreenConfig: Codable {
@@ -299,7 +327,7 @@ final class RenderContext {
                 outputs.setVideoDelay(delay, forScreen: config.id)
             }
             if let device = config.deviceDisplayUUID {
-                outputs.assignPlaceholderDevice(
+                outputs.restoreDisplayClaim(
                     placeholderID: config.id, displayUUID: device,
                     displayName: config.deviceDisplayName
                 )
@@ -317,7 +345,7 @@ final class RenderContext {
                     outputs.setVideoDelay(delay, forScreen: slice.id)
                 }
                 if let device = slice.deviceDisplayUUID {
-                    outputs.assignPlaceholderDevice(
+                    outputs.restoreDisplayClaim(
                         placeholderID: slice.id, displayUUID: device,
                         displayName: slice.deviceDisplayName
                     )

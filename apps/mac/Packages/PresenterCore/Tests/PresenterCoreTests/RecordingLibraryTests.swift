@@ -67,13 +67,6 @@ struct RecordingLibraryTests {
         #expect(RecordingLibrary.latestRecording(in: items, folder: "Recordings") == nil)
     }
 
-    @Test func recordingsAreCapturesOrAnythingUnderRecordings() {
-        #expect(RecordingLibrary.isRecording(item(folder: "Sermons", recordedAt: 100)))
-        #expect(RecordingLibrary.isRecording(item(folder: "Recordings/2026", recordedAt: nil)))
-        #expect(!RecordingLibrary.isRecording(item(folder: "Recordings Archive", recordedAt: nil)))
-        #expect(!RecordingLibrary.isRecording(item(folder: nil, recordedAt: nil)))
-    }
-
     @Test func exportCopyIsTheSameBytesAndEditable() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -144,7 +137,7 @@ struct RecordingLibraryTests {
         let blobs = try BlobStore(libraryRoot: root)
         #expect(blobs.url(forHash: item.fileHash) != nil)
 
-        #expect(!FileManager.default.isWritableFile(atPath: blobs.url(forHash: item.fileHash)!.path))
+        #expect(FileManager.default.isWritableFile(atPath: blobs.url(forHash: item.fileHash)!.path))
         #expect(FileManager.default.isWritableFile(
             atPath: exportDir.appendingPathComponent(item.fileName).path))
 

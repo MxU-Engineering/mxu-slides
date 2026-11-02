@@ -50,12 +50,22 @@ public struct StreamVideoConfiguration: Sendable, Equatable {
 
     public var hdr: Bool
 
-    public init(width: Int, height: Int, frameRate: Int = 30, bitrateKbps: Int = 4500, codec: Codec = .h264, hdr: Bool = false) {
+    public var adaptiveFloorKbps: Int?
+
+    public init(width: Int, height: Int, frameRate: Int = 30, bitrateKbps: Int = 4500, codec: Codec = .h264, hdr: Bool = false, adaptiveFloorKbps: Int? = nil) {
         self.width = width
         self.height = height
         self.frameRate = frameRate
         self.bitrateKbps = bitrateKbps
         self.codec = codec
         self.hdr = hdr
+        self.adaptiveFloorKbps = adaptiveFloorKbps
+    }
+
+    public static let defaultFloorKbps = 2000
+
+    public static func adaptiveFloor(adapt: Bool?, minKbps: Int?, bitrateKbps: Int) -> Int? {
+        guard adapt ?? true else { return nil }
+        return min(minKbps ?? defaultFloorKbps, bitrateKbps)
     }
 }

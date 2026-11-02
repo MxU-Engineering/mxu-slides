@@ -1,6 +1,8 @@
 import Foundation
 
-public struct APIError: Error, Codable, Sendable {
+public struct APIError: Error, LocalizedError, Codable, Sendable {
+    public var errorDescription: String? { message }
+
     public var status: Int
     public var code: String
     public var message: String
@@ -79,6 +81,27 @@ public struct APIOKResponse: Codable, Sendable {
     public init(ok: Bool = true) {
         self.ok = ok
     }
+}
+
+public struct APIFireSource: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable {
+        case ui, keyboard, midi, scheduler, auto, api
+
+        case timecode, timeline
+
+        case follow
+    }
+
+    public var kind: Kind
+
+    public var name: String?
+
+    public init(kind: Kind, name: String? = nil) {
+        self.kind = kind
+        self.name = name
+    }
+
+    @TaskLocal public static var current: APIFireSource?
 }
 
 public struct APIShowStatus: Codable, Sendable {
@@ -659,9 +682,11 @@ public struct APIAudioStatus: Codable, Sendable {
         public var position: Double?
         public var duration: Double?
 
+        public var entryId: String?
+
         public init(
             playlistId: String?, audioItemId: String?, trackName: String?,
-            playing: Bool, position: Double?, duration: Double?
+            playing: Bool, position: Double?, duration: Double?, entryId: String? = nil
         ) {
             self.playlistId = playlistId
             self.audioItemId = audioItemId
@@ -669,6 +694,7 @@ public struct APIAudioStatus: Codable, Sendable {
             self.playing = playing
             self.position = position
             self.duration = duration
+            self.entryId = entryId
         }
     }
 
@@ -779,7 +805,94 @@ public struct APIOutputsStatus: Codable, Sendable {
     }
 }
 
-public struct APIFireSlideCommand: Codable, Sendable {
+public struct APIFireEvent: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        case slide
+
+        case step
+
+        case clear, clearAll
+
+        case media
+
+        case overlay, dismissOverlay
+
+        case alert
+
+        case timer
+
+        case combo
+
+        case outputPreset
+
+        case dismissAlert
+
+        case audioItem, audioPlaylist, stopAudio, audioTransport, mediaTransport
+
+        case role
+
+        case capture
+
+        case quit
+    }
+
+    public var seq: Int
+    public var at: Double
+    public var source: APIFireSource
+    public var cause: Int?
+    public var kind: Kind
+    public var id: String?
+    public var slide: APIFireSlideCommand?
+    public var settled: Bool?
+    public var slideActions: Bool?
+    public var steps: Int?
+    public var clear: APIClearCommand?
+    public var alert: APIFireAlertCommand?
+    public var layer: String?
+    public var serviceItemId: String?
+    public var loops: Bool?
+    public var timer: APITimerAction?
+    public var entryId: String?
+    public var audioStop: APIAudioStopCommand?
+    public var audioTransport: APIAudioTransportCommand?
+    public var mediaTransport: APIMediaTransportCommand?
+    public var term: Int?
+    public var inCharge: String?
+
+    public init(
+        kind: Kind, id: String? = nil, slide: APIFireSlideCommand? = nil, settled: Bool? = nil,
+        slideActions: Bool? = nil, steps: Int? = nil, clear: APIClearCommand? = nil,
+        alert: APIFireAlertCommand? = nil, layer: String? = nil, serviceItemId: String? = nil,
+        loops: Bool? = nil, timer: APITimerAction? = nil,
+        entryId: String? = nil, audioStop: APIAudioStopCommand? = nil,
+        audioTransport: APIAudioTransportCommand? = nil, mediaTransport: APIMediaTransportCommand? = nil,
+        term: Int? = nil, inCharge: String? = nil
+    ) {
+        self.seq = 0
+        self.at = 0
+        self.source = APIFireSource(kind: .ui)
+        self.kind = kind
+        self.id = id
+        self.slide = slide
+        self.settled = settled
+        self.slideActions = slideActions
+        self.steps = steps
+        self.clear = clear
+        self.alert = alert
+        self.layer = layer
+        self.serviceItemId = serviceItemId
+        self.loops = loops
+        self.timer = timer
+        self.entryId = entryId
+        self.audioStop = audioStop
+        self.audioTransport = audioTransport
+        self.mediaTransport = mediaTransport
+        self.term = term
+        self.inCharge = inCharge
+    }
+}
+
+public struct APIFireSlideCommand: Codable, Sendable, Equatable {
     public var presentationId: String?
     public var slideId: String?
     public var slideIndex: Int?
@@ -813,7 +926,7 @@ public struct APIAdvanceCommand: Codable, Sendable {
     }
 }
 
-public struct APIClearCommand: Codable, Sendable {
+public struct APIClearCommand: Codable, Sendable, Equatable {
 
     public var function: String?
     public var layer: String?
@@ -824,7 +937,7 @@ public struct APIClearCommand: Codable, Sendable {
     }
 }
 
-public struct APIFireAlertCommand: Codable, Sendable {
+public struct APIFireAlertCommand: Codable, Sendable, Equatable {
     public var presetId: String?
     public var message: String?
 
@@ -858,7 +971,7 @@ public struct APIAudioFireCommand: Codable, Sendable {
     }
 }
 
-public struct APIAudioStopCommand: Codable, Sendable {
+public struct APIAudioStopCommand: Codable, Sendable, Equatable {
     public var playlistId: String?
     public var audioItemId: String?
 
@@ -868,7 +981,7 @@ public struct APIAudioStopCommand: Codable, Sendable {
     }
 }
 
-public struct APIAudioTransportCommand: Codable, Sendable {
+public struct APIAudioTransportCommand: Codable, Sendable, Equatable {
 
     public var action: String
     public var position: Double?
@@ -879,7 +992,7 @@ public struct APIAudioTransportCommand: Codable, Sendable {
     }
 }
 
-public struct APIMediaTransportCommand: Codable, Sendable {
+public struct APIMediaTransportCommand: Codable, Sendable, Equatable {
 
     public var action: String
     public var position: Double?
@@ -938,16 +1051,25 @@ public struct APIAddServiceItemCommand: Codable, Sendable {
     }
 }
 
-public struct APIServerInfo: Codable, Sendable {
+public struct APIServerInfo: Codable, Sendable, Equatable {
     public var name: String
     public var product: String
     public var apiVersion: String
     public var schemaVersion: Int
 
-    public init(name: String, product: String, apiVersion: String, schemaVersion: Int) {
+    public var stationHexId: String?
+
+    public var stationName: String?
+
+    public init(
+        name: String, product: String, apiVersion: String, schemaVersion: Int,
+        stationHexId: String? = nil, stationName: String? = nil
+    ) {
         self.name = name
         self.product = product
         self.apiVersion = apiVersion
         self.schemaVersion = schemaVersion
+        self.stationHexId = stationHexId
+        self.stationName = stationName
     }
 }

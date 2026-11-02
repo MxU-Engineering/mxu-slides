@@ -29,12 +29,15 @@ public enum ThemeOverride {
         }
     }
 
-    struct BaseStyle {
-        var fontName: String
-        var fontSize: Double
-        var tracking: Double
+    public struct BaseStyle {
+        public var fontName: String
+        public var fontSize: Double
+        public var colorHex: String
+        public var tracking: Double
 
-        init(object: SlideObject, placeholder: SlideObject?, theme: Theme?) {
+        public var textTransform: TextTransform
+
+        public init(object: SlideObject, placeholder: SlideObject?, theme: Theme?) {
             let own = object.textStyle
 
             let base = (placeholder?.id == object.id) ? nil : placeholder?.textStyle
@@ -42,7 +45,9 @@ public enum ThemeOverride {
                 ?? theme?.fontFamily ?? ThemeOverride.defaultFontName
             fontSize = own?.fontSize ?? base?.fontSize
                 ?? theme?.fontSize ?? ThemeOverride.defaultFontSize
+            colorHex = own?.colorHex ?? base?.colorHex ?? theme?.textColorHex ?? "#FFFFFFFF"
             tracking = own?.tracking ?? base?.tracking ?? 0
+            textTransform = own?.textTransform ?? base?.textTransform ?? .none
         }
     }
 
@@ -107,6 +112,8 @@ public enum ThemeOverride {
         if keep.strikethrough, run.strikethrough == true { carried.strikethrough = true }
         if keep.highlight { carried.highlightColorHex = run.highlightColorHex }
         if keep.textColor { carried.colorHex = run.colorHex }
+
+        carried.textTransform = run.textTransform
         carried.fontName = carriedFontName(run.fontName, from: from, to: to, keep: keep)
         if keep.sizeEmphasis, let size = run.fontSize, from.fontSize > 0 {
             let ratio = size / from.fontSize
@@ -185,6 +192,6 @@ extension TextStyleRun {
     fileprivate var stylesAnything: Bool {
         underline != nil || strikethrough != nil || fontName != nil
             || fontSize != nil || colorHex != nil || highlightColorHex != nil
-            || tracking != nil
+            || tracking != nil || textTransform != nil
     }
 }

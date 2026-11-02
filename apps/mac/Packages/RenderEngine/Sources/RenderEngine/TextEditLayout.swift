@@ -96,7 +96,7 @@ public struct TextEditLayout {
                 }
             }
             sourceToLayout = Self.sourceMap(
-                source: text.string, transform: text.transform,
+                source: text.string, uppercase: text.uppercaseFlags,
                 chordRows: chordRows, layoutString: layoutString
             )
         }
@@ -256,18 +256,15 @@ public struct TextEditLayout {
     }
 
     static func sourceMap(
-        source: String, transform: SceneTextTransform,
+        source: String, uppercase: [Bool],
         chordRows: [TextRasterizer.ChordedLayout.Row], layoutString: String
     ) -> [Int] {
         var sourceToDisplay: [Int] = []
         sourceToDisplay.reserveCapacity(source.utf16.count + 1)
         var display = 0
-        for character in source {
+        for (character, upper) in zip(source, uppercase) {
             let sourceWidth = character.utf16.count
-            let displayWidth = switch transform {
-            case .none: sourceWidth
-            case .uppercase: String(character).uppercased().utf16.count
-            }
+            let displayWidth = upper ? String(character).uppercased().utf16.count : sourceWidth
 
             sourceToDisplay.append(contentsOf: repeatElement(display, count: sourceWidth))
             display += displayWidth

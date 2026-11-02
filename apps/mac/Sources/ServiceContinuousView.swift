@@ -36,11 +36,9 @@ struct ServiceContinuousView: View {
     @State private var playlistDropTarget: PlaylistDropTarget?
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
-    @State private var settingsPopoverItemID: String?
-
     @State private var viewportHeight: CGFloat = 0
 
-    @State private var headerHeights: [String: CGFloat] = [:]
+    private var cards: PresentCards { .shared }
 
     static let scrollSpace = "presentScroll"
 
@@ -546,8 +544,8 @@ struct ServiceContinuousView: View {
                 PresentationSettingsButton(
                     model: model, render: render, controls: controls, presentation: presentation,
                     isPresented: Binding(
-                        get: { settingsPopoverItemID == item.id },
-                        set: { settingsPopoverItemID = $0 ? item.id : nil }))
+                        get: { cards.settingsItemID == item.id },
+                        set: { cards.settingsItemID = $0 ? item.id : nil }))
 
                 .inputRegion("card settings: \(displayName(item))", notesClicks: true)
 
@@ -581,6 +579,15 @@ struct ServiceContinuousView: View {
                     }
                 }
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
+
+                CenterNoteSwitch(
+                    model: model, presentationID: presentation.id,
+                    showsNote: Binding(
+                        get: { CenterNoteMode.isNote(presentation.id) },
+                        set: { value in
+                            CenterNoteMode.set(value, presentation.id)
+                            noteModeVersion += 1
+                        }))
             } accessory: {
 
                 if SlideSceneBuilder.showsArrangements(for: presentation) {
@@ -610,7 +617,7 @@ struct ServiceContinuousView: View {
             .contextMenu {
                 if !runOnly {
                     arrangementMenu(item, presentation)
-                    Button("Presentation Settings…") { settingsPopoverItemID = item.id }
+                    Button("Presentation Settings…") { cards.settingsItemID = item.id }
                     Button("Edit…") { openInEditor(presentation.id) }
                 }
             }
@@ -674,7 +681,7 @@ struct ServiceContinuousView: View {
         )
         guard starts.indices.contains(pill), starts[pill] < slides.count else { return }
         let headerFraction = viewportHeight > 0
-            ? min(((headerHeights[item.id] ?? 44) + 12) / viewportHeight, 0.4) : 0
+            ? min((cards.headerHeight(item.id) + 12) / viewportHeight, 0.4) : 0
         withAnimation(.easeOut(duration: 0.2)) {
             proxy.scrollTo(
                 SlideGridBody.tileAnchor(contextID: item.id, index: starts[pill]),
@@ -710,6 +717,8 @@ struct ServiceContinuousView: View {
         }
     }
 
+    @State private var noteModeVersion = 0
+
     private func pointNewSlide(at itemID: String?) {
         if let itemID {
             NewSlideRouter.shared.route = NewSlideRoute(contextID: itemID)
@@ -720,6 +729,8 @@ struct ServiceContinuousView: View {
         _ item: ServiceItem, _ presentation: Presentation, _ slides: [Slide]
     ) -> some View {
         let theme = model.theme(presentation.themeId)
+        let _ = noteModeVersion
+        let noteID = CenterNoteMode.isNote(presentation.id) ? model.noteID(linkedToPresentation: presentation.id) : nil
 
         return VStack(alignment: .leading, spacing: 10) {
 
@@ -727,7 +738,11 @@ struct ServiceContinuousView: View {
                PresentationTimelineCards.shared.expanded.contains(item.id) {
                 PresentationTimelineLanes(context: context)
             }
-            SlideGridBody(
+            if let noteID {
+                NoteReaderView(model: model, noteID: noteID, host: .center, render: render, controls: controls, fitsContent: true)
+                    .id(noteID)
+            } else {
+                SlideGridBody(
                     model: model, render: render, controls: controls,
                     presentation: presentation, theme: theme,
                     slides: slides,
@@ -745,6 +760,7 @@ struct ServiceContinuousView: View {
                     sweep: sweep,
                     deleteEverySelection: { clipboardRequests.take(.delete) }
                 )
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1021,17 +1037,16 @@ extension ServiceContinuousView {
         @ViewBuilder body: () -> Body,
         @ViewBuilder header: () -> Header
     ) -> some View {
-        let headerHeight = headerHeights[item.id] ?? 44
         let headerView = header()
         let bodyView = body()
         return ZStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 0) {
-                Color.clear.frame(height: headerHeight)
+                HeaderReserve(itemID: item.id)
                 bodyView
             }
             GeometryReader { geo in
                 let frame = geo.frame(in: .named(Self.scrollSpace))
-                let stick = max(0, min(-frame.minY, geo.size.height - headerHeight))
+                let stick = max(0, min(-frame.minY, geo.size.height - cards.headerHeight(item.id)))
                 headerView
 
                     .fixedSize(horizontal: false, vertical: true)
@@ -1046,9 +1061,9 @@ extension ServiceContinuousView {
     private func headerHeightReader(_ item: ServiceItem) -> some View {
         GeometryReader { geo in
             Color.clear
-                .onAppear { if headerHeights[item.id] != geo.size.height { headerHeights[item.id] = geo.size.height } }
+                .onAppear { if cards.headerHeights[item.id] != geo.size.height { cards.headerHeights[item.id] = geo.size.height } }
                 .onChange(of: geo.size.height) { old, height in
-                    if headerHeights[item.id] != height { headerHeights[item.id] = height }
+                    if cards.headerHeights[item.id] != height { cards.headerHeights[item.id] = height }
 
                     if abs(height - old) > 300 {
                         DiagnosticsStore.shared.note(
@@ -1087,7 +1102,7 @@ extension ServiceContinuousView {
     private func revealLive(_ service: Service) {
         if let itemID = controls?.liveContextID, let occurrence = controls?.liveOccurrence,
            presentRows(service).contains(where: { $0.id == itemID }) {
-            PresentCardFrames.shared.reveal(itemID, slide: occurrence, headerHeight: headerHeights[itemID] ?? 44)
+            PresentCardFrames.shared.reveal(itemID, slide: occurrence, headerHeight: cards.headerHeight(itemID))
         }
     }
 
@@ -1492,5 +1507,23 @@ private struct CardSlidePosition: View {
         } else {
             slideCount == 1 ? "1 slide" : "\(slideCount) slides"
         }
+    }
+}
+
+@MainActor @Observable
+final class PresentCards {
+    static let shared = PresentCards()
+    var settingsItemID: String?
+
+    var headerHeights: [String: CGFloat] = [:]
+
+    func headerHeight(_ itemID: String) -> CGFloat { headerHeights[itemID] ?? 44 }
+}
+
+private struct HeaderReserve: View {
+    let itemID: String
+
+    var body: some View {
+        Color.clear.frame(height: PresentCards.shared.headerHeight(itemID))
     }
 }

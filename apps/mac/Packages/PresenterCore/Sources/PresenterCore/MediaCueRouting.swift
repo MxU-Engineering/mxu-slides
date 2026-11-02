@@ -28,10 +28,14 @@ extension CueMedia {
     }
 
     public static func droppedAsNewSlide(for item: MediaItem) -> CueMedia {
+        droppedAsNewSlide(mediaId: item.id, kind: item.mediaKind)
+    }
+
+    public static func droppedAsNewSlide(mediaId: String, kind: MediaKind) -> CueMedia {
         CueMedia(
-            mediaId: item.id,
-            layer: item.mediaKind == .image ? .stillGraphics : .videos,
-            loops: item.mediaKind == .video ? false : nil, classification: .foreground)
+            mediaId: mediaId,
+            layer: kind == .image ? .stillGraphics : .videos,
+            loops: kind == .video ? false : nil, classification: .foreground)
     }
 }
 

@@ -20,6 +20,7 @@ enum LibrarySection: String, CaseIterable, Identifiable {
     case audio = "Audio"
     case themes = "Themes"
     case confidence = "Confidence"
+    case notes = "Notes"
 
     var id: String { rawValue }
 
@@ -32,11 +33,12 @@ enum LibrarySection: String, CaseIterable, Identifiable {
         case .audio: .audio
         case .themes: .theme
         case .confidence: .confidenceLayout
+        case .notes: .note
         }
     }
 
     var isBrowseOnly: Bool {
-        self == .media || self == .audio
+        self == .media || self == .audio || self == .notes || self == .themes
     }
 
     var playlistKind: PlaylistKind? {
@@ -63,6 +65,7 @@ enum LibrarySection: String, CaseIterable, Identifiable {
         case .audio: "waveform"
         case .themes: "paintpalette"
         case .confidence: "text.below.photo"
+        case .notes: "note.text"
         }
     }
 }
@@ -80,6 +83,7 @@ final class AppModel {
 
     var selectedSection: LibrarySection = .presentations
 
+    var openNoteID: String?
 
     var selectedEntryID: String? {
         didSet {
@@ -212,6 +216,7 @@ final class AppModel {
     }
 
     @ObservationIgnored private var onAirDeckID: String?
+    @ObservationIgnored private var fileEdits: LibraryFileEdits?
 
     func warmLiveSet() {
         let service = currentServiceID.flatMap { try? self.service($0) }
@@ -302,12 +307,14 @@ final class AppModel {
         let root = located.url
         client = LibraryClient(rootURL: root)
 
+        NoteMediaFiles.save = NoteMedia.saver(in: root.appending(path: "Note Media"))
+
         resident = ResidentLibrary(source: client.residentFillSource, epochs: kindVersions, fills: tableFills)
         decks = ResidentDecks(source: client.deckBundleSource, epochs: kindVersions, fills: tableFills, library: resident)
         importer = try? MediaImporter(client: client)
         transcodeQueue = try? TranscodeQueue(client: client)
         blobs = try? BlobStore(libraryRoot: root)
-        if let blobs { Task.detached(priority: .utility) { blobs.lockAll() } }
+        if let blobs { Task.detached(priority: .utility) { blobs.unlockAll() } }
 
         FontActivator.activateStored(libraryRoot: root)
         posterStore = try? MediaPosterStore(libraryRoot: root)
@@ -373,6 +380,7 @@ final class AppModel {
         noteLibraryWideMutation()
 
         sweepMediaPosters()
+        if let blobs { fileEdits = LibraryFileEdits(model: self, blobs: blobs) }
         needsOnboarding = Library.needsOnboarding(rootURL: root, snapshot: client.snapshot)
 
         Task { [weak self] in
@@ -426,6 +434,10 @@ final class AppModel {
     func finishOnboarding(includeGettingStarted: Bool) {
         if includeGettingStarted {
             restoreGettingStarted()
+        }
+
+        if slideBuilding.lyricsImportThemeId == nil, entry(StarterPack.cleanGeometric.themeID) != nil {
+            updateSlideBuilding { $0.startOnTheme(StarterPack.cleanGeometric.themeID) }
         }
         Library.markOnboarded(rootURL: client.rootURL)
         needsOnboarding = false
@@ -494,8 +506,8 @@ final class AppModel {
     @LibraryActor private static func seedStarterPacks(_ prepared: Library, rootURL: URL) throws {
 
         let earlier = (1...19).map { rootURL.appendingPathComponent(".seeded-starter-packs-v\($0)") }
-        let recent = (20...22).map { rootURL.appendingPathComponent(".seeded-starter-packs-v\($0)") }
-        let marker = rootURL.appendingPathComponent(".seeded-starter-packs-v23")
+        let recent = (20...25).map { rootURL.appendingPathComponent(".seeded-starter-packs-v\($0)") }
+        let marker = rootURL.appendingPathComponent(".seeded-starter-packs-v26")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         defer { FileManager.default.createFile(atPath: marker.path, contents: nil) }
         let repairV1 = earlier.contains { FileManager.default.fileExists(atPath: $0.path) }
@@ -513,8 +525,8 @@ final class AppModel {
                 try prepared.save(document)
             } else if gentleRepair {
                 let document = try prepared.open(Theme.self, id: theme.id)
-                let repaired = pack.pagingThirds(pack.addingLyricsDesigns(
-                    to: (document.value.slides ?? []).filter { !StarterPack.isGenericPlaceholder($0) }))
+                let repaired = pack.stayingPhotos(pack.shrinkingPoints(pack.pagingThirds(pack.addingPhotoDesigns(to: pack.addingLyricsDesigns(
+                    to: (document.value.slides ?? []).filter { !StarterPack.isGenericPlaceholder($0) })))))
                 if repaired != document.value.slides {
                     _ = try document.update { $0.slides = repaired }
                     try prepared.save(document)
@@ -766,7 +778,7 @@ final class AppModel {
     }
 
     static let folderableSections: [LibrarySection] = [
-        .presentations, .overlays, .media, .audio, .confidence,
+        .presentations, .overlays, .media, .audio, .confidence, .notes,
     ]
 
     func folders(in section: LibrarySection) -> [String] {
@@ -984,7 +996,7 @@ final class AppModel {
                 serviceDate: Self.isoDate(.now), items: []
             ))
             return id
-        case .media, .audio:
+        case .media, .audio, .notes:
             return nil
         }
     }
@@ -1650,8 +1662,9 @@ final class AppModel {
     func setSlideBackground(presentationID: String, slideID: String, mediaID: String) -> Bool {
         guard let item = media(mediaID) else { return false }
         let media = CueMedia.droppedOnSlide(for: item)
+        let options = slideBuilding.slideDesignMap.options
         updateSlide(presentationID: presentationID, slideID: slideID, undoLabel: "Set Background") {
-            $0.background = media
+            if $0.waitsForMedia { $0.fillPlaceholder(with: item, options: options) } else { $0.background = media }
         }
         return true
     }
@@ -1730,14 +1743,29 @@ final class AppModel {
                 SlideBulkEdit.insertSlides([landing], before: beforeSlideID, in: &deck)
             }
         }
-        updatePresentation(destinationID, value: place) { document in
+        let written = updatePresentation(destinationID, value: place) { document in
             var next = document.value
             place(&next)
             try Self.commitSlideInsert([landing.id], next: next, on: document)
         }
 
+        if noteID(linkedToPresentation: destinationID) != nil {
+            cardInsertedSlides(destinationID, added: [landing.id], written: written)
+        }
         DiagnosticsStore.shared.note(
             "grid.drop.crossDeck", detail: "copied \(sourceID) -> \(destinationID)")
+    }
+
+    private func cardInsertedSlides(_ presentationID: String, added: Set<String>, written: Task<LibraryBatch, any Error>) {
+        if let deck = heldPresentation(presentationID) {
+            cardDeckSlides(in: deck, added: added, removed: [])
+        } else {
+            Task { [weak self] in
+                if let deck = try? await written.value.value(Presentation.self, id: presentationID) {
+                    self?.cardDeckSlides(in: deck, added: added, removed: [])
+                }
+            }
+        }
     }
 
     func renameSlide(_ presentationID: String, slideID: String, to name: String) {
@@ -1764,16 +1792,29 @@ final class AppModel {
         }
     }
 
-    func insertSlide(_ presentationID: String, slide: Slide, afterSlideID: String?) {
-        insertSlides(presentationID, slides: [slide], afterSlideID: afterSlideID)
+    func insertSlide(_ presentationID: String, slide: Slide, afterSlideID: String?, cardingNote: Bool = true) {
+        insertSlides(presentationID, slides: [slide], afterSlideID: afterSlideID, cardingNote: cardingNote)
     }
 
-    func insertSlides(_ presentationID: String, slides: [Slide], afterSlideID: String?) {
+    func insertSlides(
+        _ presentationID: String, slides: [Slide], afterSlideID: String?, beforeSlideID: String? = nil,
+        cardingNote: Bool = true
+    ) {
         DropLatency.awaitingPaint = Set(slides.map(\.id))
-        updatePresentation(presentationID, value: { SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &$0) }) { document in
+        let place: @Sendable (inout Presentation) -> Void = { deck in
+            if let beforeSlideID {
+                SlideBulkEdit.insertSlides(slides, before: beforeSlideID, in: &deck)
+            } else {
+                SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &deck)
+            }
+        }
+        let written = updatePresentation(presentationID, value: place) { document in
             var next = document.value
-            SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &next)
+            place(&next)
             try Self.commitSlideInsert(slides.map(\.id), next: next, on: document)
+        }
+        if cardingNote {
+            cardInsertedSlides(presentationID, added: Set(slides.map(\.id)), written: written)
         }
     }
 
@@ -1859,7 +1900,7 @@ final class AppModel {
         case .confidenceLayout: modify(ConfidenceLayout.self, id: entry.id) { $0.name = trimmed }
         case .midiDevice: modify(MIDIDevice.self, id: entry.id) { $0.name = trimmed }
         case .streamDestination: modify(StreamDestination.self, id: entry.id) { $0.name = trimmed }
-        case .note: return
+        case .note: modify(NoteDocument.self, id: entry.id) { $0.name = trimmed }
         case .schedulerBoard, .controlBoard, .groupPalette, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings, .trackChannelList, .trackSet: break
         }
 
@@ -1907,6 +1948,14 @@ final class AppModel {
         guard !entries.isEmpty else { return }
 
         let tombstones = entries.filter { $0.kind == .media }.compactMap { media($0.id) }
+
+        let hashes = Set(entries.flatMap { entry -> [String?] in
+            switch entry.kind {
+            case .media: media(entry.id).map { [$0.fileHash] } ?? []
+            case .audio: audio(entry.id).map { [$0.fileHash] } ?? []
+            default: []
+            }
+        }.compactMap { $0 })
         client.delete(entries.map { SyncLedger.Key(kind: $0.kind, id: $0.id) })
         let posterStore = posterStore
 
@@ -1917,6 +1966,10 @@ final class AppModel {
                 }
             }.value
             await client.settled()
+            if !hashes.isEmpty {
+                let files = await removeBlobs(hashes)
+                DiagnosticsStore.shared.note("library.delete", detail: "\(entries.count) item\(entries.count == 1 ? "" : "s"), \(files) of \(hashes.count) file\(hashes.count == 1 ? "" : "s") left this Mac")
+            }
             sweepMediaPosters()
         }
         let deleted = Set(entries.map(\.id))
@@ -2026,6 +2079,37 @@ final class AppModel {
             $0.pixelHeight = probe.pixelHeight
         }
         return hash == current.fileHash ? [] : MediaRelink.carriedSettings(of: current)
+    }
+
+    func adoptChangedFile(from oldHash: String, at url: URL) async -> Bool {
+        let adopted = await Task.detached(priority: .utility) { [blobs] () -> String? in
+            if let blobs, let current = try? BlobStore.sha256(of: url), current != oldHash {
+                try? blobs.adopt(fileURL: url)
+            } else {
+                nil
+            }
+        }.value
+        guard let blobs, let hash = adopted else { return false }
+        blobs.noteDirectoryChanged()
+        let moved = blobs.url(forHash: hash) ?? url
+        let probe = await MediaRelink.probe(url: moved)
+        for item in resident.media.values where item.fileHash == oldHash {
+            modify(MediaItem.self, id: item.id) { $0 = MediaRelink.refingerprinted($0, hash: hash, probe: probe) }
+        }
+        let audio = resident.audio.values.filter { $0.fileHash == oldHash }
+        var probed: Double?
+        if !audio.isEmpty {
+            probed = try? await AVURLAsset(url: moved).load(.duration).seconds
+        }
+        let duration = probed
+        for item in audio {
+            modify(AudioItem.self, id: item.id) {
+                $0.fileHash = hash
+                $0.durationSeconds = duration ?? $0.durationSeconds
+            }
+        }
+        DiagnosticsStore.shared.note("library.edit", detail: "\(oldHash) now \(hash)")
+        return true
     }
 
     func restoreMediaTombstone(_ tombstone: MediaItem, with url: URL) async -> [String]? {
@@ -2250,6 +2334,13 @@ final class AppModel {
         }
     }
 
+    func themeDesign(_ payload: String) -> (themeId: String, design: Slide)? {
+        guard let drag = ThemeDesignDrag.parse(payload),
+              let design = theme(drag.themeId)?.slides?.first(where: { $0.id == drag.designId })
+        else { return nil }
+        return (drag.themeId, design)
+    }
+
     func presentationHasSlideThemes(_ presentationID: String) -> Bool {
         presentation(presentationID)?.hasSlideThemes ?? false
     }
@@ -2307,6 +2398,144 @@ final class AppModel {
         }
     }
 
+    var decksBeingMade: Set<String> = []
+
+    func noteDeckRewritten(_ id: String) {
+        decksBeingMade.remove(id)
+        importReplaceVersion += 1
+    }
+
+    var pendingUpdateCounts: [String: Int] = [:]
+
+    var liveUpdates: [String: NoteLiveUpdates.Found] = [:]
+    var liveNoteByDeck: [String: String] = [:]
+
+    var reviewingNoteID: String?
+
+    func notePendingUpdates(noteID: String, count: Int) {
+        if pendingUpdateCounts[noteID] != count { pendingUpdateCounts[noteID] = count }
+    }
+
+    private static func liveMode(of note: NoteDocument) -> String {
+        note.buildMode ?? (note.markedByStructure == true ? NoteSlideMarks.SuggestMode.structure.rawValue : NoteLiveUpdates.byHand)
+    }
+
+    private func settleBaseline(noteID: String, after write: Task<LibraryBatch, any Error>) {
+        Task { [weak self] in
+            _ = await write.result
+            guard let self, let note = try? await client.loadValue(NoteDocument.self, id: noteID),
+                  let deckID = note.presentationId, let body = note.body, let memory = note.madePassages,
+                  let deck = await presentationsFilled([deckID])[deckID] else { return }
+            let found = NoteLiveUpdates.changes(
+                body: body, deck: deck, memory: memory, mode: Self.liveMode(of: note), skipped: note.skippedUpdates ?? [],
+                designMap: slideBuilding.slideDesignMap, theme: { self.theme($0) }, mediaIds: noteMediaIds(note.mediaImports ?? []))
+            let baseline = NoteLiveUpdates.baseline(found)
+            if !baseline.isEmpty {
+                _ = await modify(NoteDocument.self, id: noteID) { $0.skippedUpdates = ($0.skippedUpdates ?? []) + baseline }.result
+            }
+            await refreshNoteUpdates(noteID)
+        }
+    }
+
+    @ObservationIgnored private var noteUpdateReads: [String: Int] = [:]
+
+    func refreshNoteUpdates(_ noteID: String) async {
+        await client.settled()
+        guard let note = try? await client.loadValue(NoteDocument.self, id: noteID),
+              let deckID = note.presentationId, !deckID.isEmpty, let memory = note.madePassages, let body = note.body,
+              let deck = await presentationsFilled([deckID])[deckID] else {
+            if liveUpdates[noteID] != nil { liveUpdates[noteID] = nil }
+            notePendingUpdates(noteID: noteID, count: 0)
+            return
+        }
+
+        let designMap = slideBuilding.slideDesignMap
+        let themeIds = Set([deck.themeId] + deck.slides.compactMap(\.themeId) + designMap.entries.values.map(\.themeId))
+        let themes = Dictionary(themeIds.compactMap { id in theme(id).map { (id, $0) } }, uniquingKeysWith: { first, _ in first })
+        let (mode, skipped, mediaIds) = (Self.liveMode(of: note), note.skippedUpdates ?? [], noteMediaIds(note.mediaImports ?? []))
+        noteUpdateReads[noteID, default: 0] += 1
+        let read = noteUpdateReads[noteID]
+        var found = await Task.detached(priority: .userInitiated) {
+            NoteLiveUpdates.changes(
+                body: body, deck: deck, memory: memory, mode: mode, skipped: skipped,
+                designMap: designMap, theme: { themes[$0] }, mediaIds: mediaIds)
+        }.value
+        guard noteUpdateReads[noteID] == read else { return }
+        if let remarked = found.remarked {
+            found.remarked = nil
+            modify(NoteDocument.self, id: noteID) { note in
+                if note.body == body { note.body = remarked }
+            }
+        }
+        if liveNoteByDeck[deckID] != noteID { liveNoteByDeck[deckID] = noteID }
+        if liveUpdates[noteID] != found {
+            DiagnosticsStore.shared.note("liveUpdates.read", detail: "\(note.name): " + found.updates.map { "\($0.id) [\(found.texts[$0.id]?.prefix(40) ?? "")]" }.joined(separator: ", "))
+            liveUpdates[noteID] = found
+        }
+        notePendingUpdates(noteID: noteID, count: found.updates.count)
+    }
+
+    func applyNoteUpdate(noteID: String, updateID: String, now: Date = .now) async {
+        guard let found = liveUpdates[noteID], let update = found.updates.first(where: { $0.id == updateID }),
+              let note = try? await client.loadValue(NoteDocument.self, id: noteID), let body = note.body,
+              let deckID = note.presentationId, let deck = await presentationsFilled([deckID])[deckID] else { return }
+        let stamp = ISO8601DateFormatter().string(from: now)
+        let mode = Self.liveMode(of: note)
+        let memory = note.madePassages ?? []
+        let isNewPassage = update.kind == NotePendingUpdate.new && !memory.contains { $0.groupId == update.groupId }
+        let batch = isNewPassage
+            ? found.updates.filter { $0.kind == NotePendingUpdate.new && $0.groupId == update.groupId } : [update]
+        func applyingAll(to deck: Presentation) -> NoteLiveUpdates.Applied {
+            var applied = NoteLiveUpdates.Applied(deck: deck, memory: memory, body: nil)
+            for each in batch {
+                let next = NoteLiveUpdates.applying(each, to: applied.deck, memory: applied.memory, body: applied.body ?? body, mode: mode, at: stamp)
+                applied = NoteLiveUpdates.Applied(deck: next.deck, memory: next.memory, body: next.body ?? applied.body)
+            }
+            return applied
+        }
+        let applied = applyingAll(to: deck)
+        let remembered = note.mediaImports ?? []
+        if applied.deck != deck {
+            let changes = batch
+            rewriteSlides(in: deckID) { presentation in
+                var landed = presentation
+                for each in changes {
+                    landed = NoteLiveUpdates.applying(each, to: landed, memory: memory, body: body, mode: mode, at: stamp).deck
+                }
+
+                presentation.slides = NoteMedia.filling(landed.slides, remembered: remembered) ?? landed.slides
+            }
+        }
+        let written = applied.body
+        let settledBody = written ?? body
+
+        let left = NoteLiveUpdates.changes(
+            body: settledBody, deck: applied.deck, memory: applied.memory, mode: mode, skipped: note.skippedUpdates ?? [],
+            designMap: slideBuilding.slideDesignMap, theme: { self.theme($0) }, mediaIds: noteMediaIds(remembered))
+        let memoryNow = NoteLiveUpdates.settlingTexts(applied.memory, body: settledBody, waiting: left.updates)
+        let write = modify(NoteDocument.self, id: noteID) { note in
+            note.madePassages = memoryNow.isEmpty ? nil : memoryNow
+            if let written, note.body == body { note.body = written }
+        }
+
+        let done = Set(batch.map(\.id))
+        liveUpdates[noteID]?.updates.removeAll { done.contains($0.id) }
+        notePendingUpdates(noteID: noteID, count: liveUpdates[noteID]?.updates.count ?? 0)
+        _ = await write.result
+        await refreshNoteUpdates(noteID)
+    }
+
+    func skipNoteUpdate(noteID: String, updateID: String) async {
+        guard let text = liveUpdates[noteID]?.texts[updateID] else { return }
+        let write = modify(NoteDocument.self, id: noteID) { note in
+            note.skippedUpdates = NoteLiveUpdates.skipping(updateID, text: text, in: note.skippedUpdates ?? [])
+        }
+        liveUpdates[noteID]?.updates.removeAll { $0.id == updateID }
+        notePendingUpdates(noteID: noteID, count: liveUpdates[noteID]?.updates.count ?? 0)
+        _ = await write.result
+        await refreshNoteUpdates(noteID)
+    }
+
     func setKeepWords(_ keep: Bool, presentationID: String, slideID: String) {
         rewriteSlides(in: presentationID) { presentation in
             guard let index = presentation.slides.firstIndex(where: { $0.id == slideID }) else { return }
@@ -2344,6 +2573,34 @@ final class AppModel {
         return held
     }
 
+    private(set) var noteLinks: [String: String] = [:]
+    @ObservationIgnored private var noteLinksEpoch: Int?
+    @ObservationIgnored private var noteLinksFilling = false
+
+    func noteID(linkedToPresentation presentationID: String) -> String? {
+        let epoch = kindVersions[.note]
+        if noteLinksEpoch != epoch, !noteLinksFilling {
+            noteLinksFilling = true
+            let entries = indexSnapshot.entries(of: .note)
+            let client = client
+            Task { @MainActor [weak self] in
+                var links: [String: String] = [:]
+                for entry in entries {
+                    if let note = await ThumbnailStore.shared.faceValue(
+                        NoteDocument.self, id: entry.id, updatedAt: entry.updatedAt.timeIntervalSince1970, client: client),
+                       let deck = note.presentationId, !deck.isEmpty {
+                        links[deck] = note.id
+                    }
+                }
+                guard let self else { return }
+                self.noteLinks = links
+                self.noteLinksEpoch = epoch
+                self.noteLinksFilling = false
+            }
+        }
+        return noteLinks[presentationID]
+    }
+
     private(set) var multiViewIDs: Set<String> = []
     @ObservationIgnored private var multiViewIDsEpoch: Int?
     @ObservationIgnored private var multiViewIDsFilling = false
@@ -2372,6 +2629,153 @@ final class AppModel {
             }
         }
         return multiViewIDs.contains(layoutID)
+    }
+
+    func linkNote(_ noteID: String, toPresentation presentationID: String, body: NoteBody?) {
+        let deck = body == nil ? nil : heldPresentation(presentationID)
+
+        let memory = body.flatMap { body in deck.map { NoteSlideMatch.memory(of: body, deck: $0) } }
+
+        let autoMark = NoteSlideMarks.AutoMark(rawValue: UserDefaults.standard.string(forKey: Self.autoMarkKey) ?? "") ?? .pickForMe
+        let mode = body.map { body in
+            NoteSlideMarks.SuggestMode(rawValue: autoMark.rawValue)
+                .map { NoteLiveUpdates.buildMode(of: body, autoMark: $0) } ?? NoteLiveUpdates.byHand
+        }
+        let written = modify(NoteDocument.self, id: noteID) { note in
+            note.presentationId = presentationID
+
+            if let body { note.body = NoteLiveUpdates.savedBody(body, deckId: presentationID) }
+            if let memory {
+                note.madePassages = memory.isEmpty ? nil : memory
+            }
+            if note.buildMode == nil, let mode { note.buildMode = mode }
+        }
+        if memory != nil { settleBaseline(noteID: noteID, after: written) }
+        if let body, deck == nil {
+            rememberMadePassages(noteID: noteID, body: body, presentationId: presentationID)
+        }
+    }
+
+    func rememberMadePassages(noteID: String, body: NoteBody, presentationId: String) {
+        if let deck = heldPresentation(presentationId) {
+            rememberMadePassages(noteID: noteID, body: body, deck: deck)
+        } else {
+            Task { [weak self] in
+                if let deck = await self?.presentationsFilled([presentationId])[presentationId] {
+                    self?.rememberMadePassages(noteID: noteID, body: body, deck: deck)
+                }
+            }
+        }
+    }
+
+    private func rememberMadePassages(noteID: String, body: NoteBody, deck: Presentation) {
+        let memory = NoteSlideMatch.memory(of: body, deck: deck)
+        let written = modify(NoteDocument.self, id: noteID) { note in
+            note.madePassages = memory.isEmpty ? nil : memory
+        }
+        settleBaseline(noteID: noteID, after: written)
+    }
+
+    @discardableResult
+    func importNoteMedia(noteID: String, body: NoteBody) async -> [NoteMediaImport] {
+        let remembered = (try? await client.loadValue(NoteDocument.self, id: noteID))?.mediaImports ?? []
+        let pending = NoteMedia.importable(in: body, remembered: remembered, libraryHas: { media($0) != nil })
+        guard !pending.isEmpty else { return remembered }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "MxU Slides Note Media/\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var landed: [NoteMediaImport] = []
+        for (index, block) in pending.enumerated() {
+            guard let key = NoteMedia.key(of: block),
+                  let file = await noteMediaFile(block, to: NoteMedia.downloadURL(of: block, index: index, in: folder)) else { continue }
+
+            if let id = await importFiles([file], placement: .drive(viewing: nil), unattended: true).first {
+                landed.append(NoteMediaImport(key: key, mediaId: id))
+            }
+        }
+        DiagnosticsStore.shared.note("noteMedia.import", detail: "\(noteID) pending=\(pending.count) landed=\(landed.count)")
+        guard !landed.isEmpty else { return remembered }
+        let memory = NoteMedia.remembering(remembered, adding: landed, in: body)
+        modify(NoteDocument.self, id: noteID) { note in note.mediaImports = memory }
+        return memory
+    }
+
+    func noteMediaIds(_ remembered: [NoteMediaImport]) -> [String: String] {
+        Dictionary(remembered.filter { media($0.mediaId) != nil }.map { ($0.key, $0.mediaId) }, uniquingKeysWith: { _, last in last })
+    }
+
+    func pictureAspects(_ mediaIds: [String: String]) -> [String: Double] {
+        mediaIds.compactMapValues { id in
+            guard let item = media(id), let width = item.pixelWidth, let height = item.pixelHeight, height > 0 else { return nil }
+            return Double(width) / Double(height)
+        }
+    }
+
+    var starterNotesThemeId: String? {
+        indexEntry(StarterPack.cleanGeometric.themeID) != nil ? StarterPack.cleanGeometric.themeID : nil
+    }
+
+    func fillNoteMediaSlides(in deckId: String, remembered: [NoteMediaImport]) {
+        guard let deck = heldPresentation(deckId), NoteMedia.filling(deck.slides, remembered: remembered) != nil else { return }
+        _ = rewriteSlides(in: deckId) { presentation in
+            if let filled = NoteMedia.filling(presentation.slides, remembered: remembered) { presentation.slides = filled }
+        }
+    }
+
+    private func noteMediaFile(_ block: NoteBlock, to file: URL) async -> URL? {
+        guard NoteMedia.fetchesByURL(block), let source = NoteMedia.resolve(block.url ?? "") else { return nil }
+        if source.isFileURL { return source }
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try await NoteMediaFiles.data(from: source).write(to: file)
+            return file
+        } catch {
+            DiagnosticsStore.shared.note("noteMedia.fetchFailed", detail: "\(NoteMedia.fileName(of: block)): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    @ObservationIgnored private var noteSaves: [String: Task<Void, Never>] = [:]
+
+    func recordNoteEdit(_ noteID: String, body: NoteBody) {
+        noteSaves[noteID]?.cancel()
+        noteSaves[noteID] = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let self else { return }
+            noteSaves[noteID] = nil
+            _ = await modify(NoteDocument.self, id: noteID) { note in
+                if note.body != body { note.body = body }
+            }.result
+            await refreshNoteUpdates(noteID)
+        }
+    }
+
+    func newNote(name: String = "Untitled Note", body: NoteBody? = nil) async {
+        let note = LocalNotes.note(name: name, body: body)
+        if case .failure(let error) = await client.create(note).result {
+            DiagnosticsStore.shared.note("notes.create", detail: "failed: \(error.localizedDescription)")
+            return
+        }
+        selectedSection = .notes
+        selectedEntryID = note.id
+        libraryRevealID = note.id
+    }
+
+    func cardDeckSlides(in deck: Presentation, added: Set<String>, removed: Set<String>) {
+        if !(added.isEmpty && removed.isEmpty), let noteID = noteID(linkedToPresentation: deck.id) {
+            Task { [weak self] in
+                guard let self else { return }
+                if !removed.isEmpty, let body = try? await client.loadValue(NoteDocument.self, id: noteID).body,
+                   NoteDeckCards.syncing(deck: deck, added: [], removed: removed, in: body) != body {
+                    _ = await modify(NoteDocument.self, id: noteID) { note in
+                        if let body = note.body {
+                            note.body = NoteDeckCards.syncing(deck: deck, added: [], removed: removed, in: body)
+                        }
+                    }.result
+                }
+                await refreshNoteUpdates(noteID)
+            }
+        }
     }
 
     func themeID(of presentationID: String) -> String {
@@ -3262,7 +3666,7 @@ final class AppModel {
     }
 
     @discardableResult
-    func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {
+    func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil, unattended: Bool = false) async -> [String] {
         isImporting = true
         defer { isImporting = false }
         let files = MediaImporter.files(in: urls)
@@ -3288,7 +3692,9 @@ final class AppModel {
 
                 let numbered = dedupe.availableName(conflict.name, kind: kind)
                 let useExisting: Bool
-                if let useExistingForRest {
+                if unattended {
+                    useExisting = MediaImportDedupe.unattendedUsesExisting(match)
+                } else if let useExistingForRest {
                     useExisting = useExistingForRest
                 } else {
                     let answer = await MediaImportPrompt.ask(

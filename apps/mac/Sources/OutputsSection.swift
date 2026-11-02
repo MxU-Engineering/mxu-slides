@@ -6,6 +6,7 @@ struct OutputsSection: View {
     let render: RenderContext
     let outputs: OutputManager
     let screen: PlaceholderScreen
+    let openScreen: (UUID) -> Void
 
     private enum Selection: Equatable {
         case output(UUID)
@@ -25,11 +26,7 @@ struct OutputsSection: View {
     }
 
     private var kind: OutputLayoutKind {
-        OutputLayout.classify(
-            slices: slices,
-            hasBlends: { hasBlends($0) },
-            hasPlacement: { outputs.placement(forSlice: $0) != nil }
-        )
+        OutputLayout.classify(slices: slices, hasBlends: { hasBlends($0) })
     }
 
     private func hasBlends(_ sliceID: UUID) -> Bool {
@@ -44,13 +41,18 @@ struct OutputsSection: View {
     }
 
     private var selectedOutput: OutputSliceState? {
-        if kind == .single || kind == .ledWall { return slices.first }
+        if kind == .single { return slices.first }
         if case .output(let id) = selection,
            let hit = slices.first(where: { $0.id == id }) {
             return hit
         }
         if case .seam = selection { return nil }
         return kind == .mirror ? slices.first : extras.first
+    }
+
+    private func showsPicture(_ slice: OutputSliceState) -> Bool {
+        outputs.placement(forSlice: slice.id) != nil
+            || !OutputCarry.siblings(of: slice.id, outputs: outputs).isEmpty
     }
 
     private var selectedSeam: (leading: OutputSliceState, trailing: OutputSliceState)? {
@@ -62,12 +64,14 @@ struct OutputsSection: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            if kind != .ledWall { tileDiagram }
-            if kind == .ledWall, let slice = selectedOutput { frameDiagram(slice) }
-            if kind == .custom, let slice = selectedOutput,
-               outputs.placement(forSlice: slice.id) != nil
-                   || !carrySiblings(of: slice).isEmpty {
-                frameDiagram(slice)
+            if let slice = selectedOutput, showsPicture(slice) {
+                OutputPicture(
+                    render: render, outputs: outputs, sliceID: slice.id,
+                    selectSlice: { id in
+                        if let info = outputs.sliceInfo(for: id) { openScreen(info.screenID) }
+                    })
+            } else {
+                tileDiagram
             }
             if kind == .custom { customControls }
             selectionPanel
@@ -109,7 +113,7 @@ struct OutputsSection: View {
                         }
                         .buttonStyle(.borderless)
                         .controlSize(.mini)
-                        .help("Remove this output — its carry and corrections go with it")
+                        .help("Remove this slice — its output and corrections go with it")
                     }
                 }
                 if tab == .blend, let seam = selectedSeam {
@@ -195,13 +199,13 @@ struct OutputsSection: View {
                     value: Binding(get: { outputCount }, set: { setCount($0) }),
                     in: 2...6
                 ) {
-                    Text("Outputs \(outputCount)")
+                    Text("Slices \(outputCount)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .controlSize(.small)
             }
-            if kind == .edgeBlend || kind == .grouped || kind == .ledWall {
+            if kind == .edgeBlend || kind == .grouped || selectedOutput.map(showsPicture) == true {
                 Toggle(
                     "Alignment Grid",
                     isOn: Binding(
@@ -213,23 +217,13 @@ struct OutputsSection: View {
                 .controlSize(.mini)
                 .help("Show the rigging grid on every output of this screen while aligning")
             }
-            Toggle(
-                "Sync Test",
-                isOn: Binding(
-                    get: { outputs.syncTestScreens.contains(screen.id) },
-                    set: { outputs.setSyncTest($0, forScreen: screen.id) }
-                )
-            )
-            .toggleStyle(.checkbox)
-            .controlSize(.mini)
-            .help("Play the metronome sync pattern on this screen to check its picture against its sound")
         }
     }
 
     private var pickerKinds: [OutputLayoutKind] {
         kind == .custom
             ? OutputLayoutKind.allCases
-            : [.single, .mirror, .grouped, .edgeBlend, .ledWall]
+            : [.single, .mirror, .grouped, .edgeBlend]
     }
 
     private var kindHelp: String {
@@ -238,7 +232,6 @@ struct OutputsSection: View {
         case .mirror: "Every output shows the whole canvas — same picture on each."
         case .grouped: "Outputs tile the canvas edge to edge — a video wall with hard seams."
         case .edgeBlend: "Outputs overlap and ramp into each other — click a seam to tune its blend."
-        case .ledWall: "Wall-native pixels landing at exact coordinates inside the processor's frame — 1:1, never scaled."
         case .custom: "Hand-placed regions — anything the named shapes can't express."
         }
     }
@@ -288,6 +281,7 @@ struct OutputsSection: View {
 
     private func releaseCarries(_ sliceID: UUID) {
         NDIScreenOutputs.shared.disable(screenID: sliceID)
+        SyphonScreenOutputs.shared.disable(screenID: sliceID)
         DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
     }
 
@@ -442,9 +436,9 @@ struct OutputsSection: View {
 
     private func sliceTitle(_ slice: OutputSliceState) -> String {
         if slice.id == screen.id {
-            return kind == .mirror ? "Main" : "Full Canvas"
+            return kind == .mirror ? "Main" : screen.name
         }
-        return slice.name ?? "Output"
+        return slice.name ?? "Slice"
     }
 
     private func backingSummary(_ slice: OutputSliceState) -> String {
@@ -454,20 +448,21 @@ struct OutputsSection: View {
                 ?? "Display"
         }
         if NDIScreenOutputs.shared.isCarrying(slice.id) { return "NDI" }
+        if SyphonScreenOutputs.shared.isCarrying(slice.id) { return "Syphon" }
         if let backing = DeckLinkScreenOutputs.shared.backing(for: slice.id) {
             return backing.deviceName
         }
-        return "Unconfigured"
+        return "No output"
     }
 
     private var customControls: some View {
         HStack {
-            Button("Add Output") {
+            Button("Add Slice") {
                 outputs.addSlice(
-                    toScreen: screen.id, name: "Output \(slices.count + 1)")
+                    toScreen: screen.id, name: "Slice \(slices.count + 1)")
             }
             .font(.caption)
-            .help("A new output starts full-region — shrink its Region to place it")
+            .help("A new slice starts full-region — shrink its Region to place it")
             Spacer()
         }
     }
@@ -493,9 +488,7 @@ struct OutputsSection: View {
                 Spacer()
             }
         }
-        if kind == .ledWall || kind == .custom {
-            placementFields(slice)
-        }
+        PlacementFields(render: render, outputs: outputs, sliceID: slice.id)
         OutputSourcePicker(
             render: render, outputs: outputs, screen: screen, sliceID: slice.id)
         delayRow(slice)
@@ -568,176 +561,5 @@ struct OutputsSection: View {
         .frame(width: 40)
         .multilineTextAlignment(.trailing)
         .font(.caption.monospacedDigit())
-    }
-
-    @ViewBuilder
-    private func placementFields(_ slice: OutputSliceState) -> some View {
-        let placement = outputs.placement(forSlice: slice.id)
-        HStack(spacing: 6) {
-            if kind == .custom {
-                Toggle(
-                    "Place in frame",
-                    isOn: Binding(
-                        get: { placement != nil },
-                        set: { on in
-                            if on {
-                                let info = outputs.sliceInfo(for: slice.id)
-                                outputs.setPlacement(
-                                    OutputPlacement(
-                                        frameWidth: 1920, frameHeight: 1080,
-                                        x: 0, y: 0,
-                                        width: Double(min(info?.width ?? 1920, 1920)),
-                                        height: Double(min(info?.height ?? 1080, 1080))
-                                    ),
-                                    forSlice: slice.id)
-                            } else {
-                                outputs.setPlacement(nil, forSlice: slice.id)
-                            }
-                            DeckLinkScreenOutputs.shared.refreshCarry(
-                                for: slice.id, render: render)
-                        }
-                    )
-                )
-                .toggleStyle(.checkbox)
-                .controlSize(.mini)
-                .help("Land this output's content at exact pixels inside the carry's frame instead of filling it — the LED-processor contract")
-            }
-            if let placement {
-                Text("Frame")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                placementField(Double(placement.frameWidth), step: 8) { value in
-                    update(placement, slice.id) { $0.frameWidth = max(Int(value), 8) }
-                }
-                placementField(Double(placement.frameHeight), step: 8) { value in
-                    update(placement, slice.id) { $0.frameHeight = max(Int(value), 8) }
-                }
-                Text("Position")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                placementField(placement.x, step: 8) { value in
-                    update(placement, slice.id) { $0.x = value }
-                }
-                placementField(placement.y, step: 8) { value in
-                    update(placement, slice.id) { $0.y = value }
-                }
-                Text("Size")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                placementField(placement.width, step: 8) { value in
-                    update(placement, slice.id) { $0.width = max(value, 8) }
-                }
-                placementField(placement.height, step: 8) { value in
-                    update(placement, slice.id) { $0.height = max(value, 8) }
-                }
-                Text("px")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .help("Where this output's pixels sit inside the signal the processor reads — Frame is the wire's full size, Position/Size the crop your processor is configured for")
-    }
-
-    private func update(
-        _ placement: OutputPlacement, _ sliceID: UUID,
-        _ mutate: (inout OutputPlacement) -> Void
-    ) {
-        var value = placement
-        mutate(&value)
-        outputs.setPlacement(value, forSlice: sliceID)
-
-        DeckLinkScreenOutputs.shared.refreshCarry(for: sliceID, render: render)
-    }
-
-    private func placementField(
-        _ value: Double, step: Double, commit: @escaping (Double) -> Void
-    ) -> some View {
-        HStack(spacing: 0) {
-            TextField(
-                "0",
-                text: Binding(
-                    get: { String(format: "%.0f", value) },
-                    set: { commit(Double($0) ?? 0) }
-                )
-            )
-            .textFieldStyle(.roundedBorder)
-            .controlSize(.mini)
-            .frame(width: 46)
-            .multilineTextAlignment(.trailing)
-            .font(.caption.monospacedDigit())
-            Stepper(
-                "",
-                onIncrement: { commit((value / step).rounded(.down) * step + step) },
-                onDecrement: { commit(max(0, (value / step).rounded(.up) * step - step)) }
-            )
-            .labelsHidden()
-            .controlSize(.mini)
-        }
-    }
-
-    private func carrySiblings(of slice: OutputSliceState) -> [UUID] {
-        if let display = outputs.placeholderDevices[slice.id] {
-            return outputs.placeholderDevices
-                .filter { $0.value == display && $0.key != slice.id }
-                .keys.sorted { $0.uuidString < $1.uuidString }
-        }
-        if let backing = DeckLinkScreenOutputs.shared.backing(for: slice.id) {
-            return DeckLinkScreenOutputs.shared
-                .members(onDevice: backing.devicePersistentID)
-                .filter { $0 != slice.id }
-        }
-        return []
-    }
-
-    private func packedLabel(_ sliceID: UUID) -> String {
-        guard let info = outputs.sliceInfo(for: sliceID) else { return "Output" }
-        let screenName = outputs.placeholderScreens
-            .first { $0.id == info.screenID }?.name ?? "Screen"
-        return info.name.map { "\(screenName) — \($0)" } ?? screenName
-    }
-
-    private func frameDiagram(_ slice: OutputSliceState) -> some View {
-        let placement = outputs.placement(forSlice: slice.id)
-        let members = [slice.id] + carrySiblings(of: slice)
-        return GeometryReader { proxy in
-            let size = proxy.size
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle.standard(CornerStandard.element)
-                    .fill(Color.black.opacity(0.35))
-                ForEach(members, id: \.self) { member in
-                    let unit = outputs.placement(forSlice: member)?.unitRect
-                        ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-                    let isSelected = member == slice.id
-                    RoundedRectangle(cornerRadius: 2)
-                        .strokeBorder(
-                            isSelected ? Color.green : Color.cyan.opacity(0.8),
-                            lineWidth: isSelected ? 1.5 : 1
-                        )
-                        .background(
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill((isSelected ? Color.green : Color.cyan).opacity(0.14))
-                        )
-                        .overlay(alignment: .topLeading) {
-                            Text(packedLabel(member))
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(isSelected ? Color.green : Color.cyan)
-                                .padding(2)
-                                .lineLimit(1)
-                        }
-                        .frame(
-                            width: max(unit.width * size.width, 8),
-                            height: max(unit.height * size.height, 8)
-                        )
-                        .offset(x: unit.minX * size.width, y: unit.minY * size.height)
-                }
-            }
-        }
-        .aspectRatio(
-            CGFloat(placement?.frameWidth ?? 16) / CGFloat(max(placement?.frameHeight ?? 9, 1)),
-            contentMode: .fit
-        )
-        .frame(maxHeight: 110)
-        .help("The signal the carry sends: the frame at wire size, every packed output's pixels landing 1:1 inside it — right-click a claimed display/DeckLink card and Add Alongside to pack more")
     }
 }

@@ -207,6 +207,8 @@ public struct StyleRun: Hashable, Sendable {
 
     public var caret: Bool?
 
+    public var transform: SceneTextTransform?
+
     public init(
         line: Int,
         column: Int,
@@ -220,7 +222,8 @@ public struct StyleRun: Hashable, Sendable {
         tracking: Double? = nil,
         hidden: Bool? = nil,
         placeholderUnderline: Bool? = nil,
-        caret: Bool? = nil
+        caret: Bool? = nil,
+        transform: SceneTextTransform? = nil
     ) {
         self.line = line
         self.column = column
@@ -235,6 +238,36 @@ public struct StyleRun: Hashable, Sendable {
         self.hidden = hidden
         self.placeholderUnderline = placeholderUnderline
         self.caret = caret
+        self.transform = transform
+    }
+}
+
+extension StyledText {
+    public var uppercaseFlags: [Bool] {
+        var flags: [Bool] = []
+        flags.reserveCapacity(string.count)
+        let runs = styleRuns.filter { $0.transform != nil }
+        for (index, line) in string.components(separatedBy: "\n").enumerated() {
+            var lineFlags = [Bool](repeating: transform == .uppercase, count: line.count)
+            for run in runs where run.line == index {
+                let start = min(max(0, run.column), line.count)
+                let end = min(start + max(0, run.length), line.count)
+                for column in start..<end { lineFlags[column] = run.transform == .uppercase }
+            }
+            if index > 0 { flags.append(false) }
+            flags.append(contentsOf: lineFlags)
+        }
+        return flags
+    }
+
+    public var displayString: String {
+        guard transform == .uppercase || styleRuns.contains(where: { $0.transform != nil }) else { return string }
+        var result = ""
+        result.reserveCapacity(string.utf8.count)
+        for (character, upper) in zip(string, uppercaseFlags) {
+            if upper { result += String(character).uppercased() } else { result.append(character) }
+        }
+        return result
     }
 }
 
@@ -466,6 +499,12 @@ public enum SceneMediaScaleMode: String, Sendable, Hashable {
     case fill
     case fit
     case stretch
+    case scaleAndBlur
+}
+
+public enum SceneEndFade: String, Sendable, Hashable {
+    case black
+    case clear
 }
 
 public struct SceneSourceRect: Hashable, Sendable {
@@ -759,6 +798,10 @@ public struct RenderItem: Identifiable, Equatable, Sendable {
 
     public var animationContext: AnimationContext?
 
+    public var crossfadeLeaving = false
+
+    public var endFade: SceneEndFade?
+
     public init(
         id: String,
         frame: CGRect,
@@ -817,10 +860,15 @@ public struct RenderItem: Identifiable, Equatable, Sendable {
 
 public struct RenderLayer: Identifiable, Equatable, Sendable {
     public var id: String
-    public var kind: LayerKind
+
+    public var kind: LayerKind?
     public var name: String
     public var isHidden: Bool
     public var items: [RenderItem]
+
+    public var crossfadeProgress: Double?
+
+    public var placed: PlacedLayer?
 
     public init(kind: LayerKind, name: String? = nil, isHidden: Bool = false, items: [RenderItem] = []) {
         self.id = kind.rawValue
@@ -828,6 +876,41 @@ public struct RenderLayer: Identifiable, Equatable, Sendable {
         self.name = name ?? kind.displayName
         self.isHidden = isHidden
         self.items = items
+    }
+
+    public init(customID: String, name: String) {
+        self.id = customID
+        self.kind = nil
+        self.name = name
+        self.isHidden = false
+        self.items = []
+    }
+
+    public var isMediaLayer: Bool {
+        switch kind {
+        case .none, .loopingVideos, .stillGraphics, .videos: true
+        default: false
+        }
+    }
+}
+
+public struct PlacedLayer: Equatable, Sendable {
+    public struct Frame: Equatable, Sendable {
+        public var rect: CGRect
+        public var fill: Bool
+
+        public init(rect: CGRect, fill: Bool = false) {
+            self.rect = rect
+            self.fill = fill
+        }
+    }
+
+    public var canvasSize: CGSize
+    public var frames: [Frame]
+
+    public init(canvasSize: CGSize, frames: [Frame]) {
+        self.canvasSize = canvasSize
+        self.frames = frames
     }
 }
 
@@ -899,8 +982,20 @@ public struct RenderScene: Equatable, Sendable {
     }
 
     public mutating func addItem(_ item: RenderItem, to kind: LayerKind) {
-        guard let index = layers.firstIndex(where: { $0.kind == kind }) else { return }
+        addItem(item, toLayerID: kind.rawValue)
+    }
+
+    public mutating func addItem(_ item: RenderItem, toLayerID id: String) {
+        guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
         layers[index].items.append(item)
+    }
+
+    public mutating func insertCustomLayer(id: String, name: String, above: String?) {
+        guard !layers.contains(where: { $0.id == id }) else { return }
+        let anchor = layers.firstIndex { $0.id == above }
+            ?? layers.firstIndex { $0.kind == .slide }
+            ?? layers.count - 1
+        layers.insert(RenderLayer(customID: id, name: name), at: anchor + 1)
     }
 
     public mutating func setLayerHidden(_ hidden: Bool, kind: LayerKind) {

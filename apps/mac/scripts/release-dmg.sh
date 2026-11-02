@@ -9,6 +9,14 @@ fi
 MAC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 IDENTITY="${DEVELOPER_ID_IDENTITY:?set DEVELOPER_ID_IDENTITY to your Developer ID Application signing identity}"
 PROFILE="notarization-profile"
+notarize() {
+  local out
+  out="$(xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait | tee /dev/stderr)"
+  if ! grep -q 'status: Accepted' <<<"$out"; then
+    xcrun notarytool log "$(sed -n 's/^ *id: //p' <<<"$out" | head -n 1)" --keychain-profile "$PROFILE" || true
+    exit 1
+  fi
+}
 DIST="$MAC_DIR/build/dist"
 DERIVED="$MAC_DIR/build/release-deriveddata"
 APP="$DERIVED/Build/Products/Release/MxU Slides.app"
@@ -38,8 +46,9 @@ xcodebuild -project "$MAC_DIR/MxUSlides.xcodeproj" \
   PROVISIONING_PROFILE_SPECIFIER= \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" MXU_GIT_COMMIT="$GIT_COMMIT" \
   build > "$MAC_DIR/build/xcodebuild.log" 2>&1 || {
-  grep -E -A4 ': (error|fatal error):' "$MAC_DIR/build/xcodebuild.log" | head -80
-  tail -5 "$MAC_DIR/build/xcodebuild.log"
+  grep -E -A4 ': (error|fatal error):' "$MAC_DIR/build/xcodebuild.log" | head -80 || true
+  grep -E -B2 -A8 'BUILD FAILED|^error:|commands failed' "$MAC_DIR/build/xcodebuild.log" | head -60 || true
+  tail -20 "$MAC_DIR/build/xcodebuild.log"
   exit 1
 }
 tail -5 "$MAC_DIR/build/xcodebuild.log"
@@ -75,7 +84,7 @@ codesign --verify --strict --deep "$APP"
 
 echo "==> Notarizing the app"
 ditto -c -k --keepParent "$APP" "$DIST/app.zip"
-xcrun notarytool submit "$DIST/app.zip" --keychain-profile "$PROFILE" --wait
+notarize "$DIST/app.zip"
 xcrun stapler staple "$APP"
 rm "$DIST/app.zip"
 
@@ -89,7 +98,7 @@ rm -rf "$STAGE"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
 
 echo "==> Notarizing the DMG"
-xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
+notarize "$DMG"
 xcrun stapler staple "$DMG"
 
 echo "==> Gatekeeper check"

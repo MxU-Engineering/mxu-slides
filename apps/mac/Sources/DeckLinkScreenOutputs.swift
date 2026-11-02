@@ -72,6 +72,7 @@ final class DeckLinkScreenOutputs {
         }
 
         NDIScreenOutputs.shared.disable(screenID: screenID)
+        SyphonScreenOutputs.shared.disable(screenID: screenID)
         if !joining {
 
             for otherID in members(onDevice: device.persistentID) where otherID != screenID {

@@ -20,43 +20,42 @@ final class OutputLayoutTests: XCTestCase {
                 let adjustments = outputs.adjustments(forScreen: sliceID)
                 return adjustments.blendLeft != nil || adjustments.blendRight != nil
                     || adjustments.blendTop != nil || adjustments.blendBottom != nil
-            },
-            hasPlacement: { outputs.placement(forSlice: $0) != nil }
+            }
         )
     }
 
-    func testLEDWallRoundTripsAndReleasesItsPlacement() throws {
+    func testPlacementIsOrthogonalToTheShape() throws {
         let outputs = try makeManager()
         let screen = try XCTUnwrap(
             outputs.addPlaceholderScreen(name: "Wall", width: 832, height: 416))
-        outputs.applyLayout(.ledWall, outputCount: 1, overlap: 0, forScreen: screen.id)
+        outputs.seedPlacement(forSlice: screen.id, frameWidth: 1920, frameHeight: 1080)
         let placement = try XCTUnwrap(outputs.placement(forSlice: screen.id))
-        XCTAssertEqual(placement.frameWidth, 1920, "wall fits HD — the seed frame is 1080p")
-        XCTAssertEqual(placement.width, 832, "seeded 1:1 at wall-native pixels")
-        XCTAssertEqual(classify(outputs, screen.id), .ledWall)
-
-        var moved = placement
-        moved.x = 512
-        outputs.setPlacement(moved, forSlice: screen.id)
-        outputs.applyLayout(.ledWall, outputCount: 1, overlap: 0, forScreen: screen.id)
-        XCTAssertEqual(outputs.placement(forSlice: screen.id)?.x, 512)
+        XCTAssertEqual(placement.width, 832, "seeded 1:1 at wall-native pixels, top-left")
+        XCTAssertEqual(placement.y, 0)
+        XCTAssertEqual(classify(outputs, screen.id), .single)
 
         outputs.applyLayout(.single, outputCount: 1, overlap: 0, forScreen: screen.id)
-        XCTAssertNil(outputs.placement(forSlice: screen.id))
-        XCTAssertEqual(classify(outputs, screen.id), .single)
+        XCTAssertEqual(outputs.placement(forSlice: screen.id)?.width, 832)
     }
 
-    func testPlacedExtraSliceReadsBackAsCustom() throws {
+    func testShareItSeedsTheJoinerBelowTheIncumbent() throws {
         let outputs = try makeManager()
-        let screen = try XCTUnwrap(
-            outputs.addPlaceholderScreen(name: "Wall", width: 832, height: 416))
-        let banner = try XCTUnwrap(outputs.addSlice(toScreen: screen.id, name: "Banner"))
-        outputs.setPlacement(
-            OutputPlacement(frameWidth: 1920, frameHeight: 1080,
-                            x: 0, y: 0, width: 384, height: 768),
-            forSlice: banner.id)
-        XCTAssertEqual(classify(outputs, screen.id), .custom,
-                       "multi-region frames are Custom until b3's packed carries")
+        let wall = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Wall", width: 1536, height: 864))
+        let ribbon = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Ribbon", width: 1920, height: 192))
+        outputs.seedPlacement(forSlice: wall.id, frameWidth: 1920, frameHeight: 1080)
+        outputs.seedPlacement(
+            forSlice: ribbon.id, frameWidth: 1920, frameHeight: 1080,
+            siblings: [try XCTUnwrap(outputs.placement(forSlice: wall.id))])
+        XCTAssertEqual(outputs.placement(forSlice: ribbon.id)?.y, 864, "lands under the wall")
+
+        let tall = try XCTUnwrap(
+            outputs.addPlaceholderScreen(name: "Tall", width: 400, height: 400))
+        outputs.seedPlacement(
+            forSlice: tall.id, frameWidth: 1920, frameHeight: 1080,
+            siblings: [try XCTUnwrap(outputs.placement(forSlice: ribbon.id))])
+        XCTAssertEqual(outputs.placement(forSlice: tall.id)?.y, 0)
     }
 
     func testEveryLayoutRoundTripsThroughClassify() throws {
@@ -130,6 +129,6 @@ final class OutputLayoutTests: XCTestCase {
         XCTAssertEqual(tiles[0].maxX - tiles[1].minX, 0.06, accuracy: 0.0001)
         XCTAssertEqual(OutputLayout.tileName(0, of: 2), "Left")
         XCTAssertEqual(OutputLayout.tileName(2, of: 3), "Right")
-        XCTAssertEqual(OutputLayout.tileName(3, of: 4), "Output 4")
+        XCTAssertEqual(OutputLayout.tileName(3, of: 4), "Slice 4")
     }
 }

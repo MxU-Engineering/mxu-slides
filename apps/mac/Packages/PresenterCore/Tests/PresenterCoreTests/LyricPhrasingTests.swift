@@ -69,6 +69,16 @@ import Testing
     #expect(LyricPhrasing.slides(lines, perSlide: 2).map(\.count) == [2, 2, 2, 2])
 }
 
+@Test func aShortLineThatOpensAPhraseKeepsTheChartsBreak() {
+    let verse = [
+        "How great the [C]chasm", "That lay be[Gsus4]tween [G]us", "How high the [F]mountain[Am]",
+        "I could [Gsus4]not climb", "In desper[C]ation", "I turned to [Gsus4]Hea[G]ven",
+        "And spoke Your [F]name", "In[Gsus4]to the [C]night",
+    ]
+    #expect(LyricPhrasing.rejoined(verse, casing: .init(verse.joined(separator: "\n"))) == verse)
+    #expect(LyricPhrasing.slides(verse, perSlide: 2).map(\.count) == [2, 2, 2, 2])
+}
+
 @Test func slidesBreakWherePhrasesEndNotEveryTwoLines() {
 
     let lines = [

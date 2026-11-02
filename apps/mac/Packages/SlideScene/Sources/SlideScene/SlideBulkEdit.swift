@@ -301,6 +301,50 @@ public enum SlideBulkEdit {
         }
         return made
     }
+
+    @discardableResult
+    public static func mergeSlides(
+        _ slideIDs: [String], in presentation: inout Presentation
+    ) -> String? {
+        let targets = Set(slideIDs)
+        let merging = presentation.slides.filter { targets.contains($0.id) }
+        guard merging.count > 1,
+              let survivorIndex = presentation.slides.firstIndex(where: { $0.id == merging[0].id })
+        else { return nil }
+        let isLyricBox: (SlideObject) -> Bool = { $0.objectKind == .text && $0.textLink == nil }
+        var survivor = merging[0]
+        for slide in merging.dropFirst() {
+            let joining = slide.objects.firstIndex(where: isLyricBox)
+            for (index, object) in slide.objects.enumerated() {
+                if index == joining, let boxIndex = survivor.objects.firstIndex(where: isLyricBox) {
+                    var box = survivor.objects[boxIndex]
+                    let offset = box.text.components(separatedBy: "\n").count
+                    box.text += "\n" + object.text
+                    let chords = (box.chords ?? []) + (object.chords ?? []).map {
+                        ChordPlacement(line: $0.line + offset, column: $0.column, symbol: $0.symbol)
+                    }
+                    box.chords = chords.isEmpty ? nil : chords
+                    let runs = (box.styleRuns ?? []) + (object.styleRuns ?? []).map { run in
+                        var run = run
+                        run.line += offset
+                        return run
+                    }
+                    box.styleRuns = runs.isEmpty ? nil : runs
+                    survivor.objects[boxIndex] = box
+                } else {
+                    let duplicate = survivor.objects.contains { existing in
+                        var probe = object
+                        probe.id = existing.id
+                        return probe == existing
+                    }
+                    if !duplicate { survivor.objects.append(object) }
+                }
+            }
+        }
+        presentation.slides[survivorIndex] = survivor
+        deleteSlides(merging.dropFirst().map(\.id), in: &presentation.slides)
+        return survivor.id
+    }
 }
 
 extension Slide {

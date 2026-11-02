@@ -4,6 +4,7 @@ import CoreVideo
 import Foundation
 import IOSurface
 import MediaEngine
+import OutputEngine
 import QuartzCore
 import RenderEngine
 
@@ -68,6 +69,10 @@ final class DeckLinkDirectInputs: @unchecked Sendable {
         lock.withLock { captures[persistentID]?.capture }
     }
 
+    var ageSummary: String {
+        lock.withLock { captures.values.map(\.capture) }.compactMap(\.ageSummary).joined(separator: " ")
+    }
+
     func checkLiveness(at now: Double) {
         let running = lock.withLock { captures.values.map(\.capture) }
         for capture in running { capture.checkLiveness(at: now) }
@@ -92,6 +97,12 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
 
     private var liveness = DirectInputLiveness()
 
+    private var ages = (windowStart: -Double.infinity, video: 0.0, audio: 0.0)
+    private var lastAges: (video: Double, audio: Double)?
+
+    private var backlog = DirectInputBacklog()
+    private var black = DropoutWatch()
+
     init(persistentID: Int64, name: String) {
         self.persistentID = persistentID
         self.name = name
@@ -99,6 +110,23 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
 
     func latestFrame() -> CVPixelBuffer? {
         lock.withLock { latest }
+    }
+
+    var ageSummary: String? {
+        let (ages, driver) = lock.withLock { (lastAges, backlog.last) }
+        return ages.map {
+            "card \(name) videoAge=\(Int($0.video * 1000))ms audioAge=\(Int($0.audio * 1000))ms"
+                + (driver.map { " " + $0.summary } ?? "")
+        }
+    }
+
+    private func noteAge(video: Double = 0, audio: Double = 0, at now: Double) {
+        if now - ages.windowStart >= 10 {
+            if ages.windowStart.isFinite { lastAges = (ages.video, ages.audio) }
+            ages = (now, 0, 0)
+        }
+        ages.video = max(ages.video, video)
+        ages.audio = max(ages.audio, audio)
     }
 
     var cadence: LiveCadence? {
@@ -219,19 +247,26 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
         }
     }
 
-    fileprivate func frameArrived(_ surface: IOSurface, generation: Int) {
+    fileprivate func frameArrived(_ surface: IOSurface, hostTime: Double, generation: Int) {
         var unmanaged: Unmanaged<CVPixelBuffer>?
         CVPixelBufferCreateWithIOSurface(
             kCFAllocatorDefault, unsafeBitCast(surface, to: IOSurfaceRef.self), nil, &unmanaged)
         let now = CACurrentMediaTime()
         if let buffer = unmanaged?.takeRetainedValue() {
-            lock.withLock {
-                if generation == self.generation {
-                    latest = buffer
-                    lastFrameAt = now
-                    arrivals.record(now)
-                    liveness.arrived(at: now)
-                }
+            let isBlack = SyncTestReader.gridLuma(buffer).map(SyncTestReader.isBlackAbove) ?? false
+            let blackRun = lock.withLock { () -> (start: Double, seconds: Double)? in
+                guard generation == self.generation else { return nil }
+                latest = buffer
+                lastFrameAt = now
+                arrivals.record(now)
+                liveness.arrived(at: now)
+                noteAge(video: now - hostTime, at: now)
+                return black.update(isBlack, at: hostTime)
+            }
+            if let blackRun, blackRun.seconds > 0.05 {
+                DiagnosticsStore.shared.note(
+                    "input.decklink",
+                    detail: "\(name): the card sent black for \(Int(blackRun.seconds * 1000))ms")
             }
         }
     }
@@ -239,7 +274,9 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
     fileprivate func audioArrived(_ samples: Data, frames: Int, channels: Int, hostTime: Double, generation: Int) {
         let sinks = lock.withLock { () -> [AudioSink] in
             if generation == self.generation {
-                liveness.arrived(at: CACurrentMediaTime())
+                let now = CACurrentMediaTime()
+                liveness.arrived(at: now)
+                noteAge(audio: now - hostTime, at: now)
                 return Array(audioSinks.values)
             } else {
                 return []
@@ -254,6 +291,27 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
             RealtimeAudioCallback.scope {
                 for sink in sinks { sink(buffer, when, hostTime) }
             }
+        }
+    }
+
+    fileprivate func timingArrived(
+        audioMinusVideo: Double, queuedAudioFrames: Int32, queuedVideoFrames: Int32,
+        stampAge: Double, droppedPictures: Int64, generation: Int
+    ) {
+        let jump = lock.withLock { () -> (from: Double, to: Double)? in
+            guard generation == self.generation else { return nil }
+            return backlog.record(
+                audioMinusVideo: audioMinusVideo.isNaN ? nil : audioMinusVideo,
+                queuedAudioFrames: queuedAudioFrames < 0 ? nil : Int(queuedAudioFrames),
+                queuedVideoFrames: queuedVideoFrames < 0 ? nil : Int(queuedVideoFrames),
+                stampAge: stampAge < 0 ? nil : stampAge,
+                droppedPictures: droppedPictures, at: CACurrentMediaTime())
+        }
+        if let jump {
+            DiagnosticsStore.shared.note(
+                "input.decklink",
+                detail: "\(name): card sound vs picture moved "
+                    + String(format: "%+.3f s → %+.3f s", jump.from, jump.to))
         }
     }
 
@@ -283,7 +341,7 @@ private final class DeckLinkDirectSink: NSObject, DeckLinkInputSinkProtocol, @un
     }
 
     func inputFrame(_ surface: IOSurface, hostTime: Double, reply: @escaping () -> Void) {
-        owner?.frameArrived(surface, generation: generation)
+        owner?.frameArrived(surface, hostTime: hostTime, generation: generation)
 
         reply()
     }
@@ -292,6 +350,16 @@ private final class DeckLinkDirectSink: NSObject, DeckLinkInputSinkProtocol, @un
         owner?.audioArrived(
             samples, frames: Int(frames), channels: Int(channels), hostTime: hostTime,
             generation: generation)
+    }
+
+    func inputTiming(
+        audioMinusVideo: Double, queuedAudioFrames: Int32, queuedVideoFrames: Int32,
+        stampAge: Double, droppedPictures: Int64
+    ) {
+        owner?.timingArrived(
+            audioMinusVideo: audioMinusVideo, queuedAudioFrames: queuedAudioFrames,
+            queuedVideoFrames: queuedVideoFrames, stampAge: stampAge,
+            droppedPictures: droppedPictures, generation: generation)
     }
 
     func inputFormat(_ name: String, interlaced: Bool) {

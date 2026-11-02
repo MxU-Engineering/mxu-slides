@@ -269,6 +269,7 @@ final class SlideEditorModel {
             refreshScene()
             sweepClippedTextWarnings()
 
+            _ = appModel.noteID(linkedToPresentation: presentationID)
             inbox.open(for: self, after: checkout.sequence)
         } else {
             inbox.close()
@@ -504,6 +505,14 @@ final class SlideEditorModel {
         SlideSceneBuilder.placeholderAssignments(
             for: currentSlide?.objects ?? [], in: currentTemplate
         )
+    }
+
+    func placeholder(for object: SlideObject) -> SlideObject? {
+        currentPlaceholderAssignments[object.id]
+    }
+
+    func baseStyle(for object: SlideObject) -> ThemeOverride.BaseStyle {
+        ThemeOverride.BaseStyle(object: object, placeholder: placeholder(for: object), theme: theme)
     }
 
     var theme: Theme? {
@@ -1109,6 +1118,12 @@ final class SlideEditorModel {
                 selectedSlideIDs = Set(fresh)
             }
         }
+    }
+
+    func mergeSlides(_ ids: [String]) {
+        var survivor: String?
+        updateDocument { survivor = SlideBulkEdit.mergeSlides(ids, in: &$0) }
+        if let survivor { selectSlide(survivor) }
     }
 
     func moveSlides(_ ids: [String], beforeSlideID: String?) {
@@ -2043,9 +2058,11 @@ final class SlideEditorModel {
 
     @discardableResult
     func setDroppedBackground(mediaID: String, onSlide slideID: String) -> Bool {
-        guard !isThemeEditor, let media = droppableCueMedia(mediaID)
+        guard !isThemeEditor, let media = droppableCueMedia(mediaID), let item = appModel.media(mediaID)
         else { return false }
-        updateSlide(slideID) { $0.background = media }
+        let options = appModel.slideBuilding.slideDesignMap.options
+
+        updateSlide(slideID) { if $0.waitsForMedia { $0.fillPlaceholder(with: item, options: options) } else { $0.background = media } }
         return true
     }
 
@@ -2719,6 +2736,7 @@ final class SlideEditorModel {
 
     private func updateDocument(_ mutate: (inout Presentation) -> Void) {
         let before = presentation.slides.map(\.id)
+        defer { syncNoteCards(before: before) }
         do {
             switch host {
             case .presentation(let document):
@@ -2751,6 +2769,7 @@ final class SlideEditorModel {
 
     func undo() {
         let before = presentation.slides.map(\.id)
+        defer { syncNoteCards(before: before) }
         switch host {
         case .presentation(let document):
             guard let value = try? document.undo() else { return }
@@ -2771,6 +2790,7 @@ final class SlideEditorModel {
 
     func redo() {
         let before = presentation.slides.map(\.id)
+        defer { syncNoteCards(before: before) }
         switch host {
         case .presentation(let document):
             guard let value = try? document.redo() else { return }
@@ -2793,6 +2813,14 @@ final class SlideEditorModel {
         if let reason = document.wholeWrite {
             DiagnosticsStore.shared.note("editor.wholeWrite", detail: "reason=\(reason)")
         }
+    }
+
+    private func syncNoteCards(before: [String]) {
+        guard case .presentation = host else { return }
+        let after = Set(presentation.slides.map(\.id))
+        let added = after.subtracting(before), removed = Set(before).subtracting(after)
+        guard !added.isEmpty || !removed.isEmpty else { return }
+        appModel.cardDeckSlides(in: presentation, added: added, removed: removed)
     }
 
     private func reconcileAfterHistoryChange() {

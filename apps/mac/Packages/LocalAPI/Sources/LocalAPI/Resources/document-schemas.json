@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 149,
+  "schemaVersion": 161,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -64,7 +64,8 @@
       "enum": [
         "fill",
         "fit",
-        "stretch"
+        "stretch",
+        "scaleAndBlur"
       ]
     },
     "MediaSourceRect": {
@@ -551,6 +552,9 @@
         },
         "tracking": {
           "type": "number"
+        },
+        "textTransform": {
+          "$ref": "#/components/schemas/TextTransform"
         }
       },
       "required": [
@@ -1050,6 +1054,9 @@
         },
         "keystoneMode": {
           "$ref": "#/components/schemas/KeystoneMode"
+        },
+        "photoSpot": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1089,6 +1096,13 @@
         "untilReplaced"
       ]
     },
+    "MediaEndFade": {
+      "type": "string",
+      "enum": [
+        "black",
+        "clear"
+      ]
+    },
     "CueMedia": {
       "type": "object",
       "properties": {
@@ -1106,6 +1120,15 @@
         },
         "classification": {
           "$ref": "#/components/schemas/MediaClassification"
+        },
+        "scaleMode": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        },
+        "endFade": {
+          "$ref": "#/components/schemas/MediaEndFade"
+        },
+        "layerId": {
+          "type": "string"
         }
       },
       "required": [
@@ -1728,6 +1751,12 @@
         },
         "autoAdvance": {
           "$ref": "#/components/schemas/AutoAdvance"
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/VideoMark"
+          }
         }
       },
       "required": [
@@ -1743,6 +1772,35 @@
         "favorite",
         "collections",
         "loops"
+      ]
+    },
+    "VideoMark": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "at": {
+          "type": "number"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "colorHex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "at",
+        "actions"
       ]
     },
     "AudioItem": {
@@ -2369,6 +2427,18 @@
           "items": {
             "$ref": "#/components/schemas/OutputAssignment"
           }
+        },
+        "placements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LayerPlacement"
+          }
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/CustomLayer"
+          }
         }
       },
       "required": [
@@ -2688,6 +2758,12 @@
           "type": "integer"
         },
         "videoBitrateKbps": {
+          "type": "integer"
+        },
+        "adaptBitrate": {
+          "type": "boolean"
+        },
+        "minBitrateKbps": {
           "type": "integer"
         },
         "canvasScreenId": {
@@ -3376,7 +3452,8 @@
         "currentGroup",
         "currentPresentation",
         "nextServiceTitle",
-        "timecode"
+        "timecode",
+        "videoMarkName"
       ]
     },
     "TimerTextFormat": {
@@ -3385,6 +3462,14 @@
         "digits",
         "abbreviated",
         "words"
+      ]
+    },
+    "VideoCountdownTarget": {
+      "type": "string",
+      "enum": [
+        "end",
+        "nextMark",
+        "namedMark"
       ]
     },
     "TextLink": {
@@ -3425,6 +3510,15 @@
         },
         "timerPattern": {
           "type": "string"
+        },
+        "videoTarget": {
+          "$ref": "#/components/schemas/VideoCountdownTarget"
+        },
+        "videoMarkName": {
+          "type": "string"
+        },
+        "countsUp": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -3616,6 +3710,9 @@
         "slideId": {
           "type": "string"
         },
+        "slideState": {
+          "type": "string"
+        },
         "commentId": {
           "type": "string"
         }
@@ -3790,6 +3887,18 @@
         },
         "slide": {
           "$ref": "#/components/schemas/NoteSlideRef"
+        },
+        "slideGroup": {
+          "type": "string"
+        },
+        "slideType": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        },
+        "slideState": {
+          "type": "string"
         }
       },
       "required": [
@@ -4037,12 +4146,57 @@
           "items": {
             "$ref": "#/components/schemas/NotePendingUpdate"
           }
+        },
+        "mediaImports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteMediaImport"
+          }
+        },
+        "buildMode": {
+          "type": "string"
+        },
+        "skippedUpdates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/NoteSkippedUpdate"
+          }
         }
       },
       "required": [
         "id",
         "name",
         "origin"
+      ]
+    },
+    "NoteSkippedUpdate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "NoteMediaImport": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "mediaId"
       ]
     },
     "StationSettings": {
@@ -4241,6 +4395,54 @@
         "id",
         "name",
         "stems"
+      ]
+    },
+    "LayerPlacement": {
+      "type": "object",
+      "properties": {
+        "layerId": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "scale": {
+          "$ref": "#/components/schemas/MediaScaleMode"
+        }
+      },
+      "required": [
+        "layerId",
+        "x",
+        "y",
+        "width",
+        "height"
+      ]
+    },
+    "CustomLayer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "above": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
       ]
     }
   }

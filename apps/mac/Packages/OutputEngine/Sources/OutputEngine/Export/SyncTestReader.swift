@@ -61,6 +61,11 @@ public final class SyncTestReader: @unchecked Sendable {
         return lumas
     }
 
+    public static func isBlackAbove(lowerThird lumas: [Double]) -> Bool {
+        guard lumas.count == gridRows * gridColumns else { return false }
+        return !lumas.prefix(gridRows * 7 / 10 * gridColumns).contains { $0 > 0.04 }
+    }
+
     public func picture(hostSeconds: Double, lumas: [Double]) {
         lock.withLock {
             let jumped = reference.map { reference in
