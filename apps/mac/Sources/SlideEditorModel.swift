@@ -506,6 +506,14 @@ final class SlideEditorModel {
         )
     }
 
+    func placeholder(for object: SlideObject) -> SlideObject? {
+        currentPlaceholderAssignments[object.id]
+    }
+
+    func baseStyle(for object: SlideObject) -> ThemeOverride.BaseStyle {
+        ThemeOverride.BaseStyle(object: object, placeholder: placeholder(for: object), theme: theme)
+    }
+
     var theme: Theme? {
         switch host {
         case .presentation:
@@ -1109,6 +1117,12 @@ final class SlideEditorModel {
                 selectedSlideIDs = Set(fresh)
             }
         }
+    }
+
+    func mergeSlides(_ ids: [String]) {
+        var survivor: String?
+        updateDocument { survivor = SlideBulkEdit.mergeSlides(ids, in: &$0) }
+        if let survivor { selectSlide(survivor) }
     }
 
     func moveSlides(_ ids: [String], beforeSlideID: String?) {

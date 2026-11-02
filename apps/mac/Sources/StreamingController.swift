@@ -254,7 +254,10 @@ final class StreamingController {
                     video: StreamVideoConfiguration(
                         width: sessionWidth, height: sessionHeight,
                         frameRate: sessionRate, bitrateKbps: sessionBitrate,
-                        codec: plan.codec, hdr: plan.hdr)),
+                        codec: plan.codec, hdr: plan.hdr,
+                        adaptiveFloorKbps: StreamVideoConfiguration.adaptiveFloor(
+                            adapt: preset.adaptBitrate, minKbps: preset.minBitrateKbps,
+                            bitrateKbps: sessionBitrate))),
                 screenID: plan.canvasScreenId?.isEmpty == false ? plan.canvasScreenId! : defaultScreenID,
                 width: sessionWidth, height: sessionHeight,
                 frameRate: sessionRate, hdr: plan.hdr)
@@ -378,6 +381,19 @@ final class StreamingController {
                     let mirrorDelivered = live.mirrors.reduce(0) { $0 + $1.framesDelivered }
                     let mirrorDropped = live.mirrors.reduce(0) { $0 + $1.framesDropped }
                     Self.log.info("heartbeat: \(session.destination.name, privacy: .public) state=\(String(describing: status.state), privacy: .public) submitted=\(status.framesSubmitted) dropped=\(status.framesDropped) mirrorDelivered=\(mirrorDelivered) mirrorDropped=\(mirrorDropped)")
+
+                    DiagnosticsStore.shared.note(
+                        "stream.heartbeat",
+                        detail: "\(session.destination.name) state=\(status.state) "
+                            + "frames=\(status.framesSubmitted) dropped=\(status.framesDropped) "
+                            + String(format: "elapsed=%.2fs audio=%.2fs ", Date().timeIntervalSince(live.startedAt), status.audioSecondsSent)
+                            + "audioDropped=\(status.audioBuffersDropped) "
+                            + (status.uploadKbps.map { "upload=\($0)kbps " } ?? "")
+                            + (status.backlogSeconds.map { String(format: "backlog=%.1fs ", $0) } ?? "")
+                            + (status.videoKbps.map { "video=\($0)/\(session.video.bitrateKbps)kbps " } ?? "")
+                            + (status.lastDrop.map { "lastDrop=\($0) " } ?? "")
+                            + (AudioMixerController.current?.feedLossSummary ?? "")
+                            + DeckLinkDirectInputs.shared.ageSummary)
                 }
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
             }

@@ -4,6 +4,7 @@ import Foundation
 import LocalAPI
 import PresenterCore
 import QuartzCore
+import RenderEngine
 import SlideScene
 
 @MainActor
@@ -739,7 +740,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
                     if controls.audio.player(forAudioItem: id) != nil { controls.stopAudio(audioItemID: id) }
                 case .videos, .stillGraphics, .loopingVideos, .videoInput:
                     let engineID = lane == .videoInput ? VideoInputInventory.engineIDPrefix + id : id
-                    if let layer = controls.state.liveMedia.first(where: { $0.value.mediaId == engineID })?.key {
+                    if let key = controls.state.liveMedia.first(where: { $0.value.mediaId == engineID })?.key,
+                       let layer = LayerKind(rawValue: key) {
                         controls.clear(layer: layer)
                     }
                 case .slide, .actions:

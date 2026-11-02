@@ -524,6 +524,9 @@ struct ShellView: View {
             if layout.serviceControlsWindowOpen {
                 openWindow(id: "serviceControls")
             }
+            if layout.libraryWindowOpen {
+                openWindow(id: "library")
+            }
         }
         .onAppear {
             WindowBridge.openMain = { openWindow(id: "main") }
@@ -553,6 +556,10 @@ struct ShellView: View {
         }
         .onChange(of: model.selectedEntryID) { _, entryID in
 
+            if mode == .present, let entryID, let entry = model.indexEntry(entryID),
+               !LibraryPresentLogic.takesCenter(entry.kind) {
+                return
+            }
             presentFocusScroll.reset()
             if mode == .present, entryID != nil {
                 serviceItemID = nil
@@ -671,6 +678,10 @@ struct ShellView: View {
         }
     }
 
+    private var libraryInSidebar: Bool {
+        !(layout?.libraryWindowOpen ?? false) && layout?.volunteerLibraryKinds?.isEmpty != true
+    }
+
     private var sidebar: some View {
         GeometryReader { geo in
             let gap = CornerStandard.panelInset
@@ -694,11 +705,11 @@ struct ShellView: View {
                     Divider()
                     serviceSection
                 }
-                .frame(height: isRunOnly ? nil : topHeight)
-                .frame(maxHeight: isRunOnly ? .infinity : nil)
+                .frame(height: libraryInSidebar ? topHeight : nil)
+                .frame(maxHeight: libraryInSidebar ? nil : .infinity)
                 .floatingPanel()
 
-                if !isRunOnly {
+                if libraryInSidebar {
                     splitGrip(available: available)
                         .frame(height: gap)
 
@@ -1508,20 +1519,13 @@ struct ShellView: View {
 
             if let id = model.selectedEntryID,
                let entry = model.indexEntry(id),
-               entry.kind == .presentation || entry.kind == .media || entry.kind == .audio {
-                if entry.kind == .presentation {
-                    PresentGridView(
-                        model: model, render: render, controls: controls,
-                        presentationID: entry.id, arrangementId: nil
-                    )
-                    .id(entry.id)
-                    .inputRegion("single deck")
-                } else if entry.kind == .media {
-                    MediaFireView(model: model, controls: controls, mediaID: entry.id)
-                } else {
-
-                    AudioFireView(model: model, controls: controls, audioID: entry.id)
-                }
+               LibraryPresentLogic.takesCenter(entry.kind) {
+                PresentGridView(
+                    model: model, render: render, controls: controls,
+                    presentationID: entry.id, arrangementId: nil
+                )
+                .id(entry.id)
+                .inputRegion("single deck")
             } else if let serviceID = model.currentServiceID {
                 if continuousPresent {
 

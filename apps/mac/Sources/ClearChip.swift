@@ -59,7 +59,7 @@ struct ClearChip: View {
             sectionLabel("Layers")
                 .padding(.top, 4)
 
-            ForEach(Array(LayerKind.allCases.reversed()), id: \.self) { layer in
+            ForEach(controls.layerStack) { layer in
                 layerButton(layer)
             }
         }
@@ -138,12 +138,12 @@ struct ClearChip: View {
         .help("Clear Function: \(function.displayName)")
     }
 
-    private func layerButton(_ layer: LayerKind) -> some View {
-        let live = controls.hasContent(layer: layer)
+    private func layerButton(_ layer: RenderLayer) -> some View {
+        let live = controls.hasContent(layerID: layer.id)
         return Button {
-            controls.clear(layer: layer)
+            controls.clear(layerID: layer.id)
         } label: {
-            Text(layer.displayName)
+            Text(layer.name)
                 .font(.caption.weight(live ? .medium : .regular))
                 .foregroundStyle(live ? Color.green : .secondary)
                 .lineLimit(1)
@@ -164,7 +164,7 @@ struct ClearChip: View {
                     lineWidth: 1
                 )
         )
-        .help("Clear Layer: sweep \(layer.displayName) — green means live")
+        .help("Clear Layer: sweep \(layer.name) — green means live")
     }
 
     private func sectionLabel(_ text: String) -> some View {

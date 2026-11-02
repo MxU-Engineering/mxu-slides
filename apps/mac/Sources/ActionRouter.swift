@@ -34,6 +34,19 @@ final class ActionRouter {
         (confidenceMonitor?.confidenceScreens ?? []).map { ($0.id.uuidString, $0.name) }
     }
 
+    var customLayers: [CustomLayer] { presets.customLayers }
+
+    var layerStack: [RenderLayer] { controls.layerStack }
+
+    func layerName(_ id: String) -> String? {
+        LayerKind(rawValue: id)?.displayName ?? presets.customLayers.first { $0.id == id }?.name
+    }
+
+    func activeDestinations(layerId: String) -> (preset: String, screens: [String])? {
+        guard let id = presets.activePresetID, let preset = presets.preset(id) else { return nil }
+        return (preset.name, presets.routedTargetNames(presetID: id, layerId: layerId))
+    }
+
     func applyPresetSwitches(for slide: Slide, contextID: String?) {
         guard let presetID = resolvedPresetID(for: slide, contextID: contextID),
               presets.activePresetID != presetID
@@ -78,7 +91,7 @@ final class ActionRouter {
         guard !effective.isEmpty else { return }
         execute(
             effective, depth: 0, visited: [], skippingPresetSwitches: true,
-            protected: [layer])
+            protected: [layer.rawValue])
     }
 
     private func resolvedPresetID(for slide: Slide, contextID: String?) -> String? {
@@ -231,7 +244,7 @@ final class ActionRouter {
 
     private func execute(
         _ actions: [SlideAction], depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool = false, protected: Set<LayerKind> = []
+        skippingPresetSwitches: Bool = false, protected: Set<String> = []
     ) {
         let schedule = SlideSceneBuilder.delaySchedule(actions)
         for action in schedule.immediate {
@@ -299,7 +312,7 @@ final class ActionRouter {
 
     private func perform(
         _ action: SlideAction, depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool = false, protected: Set<LayerKind> = []
+        skippingPresetSwitches: Bool = false, protected: Set<String> = []
     ) {
         performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
     }
@@ -320,26 +333,27 @@ final class ActionRouter {
 
     private func performNow(
         _ action: SlideAction, depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool, protected: Set<LayerKind>
+        skippingPresetSwitches: Bool, protected: Set<String>
     ) {
         DiagnosticsStore.shared.note("actions.step", detail: label(action))
         switch action.kind {
         case .clearLayer:
-            guard let layer = action.layer.flatMap(LayerKind.init(rawValue:)) else {
+
+            guard let layer = action.layer, layerName(layer) != nil else {
                 return miss(action, "layer")
             }
 
             if protected.contains(layer) {
                 DiagnosticsStore.shared.note(
-                    "actions.clear.skippedOwnLayer", detail: layer.rawValue)
+                    "actions.clear.skippedOwnLayer", detail: layer)
                 return
             }
-            controls.clear(layer: layer)
+            controls.clear(layerID: layer)
         case .clearAll:
             if !protected.isEmpty {
                 DiagnosticsStore.shared.note(
                     "actions.clear.allScoped",
-                    detail: protected.map(\.rawValue).sorted().joined(separator: ","))
+                    detail: protected.sorted().joined(separator: ","))
             }
             controls.clearAll(protecting: protected, cancelsPendingActions: false)
         case .clearAudio:

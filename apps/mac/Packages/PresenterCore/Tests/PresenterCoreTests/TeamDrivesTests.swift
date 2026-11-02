@@ -106,6 +106,14 @@ import Testing
         #expect(TeamDriveLogic.isUnder("", prefix: ""))
     }
 
+    @Test func moveToFolderShowsFoldersWithinFolders() {
+        let tree = TeamDriveLogic.folderTree(["Worship/Lyrics/2026", "youth", "Worship", "Worship/Loops", "Archive/Old"])
+        #expect(tree.map(\.name) == ["Archive", "Worship", "youth"], "a parent nobody listed still holds its child")
+        #expect(tree[1].children.map(\.path) == ["Worship/Loops", "Worship/Lyrics"])
+        #expect(tree[1].children[1].children == [TeamDriveLogic.FolderNode(path: "Worship/Lyrics/2026")])
+        #expect(tree[2].children.isEmpty)
+    }
+
     @Test func cloudSearchMatchesEveryWordOfTheName() {
         let items = [
             TeamCloudItem(kind: .presentation, id: "a", name: "Ancient Gates", folder: ""),

@@ -192,6 +192,14 @@ struct AppSettingsView: View {
                 )
             ),
             SettingsRowSpec(
+                id: "library.scheduledBackup",
+                title: "Back up every night",
+                caption: ScheduledBackupController.shared.caption,
+                keywords: "backup nightly schedule automatic disk drive folder time machine mxubackup local keep 7",
+                control: AnyView(ScheduledBackupControl(backup: ScheduledBackupController.shared)),
+                stacked: true
+            ),
+            SettingsRowSpec(
                 id: "present.mediaTransition",
                 title: "Media transition",
                 caption: "How backgrounds and media come in.",
@@ -322,6 +330,13 @@ struct AppSettingsView: View {
                 caption: "The Service Controls tabs Volunteer Mode shows.",
                 keywords: "volunteer tabs service controls modules timers combos alerts",
                 control: AnyView(VolunteerTabsControl(layout: layout))
+            ))
+            rows.append(SettingsRowSpec(
+                id: "present.volunteerLibraries",
+                title: "Libraries volunteers keep",
+                caption: "Volunteers can play from these libraries but not edit or reorganize them.",
+                keywords: "volunteer library libraries slides overlays media music play",
+                control: AnyView(VolunteerLibrariesControl(layout: layout))
             ))
         }
         rows.append(contentsOf: groupsRows)
@@ -863,6 +878,29 @@ private struct VolunteerTabsControl: View {
             }
         } label: {
             Text(chosen.count == ServiceControlsModule.defaultOrder.count ? "All tabs" : "\(chosen.count) tab\(chosen.count == 1 ? "" : "s")")
+        }
+        .fixedSize()
+    }
+}
+
+private struct VolunteerLibrariesControl: View {
+    let layout: PresentLayoutController
+
+    var body: some View {
+        let all = LibraryPresentLogic.volunteerDefaultKinds
+        let chosen = Set(layout.runOnlyLibraryKinds)
+        Menu {
+            ForEach(all, id: \.self) { kind in
+                Toggle(LibrarySection.allCases.first { $0.kind == kind }?.displayName ?? kind.rawValue, isOn: Binding(
+                    get: { chosen.contains(kind) },
+                    set: { on in
+                        let next = on ? chosen.union([kind]) : chosen.subtracting([kind])
+                        layout.setRunOnlyLibraryKinds(all.filter(next.contains))
+                    }
+                ))
+            }
+        } label: {
+            Text(chosen.isEmpty ? "None" : chosen.count == all.count ? "All libraries" : "\(chosen.count) librar\(chosen.count == 1 ? "y" : "ies")")
         }
         .fixedSize()
     }

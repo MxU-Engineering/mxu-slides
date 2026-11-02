@@ -204,6 +204,40 @@ final class SlideBulkEditTests: XCTestCase {
         XCTAssertEqual(doc.slides.count, 3)
     }
 
+    func testMergeSlidesJoinsLyricBoxesAndReanchorsChords() {
+        let ref = SlideObject(id: "ref", objectKind: .text, name: "Ref", text: "John 3:16", textLink: TextLink(source: .currentSlide))
+        var doc = presentation([
+            Slide(id: "s1", name: "Intro", objects: [
+                ref,
+                SlideObject(id: "a", objectKind: .text, name: "Text", text: "", chords: [ChordPlacement(line: 0, column: 0, symbol: "G")]),
+            ], sectionId: "intro", actions: [SlideAction(id: "a1", kind: .fireMedia)]),
+            slide("s2"),
+            Slide(id: "s3", name: "Intro", objects: [
+                ref,
+                SlideObject(
+                    id: "b", objectKind: .text, name: "Text", text: "la la\nla",
+                    chords: [ChordPlacement(line: 1, column: 0, symbol: "D")],
+                    styleRuns: [TextStyleRun(line: 0, column: 0, length: 2, underline: true)]
+                ),
+                SlideObject(id: "logo", objectKind: .shape, name: "Logo", text: ""),
+            ], sectionId: "intro", actions: [SlideAction(id: "a2", kind: .fireMedia)]),
+        ])
+
+        XCTAssertEqual(SlideBulkEdit.mergeSlides(["s3", "s1"], in: &doc), "s1", "the first in slide order survives")
+        XCTAssertEqual(doc.slides.map(\.id), ["s1", "s2"])
+        let merged = doc.slides[0]
+        XCTAssertEqual(merged.objects.map(\.id), ["ref", "a", "logo"], "the reference box once, the logo comes along")
+        XCTAssertEqual(merged.objects[1].text, "\nla la\nla")
+        XCTAssertEqual(merged.objects[1].chords, [
+            ChordPlacement(line: 0, column: 0, symbol: "G"), ChordPlacement(line: 2, column: 0, symbol: "D"),
+        ])
+        XCTAssertEqual(merged.objects[1].styleRuns, [TextStyleRun(line: 1, column: 0, length: 2, underline: true)])
+        XCTAssertEqual(merged.actions?.map(\.id), ["a1"], "the survivor's slide settings stay")
+
+        XCTAssertNil(SlideBulkEdit.mergeSlides(["s1", "gone"], in: &doc), "one slide: nothing to merge")
+        XCTAssertEqual(doc.slides.count, 2)
+    }
+
     func testFreshIDCopyPointsMasksAtTheCopiedMask() {
         let slide = Slide(id: "s1", name: "s1", objects: [
             SlideObject(id: "mask", objectKind: .shape, name: "Mask", text: ""),

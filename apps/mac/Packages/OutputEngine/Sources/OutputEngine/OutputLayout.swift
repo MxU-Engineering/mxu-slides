@@ -7,7 +7,6 @@ public enum OutputLayoutKind: String, CaseIterable, Sendable {
     case mirror
     case grouped
     case edgeBlend
-    case ledWall
     case custom
 
     public var displayName: String {
@@ -16,7 +15,6 @@ public enum OutputLayoutKind: String, CaseIterable, Sendable {
         case .mirror: "Mirror"
         case .grouped: "Grouped"
         case .edgeBlend: "Edge Blend"
-        case .ledWall: "LED Wall"
         case .custom: "Custom"
         }
     }
@@ -27,14 +25,8 @@ public enum OutputLayout {
     static let epsilon = 0.001
 
     public static func classify(
-        slices: [OutputSliceState], hasBlends: (UUID) -> Bool,
-        hasPlacement: (UUID) -> Bool = { _ in false }
+        slices: [OutputSliceState], hasBlends: (UUID) -> Bool
     ) -> OutputLayoutKind {
-
-        if slices.count == 1, let only = slices.first, hasPlacement(only.id) {
-            return .ledWall
-        }
-        if slices.contains(where: { hasPlacement($0.id) }) { return .custom }
         guard slices.count > 1 else { return .single }
         let full = Compositor.fullSourceRect
         func isFull(_ rect: CGRect) -> Bool {
@@ -56,7 +48,7 @@ public enum OutputLayout {
         var overlapping = false
         for index in 1..<extras.count {
             let gap = extras[index].sourceRect.minX - extras[index - 1].sourceRect.maxX
-            if gap > Self.epsilon { return .custom }  
+            if gap > Self.epsilon { return .custom }
             if gap < -Self.epsilon { overlapping = true }
         }
         let spansCanvas = abs(extras[0].sourceRect.minX) < Self.epsilon
@@ -84,7 +76,7 @@ public enum OutputLayout {
         case (3, 0): "Left"
         case (3, 1): "Center"
         case (3, 2): "Right"
-        default: "Output \(index + 1)"
+        default: "Slice \(index + 1)"
         }
     }
 }
@@ -100,29 +92,8 @@ extension OutputManager {
             release(slice.id)
             removeSlice(id: slice.id)
         }
-
-        if kind != .ledWall, kind != .custom {
-            setPlacement(nil, forSlice: id)
-        }
         switch kind {
         case .single, .custom:
-            return
-        case .ledWall:
-            guard placement(forSlice: id) == nil,
-                  let screen = placeholderScreens.first(where: { $0.id == id })
-            else { return }
-
-            let frameWidth = screen.width <= 1920 && screen.height <= 1080 ? 1920 : 3840
-            let frameHeight = frameWidth == 1920 ? 1080 : 2160
-            setPlacement(
-                OutputPlacement(
-                    frameWidth: frameWidth, frameHeight: frameHeight,
-                    x: 0, y: 0,
-                    width: Double(min(screen.width, frameWidth)),
-                    height: Double(min(screen.height, frameHeight))
-                ),
-                forSlice: id
-            )
             return
         case .mirror:
 

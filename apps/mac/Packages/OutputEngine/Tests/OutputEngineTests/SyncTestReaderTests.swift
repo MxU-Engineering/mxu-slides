@@ -97,4 +97,13 @@ final class SyncTestReaderTests: XCTestCase {
         XCTAssertEqual(lumas[SyncTestReader.gridColumns - 1], 0, accuracy: 0.01, "right half black")
         XCTAssertEqual(lumas.filter { $0 > 0.5 }.count, Self.gridSize / 2)
     }
+
+    func testBlackAboveTheLowerThird() {
+        let columns = SyncTestReader.gridColumns, rows = SyncTestReader.gridRows
+        var lumas = [Double](repeating: 0, count: rows * columns)
+        for index in (rows - 5) * columns ..< rows * columns { lumas[index] = 1 }
+        XCTAssertTrue(SyncTestReader.isBlackAbove(lowerThird: lumas))
+        lumas[columns * 10] = 0.3
+        XCTAssertFalse(SyncTestReader.isBlackAbove(lowerThird: lumas))
+    }
 }

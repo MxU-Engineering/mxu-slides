@@ -41,28 +41,22 @@ final class NDIScreenOutputs {
 
     func enable(screenID: UUID, render: RenderContext) {
 
-        guard let info = render.outputs.sliceInfo(for: screenID),
-              let screen = render.outputs.placeholderScreens
-                  .first(where: { $0.id == info.screenID })
-        else { return }
+        guard let feed = render.outputs.networkCarryFeed(forSlice: screenID) else { return }
         disable(screenID: screenID)
 
         DeckLinkScreenOutputs.shared.disable(screenID: screenID, render: render)
+        SyphonScreenOutputs.shared.disable(screenID: screenID)
         render.outputs.assignPlaceholderDevice(placeholderID: screenID, displayUUID: nil)
         let controller = NDIOutputController(render: render)
-        let label = info.name.map { "\(screen.name) — \($0)" } ?? screen.name
-
-        let placement = render.outputs.placement(forSlice: screenID)
         controller.start(
             targetID: screenID.uuidString,
-            targetName: label,
-            sourceName: label,
-            width: placement?.frameWidth ?? info.width,
-            height: placement?.frameHeight ?? info.height,
-            frameRate: screen.framesPerSecond,
-            sourceRect: info.sourceRect == CGRect(x: 0, y: 0, width: 1, height: 1)
-                ? nil : info.sourceRect,
-            placement: placement?.unitRect
+            targetName: feed.name,
+            sourceName: feed.name,
+            width: feed.width,
+            height: feed.height,
+            frameRate: feed.framesPerSecond,
+            sourceRect: feed.sourceRect,
+            placement: feed.placement
         )
         controllers[screenID] = controller
         persist()

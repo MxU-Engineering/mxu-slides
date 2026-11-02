@@ -124,7 +124,6 @@ struct ServiceControlsPanel: View {
         case .timers: TimersModule(model: model, controls: controls)
         case .tracking: ServiceTrackingModule(model: model, controls: controls)
         case .alerts: AlertsModule(model: model, controls: controls)
-        case .overlays: OverlaysModule(model: model, controls: controls)
         case .combos: ActionCombosModule(model: model, controls: controls)
         case .confidence: ConfidenceModule(model: model, controls: controls)
         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
@@ -236,8 +235,6 @@ struct ServiceControlsPanel: View {
             return controls.timers.snapshot(id: ServiceTrackingTimers.id(.item, .remaining))?.isRunning == true ? .green : nil
         case .alerts:
             return controls.state.liveAlert == nil ? nil : .orange
-        case .overlays:
-            return controls.state.liveOverlays.isEmpty ? nil : .green
         case .combos:
 
             return nil

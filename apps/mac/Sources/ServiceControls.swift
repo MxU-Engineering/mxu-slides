@@ -55,6 +55,8 @@ final class ServiceControls {
         self.mixer = AudioMixerController(audio: audio)
         self.timeline.controls = self
         self.timecode.controls = self
+
+        media.runVideoActions = { [weak self] actions in self?.actionRouter?.execute(actions) }
         tracks.model = appModel
         tracks.mixer = mixer
         mixer.tracks = tracks
@@ -78,6 +80,7 @@ final class ServiceControls {
         }
 
         NDIScreenOutputs.shared.restore(render: render)
+        SyphonScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
 
         VideoInputInventory.shared.warmUp(render: render)
@@ -504,7 +507,7 @@ final class ServiceControls {
 
         if let entrance = RenderContext.sceneTransition(
             from: TransitionEdit.entrance(own: slide.transition, presentation: presentation.transition)) {
-            render.nextLiveTransitions[.slide] = entrance
+            render.nextLiveTransitions[LayerKind.slide.rawValue] = entrance
         }
         let deckWasLive = livePresentationID == presentation.id
         state.fire(
@@ -516,7 +519,7 @@ final class ServiceControls {
             arrivesSettled: nextFireArrivesSettled
         )
 
-        for (layer, cue) in state.liveMedia where layer != .slide {
+        for (layer, cue) in state.liveMedia {
             if let entrance = RenderContext.sceneTransition(
                 from: TransitionEdit.entrance(own: appModel.media(cue.mediaId)?.transition, presentation: presentation.transition)) {
                 render.nextLiveTransitions[layer] = entrance
@@ -1145,7 +1148,7 @@ final class ServiceControls {
         actionRouter?.applyPresetSwitches(forMedia: mediaItem, contextID: contextID)
 
         if let own = RenderContext.sceneTransition(from: mediaItem.transition) {
-            render.nextLiveTransitions[layer] = own
+            render.nextLiveTransitions[layer.rawValue] = own
         }
         state.fire(
             media: CueMedia(
@@ -1342,7 +1345,7 @@ final class ServiceControls {
         if function == .alerts { syncFlashClock() }
     }
 
-    private func stashExitTransition(for layers: some Sequence<LayerKind>) {
+    private func stashExitTransition(for layers: some Sequence<String>) {
         for layer in layers {
             guard let cue = state.liveMedia[layer],
                   let item = appModel.media(cue.mediaId),
@@ -1354,20 +1357,25 @@ final class ServiceControls {
     }
 
     func clear(layer: LayerKind) {
+        clear(layerID: layer.rawValue)
+    }
+
+    func clear(layerID: String) {
+        guard let layer = layerStack.first(where: { $0.id == layerID }) else { return }
         settlePending()
-        stashExitTransition(for: [layer])
-        state.clear(layer: layer, atHostTime: CACurrentMediaTime())
-        if layer == .slide, state.liveSlide == nil {
+        stashExitTransition(for: [layerID])
+        state.clear(layerID: layerID, atHostTime: CACurrentMediaTime())
+        if layer.kind == .slide, state.liveSlide == nil {
             liveContextID = nil
             liveOccurrence = nil
             cancelAutoAdvance()
             refreshNextSlide()
         }
         apply()
-        if layer == .alerts { syncFlashClock() }
+        if layer.kind == .alerts { syncFlashClock() }
     }
 
-    func clearAll(protecting: Set<LayerKind> = [], cancelsPendingActions: Bool = true) {
+    func clearAll(protecting: Set<String> = [], cancelsPendingActions: Bool = true) {
         settlePending()
         if cancelsPendingActions { actionRouter?.cancelPendingDelayedActions() }
 
@@ -1401,11 +1409,11 @@ final class ServiceControls {
         }
     }
 
-    func hasContent(layer: LayerKind) -> Bool {
-        switch layer {
-        case .loopingVideos, .stillGraphics, .videos, .videoInput:
+    func hasContent(layerID: String) -> Bool {
+        switch LayerKind(rawValue: layerID) {
+        case .loopingVideos, .stillGraphics, .videos, .videoInput, nil:
 
-            state.liveMedia[layer] != nil
+            state.liveMedia[layerID] != nil
         case .slide:
             state.liveSlide != nil
         case .overlays:
@@ -1425,6 +1433,12 @@ final class ServiceControls {
 
     func isMediaLive(_ mediaID: String) -> Bool {
         state.liveMedia.values.contains { $0.mediaId == mediaID }
+    }
+
+    func stopMedia(id mediaID: String) {
+        for (layer, cue) in state.liveMedia where cue.mediaId == mediaID {
+            if let kind = LayerKind(rawValue: layer) { clear(layer: kind) }
+        }
     }
 
     private(set) var nextSlideInfo: ConfidenceInfo.SlideText?
@@ -1622,6 +1636,15 @@ final class ServiceControls {
 
     private var slideThemeOverrides: [String: Theme] = [:]
 
+    private(set) var layerStack = ShowState().layerStackTopFirst
+
+    func setCustomLayers(_ layers: [CustomLayer]) {
+        guard layers != state.customLayers else { return }
+        state.setCustomLayers(layers)
+        layerStack = state.layerStackTopFirst
+        apply()
+    }
+
     func setSlideThemeOverrides(_ overrides: [String: Theme]) {
         guard overrides != slideThemeOverrides else { return }
         slideThemeOverrides = overrides
@@ -1757,7 +1780,7 @@ final class ServiceControls {
 
         pushLiveInputVisibility(liveNamedInputs)
         let seeds = state.transportSeeds()
-        media.refresh(seeds: seeds)
+        media.refresh(seeds: seeds, layers: layerStack)
         guard !added.isEmpty, let blobs else { return }
         Task { [render, appModel, media] in
             for mediaID in added {

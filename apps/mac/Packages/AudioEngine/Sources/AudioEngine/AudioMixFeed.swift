@@ -9,9 +9,12 @@ public final class AudioMixFeed: @unchecked Sendable {
         var left: [Float] = []
         var right: [Float] = []
 
-        mutating func push(_ buffer: AVAudioPCMBuffer, gain: Float, pan: Float) {
+        var headCaptured: Double?
+
+        mutating func push(_ buffer: AVAudioPCMBuffer, gain: Float, pan: Float, captured: Double?) -> Int {
             guard gain > 0, let data = buffer.floatChannelData,
-                  buffer.frameLength > 0 else { return }
+                  buffer.frameLength > 0 else { return 0 }
+            if left.isEmpty { headCaptured = captured }
 
             let leftGain = gain * min(1, 1 - pan)
             let rightGain = gain * min(1, 1 + pan)
@@ -25,11 +28,16 @@ public final class AudioMixFeed: @unchecked Sendable {
                 right.append(data[rightChannel][frame] * rightGain)
             }
 
-            if left.count > AudioMixFeed.maxRingFrames {
-                let overflow = left.count - AudioMixFeed.maxRingFrames
-                left.removeFirst(overflow)
-                right.removeFirst(overflow)
-            }
+            guard left.count > AudioMixFeed.maxRingFrames else { return 0 }
+            let overflow = left.count - AudioMixFeed.maxRingFrames
+            dropFirst(overflow)
+            return overflow
+        }
+
+        mutating func dropFirst(_ frames: Int) {
+            left.removeFirst(frames)
+            right.removeFirst(frames)
+            headCaptured = headCaptured.map { $0 + Double(frames) / 48_000 }
         }
 
         mutating func drain(into leftOut: inout [Float], _ rightOut: inout [Float], frames: Int) {
@@ -38,8 +46,7 @@ public final class AudioMixFeed: @unchecked Sendable {
                 leftOut[frame] += left[frame]
                 rightOut[frame] += right[frame]
             }
-            left.removeFirst(available)
-            right.removeFirst(available)
+            dropFirst(available)
             trough = min(trough, left.count)
         }
 
@@ -48,10 +55,7 @@ public final class AudioMixFeed: @unchecked Sendable {
         mutating func trimExcess(threshold: Int, target: Int) -> Int {
             defer { trough = Int.max }
             let excess = trough == Int.max || trough <= threshold ? 0 : trough - target
-            if excess > 0 {
-                left.removeFirst(excess)
-                right.removeFirst(excess)
-            }
+            if excess > 0 { dropFirst(excess) }
             return excess
         }
     }
@@ -88,12 +92,14 @@ public final class AudioMixFeed: @unchecked Sendable {
     }
 
     public func push(
-        member: String, buffer: AVAudioPCMBuffer, gain: Float = 1, pan: Float = 0
+        member: String, buffer: AVAudioPCMBuffer, gain: Float = 1, pan: Float = 0,
+        captured: Double? = nil
     ) {
-        lock.withLock {
+        let overflow = lock.withLock {
             rings[member, default: Ring()].push(
-                buffer, gain: gain, pan: min(max(pan, -1), 1))
+                buffer, gain: gain, pan: min(max(pan, -1), 1), captured: captured)
         }
+        if overflow > 0 { overflowFrames.add(overflow) }
     }
 
     public var backlogMilliseconds: Double {
@@ -120,11 +126,24 @@ public final class AudioMixFeed: @unchecked Sendable {
         Double(trimmedFrames.value) / format.sampleRate * 1000
     }
 
+    private let overflowFrames = LockedCounter()
+    public var overflowMilliseconds: Double {
+        Double(overflowFrames.value) / format.sampleRate * 1000
+    }
+
+    private let skippedTicks = LockedCounter()
+    public var skippedMilliseconds: Double { Double(skippedTicks.value) * Self.tickSeconds * 1000 }
+
+    private let emittedAge = LockedValue<(current: Double?, last: Double?)>((nil, nil))
+    public var emittedAgeMilliseconds: Double? { emittedAge.value.last.map { $0 * 1000 } }
+    static let ageWindowPulls = 1000
+
     func tick(now: Double = CACurrentMediaTime()) {
         let start = clockStart ?? now
         clockStart = start
         var owed = Int(((now - start) / Self.tickSeconds).rounded(.down)) + 1 - pulls
         if owed > Self.maxCatchUpTicks {
+            skippedTicks.add(owed - 1)
             clockStart = now
             pulls = 0
             owed = 1
@@ -143,12 +162,16 @@ public final class AudioMixFeed: @unchecked Sendable {
         let trimDue = ticksSinceTrim >= Self.trimWindowTicks
         if trimDue { ticksSinceTrim = 0 }
         var dry: (left: [Float], right: [Float])?
+        var oldest: Double?
         let partial = lock.withLock { () -> (member: String, consumer: Consumer)? in
             let excluded = self.partial?.member
 
             let last = excluded.flatMap { rings[$0] == nil ? nil : $0 }
             for key in rings.keys.filter({ $0 != excluded }) + (last.map { [$0] } ?? []) {
                 if key == excluded { dry = (left, right) }
+                if let captured = rings[key]?.headCaptured, rings[key]?.left.isEmpty == false {
+                    oldest = max(oldest ?? -.infinity, hostSeconds - captured)
+                }
                 rings[key]?.drain(into: &left, &right, frames: frames)
                 if trimDue {
                     trimmedFrames.add(rings[key]?.trimExcess(
@@ -156,6 +179,11 @@ public final class AudioMixFeed: @unchecked Sendable {
                 }
             }
             return self.partial
+        }
+        let windowClosed = pulls % Self.ageWindowPulls == Self.ageWindowPulls - 1
+        emittedAge.withLock { age in
+            if let oldest { age.current = max(age.current ?? -.infinity, oldest) }
+            if windowClosed { age = (nil, age.current) }
         }
         let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: hostSeconds))
         guard let output = buffer(left, right) else { return }
@@ -177,6 +205,14 @@ public final class AudioMixFeed: @unchecked Sendable {
         }
         return output
     }
+}
+
+private final class LockedValue<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+    init(_ value: Value) { stored = value }
+    var value: Value { lock.withLock { stored } }
+    func withLock(_ body: (inout Value) -> Void) { lock.withLock { body(&stored) } }
 }
 
 private final class LockedCounter: @unchecked Sendable {

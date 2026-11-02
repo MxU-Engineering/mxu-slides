@@ -7,6 +7,8 @@ public struct PlatformHealthTracker: Sendable, Equatable {
         case degraded(issues: [String])
 
         case noData
+
+        case ended
     }
 
     public static let defaultGraceSeconds: TimeInterval = 90
@@ -39,6 +41,9 @@ public struct PlatformHealthTracker: Sendable, Equatable {
     ) {
         guard status != "unknown" else { return }
         switch status {
+        case "ended":
+            settled.remove(destinationID)
+            verdicts[destinationID] = .ended
         case "noData":
 
             if !settled.contains(destinationID), elapsed < graceSeconds { return }
@@ -57,10 +62,28 @@ public struct PlatformHealthTracker: Sendable, Equatable {
         }
     }
 
+    public mutating func forget(_ destinationID: String) {
+        consecutiveNoData[destinationID] = nil
+        settled.remove(destinationID)
+        verdicts[destinationID] = nil
+    }
+
     public mutating func reset() {
         consecutiveNoData = [:]
         settled = []
         verdicts = [:]
+    }
+}
+
+public enum NetworkHealth: String, Sendable {
+    case good, slow, stalled
+
+    public static func of(_ status: StreamSession.Status, fullKbps: Int) -> NetworkHealth? {
+        guard status.state == .publishing, let upload = status.uploadKbps else { return nil }
+        let backlog = status.backlogSeconds ?? 0
+        if upload == 0, backlog > 0.5 { return .stalled }
+        if backlog >= 1 || (status.videoKbps ?? fullKbps) < fullKbps * 9 / 10 { return .slow }
+        return .good
     }
 }
 
@@ -82,6 +105,7 @@ public enum StreamHealthRollup {
         for input in inputs {
             switch input.state {
             case .failed: return .red
+            case _ where input.verdict == .ended: return .red
             case .reconnecting, .connecting: tint = .amber
             case .publishing where input.verdict == .noData: tint = .amber
             default: break
@@ -94,6 +118,7 @@ public enum StreamHealthRollup {
         if inputs.contains(where: { if case .failed = $0.state { return true }; return false }) {
             return "STREAM FAILED"
         }
+        if inputs.contains(where: { $0.verdict == .ended }) { return "BROADCAST ENDED" }
         if inputs.contains(where: { if case .reconnecting = $0.state { return true }; return false }) {
             return "RECONNECTING"
         }

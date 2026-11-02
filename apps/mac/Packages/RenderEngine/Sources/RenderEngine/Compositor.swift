@@ -104,6 +104,8 @@ public final class Compositor: @unchecked Sendable {
         case burn = "compositor_burn"
 
         case tint = "compositor_tint"
+
+        case crossfade = "compositor_crossfade"
     }
 
     private struct PipelineKey: Hashable {
@@ -211,6 +213,16 @@ public final class Compositor: @unchecked Sendable {
     }
 
     private var effectHistories: [String: EffectHistory] = [:]
+
+    private struct PlacedPicture {
+        let texture: MTLTexture
+        let layer: RenderLayer
+        let hostTime: CFTimeInterval
+        let stillKey: [UInt64]?
+        var lastUsed: CFTimeInterval
+    }
+
+    private var placedPictures: [String: PlacedPicture] = [:]
 
     public static let historyGap: CFTimeInterval = 0.5
 
@@ -768,6 +780,7 @@ public final class Compositor: @unchecked Sendable {
         let targetSize = CGSize(width: texture.width, height: texture.height)
         let transform = SceneTransform(canvasSize: scene.canvasSize, targetSize: targetSize, inset: inset)
 
+        let pictures = placedPictures(in: scene, transform: transform, commandBuffer: commandBuffer, hostTime: hostTime)
         let resolved = AnimationEvaluator.resolve(scene, hostTime: hostTime)
         let scene = resolved.scene
         let motions = resolved.motions
@@ -804,46 +817,198 @@ public final class Compositor: @unchecked Sendable {
             )
         }
 
+        let pass = ScenePass(
+            maskPlan: maskPlan, motions: motions, transform: transform,
+            targetSize: targetSize, commandBuffer: commandBuffer, hostTime: hostTime
+        )
         for layer in scene.layers where !layer.isHidden {
+            if let placed = layer.placed {
+                if let picture = pictures[layer.id] {
+                    drawPlaced(placed, picture: picture, transform: transform, targetSize: targetSize, encoder: encoder)
+                }
+                continue
+            }
+            if let progress = layer.crossfadeProgress {
+                encoder.endEncoding()
+                let mixed = crossfadeStacks(layer.items, pass: pass)
+                guard let resumed = resumeScenePass(into: texture, commandBuffer: commandBuffer) else {
+                    recycleScratch()
+                    return
+                }
+                encoder = resumed
+                if let mixed {
+                    var vertices = Self.quadVertices(
+                        pixelRect: CGRect(origin: .zero, size: targetSize), targetSize: targetSize
+                    )
+                    var mix = Float(progress)
+                    encoder.setRenderPipelineState(pipeline(.crossfade, .normal))
+                    encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
+                    encoder.setFragmentBytes(&mix, length: MemoryLayout<Float>.stride, index: 0)
+                    encoder.setFragmentTexture(mixed.from, index: 0)
+                    encoder.setFragmentTexture(mixed.to, index: 1)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+                }
+                continue
+            }
             for item in layer.items {
-
-                if item.matteGroup != nil { continue }
-
-                if item.effectsApplyBelow, !item.effects.isEmpty {
-                    guard let resumed = applyAdjustmentLayer(
-                        item, target: texture, transform: transform,
-                        targetSize: targetSize, commandBuffer: commandBuffer,
-                        hostTime: hostTime, ending: encoder
-                    ) else {
-                        recycleScratch()
-                        return
-                    }
-                    encoder = resumed
+                guard let next = drawSceneItem(item, target: texture, pass: pass, encoder: encoder) else {
+                    recycleScratch()
+                    return
                 }
-                if let prepared = maskPlan.composites[item.id] {
-                    if let motion = motions[item.id] {
-                        drawBuildComposite(
-                            prepared, item: item, motion: motion, transform: transform,
-                            targetSize: targetSize, encoder: encoder
-                        )
-                    } else {
-                        drawMaskedComposite(
-                            prepared, item: item, targetSize: targetSize, encoder: encoder
-                        )
-                    }
-                    continue
-                }
-                if item.maskedBy != nil, !item.maskOut, maskPlan.missingMattes.contains(item.id) {
-
-                    continue
-                }
-                drawItem(item, transform: transform, targetSize: targetSize, encoder: encoder, hostTime: hostTime)
+                encoder = next
             }
         }
 
         encoder.endEncoding()
         recycleScratch()
         sweepCachesIfDue()
+    }
+
+    private static func placedPictureSize(
+        _ placed: PlacedLayer, canvas: CGSize, transform: SceneTransform
+    ) -> CGSize? {
+        guard canvas.width > 0, canvas.height > 0 else { return nil }
+        var scale: CGFloat = 0
+        for frame in placed.frames {
+            let (quad, uv) = mediaGeometry(
+                contentSize: canvas, frame: transform.pixelRect(frame.rect), mode: frame.fill ? .fill : .fit)
+            scale = max(scale, quad.width / (uv.width * canvas.width))
+        }
+        scale = min(scale, 8192 / max(canvas.width, canvas.height))
+        guard scale > 0 else { return nil }
+        return CGSize(width: max(1, (canvas.width * scale).rounded()), height: max(1, (canvas.height * scale).rounded()))
+    }
+
+    private func placedPictures(
+        in scene: RenderScene, transform: SceneTransform,
+        commandBuffer: MTLCommandBuffer, hostTime: CFTimeInterval
+    ) -> [String: MTLTexture] {
+        var pictures: [String: MTLTexture] = [:]
+        for layer in scene.layers where !layer.isHidden {
+            guard let placed = layer.placed, !placed.frames.isEmpty else { continue }
+            var flat = layer
+            flat.placed = nil
+            var pictureScene = RenderScene(canvasSize: placed.canvasSize, layers: [flat])
+
+            if flat.items.count == 1, let item = flat.items.first,
+               case .media(let id, _, nil) = item.content,
+               item.frame == CGRect(origin: .zero, size: placed.canvasSize),
+               let natural = mediaSource?.surface(for: id, hostTime: hostTime)?.contentSize,
+               natural.width > 0, natural.height > 0 {
+                pictureScene.canvasSize = natural
+                pictureScene.layers[0].items[0].frame = CGRect(origin: .zero, size: natural)
+            }
+            guard let size = Self.placedPictureSize(placed, canvas: pictureScene.canvasSize, transform: transform)
+            else { continue }
+            let key = "\(layer.id)|\(Int(size.width))x\(Int(size.height))"
+            let stillKey = staticFrameKey(for: pictureScene)
+            if var hit = placedPictures[key], hit.layer == flat,
+               stillKey != nil ? hit.stillKey == stillKey : hit.hostTime == hostTime {
+                hit.lastUsed = cacheClock
+                placedPictures[key] = hit
+                pictures[layer.id] = hit.texture
+                continue
+            }
+            guard let texture = placedPictures[key]?.texture
+                ?? makeHistoryTexture(width: Int(size.width), height: Int(size.height))
+            else { continue }
+            encode(scene: pictureScene, into: texture, commandBuffer: commandBuffer,
+                   hostTime: hostTime, transparentBackground: true)
+            placedPictures[key] = PlacedPicture(
+                texture: texture, layer: flat, hostTime: hostTime, stillKey: stillKey, lastUsed: cacheClock)
+            pictures[layer.id] = texture
+        }
+        return pictures
+    }
+
+    private func drawPlaced(
+        _ placed: PlacedLayer, picture: MTLTexture, transform: SceneTransform,
+        targetSize: CGSize, encoder: MTLRenderCommandEncoder
+    ) {
+        let size = CGSize(width: picture.width, height: picture.height)
+        var opacity: Float = 1
+        encoder.setRenderPipelineState(pipeline(.textured, .normal))
+        encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
+        encoder.setFragmentTexture(picture, index: 0)
+        for frame in placed.frames {
+            let pixelRect = transform.pixelRect(frame.rect)
+            guard pixelRect.width > 0, pixelRect.height > 0 else { continue }
+            let (quad, uv) = Self.mediaGeometry(
+                contentSize: size, frame: pixelRect, mode: frame.fill ? .fill : .fit)
+            var vertices = Self.quadVertices(pixelRect: quad, targetSize: targetSize, uvRect: uv)
+            encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        }
+    }
+
+    private struct ScenePass {
+        let maskPlan: MaskPlan
+        let motions: [String: AnimationMotion]
+        let transform: SceneTransform
+        let targetSize: CGSize
+        let commandBuffer: MTLCommandBuffer
+        let hostTime: CFTimeInterval
+    }
+
+    private func drawSceneItem(
+        _ item: RenderItem, target: MTLTexture, pass: ScenePass, encoder: MTLRenderCommandEncoder
+    ) -> MTLRenderCommandEncoder? {
+        var encoder = encoder
+
+        if item.matteGroup != nil { return encoder }
+
+        if item.effectsApplyBelow, !item.effects.isEmpty {
+            guard let resumed = applyAdjustmentLayer(
+                item, target: target, transform: pass.transform,
+                targetSize: pass.targetSize, commandBuffer: pass.commandBuffer,
+                hostTime: pass.hostTime, ending: encoder
+            ) else { return nil }
+            encoder = resumed
+        }
+        if let prepared = pass.maskPlan.composites[item.id] {
+            if let motion = pass.motions[item.id] {
+                drawBuildComposite(
+                    prepared, item: item, motion: motion, transform: pass.transform,
+                    targetSize: pass.targetSize, encoder: encoder
+                )
+            } else {
+                drawMaskedComposite(
+                    prepared, item: item, targetSize: pass.targetSize, encoder: encoder
+                )
+            }
+            return encoder
+        }
+        if item.maskedBy != nil, !item.maskOut, pass.maskPlan.missingMattes.contains(item.id) {
+            return encoder
+        }
+        drawItem(
+            item, transform: pass.transform, targetSize: pass.targetSize,
+            encoder: encoder, hostTime: pass.hostTime
+        )
+        return encoder
+    }
+
+    private func crossfadeStacks(
+        _ items: [RenderItem], pass: ScenePass
+    ) -> (from: MTLTexture, to: MTLTexture)? {
+        func flatten(_ stack: [RenderItem], label: String) -> MTLTexture? {
+            guard let scratch = acquireScratch(
+                      width: Int(pass.targetSize.width), height: Int(pass.targetSize.height)),
+                  var encoder = makeIntermediatePass(
+                      into: scratch, commandBuffer: pass.commandBuffer, label: label)
+            else { return nil }
+            for item in stack {
+                guard let next = drawSceneItem(item, target: scratch, pass: pass, encoder: encoder)
+                else { return nil }
+                encoder = next
+            }
+            encoder.endEncoding()
+            return scratch
+        }
+        guard let from = flatten(items.filter(\.crossfadeLeaving), label: "compositor.crossfade.from"),
+              let to = flatten(items.filter { !$0.crossfadeLeaving }, label: "compositor.crossfade.to")
+        else { return nil }
+        return (from, to)
     }
 
     private func drawItem(
@@ -1666,6 +1831,15 @@ public final class Compositor: @unchecked Sendable {
         if effectHistories.contains(where: { $0.value.lastUsed < deadline }) {
             effectHistories = effectHistories.filter { $0.value.lastUsed >= deadline }
         }
+        if placedPictures.contains(where: { $0.value.lastUsed < deadline }) {
+            placedPictures = placedPictures.filter { $0.value.lastUsed >= deadline }
+        }
+    }
+
+    var placedPictureCount: Int {
+        encodeLock.lock()
+        defer { encodeLock.unlock() }
+        return placedPictures.count
     }
 
     var effectHistoryCount: Int {
@@ -2273,5 +2447,14 @@ public final class Compositor: @unchecked Sendable {
             vertices.append(contentsOf: [topLeft, bottomLeft, bottomRight, topLeft, bottomRight, topRight])
         }
         return vertices
+    }
+}
+
+extension MediaSurface {
+    var contentSize: CGSize {
+        switch self {
+        case .ycbcrBiplanar(let luma, _, _, _): CGSize(width: luma.width, height: luma.height)
+        case .bgra(let texture, _, _): CGSize(width: texture.width, height: texture.height)
+        }
     }
 }

@@ -23,6 +23,7 @@ public enum SettingsLayout {
     public static let pages: [Page] = [
         Page(id: "general", sections: [
             Section(nil, ["appearance.scheme"]),
+            Section("Backup", ["library.scheduledBackup"]),
         ]),
         Page(id: "present", sections: [
             Section("Transitions", ["present.slideTransition", "present.mediaTransition"]),
@@ -36,7 +37,7 @@ public enum SettingsLayout {
                 "present.transparencyGrid", "present.scopedBackgrounds",
             ]),
             Section("Layouts", ["present.layouts"]),
-            Section("Volunteers", ["present.runOnly", "present.volunteerTabs"]),
+            Section("Volunteers", ["present.runOnly", "present.volunteerTabs", "present.volunteerLibraries"]),
         ]),
         Page(id: "edit", sections: [
             Section("Editing", ["edit.hideSidebar"]),

@@ -77,6 +77,9 @@ public final class MediaEngine: @unchecked Sendable {
     }
     private let liveSources = Locked<[String: LiveSource]>([:])
 
+    public var onLiveDropout: (@Sendable (_ id: String, _ seconds: Double, _ reason: String) -> Void)?
+    private let liveDropouts = Locked<[String: (watch: DropoutWatch, reason: String)]>([:])
+
     private let inputDelay = LiveInputDelay()
     private let audioDeviceUID = Locked<String?>(nil)
     private let audioVolume = Locked<Float>(1)
@@ -188,6 +191,16 @@ public final class MediaEngine: @unchecked Sendable {
         for player in stopped { player.stop() }
         stills.withLock { table in
             for key in table.keys where key.hasPrefix(prefix) { table[key] = nil }
+        }
+    }
+
+    public func stillTally() -> [String: (count: Int, bytes: Int)] {
+        stills.value.reduce(into: [:]) { tally, entry in
+            let space = entry.key.range(of: "::").map { String(entry.key[..<$0.upperBound]) } ?? ""
+            var row = tally[space] ?? (0, 0)
+            row.count += 1
+            if case .bgra(let texture, _, _) = entry.value.surface { row.bytes += texture.allocatedSize }
+            tally[space] = row
         }
     }
 
@@ -371,13 +384,18 @@ extension MediaEngine {
 
 extension MediaEngine: MediaTextureSource {
     public func surface(for mediaID: String, hostTime: CFTimeInterval) -> MediaSurface? {
-        if let capture = captures.value[mediaID] {
-            guard let frame = capture.latestFrame() else { return nil }
-            return factory.makeSurface(from: inputDelay.delayed(frame, id: mediaID))
-        }
-        if let live = liveSources.value[mediaID] {
-            guard let frame = live.latestFrame() else { return nil }
-            return factory.makeSurface(from: inputDelay.delayed(frame, id: mediaID))
+        let latestFrame = captures.value[mediaID]?.latestFrame ?? liveSources.value[mediaID]?.latestFrame
+        if let latestFrame {
+            let frame = latestFrame()
+            let surface = frame.flatMap { factory.makeSurface(from: inputDelay.delayed($0, id: mediaID)) }
+            let run = liveDropouts.withLock { table -> (seconds: Double, reason: String)? in
+                var entry = table[mediaID] ?? (DropoutWatch(), "")
+                if surface == nil { entry.reason = frame == nil ? "no frame from the input" : "frame would not become a texture" }
+                defer { table[mediaID] = entry }
+                return entry.watch.update(surface == nil, at: hostTime).map { ($0.seconds, entry.reason) }
+            }
+            if let run, run.seconds > 0.05 { onLiveDropout?(mediaID, run.seconds, run.reason) }
+            return surface
         }
         if let player = players.value[mediaID] {
             return player.surface(at: hostTime)

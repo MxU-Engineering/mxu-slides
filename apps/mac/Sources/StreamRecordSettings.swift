@@ -4,6 +4,7 @@ import MediaEngine
 import NDIKit
 import OutputEngine
 import PresenterCore
+import StreamEngine
 import SwiftUI
 
 private func sizeName(_ width: Int, _ height: Int) -> String {
@@ -33,12 +34,16 @@ struct StreamQualityPopover: View {
     @State private var hdrLifted: Bool
 
     @State private var driftedKbps: Int?
+    @State private var adapt: Bool
+    @State private var floorKbps: Int
 
     init(model: AppModel, presetID: String) {
         self.model = model
         self.presetID = presetID
 
         let preset = try? model.streamPreset(presetID)
+        _adapt = State(initialValue: preset?.adaptBitrate ?? true)
+        _floorKbps = State(initialValue: preset?.minBitrateKbps ?? StreamVideoConfiguration.defaultFloorKbps)
         let rung = StreamQualityRung.rung(matching: preset)
         _tab = State(initialValue: rung == nil ? 1 : 0)
         _selectedRungID = State(initialValue: rung?.id)
@@ -62,6 +67,8 @@ struct StreamQualityPopover: View {
                 selection: $tab
             )
             if tab == 0 { rungList } else { advanced }
+            Divider()
+            slowUpload
         }
         .padding(12)
         .frame(width: 330)
@@ -129,6 +136,40 @@ struct StreamQualityPopover: View {
             current ? Color.primary.opacity(0.05) : .clear,
             in: RoundedRectangle.standard(CornerStandard.element)
         )
+    }
+
+    private var slowUpload: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            customRow("BITRATE MODE") {
+                ChipPicker(
+                    options: [(true, "Adaptive"), (false, "Constant")],
+                    selection: Binding(get: { adapt }, set: setAdapt))
+            }
+            if adapt {
+                customRow("LOWEST") {
+                    QuietMenuChip(title: bitrateText(floorKbps)) {
+                        ForEach([2000, 3000, 4000, 5000, 6000, 8000], id: \.self) { kbps in
+                            Button(bitrateText(kbps)) {
+                                floorKbps = kbps
+                                model.updateStreamPreset(presetID) { $0.minBitrateKbps = kbps }
+                            }
+                        }
+                    }
+                }
+            }
+            Text(adapt
+                ? "When the internet can\u{2019}t keep up, the stream lowers its bitrate instead of falling behind, and climbs back once it can."
+                : "The stream always sends its full bitrate. Pick this only when the venue\u{2019}s upload is reliably fast.")
+                .font(.system(size: 9))
+                .foregroundStyle(.quaternary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func setAdapt(_ value: Bool) {
+        adapt = value
+        model.updateStreamPreset(presetID) { $0.adaptBitrate = value }
     }
 
     private var advanced: some View {

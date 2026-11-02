@@ -112,8 +112,8 @@ public struct BlobStore: Sendable {
         let destination = url(forHash: hash, ext: fileURL.pathExtension)
         if !FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.copyItem(at: fileURL, to: destination)
+            Self.stampKnown(destination)
         }
-        Self.lock(destination)
         cache.note(hash: hash, url: destination)
         return hash
     }
@@ -123,22 +123,62 @@ public struct BlobStore: Sendable {
         let destination = url(forHash: hash, ext: fileURL.pathExtension)
         if !FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.moveItem(at: fileURL, to: destination)
+            Self.stampKnown(destination)
         } else {
             try? FileManager.default.removeItem(at: fileURL)
         }
-        Self.lock(destination)
         cache.note(hash: hash, url: destination)
         return hash
     }
 
-    static func lock(_ url: URL) {
-        try? FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+    static let knownTimeAttribute = "com.example.mxuslides.known-mtime"
+
+    public static func stampKnown(_ url: URL) {
+        guard let time = modificationTime(url) else { return }
+        let write = { time.withCString { setxattr(url.path, knownTimeAttribute, $0, strlen($0), 0, 0) } }
+        if write() != 0 {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            _ = write()
+        }
     }
 
-    public func lockAll() {
+    static func knownTime(_ url: URL) -> String? {
+        var buffer = [CChar](repeating: 0, count: 64)
+        let count = getxattr(url.path, knownTimeAttribute, &buffer, buffer.count - 1, 0, 0)
+        return count > 0 ? String(cString: buffer) : nil
+    }
+
+    public static func modificationTime(_ url: URL) -> String? {
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return nil }
+        return "\(info.st_mtimespec.tv_sec).\(info.st_mtimespec.tv_nsec)"
+    }
+
+    public func editedFiles(now: Date = Date(), settle: TimeInterval) -> (settled: [(hash: String, url: URL)], settling: Bool) {
+        var settled: [(hash: String, url: URL)] = []
+        var settling = false
+        let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for url in urls {
+            let hash = url.deletingPathExtension().lastPathComponent
+            guard hash.count == 64, let time = Self.modificationTime(url), Self.knownTime(url) != time else { continue }
+            if Self.isSettled(url, settle: settle, now: now) {
+                settled.append((hash, url))
+            } else {
+                settling = true
+            }
+        }
+        return (settled, settling)
+    }
+
+    public static func isSettled(_ url: URL, settle: TimeInterval, now: Date = Date()) -> Bool {
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date else { return false }
+        return now.timeIntervalSince(modified) >= settle
+    }
+
+    public func unlockAll() {
         for url in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        where FileManager.default.isWritableFile(atPath: url.path) {
-            Self.lock(url)
+        where !FileManager.default.isWritableFile(atPath: url.path) {
+            Self.stampKnown(url)
         }
     }
 

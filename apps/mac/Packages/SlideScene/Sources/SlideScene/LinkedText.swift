@@ -35,9 +35,14 @@ public enum LinkedText {
                   video.duration > 0 else { return nil }
 
             let timecode = TimerSnapshot.text(
-                video.remaining(at: date), format: link.timerFormat, pattern: link.timerPattern
+                video.seconds(at: date, to: link.videoTarget ?? .end, name: link.videoMarkName, countsUp: link.countsUp == true),
+                format: link.timerFormat, pattern: link.timerPattern
             )
             return link.showsVideoName == false ? timecode : "\(video.name)  \(timecode)"
+        case .videoMarkName:
+
+            return nonEmpty(info.videoCountdown(forLayer: link.videoLayer)?
+                .target(at: date, link.videoTarget ?? .nextMark, name: link.videoMarkName)?.name)
         case .slidePosition:
             guard let position = info.slidePosition else { return nil }
             return "\(position.index) of \(position.total)"
@@ -113,8 +118,9 @@ public enum LinkedText {
         case .videoCountdown:
             guard let video = info.videoCountdown(forLayer: link.videoLayer),
                   video.duration > 0 else { return nil }
-            return video.remaining(at: date) <= TimerSnapshot.warningThreshold
-                ? TimerWarning.amberHex : nil
+            guard link.countsUp != true else { return nil }
+            let left = video.seconds(at: date, to: link.videoTarget ?? .end, name: link.videoMarkName, countsUp: false)
+            return left <= TimerSnapshot.warningThreshold ? TimerWarning.amberHex : nil
         default:
             return nil
         }
@@ -126,7 +132,7 @@ public enum LinkedText {
 
     public static func isTimeVarying(_ link: TextLink) -> Bool {
         switch link.source {
-        case .clock, .timer, .videoCountdown, .timecode:
+        case .clock, .timer, .videoCountdown, .timecode, .videoMarkName:
             return true
         case .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
@@ -144,7 +150,7 @@ public enum LinkedText {
             return true
         case .clock, .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
-             .currentPresentation, .nextServiceTitle:
+             .currentPresentation, .nextServiceTitle, .videoMarkName:
             return false
         }
     }
@@ -182,13 +188,15 @@ public enum LinkedText {
         timers: [TimerSnapshot(name: "Sermon", mode: .countdown, banked: 753.58, durationSeconds: 1800)],
         videoCountdown: VideoCountdown(
             name: "Announcements", duration: 300, position: 180,
-            anchoredAt: Date(timeIntervalSince1970: 1_784_800_000), isPlaying: false
+            anchoredAt: Date(timeIntervalSince1970: 1_784_800_000), isPlaying: false,
+            marks: [VideoMarks.Point(id: "sample.walk-on", name: "Band Walk-On", at: 222)]
         ),
 
         videoCountdowns: [
             LayerKind.videos.rawValue: VideoCountdown(
                 name: "Announcements", duration: 300, position: 180,
-                anchoredAt: Date(timeIntervalSince1970: 1_784_800_000), isPlaying: false
+                anchoredAt: Date(timeIntervalSince1970: 1_784_800_000), isPlaying: false,
+                marks: [VideoMarks.Point(id: "sample.walk-on", name: "Band Walk-On", at: 222)]
             ),
             LayerKind.loopingVideos.rawValue: VideoCountdown(
                 name: "Background Loop", duration: 240, position: 60,

@@ -43,6 +43,14 @@ import Testing
         #expect(!grid.contains(".padding(.vertical, 14)\n                    .offset(x: "), "insertion lines run the slide's full height")
     }
 
+    @Test func aDropBeforeTheFirstSlideLandsInFront() throws {
+        let grid = try source("PresentGridView.swift")
+        #expect(grid.contains("let beforeID = index == 0 ? slides.first?.id : nil"))
+        #expect(grid.contains("afterSlideID: afterID, beforeSlideID: beforeID)"))
+        let app = try source("AppModel.swift")
+        #expect(app.contains("SlideBulkEdit.insertSlides(slides, before: beforeSlideID, in: &deck)"))
+    }
+
     @Test func aRowsBottomBandMakesSlidesAfterIt() throws {
         let editor = try source("SlideEditorView.swift")
         #expect(editor.contains("rowSize: { slideRowFrames[slide.id]?.size ?? .zero },"))

@@ -211,6 +211,7 @@ final class AppModel {
     }
 
     @ObservationIgnored private var onAirDeckID: String?
+    @ObservationIgnored private var fileEdits: LibraryFileEdits?
 
     func warmLiveSet() {
         let service = currentServiceID.flatMap { try? self.service($0) }
@@ -306,7 +307,7 @@ final class AppModel {
         importer = try? MediaImporter(client: client)
         transcodeQueue = try? TranscodeQueue(client: client)
         blobs = try? BlobStore(libraryRoot: root)
-        if let blobs { Task.detached(priority: .utility) { blobs.lockAll() } }
+        if let blobs { Task.detached(priority: .utility) { blobs.unlockAll() } }
 
         FontActivator.activateStored(libraryRoot: root)
         posterStore = try? MediaPosterStore(libraryRoot: root)
@@ -372,6 +373,7 @@ final class AppModel {
         noteLibraryWideMutation()
 
         sweepMediaPosters()
+        if let blobs { fileEdits = LibraryFileEdits(model: self, blobs: blobs) }
         needsOnboarding = Library.needsOnboarding(rootURL: root, snapshot: client.snapshot)
 
         Task { [weak self] in
@@ -1767,11 +1769,20 @@ final class AppModel {
         insertSlides(presentationID, slides: [slide], afterSlideID: afterSlideID)
     }
 
-    func insertSlides(_ presentationID: String, slides: [Slide], afterSlideID: String?) {
+    func insertSlides(
+        _ presentationID: String, slides: [Slide], afterSlideID: String?, beforeSlideID: String? = nil
+    ) {
         DropLatency.awaitingPaint = Set(slides.map(\.id))
-        updatePresentation(presentationID, value: { SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &$0) }) { document in
+        let place: @Sendable (inout Presentation) -> Void = { deck in
+            if let beforeSlideID {
+                SlideBulkEdit.insertSlides(slides, before: beforeSlideID, in: &deck)
+            } else {
+                SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &deck)
+            }
+        }
+        updatePresentation(presentationID, value: place) { document in
             var next = document.value
-            SlideBulkEdit.insertSlides(slides, after: afterSlideID, in: &next)
+            place(&next)
             try Self.commitSlideInsert(slides.map(\.id), next: next, on: document)
         }
     }
@@ -1906,6 +1917,14 @@ final class AppModel {
         guard !entries.isEmpty else { return }
 
         let tombstones = entries.filter { $0.kind == .media }.compactMap { media($0.id) }
+
+        let hashes = Set(entries.flatMap { entry -> [String?] in
+            switch entry.kind {
+            case .media: media(entry.id).map { [$0.fileHash] } ?? []
+            case .audio: audio(entry.id).map { [$0.fileHash] } ?? []
+            default: []
+            }
+        }.compactMap { $0 })
         client.delete(entries.map { SyncLedger.Key(kind: $0.kind, id: $0.id) })
         let posterStore = posterStore
 
@@ -1916,6 +1935,10 @@ final class AppModel {
                 }
             }.value
             await client.settled()
+            if !hashes.isEmpty {
+                let files = await removeBlobs(hashes)
+                DiagnosticsStore.shared.note("library.delete", detail: "\(entries.count) item\(entries.count == 1 ? "" : "s"), \(files) of \(hashes.count) file\(hashes.count == 1 ? "" : "s") left this Mac")
+            }
             sweepMediaPosters()
         }
         let deleted = Set(entries.map(\.id))
@@ -2025,6 +2048,37 @@ final class AppModel {
             $0.pixelHeight = probe.pixelHeight
         }
         return hash == current.fileHash ? [] : MediaRelink.carriedSettings(of: current)
+    }
+
+    func adoptChangedFile(from oldHash: String, at url: URL) async -> Bool {
+        let adopted = await Task.detached(priority: .utility) { [blobs] () -> String? in
+            if let blobs, let current = try? BlobStore.sha256(of: url), current != oldHash {
+                try? blobs.adopt(fileURL: url)
+            } else {
+                nil
+            }
+        }.value
+        guard let blobs, let hash = adopted else { return false }
+        blobs.noteDirectoryChanged()
+        let moved = blobs.url(forHash: hash) ?? url
+        let probe = await MediaRelink.probe(url: moved)
+        for item in resident.media.values where item.fileHash == oldHash {
+            modify(MediaItem.self, id: item.id) { $0 = MediaRelink.refingerprinted($0, hash: hash, probe: probe) }
+        }
+        let audio = resident.audio.values.filter { $0.fileHash == oldHash }
+        var probed: Double?
+        if !audio.isEmpty {
+            probed = try? await AVURLAsset(url: moved).load(.duration).seconds
+        }
+        let duration = probed
+        for item in audio {
+            modify(AudioItem.self, id: item.id) {
+                $0.fileHash = hash
+                $0.durationSeconds = duration ?? $0.durationSeconds
+            }
+        }
+        DiagnosticsStore.shared.note("library.edit", detail: "\(oldHash) now \(hash)")
+        return true
     }
 
     func restoreMediaTombstone(_ tombstone: MediaItem, with url: URL) async -> [String]? {

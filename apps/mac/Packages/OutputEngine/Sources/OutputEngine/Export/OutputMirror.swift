@@ -118,7 +118,8 @@ public final class OutputMirror: @unchecked Sendable {
 
                   poolCeiling: (delayFrames == nil ? 8 : 8 + Self.maxDelayFrames)
                       + max(0, consumerHeldFrames),
-                  color: color)
+                  color: color,
+                  device: compositor.device)
         else { return nil }
         self.compositor = compositor
         self.width = width
@@ -393,6 +394,8 @@ public final class PixelBufferConverter: @unchecked Sendable {
         case sdr
 
         case hlg2020
+
+        case srgb
     }
 
     enum HLG {
@@ -408,27 +411,33 @@ public final class PixelBufferConverter: @unchecked Sendable {
     private let color: Color
     private let pool: CVPixelBufferPool
     private let poolCeiling: Int
-    private let converter: vImageConverter
+
+    private let converter: vImageConverter?
+
+    private let gpuPass: SRGBEncodePass?
     private let sourceBytesPerRow: Int
     private var scratch: Data
 
     private var hlgFloatScratch: Data
     private var hlgWideScratch: Data
 
-    init?(width: Int, height: Int, poolCeiling: Int = 8, color: Color = .sdr) {
+    init?(
+        width: Int, height: Int, poolCeiling: Int = 8, color: Color = .sdr,
+        device: MTLDevice? = nil
+    ) {
         self.width = width
         self.height = height
         self.color = color
         self.poolCeiling = poolCeiling
         self.sourceBytesPerRow = width * 4 * MemoryLayout<UInt16>.size
-        self.scratch = Data(count: sourceBytesPerRow * height)
+        self.scratch = color == .srgb ? Data() : Data(count: sourceBytesPerRow * height)
         self.hlgFloatScratch = color == .hlg2020
             ? Data(count: width * height * 4 * MemoryLayout<Float>.size) : Data()
         self.hlgWideScratch = color == .hlg2020
             ? Data(count: width * height * 4 * MemoryLayout<UInt16>.size) : Data()
 
         let pixelFormat: OSType = switch color {
-        case .sdr: kCVPixelFormatType_32BGRA
+        case .sdr, .srgb: kCVPixelFormatType_32BGRA
         case .hlg2020: kCVPixelFormatType_ARGB2101010LEPacked
         }
         let poolAttributes: [CFString: Any] = [
@@ -444,6 +453,14 @@ public final class PixelBufferConverter: @unchecked Sendable {
             let pool
         else { return nil }
         self.pool = pool
+
+        if color == .srgb {
+            guard let device, let gpuPass = SRGBEncodePass(device: device) else { return nil }
+            self.gpuPass = gpuPass
+            self.converter = nil
+            return
+        }
+        self.gpuPass = nil
 
         let destinationFormat: vImage_CGImageFormat?
         switch color {
@@ -469,6 +486,8 @@ public final class PixelBufferConverter: @unchecked Sendable {
                             | CGImageAlphaInfo.premultipliedLast.rawValue
                             | CGBitmapInfo.byteOrder32Little.rawValue))
             }
+        case .srgb:
+            destinationFormat = nil
         }
 
         guard
@@ -501,6 +520,21 @@ public final class PixelBufferConverter: @unchecked Sendable {
             &pixelBuffer) == kCVReturnSuccess,
             let pixelBuffer
         else { return nil }
+
+        if let gpuPass {
+            let start = CACurrentMediaTime()
+            guard gpuPass.encode(texture, into: pixelBuffer) else { return nil }
+            RenderPulse.shared.mirrorFrame(
+                readbackMS: 0, convertMS: (CACurrentMediaTime() - start) * 1000)
+            CVBufferSetAttachment(
+                pixelBuffer, kCVImageBufferColorPrimariesKey,
+                kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+            CVBufferSetAttachment(
+                pixelBuffer, kCVImageBufferTransferFunctionKey,
+                kCVImageBufferTransferFunction_sRGB, .shouldPropagate)
+            return pixelBuffer
+        }
+        guard let converter else { return nil }
 
         var readbackMS = 0.0
         var convertMS = 0.0
@@ -540,6 +574,8 @@ public final class PixelBufferConverter: @unchecked Sendable {
             case .hlg2020:
                 ok = self.convertHLG(
                     source: sourceBuffer, destination: &destinationBuffer)
+            case .srgb:
+                ok = false
             }
             convertMS = (CACurrentMediaTime() - convertStart) * 1000
             return ok
@@ -548,6 +584,8 @@ public final class PixelBufferConverter: @unchecked Sendable {
         RenderPulse.shared.mirrorFrame(readbackMS: readbackMS, convertMS: convertMS)
 
         switch color {
+        case .srgb:
+            break
         case .sdr:
             CVBufferSetAttachment(
                 pixelBuffer, kCVImageBufferColorPrimariesKey,
@@ -572,6 +610,7 @@ public final class PixelBufferConverter: @unchecked Sendable {
     private func convertHLG(
         source: vImage_Buffer, destination: inout vImage_Buffer
     ) -> Bool {
+        guard let converter else { return false }
         let count = width * height * 4
         return hlgFloatScratch.withUnsafeMutableBytes { floats in
             hlgWideScratch.withUnsafeMutableBytes { wide in

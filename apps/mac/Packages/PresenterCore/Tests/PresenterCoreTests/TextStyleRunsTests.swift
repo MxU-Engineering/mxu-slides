@@ -8,7 +8,7 @@ struct TextStyleRunsTests {
 
         let text = "🎸 Amazing"
         let range = TextStyleRuns.characterRange(fromUTF16: 3, length: 7, in: text)
-        #expect(range == 2..<9)  
+        #expect(range == 2..<9)
         #expect(TextStyleRuns.characterRange(fromUTF16: 0, length: 2, in: text) == 0..<1)
     }
 
@@ -18,6 +18,16 @@ struct TextStyleRunsTests {
             to: [], in: "Amazing grace", selection: 8..<13
         )
         #expect(runs == [TextStyleRun(line: 0, column: 8, length: 5, colorHex: "#FF0000FF")])
+    }
+
+    @Test func allCapsSelectionRoundTrips() {
+        let runs = TextStyleRuns.applying(
+            { $0.textTransform = .uppercase },
+            to: [], in: "Amazing grace", selection: 0..<7
+        )
+        #expect(runs == [TextStyleRun(line: 0, column: 0, length: 7, textTransform: .uppercase)])
+        #expect(TextStyleRuns.effectiveRun(at: 3, runs: runs, in: "Amazing grace")?.textTransform == .uppercase)
+        #expect(TextStyleRuns.applying({ $0.textTransform = nil }, to: runs, in: "Amazing grace", selection: 0..<7).isEmpty)
     }
 
     @Test func overlappingSelectionSplitsExistingRuns() {
@@ -178,7 +188,7 @@ struct TextStyleRunsTests {
 
 @Test func buildRangesByWordGeneratorSplitsInsideTheSelection() {
     let text = "Grace comes  first\nFaith answers"
-    let selection = AnimationRanges.ranges(forSelection: 2..<26, in: text) 
+    let selection = AnimationRanges.ranges(forSelection: 2..<26, in: text)
     let words = AnimationRanges.words(in: selection, text: text)
     #expect(words == [
         AnimationRange(line: 0, column: 2, length: 3), AnimationRange(line: 0, column: 6, length: 5),
@@ -191,7 +201,7 @@ struct TextStyleRunsTests {
     let text = "Grace comes\nFaith answers"
     let ranges = [
         AnimationRange(line: 0, column: 0, length: 11),
-        AnimationRange(line: 1, column: 0, length: 0), 
+        AnimationRange(line: 1, column: 0, length: 0),
         AnimationRange(line: 1, column: 0, length: 13),
     ]
     #expect(AnimationRanges.split(ranges, by: .line, in: text) == [ranges[0], ranges[2]])

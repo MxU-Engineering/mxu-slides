@@ -20,7 +20,10 @@ struct ScreenConfigurationView: View {
 
     private enum Selection: Hashable {
         case screen(UUID)
-        case display(DisplayUUID)
+
+        case output(OutputCarry.Key)
+
+        case screenMap
 
         case preset(String)
     }
@@ -30,6 +33,7 @@ struct ScreenConfigurationView: View {
     @State private var presetSelection = ListMultiSelect.State()
     @State private var renamingPresetID: String?
     @State private var presetRenameText = ""
+    @State private var showsWallSheet = false
 
     var body: some View {
         HStack(spacing: CornerStandard.panelInset) {
@@ -54,7 +58,27 @@ struct ScreenConfigurationView: View {
             if case .preset = newValue {} else { presetSelection = .init() }
         }
         .onChange(of: outputs.placeholderScreens.map(\.id)) { ensureSelection() }
-        .onChange(of: outputs.displays.map(\.uuid)) { ensureSelection() }
+        .onAppear { wake([], shownScreenIDs) }
+        .onDisappear { wake(shownScreenIDs, []) }
+        .onChange(of: shownScreenIDs) { old, new in wake(old, new) }
+    }
+
+    private var shownScreenIDs: [UUID] {
+        switch selection {
+        case .screen(let id): [id]
+        case .output(let key):
+            OutputCarry.screenIDs(of: OutputCarry.members(of: key, outputs: outputs), outputs: outputs)
+        case .screenMap:
+            outputs.placeholderScreens.filter { outputs.screenMap?.rect(for: $0.id) != nil }.map(\.id)
+        case .preset where outputs.screenMap != nil:
+            outputs.placeholderScreens.filter { outputs.screenMap?.rect(for: $0.id) != nil }.map(\.id)
+        default: []
+        }
+    }
+
+    private func wake(_ old: [UUID], _ new: [UUID]) {
+        for id in old where !new.contains(id) { outputs.setCanvasWake(false, forScreen: id) }
+        for id in new { outputs.setCanvasWake(true, forScreen: id) }
     }
 
     private func consumePresetRoute() {
@@ -71,13 +95,14 @@ struct ScreenConfigurationView: View {
         switch selection {
         case .screen(let id) where outputs.placeholderScreens.contains(where: { $0.id == id }):
             return
-        case .display(let uuid) where outputs.displays.contains(where: { $0.uuid == uuid }):
+        case .output(let key) where OutputCarry.groups(outputs: outputs).contains(where: { $0.key == key }):
+            return
+        case .screenMap where outputs.screenMap != nil:
             return
         case .preset(let id) where presets?.preset(id) != nil:
             return
         default:
             selection = outputs.placeholderScreens.first.map { .screen($0.id) }
-                ?? outputs.displays.first.map { .display($0.uuid) }
         }
     }
 
@@ -96,19 +121,23 @@ struct ScreenConfigurationView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 2)
                 }
-                ForEach(outputs.placeholderScreens) { screen in
+
+                let groups = OutputCarry.groups(outputs: outputs)
+                let grouped = Set(groups.flatMap { OutputCarry.screenIDs(of: $0.members, outputs: outputs) })
+                ForEach(groups, id: \.key) { group in
+                    outputGroup(group.key, members: group.members)
+                }
+                ForEach(outputs.placeholderScreens.filter { !grouped.contains($0.id) }) { screen in
                     screenListRow(screen)
                 }
-                sectionLabel("System Displays — Direct")
+
+                if let map = outputs.screenMap {
+                    HStack {
+                        sectionLabel("Screen Map")
+                        Spacer()
+                    }
                     .padding(.top, 12)
-                ForEach(outputs.displays) { display in
-                    displayListRow(display)
-                }
-                if outputs.displays.count == 1 {
-                    Text("Single display: Esc or double-click a live output to release it.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 2)
+                    screenMapRow(map)
                 }
                 if let presets {
                     HStack {
@@ -145,6 +174,134 @@ struct ScreenConfigurationView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .sheet(isPresented: $showsWallSheet) {
+            NewWallSheet(render: render, outputs: outputs) { selection = .output($0) }
+        }
+    }
+
+    private func screenMapRow(_ map: ScreenMap) -> some View {
+        let selected = selection == .screenMap
+        let bounds = map.bounds
+        let audience = outputs.placeholderScreens.filter { outputs.role(forScreen: $0.id) != .confidence }
+        let onMap = audience.filter { map.rect(for: $0.id) != nil }.count
+        return Button {
+            selection = .screenMap
+        } label: {
+            HStack(spacing: 8) {
+                RoundedRectangle.standard(4)
+                    .fill(Color.black.opacity(0.5))
+                    .overlay {
+                        GeometryReader { proxy in
+                            ForEach(audience) { screen in
+                                if let rect = map.rect(for: screen.id), bounds.width > 0, bounds.height > 0 {
+                                    Rectangle()
+                                        .fill(Color.cyan.opacity(0.35))
+                                        .overlay(Rectangle().strokeBorder(Color.cyan, lineWidth: 0.5))
+                                        .frame(width: max(rect.width / bounds.width * proxy.size.width, 2), height: max(rect.height / bounds.height * proxy.size.height, 2))
+                                        .offset(x: rect.minX / bounds.width * proxy.size.width, y: rect.minY / bounds.height * proxy.size.height)
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: 46, height: 26)
+                    .clipShape(RoundedRectangle.standard(4))
+                    .overlay(RoundedRectangle.standard(4).strokeBorder(Color.separator.opacity(0.5), lineWidth: 1))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(map.name)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Text("\(String(Int(bounds.maxX)))×\(String(Int(bounds.maxY))) · \(onMap) of \(audience.count) audience screens")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+            }
+            .padding(6)
+            .contentShape(RoundedRectangle.standard(CornerStandard.element))
+        }
+        .buttonStyle(.plain)
+        .background(
+            selected ? Color.primary.opacity(0.08) : .clear,
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
+        .contextMenu {
+            Button("Remove Screen Map", role: .destructive) {
+                outputs.setScreenMap(nil)
+                if selection == .screenMap { selection = nil; ensureSelection() }
+            }
+        }
+        .help("Where every audience screen sits in the room — presets place layers against it")
+    }
+
+    private func outputGroup(_ key: OutputCarry.Key, members: [UUID]) -> some View {
+        let selected = selection == .output(key)
+        let frame = OutputCarry.frameSize(of: key, outputs: outputs)
+        let screenIDs = OutputCarry.screenIDs(of: members, outputs: outputs)
+        return VStack(alignment: .leading, spacing: 2) {
+            Button {
+                selection = .output(key)
+            } label: {
+                HStack(spacing: 8) {
+                    outputThumb(members)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(OutputCarry.name(of: key, outputs: outputs))
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                        Text("\(String(frame.width))×\(String(frame.height)) · \(screenIDs.count) screens")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                }
+                .padding(6)
+                .contentShape(RoundedRectangle.standard(CornerStandard.element))
+            }
+            .buttonStyle(.plain)
+            .background(
+                selected ? Color.primary.opacity(0.08) : .clear,
+                in: RoundedRectangle.standard(CornerStandard.element)
+            )
+            .help("This output carries several screens — open it to see and place them all")
+            ForEach(outputs.placeholderScreens.filter { screenIDs.contains($0.id) }) { screen in
+                screenListRow(screen)
+                    .padding(.leading, 14)
+            }
+            AddScreenMenu(render: render, outputs: outputs, key: key, onAdded: { _ in selection = .output(key) }) {
+                Text("+ Add a screen to this output")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .menuIndicator(.hidden)
+            .padding(.leading, 20)
+        }
+        .padding(3)
+        .overlay(
+            RoundedRectangle.standard(CornerStandard.element)
+                .strokeBorder(Color.separator.opacity(0.6), lineWidth: 1)
+        )
+    }
+
+    private func outputThumb(_ members: [UUID]) -> some View {
+        let shape = RoundedRectangle.standard(4)
+        return shape.fill(Color.black.opacity(0.5))
+            .overlay {
+                GeometryReader { proxy in
+                    ForEach(members, id: \.self) { member in
+                        let rect = outputs.placement(forSlice: member)?.unitRect ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+                        Rectangle()
+                            .fill(Color.green.opacity(0.35))
+                            .overlay(Rectangle().strokeBorder(Color.green, lineWidth: 0.5))
+                            .frame(width: max(rect.width * proxy.size.width, 2), height: max(rect.height * proxy.size.height, 2))
+                            .offset(x: rect.minX * proxy.size.width, y: rect.minY * proxy.size.height)
+                    }
+                }
+            }
+            .frame(width: 46, height: 26)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.separator.opacity(0.5), lineWidth: 1))
     }
 
     private func addPresetMenu(_ presets: OutputPresetsController) -> some View {
@@ -283,6 +440,14 @@ struct ScreenConfigurationView: View {
             Button("1080p  (1920×1080)") { addScreen(width: 1920, height: 1080) }
             Button("4K  (3840×2160)") { addScreen(width: 3840, height: 2160) }
             Button("Vertical 9:16  (1080×1920)") { addScreen(width: 1080, height: 1920) }
+            Divider()
+            Button("New LED Wall…") { showsWallSheet = true }
+            if outputs.screenMap == nil {
+                Button("Add Screen Map…") {
+                    ScreenMapEditor.add(to: outputs)
+                    selection = .screenMap
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 10, weight: .medium))
@@ -297,7 +462,7 @@ struct ScreenConfigurationView: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Add a screen — route against it now, back it with hardware at the venue")
+        .help("Add a screen — route against it now, back it with hardware at the venue. New LED Wall… puts several screens on one output.")
     }
 
     private func addScreen(width: Int, height: Int) {
@@ -346,6 +511,11 @@ struct ScreenConfigurationView: View {
             selected ? Color.primary.opacity(0.08) : .clear,
             in: RoundedRectangle.standard(CornerStandard.element)
         )
+        .contextMenu {
+            Button("Remove Screen", role: .destructive) {
+                outputs.removePlaceholderScreen(id: screen.id)
+            }
+        }
     }
 
     private func screenStatus(
@@ -368,6 +538,11 @@ struct ScreenConfigurationView: View {
                 return (backing.deviceName, true)
             }
             return (backing.deviceName, false)
+        }
+        switch SyphonScreenOutputs.shared.status(for: screen.id) {
+        case .publishing(let name): return ("Syphon “\(name)”", true)
+        case .failed: return ("Syphon", false)
+        case .idle, nil: break
         }
         switch NDIScreenOutputs.shared.status(for: screen.id) {
         case .sending(let name): return ("NDI “\(name)”", true)
@@ -397,68 +572,20 @@ struct ScreenConfigurationView: View {
         .overlay(shape.strokeBorder(Color.separator.opacity(0.5), lineWidth: 1))
     }
 
-    private func displayListRow(_ display: DisplaySnapshot) -> some View {
-        let selected = selection == .display(display.uuid)
-        let live = outputs.isLive(display.uuid)
-        return Button {
-            selection = .display(display.uuid)
-        } label: {
-            HStack(spacing: 8) {
-                RoundedRectangle.standard(4)
-                    .fill(live ? Color.green.opacity(0.18) : Color.primary.opacity(0.08))
-                    .overlay {
-                        Image(systemName: "display")
-                            .font(.system(size: 9))
-                            .foregroundStyle(live ? Color.green : Color.secondary.opacity(0.5))
-                    }
-                    .overlay(
-                        RoundedRectangle.standard(4)
-                            .strokeBorder(
-                                live ? Color.green.opacity(0.6) : Color.separator.opacity(0.5),
-                                lineWidth: 1
-                            )
-                    )
-                    .frame(width: 46, height: 26)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(display.name)
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
-                    Text(
-                        "\(Int(display.frame.width))×\(Int(display.frame.height)) pt"
-                        + (display.isMain ? " · main" : "")
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                if live {
-                    Text("Live")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.green)
-                }
-            }
-            .padding(6)
-            .contentShape(RoundedRectangle.standard(CornerStandard.element))
-        }
-        .buttonStyle(.plain)
-        .background(
-            selected ? Color.primary.opacity(0.08) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-    }
-
     private var detailColumn: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 switch selection {
                 case .screen(let id):
                     if let screen = outputs.placeholderScreens.first(where: { $0.id == id }) {
-                        ScreenDetail(outputs: outputs, render: render, screen: screen)
+                        ScreenDetail(
+                            outputs: outputs, render: render, screen: screen,
+                            openScreen: { selection = .screen($0) })
                     }
-                case .display(let uuid):
-                    if let display = outputs.displays.first(where: { $0.uuid == uuid }) {
-                        displayDetail(display)
-                    }
+                case .output(let key):
+                    OutputEditor(render: render, outputs: outputs, key: key, openScreen: { selection = .screen($0) })
+                case .screenMap:
+                    ScreenMapEditor(render: render, outputs: outputs, openScreen: { selection = .screen($0) })
                 case .preset(let id):
                     if let presets, presets.preset(id) != nil {
                         PresetDetail(outputs: outputs, presets: presets, render: render, presetID: id)
@@ -466,7 +593,7 @@ struct ScreenConfigurationView: View {
                 case nil:
                     ContentUnavailableView(
                         "No Screens", systemImage: "display",
-                        description: Text("Add a screen or connect a display.")
+                        description: Text("Add a screen.")
                     )
                 }
                 DiagnosticsDisclosure(outputs: outputs)
@@ -475,36 +602,6 @@ struct ScreenConfigurationView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
-    }
-
-    @ViewBuilder
-    private func displayDetail(_ display: DisplaySnapshot) -> some View {
-        let live = outputs.isLive(display.uuid)
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(display.name)
-                    .font(.headline)
-                Spacer()
-                Toggle("Live", isOn: Binding(
-                    get: { outputs.isLive(display.uuid) },
-                    set: { outputs.setLive(display.uuid, $0) }
-                ))
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .help(live ? "Take \(display.name) offline" : "Send output to \(display.name)")
-            }
-            Text(
-                "\(Int(display.frame.width))×\(Int(display.frame.height)) pt"
-                + " · \(display.maximumFramesPerSecond) Hz"
-                + (display.isMain ? " · main display" : "")
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            Text("Direct output: the display carries the full composited scene. To route layers or persist intent across unplugs, back a Screen with it instead.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     private func deviceName(_ uuid: DisplayUUID, for screenID: UUID) -> String {
@@ -526,6 +623,8 @@ private struct ScreenDetail: View {
     let render: RenderContext
     let screen: PlaceholderScreen
 
+    let openScreen: (UUID) -> Void
+
     @State private var name = ""
     @State private var widthText = ""
     @State private var heightText = ""
@@ -540,7 +639,7 @@ private struct ScreenDetail: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            OutputsSection(render: render, outputs: outputs, screen: screen)
+            OutputsSection(render: render, outputs: outputs, screen: screen, openScreen: openScreen)
             OutputMaskEditor(outputs: outputs, render: render, screen: screen)
             HStack {
                 Spacer()
@@ -553,9 +652,6 @@ private struct ScreenDetail: View {
             }
         }
 
-        .onAppear { outputs.setCanvasWake(true, forScreen: screen.id) }
-        .onDisappear { outputs.setCanvasWake(false, forScreen: screen.id) }
-
         .task(id: "\(screen.id)|\(screen.name)|\(screen.width)|\(screen.height)") {
             name = screen.name
             widthText = "\(screen.width)"
@@ -564,92 +660,98 @@ private struct ScreenDetail: View {
     }
 
     private var identityBar: some View {
-        HStack(spacing: 10) {
-            TextField("Name", text: $name)
-                .textFieldStyle(.plain)
-                .font(.title3.weight(.semibold))
-                .onSubmit(commit)
-                .frame(maxWidth: 240)
-                .help("The screen's name — presets and services route by it")
-            TextField("W", text: $widthText)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .frame(width: 56)
-                .multilineTextAlignment(.trailing)
-                .font(.callout.monospacedDigit())
-                .onSubmit(commit)
-            Text("×").foregroundStyle(.tertiary)
-            TextField("H", text: $heightText)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .frame(width: 56)
-                .multilineTextAlignment(.trailing)
-                .font(.callout.monospacedDigit())
-                .onSubmit(commit)
-            Menu {
-                ForEach([24, 25, 30, 50, 60], id: \.self) { rate in
-                    Toggle("\(rate) fps", isOn: Binding(
-                        get: { screen.framesPerSecond == rate },
-                        set: { _ in setFrameRate(rate) }
-                    ))
-                }
-            } label: {
-                Text("\(screen.framesPerSecond) fps")
-                    .font(.callout)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                identityFacts
             }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .fixedSize()
-            .help("Render cadence — match the venue or stream rate")
-            if outputs.role(forScreen: screen.id) == .audience {
+            HStack(spacing: 10) {
+                identityVerbs
+            }
+        }
+    }
 
-                Picker("", selection: Binding(
-                    get: { outputs.scaleMode(forScreen: screen.id) },
-                    set: { outputs.setScaleMode($0, forScreen: screen.id) }
-                )) {
-                    Text("Fit Slides").tag(OutputScaleMode.fit)
-                    Text("Fill Slides").tag(OutputScaleMode.fill)
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .fixedSize()
-                .help("When a presentation is a different shape than this screen: Fit shows the whole slide with its background filling the sides; Fill covers the screen and crops the edges")
+    @ViewBuilder
+    private var identityFacts: some View {
+        TextField("Name", text: $name)
+            .textFieldStyle(.plain)
+            .font(.title3.weight(.semibold))
+            .onSubmit(commit)
+            .frame(maxWidth: 240)
+            .help("The screen's name — presets and services route by it")
+        TextField("W", text: $widthText)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .frame(width: 56)
+            .multilineTextAlignment(.trailing)
+            .font(.callout.monospacedDigit())
+            .onSubmit(commit)
+        Text("×").foregroundStyle(.tertiary)
+        TextField("H", text: $heightText)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .frame(width: 56)
+            .multilineTextAlignment(.trailing)
+            .font(.callout.monospacedDigit())
+            .onSubmit(commit)
+        Menu {
+            ForEach([24, 25, 30, 50, 60], id: \.self) { rate in
+                Toggle("\(rate) fps", isOn: Binding(
+                    get: { screen.framesPerSecond == rate },
+                    set: { _ in setFrameRate(rate) }
+                ))
             }
-            Spacer()
+        } label: {
+            Text("\(screen.framesPerSecond) fps")
+                .font(.callout)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Render cadence — match the venue or stream rate")
+        if outputs.role(forScreen: screen.id) == .audience {
             Picker("", selection: Binding(
-                get: { outputs.role(forScreen: screen.id) },
-                set: { outputs.setRole($0, forScreen: screen.id) }
+                get: { outputs.scaleMode(forScreen: screen.id) },
+                set: { outputs.setScaleMode($0, forScreen: screen.id) }
             )) {
-                Text("Audience").tag(ScreenRole.audience)
-                Text("Confidence").tag(ScreenRole.confidence)
+                Text("Fit Slides").tag(OutputScaleMode.fit)
+                Text("Fill Slides").tag(OutputScaleMode.fill)
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .controlSize(.small)
             .fixedSize()
-            .help("Audience carries the program scene through preset routing; Confidence carries the stage layout — current/next, clock, timers, alerts")
-            Button("Identify") { identify() }
-                .controlSize(.small)
-                .help("Flash the alignment grid on this screen's outputs for a moment — which glass/wire is this?")
-            Toggle("Sync Test", isOn: Binding(
-                get: { outputs.syncTestScreens.contains(screen.id) },
-                set: { outputs.setSyncTest($0, forScreen: screen.id) }
-            ))
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            .help("Play the metronome sync pattern on this screen — a click and a flash every beat, the circle filling each bar — and check its picture against its sound wherever the two end up: the room, a stream, a send")
+            .help("When a presentation is a different shape than this screen: Fit shows the whole slide with its background filling the sides; Fill covers the screen and crops the edges")
         }
+        Spacer()
     }
 
-    private func identify() {
-        let wasOn = outputs.testPatternScreens.contains(screen.id)
-        outputs.setTestPattern(true, forScreen: screen.id)
-        let screenID = screen.id
-        Task { @MainActor [outputs] in
-            try? await Task.sleep(for: .seconds(2.5))
-            if !wasOn { outputs.setTestPattern(false, forScreen: screenID) }
+    @ViewBuilder
+    private var identityVerbs: some View {
+        Picker("", selection: Binding(
+            get: { outputs.role(forScreen: screen.id) },
+            set: { outputs.setRole($0, forScreen: screen.id) }
+        )) {
+            Text("Audience").tag(ScreenRole.audience)
+            Text("Confidence").tag(ScreenRole.confidence)
         }
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Audience carries the program scene through preset routing; Confidence carries the stage layout — current/next, clock, timers, alerts")
+        Button("Identify") { identify() }
+            .controlSize(.small)
+            .help("Flash the alignment grid on this screen's outputs for a moment — which glass/wire is this?")
+        Toggle("Sync Test", isOn: Binding(
+            get: { outputs.syncTestScreens.contains(screen.id) },
+            set: { outputs.setSyncTest($0, forScreen: screen.id) }
+        ))
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
+        .help("Play the metronome sync pattern on this screen — a click and a flash every beat, the circle filling each bar — and check its picture against its sound wherever the two end up: the room, a stream, a send")
+        Spacer()
     }
+
+    private func identify() { outputs.identify(screens: [screen.id]) }
 
     private func setFrameRate(_ rate: Int) {
         guard rate != screen.framesPerSecond else { return }
@@ -683,234 +785,40 @@ struct OutputSourcePicker: View {
     let render: RenderContext
     let outputs: OutputManager
     let screen: PlaceholderScreen
-
-    var sliceID: UUID
-
-    init(render: RenderContext, outputs: OutputManager, screen: PlaceholderScreen,
-         sliceID: UUID? = nil) {
-        self.render = render
-        self.outputs = outputs
-        self.screen = screen
-        self.sliceID = sliceID ?? screen.id
-    }
+    let sliceID: UUID
 
     private var backing: DisplayUUID? { outputs.placeholderDevices[sliceID] }
     private var ndiCarrying: Bool { NDIScreenOutputs.shared.isCarrying(sliceID) }
+    private var syphonCarrying: Bool { SyphonScreenOutputs.shared.isCarrying(sliceID) }
     private var deckLinkBacking: DeckLinkScreenOutputs.Backing? {
         DeckLinkScreenOutputs.shared.backing(for: sliceID)
     }
-
-    private static let columns = [GridItem(.adaptive(minimum: 108), spacing: 8)]
+    private var carried: Bool {
+        backing != nil || ndiCarrying || syphonCarrying || deckLinkBacking != nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("OUTPUT")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .tracking(0.6)
-            LazyVGrid(columns: Self.columns, alignment: .leading, spacing: 8) {
-                sourceCard(
-                    title: "Placeholder",
-                    caption: "No output yet",
-                    selected: backing == nil && !ndiCarrying && deckLinkBacking == nil,
-                    disabled: false,
-                    tile: { placeholderTile }
-                ) {
-                    NDIScreenOutputs.shared.disable(screenID: sliceID)
-                    DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
-                    assign(nil)
-                }
-                ForEach(outputs.displays) { display in
-                    let heldByOther = outputs.placeholderDevices
-                        .contains { $0.value == display.uuid && $0.key != sliceID }
-                    sourceCard(
-                        title: display.name,
-                        caption: "\(Int(display.frame.width))×\(Int(display.frame.height)) pt",
-                        selected: backing == display.uuid,
-                        disabled: false,
-                        tile: { displayTile(display) }
-                    ) {
-
-                        NDIScreenOutputs.shared.disable(screenID: sliceID)
-                        DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
-                        assign(display.uuid)
-                    }
-
-                    .contextMenu {
-                        if heldByOther {
-                            Button("Add Alongside — pack into this frame") {
-                                NDIScreenOutputs.shared.disable(screenID: sliceID)
-                                DeckLinkScreenOutputs.shared.disable(
-                                    screenID: sliceID, render: render)
-                                outputs.assignPlaceholderDevice(
-                                    placeholderID: sliceID, displayUUID: display.uuid,
-                                    displayName: display.name, exclusive: false
-                                )
-                            }
-                        }
-                    }
-                }
-                if let backing, !outputs.displays.contains(where: { $0.uuid == backing }) {
-
-                    sourceCard(
-                        title: "Disconnected",
-                        caption: outputs.placeholderDeviceNames[sliceID] ?? "Display",
-                        selected: true,
-                        disabled: false,
-                        tile: { disconnectedTile }
-                    ) {}
-                }
-                sourceCard(
-                    title: "NDI",
-                    caption: ndiCaption,
-                    selected: ndiCarrying,
-                    disabled: false,
-                    tile: { networkTile("dot.radiowaves.left.and.right") }
-                ) {
-                    if ndiCarrying {
-                        NDIScreenOutputs.shared.disable(screenID: sliceID)
-                    } else {
-                        NDIScreenOutputs.shared.enable(screenID: sliceID, render: render)
-                    }
-                }
-
-                ForEach(DeckLinkDeviceCatalog.shared.devices) { device in
-                    let carriedByThis = deckLinkBacking?.devicePersistentID
-                        == device.persistentID
-
-                    let inputMapped = DeckLinkDeviceCatalog.shared
-                        .displayModes[device.persistentID]?.isEmpty == true
-                    sourceCard(
-                        title: device.name,
-                        caption: inputMapped
-                            ? "Mapped as input in Desktop Video Setup"
-                            : deckLinkCaption(for: device),
-                        selected: carriedByThis,
-                        disabled: inputMapped && !carriedByThis,
-                        tile: { networkTile("cable.connector.horizontal") }
-                    ) {
-                        if carriedByThis {
-                            DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
-                        } else {
-                            DeckLinkScreenOutputs.shared.enable(
-                                screenID: sliceID, device: device,
-                                keying: .off, render: render)
-                        }
-                    }
-
-                    .contextMenu {
-                        if !carriedByThis,
-                           !DeckLinkScreenOutputs.shared
-                               .members(onDevice: device.persistentID).isEmpty {
-                            Button("Add Alongside — pack into this wire") {
-                                DeckLinkScreenOutputs.shared.enable(
-                                    screenID: sliceID, device: device,
-                                    keying: .off, joining: true, render: render)
-                            }
-                        }
-                    }
-
-                    .help(deckLinkCaption(for: device))
-                }
-                if DeckLinkDeviceCatalog.shared.hasFetched,
-                    DeckLinkDeviceCatalog.shared.devices.isEmpty {
-
-                    sourceCard(
-                        title: "DeckLink",
-                        caption: DeckLinkDeviceCatalog.shared.runtimeTooOld
-                            ? "Desktop Video \(DeckLinkDeviceCatalog.shared.runtimeVersionLabel)"
-                                + " — 16.0 or later required"
-                            : "No devices found",
-                        selected: false, disabled: true,
-                        tile: { networkTile("cable.connector.horizontal") }
-                    ) {}
-                }
-                sourceCard(
-                    title: "Syphon", caption: "Coming soon",
-                    selected: false, disabled: true,
-                    tile: { networkTile("square.stack.3d.forward.dottedline") }
-                ) {}
+            HStack(spacing: 8) {
+                Text("On")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                onMenu
+                if carried { placementBadge }
+                Spacer()
             }
             if let deckLinkBacking, let device = DeckLinkDeviceCatalog.shared
                 .devices.first(where: {
                     $0.persistentID == deckLinkBacking.devicePersistentID
                 }) {
-
-                HStack(spacing: 8) {
-                    Text("ALPHA KEY")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.6)
-                    ChipPicker(
-                        options: DeckLinkAlphaKey.allCases
-                            .filter { keyingAvailable($0, on: device) }
-                            .map { ($0, $0.label) },
-                        selection: Binding(
-                            get: { deckLinkBacking.keying },
-                            set: { mode in
-                                DeckLinkScreenOutputs.shared.setKeying(
-                                    screenID: sliceID, keying: mode,
-                                    render: render)
-                            }
-                        )
-                    )
-                }
-                .help(
-                    "Internal: the card keys this screen over video fed into "
-                        + "its SDI input and outputs the composite — a "
-                        + "hardware keyer, no switcher needed. External: "
-                        + "fill + key on separate connectors for a switcher's "
-                        + "keyer (genlock reference recommended).")
-                .padding(.top, 2)
-
-                HStack(spacing: 8) {
-                    Text("FORMAT")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.6)
-                    Menu {
-                        Button("Auto (card setting)") {
-                            DeckLinkScreenOutputs.shared.setMode(
-                                screenID: sliceID, mode: nil, render: render)
-                        }
-
-                        ForEach(
-                            (DeckLinkDeviceCatalog.shared
-                                .displayModes[device.persistentID] ?? [])
-                                .filter {
-                                    deckLinkBacking.keying == .off
-                                        || $0.supportsKeying
-                                }
-                        ) { mode in
-                            Button(mode.name) {
-                                DeckLinkScreenOutputs.shared.setMode(
-                                    screenID: sliceID, mode: mode, render: render)
-                            }
-                        }
-                    } label: {
-                        Text(deckLinkBacking.mode?.name ?? "Auto")
-                            .font(.caption)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-
-                    let wireDetail = DeckLinkScreenOutputs.shared
-                        .wireDetail(for: sliceID)
-                    if !wireDetail.isEmpty {
-                        Text(wireDetail)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .task { DeckLinkDeviceCatalog.shared.refreshModes(
-                    devicePersistentID: device.persistentID) }
+                deckLinkRows(deckLinkBacking, device)
             }
 
             Text("NDI® is a registered trademark of Vizrt NDI AB")
                 .font(.system(size: 8))
                 .foregroundStyle(.quaternary)
         }
-        .help("Which real output carries this screen — routing set against the screen follows it")
+        .help("Which real output carries this slice — routing set against the screen follows it")
         .task { DeckLinkDeviceCatalog.shared.refresh() }
 
         .onReceive(NotificationCenter.default.publisher(
@@ -920,14 +828,320 @@ struct OutputSourcePicker: View {
         }
     }
 
-    private func deckLinkCaption(for device: DeckLinkHelperDevice) -> String {
-        guard deckLinkBacking?.devicePersistentID == device.persistentID else {
-            return "SDI output"
+    private var onMenu: some View {
+        Menu {
+            Section("Displays") {
+                ForEach(outputs.displays) { display in displayItem(display) }
+                if let backing, !outputs.displays.contains(where: { $0.uuid == backing }) {
+                    Toggle(isOn: .constant(true)) {
+                        Text("Disconnected: \(outputs.placeholderDeviceNames[sliceID] ?? "Display")")
+                    }
+                }
+            }
+            Section("DeckLink") {
+                ForEach(DeckLinkDeviceCatalog.shared.devices) { device in deckLinkItem(device) }
+                if DeckLinkDeviceCatalog.shared.hasFetched,
+                   DeckLinkDeviceCatalog.shared.devices.isEmpty {
+                    Text(DeckLinkDeviceCatalog.shared.runtimeTooOld
+                        ? "Desktop Video \(DeckLinkDeviceCatalog.shared.runtimeVersionLabel) — 16.0 or later required"
+                        : "No devices found")
+                }
+            }
+            Section("Network") {
+                Toggle(isOn: Binding(get: { ndiCarrying }, set: { _ in toggleNDI() })) {
+                    Text("NDI · \(ndiCaption)")
+                }
+                Toggle(isOn: Binding(get: { syphonCarrying }, set: { _ in toggleSyphon() })) {
+                    Text("Syphon · \(syphonCaption)")
+                }
+            }
+            Divider()
+            Toggle(isOn: Binding(get: { !carried }, set: { _ in releaseAll() })) {
+                Text("No output · keep routing, nothing on glass")
+            }
+        } label: {
+            Text(currentLabel)
+                .font(.callout.weight(.semibold))
         }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .fixedSize()
+    }
+
+    private var currentLabel: String {
+        if let backing {
+            if let display = outputs.displays.first(where: { $0.uuid == backing }) {
+                let size = OutputCarry.pixelSize(of: display)
+                return "\(display.name) · \(size.width)×\(size.height)"
+            }
+            return "Disconnected: \(outputs.placeholderDeviceNames[sliceID] ?? "Display")"
+        }
+        if let deckLinkBacking { return deckLinkBacking.deviceName }
+        if ndiCarrying { return "NDI" }
+        if syphonCarrying { return "Syphon" }
+        return "No output yet"
+    }
+
+    @ViewBuilder
+    private func displayItem(_ display: DisplaySnapshot) -> some View {
+        let size = OutputCarry.pixelSize(of: display)
+        let holders = outputs.placeholderDevices
+            .filter { $0.value == display.uuid && $0.key != sliceID }.keys.sorted { $0.uuidString < $1.uuidString }
+        let title = "\(display.name) · \(size.width)×\(size.height)"
+        if holders.isEmpty || backing == display.uuid {
+            Toggle(isOn: Binding(
+                get: { backing == display.uuid },
+                set: { _ in claim(display) }
+            )) {
+                Text(backing == display.uuid ? title : "\(title) · free")
+            }
+        } else {
+            Menu("\(title) · \(names(holders)) is on it") {
+                Button("Share it — both land in the same \(String(size.width))×\(String(size.height)), you place them") {
+                    share(display, holders: holders)
+                }
+                Button("Take it over — \(names(holders)) loses its output") { claim(display) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func deckLinkItem(_ device: DeckLinkHelperDevice) -> some View {
+        let carriedByThis = deckLinkBacking?.devicePersistentID == device.persistentID
+        let holders = DeckLinkScreenOutputs.shared
+            .members(onDevice: device.persistentID).filter { $0 != sliceID }
+
+        let inputMapped = DeckLinkDeviceCatalog.shared
+            .displayModes[device.persistentID]?.isEmpty == true
+        if inputMapped, !carriedByThis {
+            Text("\(device.name) · mapped as input in Desktop Video Setup")
+        } else if holders.isEmpty || carriedByThis {
+            Toggle(isOn: Binding(
+                get: { carriedByThis },
+                set: { _ in claimDeckLink(device, joining: false) }
+            )) {
+                Text(carriedByThis ? "\(device.name) · \(deckLinkCaption(for: device))" : "\(device.name) · free")
+            }
+        } else {
+            Menu("\(device.name) · \(names(holders)) is on it") {
+                Button("Share it — both land in the same wire, you place them") {
+                    shareDeckLink(device, holders: holders)
+                }
+                Button("Take it over — \(names(holders)) loses its output") {
+                    claimDeckLink(device, joining: false)
+                }
+            }
+        }
+    }
+
+    private func names(_ ids: [UUID]) -> String {
+        ids.map { OutputCarry.label($0, outputs: outputs) }.joined(separator: ", ")
+    }
+
+    private func releaseHelpers() {
+        NDIScreenOutputs.shared.disable(screenID: sliceID)
+        SyphonScreenOutputs.shared.disable(screenID: sliceID)
+        DeckLinkScreenOutputs.shared.disable(screenID: sliceID, render: render)
+    }
+
+    private func claim(_ display: DisplaySnapshot) {
+        releaseHelpers()
+        outputs.assignPlaceholderDevice(placeholderID: sliceID, displayUUID: display.uuid)
+    }
+
+    private func share(_ display: DisplaySnapshot, holders: [UUID]) {
+        OutputCarry.join(sliceID, .display(display.uuid), outputs: outputs, render: render)
+    }
+
+    private func claimDeckLink(_ device: DeckLinkHelperDevice, joining: Bool) {
+        DeckLinkScreenOutputs.shared.enable(
+            screenID: sliceID, device: device, keying: .off, joining: joining, render: render)
+    }
+
+    private func shareDeckLink(_ device: DeckLinkHelperDevice, holders: [UUID]) {
+        OutputCarry.join(sliceID, .deckLink(device.persistentID), outputs: outputs, render: render)
+    }
+
+    private func toggleNDI() {
+        if ndiCarrying {
+            NDIScreenOutputs.shared.disable(screenID: sliceID)
+        } else {
+            NDIScreenOutputs.shared.enable(screenID: sliceID, render: render)
+        }
+    }
+
+    private func toggleSyphon() {
+        if syphonCarrying {
+            SyphonScreenOutputs.shared.disable(screenID: sliceID)
+        } else {
+            SyphonScreenOutputs.shared.enable(screenID: sliceID, render: render)
+        }
+    }
+
+    private func releaseAll() {
+        releaseHelpers()
+        outputs.assignPlaceholderDevice(placeholderID: sliceID, displayUUID: nil)
+    }
+
+    private var placementBadge: some View {
+        let placement = outputs.placement(forSlice: sliceID)
+        let siblings = OutputCarry.siblings(of: sliceID, outputs: outputs)
+        var parts: [String] = []
+        if let placement {
+            parts.append("at \(Int(placement.x)),\(Int(placement.y))")
+            if let info = outputs.sliceInfo(for: sliceID),
+               Int(placement.width) == info.width, Int(placement.height) == info.height {
+                parts.append("1:1")
+            } else {
+                parts.append("\(Int(placement.width))×\(Int(placement.height))")
+            }
+        } else {
+            parts.append("fills it")
+        }
+        if !siblings.isEmpty { parts.append("shares with \(names(siblings))") }
+        parts.append(liveWord)
+        return Menu {
+            Button("Fill the output") {
+                outputs.setPlacement(nil, forSlice: sliceID)
+                DeckLinkScreenOutputs.shared.refreshCarry(for: sliceID, render: render)
+            }
+            .disabled(placement == nil)
+            Button("Place 1:1 at this screen's pixels") {
+                let frame = OutputCarry.frameSize(for: sliceID, outputs: outputs)
+                outputs.seedPlacement(
+                    forSlice: sliceID, frameWidth: frame.width, frameHeight: frame.height,
+                    siblings: siblings.compactMap { outputs.placement(forSlice: $0) })
+                DeckLinkScreenOutputs.shared.refreshCarry(for: sliceID, render: render)
+            }
+            .disabled(placement != nil)
+        } label: {
+            Text(parts.joined(separator: " · "))
+                .font(.caption2)
+                .foregroundStyle(liveColor)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Fill = the slice is scaled to the whole output. 1:1 = its pixels land unscaled at exact coordinates inside the output, the LED-processor contract; drag it in the picture above")
+    }
+
+    private var liveWord: String {
+        if backing != nil {
+            return outputs.displays.contains { $0.uuid == backing } ? "live" : "disconnected"
+        }
+        if deckLinkBacking != nil {
+            switch DeckLinkScreenOutputs.shared.status(for: sliceID) {
+            case .sending: return "sending"
+            case .starting: return "starting…"
+            case .interrupted: return "reconnecting…"
+            case .failed(let message): return message
+            case .idle, nil: return "idle"
+            }
+        }
+        if let status = SyphonScreenOutputs.shared.status(for: sliceID) {
+            switch status {
+            case .publishing(let name): return "publishing as “\(name)”"
+            case .failed(let message): return message
+            case .idle: return "idle"
+            }
+        }
+        switch NDIScreenOutputs.shared.status(for: sliceID) {
+        case .sending(let name): return "sending as “\(name)”"
+        case .starting: return "starting…"
+        case .interrupted: return "helper restarting…"
+        case .failed(let message): return message
+        case .idle, nil: return "idle"
+        }
+    }
+
+    private var liveColor: Color {
+        switch liveWord {
+        case "live", "sending": return .green
+        case "idle": return .secondary
+        default:
+            return liveWord.hasPrefix("sending as") || liveWord.hasPrefix("publishing as")
+                ? .green : .orange
+        }
+    }
+
+    @ViewBuilder
+    private func deckLinkRows(
+        _ deckLinkBacking: DeckLinkScreenOutputs.Backing, _ device: DeckLinkHelperDevice
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text("ALPHA KEY")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.6)
+            ChipPicker(
+                options: DeckLinkAlphaKey.allCases
+                    .filter { keyingAvailable($0, on: device) }
+                    .map { ($0, $0.label) },
+                selection: Binding(
+                    get: { deckLinkBacking.keying },
+                    set: { mode in
+                        DeckLinkScreenOutputs.shared.setKeying(
+                            screenID: sliceID, keying: mode,
+                            render: render)
+                    }
+                )
+            )
+        }
+        .help(
+            "Internal: the card keys this screen over video fed into "
+                + "its SDI input and outputs the composite — a "
+                + "hardware keyer, no switcher needed. External: "
+                + "fill + key on separate connectors for a switcher's "
+                + "keyer (genlock reference recommended).")
+        .padding(.top, 2)
+
+        HStack(spacing: 8) {
+            Text("FORMAT")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.6)
+            Menu {
+                Button("Auto (card setting)") {
+                    DeckLinkScreenOutputs.shared.setMode(
+                        screenID: sliceID, mode: nil, render: render)
+                }
+
+                ForEach(
+                    (DeckLinkDeviceCatalog.shared
+                        .displayModes[device.persistentID] ?? [])
+                        .filter {
+                            deckLinkBacking.keying == .off
+                                || $0.supportsKeying
+                        }
+                ) { mode in
+                    Button(mode.name) {
+                        DeckLinkScreenOutputs.shared.setMode(
+                            screenID: sliceID, mode: mode, render: render)
+                    }
+                }
+            } label: {
+                Text(deckLinkBacking.mode?.name ?? "Auto")
+                    .font(.caption)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            let wireDetail = DeckLinkScreenOutputs.shared
+                .wireDetail(for: sliceID)
+            if !wireDetail.isEmpty {
+                Text(wireDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task { DeckLinkDeviceCatalog.shared.refreshModes(
+            devicePersistentID: device.persistentID) }
+    }
+
+    private func deckLinkCaption(for device: DeckLinkHelperDevice) -> String {
         switch DeckLinkScreenOutputs.shared.status(for: sliceID) {
         case .sending:
             var parts = ["Sending"]
-
             let wireDetail = DeckLinkScreenOutputs.shared.wireDetail(for: sliceID)
             if !wireDetail.isEmpty { parts.append(wireDetail) }
             if let keying = deckLinkBacking?.keying, keying != .off {
@@ -953,113 +1167,20 @@ struct OutputSourcePicker: View {
 
     private var ndiCaption: String {
         switch NDIScreenOutputs.shared.status(for: sliceID) {
-        case .sending(let name): "Sending as “\(name)”"
-        case .starting: "Starting…"
-        case .interrupted: "Helper restarting…"
+        case .sending(let name): "sending as “\(name)”"
+        case .starting: "starting…"
+        case .interrupted: "helper restarting…"
         case .failed(let message): message
-        case .idle, nil: "Network output"
+        case .idle, nil: "network output"
         }
     }
 
-    private func assign(_ displayUUID: DisplayUUID?) {
-        outputs.assignPlaceholderDevice(placeholderID: sliceID, displayUUID: displayUUID)
-    }
-
-    private func sourceCard(
-        title: String, caption: String, selected: Bool, disabled: Bool,
-        @ViewBuilder tile: () -> some View, action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 5) {
-                tile()
-                    .frame(height: 44)
-                    .frame(maxWidth: .infinity)
-                Text(title)
-                    .font(.caption.weight(selected ? .medium : .regular))
-                    .lineLimit(1)
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(RoundedRectangle.standard(CornerStandard.element))
+    private var syphonCaption: String {
+        switch SyphonScreenOutputs.shared.status(for: sliceID) {
+        case .publishing(let name): "publishing as “\(name)”"
+        case .failed(let message): message
+        case .idle, nil: "to apps on this Mac"
         }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.45 : 1)
-        .background(
-            selected ? Color.primary.opacity(0.08) : Color.primary.opacity(0.03),
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(
-                    selected ? Color.green.opacity(0.7) : Color.separator.opacity(0.5),
-                    lineWidth: 1
-                )
-        )
-    }
-
-    private var placeholderTile: some View {
-        RoundedRectangle.standard(4)
-            .strokeBorder(
-                Color.secondary.opacity(0.5),
-                style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
-            )
-            .overlay {
-                Image(systemName: "rectangle.dashed")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.tertiary)
-            }
-    }
-
-    private func displayTile(_ display: DisplaySnapshot) -> some View {
-        GeometryReader { geo in
-            let aspect = max(0.4, min(2.4, display.frame.width / max(1, display.frame.height)))
-            let height = min(geo.size.height, geo.size.width / aspect)
-            RoundedRectangle.standard(3)
-                .fill(Color.primary.opacity(0.12))
-                .overlay {
-                    VStack(spacing: 1) {
-                        Image(systemName: "display")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        if display.isMain {
-                            Text("main")
-                                .font(.system(size: 7))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-                .overlay(
-                    RoundedRectangle.standard(3)
-                        .strokeBorder(Color.separator.opacity(0.6), lineWidth: 1)
-                )
-                .frame(width: height * aspect, height: height)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var disconnectedTile: some View {
-        RoundedRectangle.standard(4)
-            .fill(Color.orange.opacity(0.10))
-            .overlay {
-                Image(systemName: "display.trianglebadge.exclamationmark")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.orange)
-            }
-    }
-
-    private func networkTile(_ symbol: String) -> some View {
-        RoundedRectangle.standard(4)
-            .fill(Color.primary.opacity(0.05))
-            .overlay {
-                Image(systemName: symbol)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.tertiary)
-            }
     }
 }
 
@@ -1071,6 +1192,9 @@ private struct PresetDetail: View {
 
     @State private var name = ""
 
+    @State private var addingLayer = false
+    @State private var newLayerName = ""
+
     var body: some View {
         let active = presets.activePresetID == presetID
         VStack(alignment: .leading, spacing: 12) {
@@ -1080,6 +1204,12 @@ private struct PresetDetail: View {
                     .controlSize(.small)
                     .frame(maxWidth: 220)
                     .onSubmit { presets.renamePreset(presetID, to: name) }
+                Button("Add Layer") {
+                    newLayerName = ""
+                    addingLayer = true
+                }
+                .controlSize(.small)
+                .help("A layer of your own on this preset — route it per screen below; move a slide's media onto it with right-click › Layer.")
                 Spacer()
                 Button {
                     presets.activate(active ? nil : presetID)
@@ -1114,6 +1244,9 @@ private struct PresetDetail: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             RoutingMatrix(outputs: outputs, presets: presets, render: render, presetID: presetID)
+            if let render, outputs.screenMap != nil {
+                PresetPlacementsEditor(render: render, outputs: outputs, presets: presets, presetID: presetID)
+            }
             HStack {
                 Spacer()
                 Button("Delete Preset", role: .destructive) {
@@ -1126,6 +1259,13 @@ private struct PresetDetail: View {
         .task(id: presetID) {
             name = presets.preset(presetID)?.name ?? ""
         }
+        .alert("Add Layer", isPresented: $addingLayer) {
+            TextField("Name", text: $newLayerName)
+            Button("Add") { presets.addLayer(presetID: presetID, name: newLayerName) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The layer stacks above the Slide layer and starts on for every screen this preset routes.")
+        }
     }
 }
 
@@ -1136,6 +1276,13 @@ private struct RoutingMatrix: View {
     let presetID: String
 
     @State private var pickerTargetID: String?
+
+    @State private var renamingLayerID: String?
+    @State private var layerNameText = ""
+
+    private var customLayers: [CustomLayer] {
+        presets.customLayers(presetID: presetID)
+    }
 
     private struct Target: Identifiable {
         let id: String
@@ -1157,6 +1304,7 @@ private struct RoutingMatrix: View {
     private static let cellWidth: CGFloat = 44
     private static let themeColumnWidth: CGFloat = 128
     private static let maskColumnWidth: CGFloat = 104
+    private static let customCellWidth: CGFloat = 64
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -1167,8 +1315,40 @@ private struct RoutingMatrix: View {
                     targetRow(target)
                 }
             }
+            .alert("Rename Layer", isPresented: Binding(
+                get: { renamingLayerID != nil },
+                set: { if !$0 { renamingLayerID = nil } }
+            )) {
+                TextField("Name", text: $layerNameText)
+                Button("Rename") {
+                    if let id = renamingLayerID {
+                        presets.renameLayer(presetID: presetID, layerID: id, to: layerNameText)
+                    }
+                    renamingLayerID = nil
+                }
+                Button("Cancel", role: .cancel) { renamingLayerID = nil }
+            }
         }
         .scrollIndicators(.automatic)
+    }
+
+    private func customHeader(_ layer: CustomLayer) -> some View {
+        Text(layer.name.uppercased())
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .tracking(0.3)
+            .lineLimit(1)
+            .frame(width: Self.customCellWidth)
+            .help("\(layer.name) — a layer added to this preset. Right-click to rename or remove it.")
+            .contextMenu {
+                Button("Rename Layer…") {
+                    layerNameText = layer.name
+                    renamingLayerID = layer.id
+                }
+                Button("Remove Layer", role: .destructive) {
+                    presets.removeLayer(presetID: presetID, layerID: layer.id)
+                }
+            }
     }
 
     private var headerRow: some View {
@@ -1183,6 +1363,9 @@ private struct RoutingMatrix: View {
                     .lineLimit(1)
                     .frame(width: Self.cellWidth)
                     .help(layer.displayName)
+            }
+            ForEach(customLayers) { layer in
+                customHeader(layer)
             }
             Text("SLIDE THEME")
                 .font(.system(size: 8, weight: .semibold))
@@ -1213,7 +1396,10 @@ private struct RoutingMatrix: View {
             }
             .frame(width: Self.nameColumnWidth)
             ForEach(LayerKind.allCases, id: \.self) { layer in
-                cell(target: target, layer: layer, enabled: enabled)
+                cell(target: target, layerId: layer.rawValue, layerName: layer.displayName, enabled: enabled)
+            }
+            ForEach(customLayers) { layer in
+                cell(target: target, layerId: layer.id, layerName: layer.name, width: Self.customCellWidth, enabled: enabled)
             }
             themeCell(target)
             maskCell(target)
@@ -1226,13 +1412,17 @@ private struct RoutingMatrix: View {
         }
     }
 
-    private func cell(target: Target, layer: LayerKind, enabled: Set<String>?) -> some View {
+    private func cell(
+        target: Target, layerId: String, layerName: String,
+        width: CGFloat = RoutingMatrix.cellWidth, enabled: Set<String>?
+    ) -> some View {
 
-        let routed = enabled?.contains(layer.rawValue) ?? true
+        let routed = enabled?.contains(layerId) ?? true
+        let placed = presets.hasPlacements(presetID: presetID, layer: layerId)
         return Button {
             presets.toggleLayer(
                 presetID: presetID, targetKind: target.kind,
-                targetId: target.id, layer: layer.rawValue
+                targetId: target.id, layer: layerId
             )
         } label: {
             Group {
@@ -1243,11 +1433,12 @@ private struct RoutingMatrix: View {
                 }
             }
             .frame(width: 9, height: 9)
-            .frame(width: Self.cellWidth, height: 26)
+            .overlay(Circle().strokeBorder(Color.yellow, lineWidth: placed ? 1.5 : 0).frame(width: 13, height: 13))
+            .frame(width: width, height: 26)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(layer.displayName) → \(target.name)")
+        .help(placed ? "\(layerName) → \(target.name) · placed on the Screen Map below" : "\(layerName) → \(target.name)")
     }
 
     private func themeCell(_ target: Target) -> some View {

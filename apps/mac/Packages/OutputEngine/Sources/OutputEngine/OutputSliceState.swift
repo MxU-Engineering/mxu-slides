@@ -36,6 +36,15 @@ public struct OutputPlacement: Codable, Equatable, Sendable {
     }
 }
 
+public struct NetworkCarryFeed: Equatable, Sendable {
+    public let name: String
+    public let width: Int
+    public let height: Int
+    public let framesPerSecond: Int
+    public let sourceRect: CGRect?
+    public let placement: CGRect?
+}
+
 public struct OutputSliceState: Identifiable, Equatable, Sendable {
     public let id: UUID
 

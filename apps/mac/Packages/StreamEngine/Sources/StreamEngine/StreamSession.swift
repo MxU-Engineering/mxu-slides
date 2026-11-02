@@ -24,15 +24,33 @@ public final class StreamSession: @unchecked Sendable {
         public var state: State
         public var framesSubmitted: Int
         public var framesDropped: Int
+
+        public var audioSecondsSent: Double = 0
+        public var audioBuffersDropped: Int = 0
+
+        public var uploadKbps: Int?
+        public var videoKbps: Int?
+
+        public var backlogSeconds: Double?
+
+        public var lastDrop: String?
     }
 
-    public let destination: StreamEndpoint
+    public var destination: StreamEndpoint { mutable.withLock { storage.destination } }
     public let video: StreamVideoConfiguration
 
     private struct Mutable {
+        var destination: StreamEndpoint
+        var retargeted = false
+        var uploadKbps: Int?
+        var videoKbps: Int?
+        var backlogSeconds: Double?
+        var lastDrop: String?
         var state: State = .idle
         var framesSubmitted = 0
         var framesDropped = 0
+        var audioSecondsSent = 0.0
+        var audioBuffersDropped = 0
 
         var audioFormat: AVAudioFormat?
         var audioFormatMismatchLogged = false
@@ -44,7 +62,7 @@ public final class StreamSession: @unchecked Sendable {
     }
 
     private let mutable = NSLock()
-    private var storage = Mutable()
+    private var storage: Mutable
 
     private var pipes = Pipes()
     private var supervisorTask: Task<Void, Never>?
@@ -54,7 +72,7 @@ public final class StreamSession: @unchecked Sendable {
     private let hlsContinuity = HLSContinuity()
 
     public init(destination: StreamEndpoint, video: StreamVideoConfiguration) {
-        self.destination = destination
+        storage = Mutable(destination: destination)
         self.video = video
     }
 
@@ -63,12 +81,25 @@ public final class StreamSession: @unchecked Sendable {
             Status(
                 state: storage.state,
                 framesSubmitted: storage.framesSubmitted,
-                framesDropped: storage.framesDropped)
+                framesDropped: storage.framesDropped,
+                audioSecondsSent: storage.audioSecondsSent,
+                audioBuffersDropped: storage.audioBuffersDropped,
+                uploadKbps: storage.uploadKbps,
+                videoKbps: storage.videoKbps,
+                backlogSeconds: storage.backlogSeconds,
+                lastDrop: storage.lastDrop)
         }
     }
 
     private func setState(_ state: State) {
         mutable.withLock { storage.state = state }
+    }
+
+    public func retarget(to endpoint: StreamEndpoint) {
+        mutable.withLock {
+            storage.destination = endpoint
+            storage.retargeted = true
+        }
     }
 
     public func start() {
@@ -144,7 +175,24 @@ public final class StreamSession: @unchecked Sendable {
             log.warning("audio format changed mid-stream: \(self.destination.name, privacy: .public) pinned=\(mismatch, privacy: .public) got=\(buffer.format, privacy: .public) — dropping until reconnect")
         }
         guard let continuation, let copy = Self.copiedAudioBuffer(buffer) else { return }
-        continuation.yield((copy, when))
+        let counted = Self.counted(continuation.yield((copy, when)), sent: copy)
+        mutable.withLock {
+            storage.audioSecondsSent += counted.seconds
+            storage.audioBuffersDropped += counted.dropped
+        }
+    }
+
+    static func counted(
+        _ result: AsyncStream<(AVAudioPCMBuffer, AVAudioTime)>.Continuation.YieldResult,
+        sent buffer: AVAudioPCMBuffer
+    ) -> (seconds: Double, dropped: Int) {
+        let seconds = Double(buffer.frameLength) / buffer.format.sampleRate
+        switch result {
+        case .enqueued: return (seconds, 0)
+        case .dropped(let oldest): return (seconds - Double(oldest.0.frameLength) / oldest.0.format.sampleRate, 1)
+        case .terminated: return (0, 0)
+        @unknown default: return (0, 0)
+        }
     }
 
     static func copiedAudioBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
@@ -195,7 +243,10 @@ public final class StreamSession: @unchecked Sendable {
                 guard mutable.withLock({ storage.state != .stopped }) else { return }
                 attempt = wasPublishing ? 1 : attempt + 1
                 log.warning("transport lost: \(self.destination.name, privacy: .public) attempt \(attempt) — \(String(describing: error), privacy: .public)")
-                setState(.reconnecting(attempt: attempt))
+                mutable.withLock {
+                    storage.state = .reconnecting(attempt: attempt)
+                    storage.lastDrop = (error as? StreamSessionError)?.failureDescription ?? error.localizedDescription
+                }
 
                 let delay = min(15.0, pow(2.0, Double(attempt - 1)))
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -207,11 +258,17 @@ public final class StreamSession: @unchecked Sendable {
         frames: AsyncStream<CMSampleBuffer>,
         audio: AsyncStream<(AVAudioPCMBuffer, AVAudioTime)>
     ) async throws {
+        let destination = self.destination
         switch destination.kind {
         case .rtmp, .rtmps:
             let connection = RTMPConnection()
             let stream = RTMPStream(connection: connection)
             try await configure(stream: stream)
+            let watch = UploadWatch(
+                videoBitRate: video.bitrateKbps * 1000,
+                floorBitRate: video.adaptiveFloorKbps.map { $0 * 1000 })
+            await stream.setBitRateStrategy(watch)
+            mutable.withLock { storage.retargeted = false }
             _ = try await connection.connect(destination.url)
             _ = try await stream.publish(destination.streamKey)
             setState(.publishing)
@@ -242,6 +299,24 @@ public final class StreamSession: @unchecked Sendable {
                         try await Task.sleep(nanoseconds: 2_000_000_000)
                         guard await connection.connected else {
                             throw StreamSessionError.transportClosed("connected flag dropped")
+                        }
+                    }
+                }
+                group.addTask { [weak self] in
+                    while let self {
+                        try await Task.sleep(nanoseconds: 1_000_000_000)
+                        let stall = await watch.stall
+                        let videoKbps = await watch.videoKbps
+                        let retargeted = self.mutable.withLock {
+                            self.storage.uploadKbps = stall.bytesOutPerSecond / 125
+                            self.storage.videoKbps = videoKbps
+
+                            self.storage.backlogSeconds = Double(stall.queuedBytes) / Double((videoKbps + 128) * 125)
+                            return self.storage.retargeted
+                        }
+                        if retargeted { throw StreamSessionError.transportClosed("new destination") }
+                        if let reason = stall.stalled(targetKbps: self.video.bitrateKbps) {
+                            throw StreamSessionError.transportClosed("upload stalled: \(reason)")
                         }
                     }
                 }

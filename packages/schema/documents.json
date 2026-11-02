@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 149,
+  "schemaVersion": 161,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -687,6 +687,11 @@
         {
           "name": "tracking",
           "type": "double",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform",
           "optional": true
         }
       ]
@@ -1387,6 +1392,11 @@
         {
           "name": "classification",
           "type": "MediaClassification",
+          "optional": true
+        },
+        {
+          "name": "layerId",
+          "type": "string",
           "optional": true
         }
       ]
@@ -2099,6 +2109,37 @@
           "name": "autoAdvance",
           "type": "AutoAdvance",
           "optional": true
+        },
+        {
+          "name": "marks",
+          "type": "list:VideoMark",
+          "optional": true
+        }
+      ]
+    },
+    "VideoMark": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "at",
+          "type": "double"
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction"
+        },
+        {
+          "name": "colorHex",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -2788,6 +2829,16 @@
         {
           "name": "assignments",
           "type": "list:OutputAssignment"
+        },
+        {
+          "name": "placements",
+          "type": "list:LayerPlacement",
+          "optional": true
+        },
+        {
+          "name": "layers",
+          "type": "list:CustomLayer",
+          "optional": true
         }
       ]
     },
@@ -3157,6 +3208,16 @@
         },
         {
           "name": "videoBitrateKbps",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "adaptBitrate",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "minBitrateKbps",
           "type": "int",
           "optional": true
         },
@@ -3926,7 +3987,8 @@
         "currentGroup",
         "currentPresentation",
         "nextServiceTitle",
-        "timecode"
+        "timecode",
+        "videoMarkName"
       ]
     },
     "TimerTextFormat": {
@@ -3935,6 +3997,14 @@
         "digits",
         "abbreviated",
         "words"
+      ]
+    },
+    "VideoCountdownTarget": {
+      "kind": "enum",
+      "cases": [
+        "end",
+        "nextMark",
+        "namedMark"
       ]
     },
     "TextLink": {
@@ -3997,6 +4067,21 @@
         {
           "name": "timerPattern",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "videoTarget",
+          "type": "VideoCountdownTarget",
+          "optional": true
+        },
+        {
+          "name": "videoMarkName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "countsUp",
+          "type": "bool",
           "optional": true
         }
       ]
@@ -4923,6 +5008,54 @@
         },
         {
           "name": "source",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
+    "LayerPlacement": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "layerId",
+          "type": "string"
+        },
+        {
+          "name": "x",
+          "type": "double"
+        },
+        {
+          "name": "y",
+          "type": "double"
+        },
+        {
+          "name": "width",
+          "type": "double"
+        },
+        {
+          "name": "height",
+          "type": "double"
+        },
+        {
+          "name": "scale",
+          "type": "MediaScaleMode",
+          "optional": true
+        }
+      ]
+    },
+    "CustomLayer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "above",
           "type": "string",
           "optional": true
         }

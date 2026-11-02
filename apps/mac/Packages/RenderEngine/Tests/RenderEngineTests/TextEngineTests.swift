@@ -207,6 +207,19 @@ final class TextEngineTests: XCTestCase {
         XCTAssertNotEqual(a.data, b.data, "all-caps transform must change rendered glyphs")
     }
 
+    func testStyleRunUppercasesOnlyItsRange() throws {
+        var text = StyledText(string: "grace\nand peace", fontSize: 300)
+        text.styleRuns = [StyleRun(line: 0, column: 0, length: 5, transform: .uppercase)]
+        XCTAssertEqual(text.displayString, "GRACE\nand peace")
+        text.transform = .uppercase
+        text.styleRuns = [StyleRun(line: 1, column: 0, length: 3, transform: SceneTextTransform.none)]
+        XCTAssertEqual(text.displayString, "GRACE\nand PEACE")
+        var plain = text
+        plain.transform = .none
+        plain.styleRuns = []
+        XCTAssertNotEqual(try renderText(text).data, try renderText(plain).data, "per-run caps must reach the glyphs")
+    }
+
     func testTrackingWidensRenderedInk() throws {
         let base = StyledText(string: "IIIIIIII", fontSize: 200, alignment: .left)
         var tracked = base

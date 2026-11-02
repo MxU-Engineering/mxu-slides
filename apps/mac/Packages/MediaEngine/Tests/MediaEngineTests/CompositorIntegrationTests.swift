@@ -48,6 +48,24 @@ final class CompositorIntegrationTests: XCTestCase {
         XCTAssertFalse(engine.hasStill(id: "thumb::b"))
     }
 
+    func testStillTallyCountsBytesPerNamespace() async throws {
+        let context = CGContext(
+            data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        let image = context.makeImage()!
+        let engine = try MediaEngine(device: device)
+        _ = try await engine.showStill(image: image, cacheKey: "a", id: "thumb::a")
+        _ = try await engine.showStill(image: image, cacheKey: "b", id: "thumb::w960::b")
+        _ = try await engine.showStill(image: image, cacheKey: "c", id: "slide")
+
+        let tally = engine.stillTally()
+        XCTAssertEqual(tally["thumb::"]?.count, 2, "a sized still counts in its namespace")
+        XCTAssertEqual(tally[""]?.count, 1)
+        XCTAssertGreaterThanOrEqual(tally[""]?.bytes ?? 0, 64 * 64 * 4)
+    }
+
     func testStillGenerationTracksSwapsAndLiveSourcesMove() async throws {
 
         let context = CGContext(

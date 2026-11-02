@@ -32,6 +32,36 @@ public final class OutputManager {
 
     public var placeholderConfigurationChanged: (() -> Void)?
 
+    public private(set) var screenMap: ScreenMap?
+    public var screenMapChanged: (() -> Void)?
+
+    public func setScreenMap(_ map: ScreenMap?) {
+        guard map != screenMap else { return }
+        screenMap = map
+        screenMapBox.value = map
+        screenMapChanged?()
+    }
+
+    private let screenMapBox = Locked<ScreenMap?>(nil)
+
+    private let layerPlacements = Locked<[String: [MapPlacement]]>([:])
+
+    public func setLayerPlacements(_ placements: [String: [MapPlacement]]) {
+        layerPlacements.value = placements
+    }
+
+    nonisolated static func dominantScreen(for placements: [MapPlacement], on map: ScreenMap) -> String? {
+        var best: (id: String, area: CGFloat)?
+        for (id, rect) in map.screens {
+            let area = placements.reduce(CGFloat(0)) { sum, placement in
+                let overlap = placement.rect.intersection(rect)
+                return sum + (overlap.isNull ? 0 : overlap.width * overlap.height)
+            }
+            if area > (best?.area ?? 0) { best = (id, area) }
+        }
+        return best?.id
+    }
+
     public private(set) var reconfigurationCount = 0
 
     public let sleepProofing: SleepProofing
@@ -141,6 +171,20 @@ public final class OutputManager {
         return nil
     }
 
+    public func networkCarryFeed(forSlice id: UUID) -> NetworkCarryFeed? {
+        guard let info = sliceInfo(for: id),
+              let screen = placeholderScreens.first(where: { $0.id == info.screenID })
+        else { return nil }
+        let placement = placement(forSlice: id)
+        return NetworkCarryFeed(
+            name: info.name.map { "\(screen.name) — \($0)" } ?? screen.name,
+            width: placement?.frameWidth ?? info.width,
+            height: placement?.frameHeight ?? info.height,
+            framesPerSecond: screen.framesPerSecond,
+            sourceRect: info.sourceRect == Compositor.fullSourceRect ? nil : info.sourceRect,
+            placement: placement?.unitRect)
+    }
+
     @discardableResult
     public func addSlice(
         toScreen screenID: UUID, id: UUID = UUID(), name: String? = nil,
@@ -208,6 +252,31 @@ public final class OutputManager {
         placeholderConfigurationChanged?()
     }
 
+    public func seedPlacement(
+        forSlice id: UUID, frameWidth: Int, frameHeight: Int,
+        siblings: [OutputPlacement] = []
+    ) {
+        guard let info = sliceInfo(for: id) else { return }
+        let width = Double(min(info.width, frameWidth))
+        let height = Double(min(info.height, frameHeight))
+        let below = siblings.map { $0.y + $0.height }.max() ?? 0
+        let y = below + height <= Double(frameHeight) ? below : 0
+        setPlacement(
+            OutputPlacement(
+                frameWidth: frameWidth, frameHeight: frameHeight,
+                x: 0, y: y, width: width, height: height),
+            forSlice: id)
+    }
+
+    public func restoreDisplayClaim(
+        placeholderID: UUID, displayUUID: DisplayUUID, displayName: String?
+    ) {
+        assignPlaceholderDevice(
+            placeholderID: placeholderID, displayUUID: displayUUID,
+            displayName: displayName,
+            exclusive: !placeholderDevices.values.contains(displayUUID))
+    }
+
     private func pushPlacement(forSlice id: UUID) {
         if let display = placeholderDevices[id] {
             if placeholderWindowSlices[display]?.count ?? 0 > 1 {
@@ -247,6 +316,15 @@ public final class OutputManager {
     public func setTestPattern(_ on: Bool, forScreen id: UUID) {
         if on { testPatternScreens.insert(id) } else { testPatternScreens.remove(id) }
         testPatternBox.value = testPatternScreens
+    }
+
+    public func identify(screens ids: [UUID], for seconds: Double = 2.5) {
+        let flashed = ids.filter { !testPatternScreens.contains($0) }
+        for id in ids { setTestPattern(true, forScreen: id) }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            for id in flashed { self?.setTestPattern(false, forScreen: id) }
+        }
     }
 
     public private(set) var syncTestScreens: Set<UUID> = []
@@ -559,6 +637,8 @@ public final class OutputManager {
         let variants = variantSceneProvider
         let routing = layerRouting
         let themeRouting = slideThemeRouting
+        let placementBox = layerPlacements
+        let mapBox = screenMapBox
         let roles = roleBox
         let scaling = scaleModeBox
         let spans = spanBox
@@ -592,12 +672,47 @@ public final class OutputManager {
                 scene = base()
             }
 
+            let room = scene
+
             if let screenID, let canvasSize, !spans.value.contains(screenID) {
                 scene = scene.scaled(toScreen: canvasSize, mode: scaling.value[screenID] ?? .fit)
             }
+
+            let placements = placementBox.value
+            if !placements.isEmpty, let screenID, let map = mapBox.value,
+               let mapRect = map.rect(for: screenID) {
+                for index in scene.layers.indices {
+                    let layerID = scene.layers[index].id
+                    guard let layerPlacements = placements[layerID],
+                          let hits = ScreenMapResolver.resolve(placements: layerPlacements, screen: mapRect)
+                    else { continue }
+                    guard !hits.isEmpty else {
+                        scene.layers[index].isHidden = true
+                        continue
+                    }
+                    var picture = room.layers[index]
+
+                    if picture.kind == .slide, let variants,
+                       let host = Self.dominantScreen(for: layerPlacements, on: map),
+                       let themeID = themeRouting.value[host], let variant = variants(themeID),
+                       let look = variant.layers.first(where: { $0.id == layerID }) {
+                        picture = look
+                    }
+                    let canvas = scene.canvasSize
+                    picture.placed = PlacedLayer(canvasSize: room.canvasSize, frames: hits.map {
+                        PlacedLayer.Frame(
+                            rect: CGRect(
+                                x: $0.frame.minX * canvas.width, y: $0.frame.minY * canvas.height,
+                                width: $0.frame.width * canvas.width, height: $0.frame.height * canvas.height),
+                            fill: $0.fill)
+                    })
+                    scene.layers[index] = picture
+                }
+            }
             guard let enabled = routing.value[routingKey] else { return scene }
             for index in scene.layers.indices
-            where !enabled.contains(scene.layers[index].kind.rawValue) {
+            where scene.layers[index].placed == nil
+                && !enabled.contains(scene.layers[index].id) {
                 scene.layers[index].isHidden = true
             }
             return scene
@@ -717,7 +832,7 @@ public final class OutputManager {
             }
             if assignedDisplays.contains(displayUUID) {
                 assignedDisplays.remove(displayUUID)
-                reconcile() 
+                reconcile()
                 placeholderConfigurationChanged?()
                 return
             }
@@ -816,7 +931,7 @@ public final class OutputManager {
         if placeholderDevices[id] == nil { screen.start() }
         placeholderScreens[index] = screen
         pushAdjustments(forScreen: id)
-        pushMasks(forScreen: id)  
+        pushMasks(forScreen: id)
         updateSleepProofing()
         placeholderConfigurationChanged?()
         return screen

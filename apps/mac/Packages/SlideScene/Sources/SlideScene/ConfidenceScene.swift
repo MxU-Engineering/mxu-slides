@@ -240,20 +240,38 @@ public struct VideoCountdown: Sendable, Equatable {
     public var anchoredAt: Date
     public var isPlaying: Bool
 
+    public var marks: [VideoMarks.Point]
+
     public init(
         name: String, duration: Double, position: Double,
-        anchoredAt: Date, isPlaying: Bool
+        anchoredAt: Date, isPlaying: Bool, marks: [VideoMarks.Point] = []
     ) {
         self.name = name
         self.duration = duration
         self.position = position
         self.anchoredAt = anchoredAt
         self.isPlaying = isPlaying
+        self.marks = marks
     }
 
     public func remaining(at date: Date) -> Double {
+        max(0, duration - position(at: date))
+    }
+
+    public func position(at date: Date) -> Double {
         let advance = isPlaying ? max(0, date.timeIntervalSince(anchoredAt)) : 0
-        return max(0, duration - (position + advance))
+        return min(duration, position + advance)
+    }
+
+    public func target(at date: Date, _ target: VideoCountdownTarget, name: String?) -> VideoMarks.Point? {
+        VideoMarks.target(marks, after: position(at: date), target: target, name: name)
+    }
+
+    public func seconds(at date: Date, to target: VideoCountdownTarget, name: String?, countsUp: Bool) -> Double {
+        let now = position(at: date)
+        let end = self.target(at: date, target, name: name)?.at ?? duration
+        guard countsUp else { return max(0, end - now) }
+        return max(0, min(now, end) - VideoMarks.countUpStart(marks, before: now, target: target, name: name))
     }
 }
 

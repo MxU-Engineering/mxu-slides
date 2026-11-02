@@ -1040,6 +1040,14 @@ struct SlideGridBody: View {
                 }
             }
             Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
+            Button("Merge \(slideIDs.count) Slides") {
+                confirmingRepeatedSectionEdit(sections: sectionIDs(of: slideIDs)) {
+                    model.updateSlides(presentationID: presentation.id, undoLabel: "Merge Slides") {
+                        SlideBulkEdit.mergeSlides(slideIDs, in: &$0)
+                    }
+                    clearSelection()
+                }
+            }
         }
         Divider()
         deleteButton(slideIDs, inSelection: true)
@@ -1254,7 +1262,19 @@ struct SlideGridBody: View {
                             SlideBulkEdit.replaceMedia(oldID, with: newID, onSlide: slideID, in: &$0)
                         }
                     },
-                    inheritedTransition: presentation.transition
+                    inheritedTransition: presentation.transition,
+                    layer: slide.background?.mediaId == mediaID
+                        ? slide.background.flatMap { cue in
+                            model.media(mediaID).map { item in
+                                SpotLayer(cue: cue, kind: item.mediaKind, customLayers: actionRouter?.customLayers ?? []) {
+                                    [presentationID = presentation.id, slideID = slide.id] layerId in
+                                    model.updateSlide(presentationID: presentationID, slideID: slideID, undoLabel: "Set Layer") {
+                                        $0.background?.setRoutingLayer(layerId)
+                                    }
+                                }
+                            }
+                        }
+                        : nil
                 )
             }
         }
@@ -1609,13 +1629,15 @@ struct SlideGridBody: View {
         let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : slides.last?.sectionId
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
+
+        let beforeID = index == 0 ? slides.first?.id : nil
         if items.isEmpty {
             return false
         } else {
             model.insertSlides(
                 presentation.id,
                 slides: items.map { Slide.droppedMedia($0, sectionId: anchorSection) },
-                afterSlideID: afterID)
+                afterSlideID: afterID, beforeSlideID: beforeID)
             return true
         }
     }
@@ -1789,6 +1811,32 @@ struct SlideTile: View {
                         .padding(4)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                let chips = layerChips
+                if !chips.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(chips) { chip in
+                            LayerChip(chip: chip)
+                                .onHover { over in
+                                    if over {
+                                        hoveredChipID = chip.id
+                                    } else if hoveredChipID == chip.id {
+                                        hoveredChipID = nil
+                                    }
+                                }
+                                .popover(
+                                    isPresented: Binding(
+                                        get: { hoveredChipID == chip.id },
+                                        set: { if !$0, hoveredChipID == chip.id { hoveredChipID = nil } }
+                                    ), arrowEdge: .bottom
+                                ) {
+                                    LayerChipHover(chip: chip, actionRouter: actionRouter)
+                                }
+                        }
+                    }
+                    .padding(5)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if mediaMissing {
                     Image(systemName: "exclamationmark.triangle")
@@ -1797,7 +1845,7 @@ struct SlideTile: View {
                         .padding(3)
                         .background(Color.orange, in: Circle())
                         .padding(4)
-                        .help("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
+                        .tileHelp("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
                 }
             }
             .overlay {
@@ -1881,7 +1929,8 @@ struct SlideTile: View {
                                 .tileHelp(slideActionLabel(
                                     action, model: model,
                                     timers: actionRouter?.timerChoices ?? [],
-                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
+                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? [],
+                                    layers: actionRouter?.layerStack ?? []))
                         }
                         if actionBadges.count > 3 {
                             Text("+\(actionBadges.count - 3)")
@@ -1897,6 +1946,10 @@ struct SlideTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
+        .environment(\.tileTip, $tip)
+        .overlay(alignment: .bottomTrailing) {
+            if let tip { TileTipLabel(text: tip) }
+        }
 
         .task(id: clippedTextKey) {
             let slide = slide
@@ -1925,6 +1978,18 @@ struct SlideTile: View {
     @State private var hasClippedText = false
     @State private var pageLooks: [PageLook] = []
     @State private var pagesHovered = false
+
+    @State private var hoveredChipID: String?
+
+    private var layerChips: [SlideLayerFacts.Chip] {
+        guard slide.background?.storedRoutingLayerId != nil else { return [] }
+        return SlideLayerFacts.chips(
+            for: slide,
+            item: { id in model.media(id).map { ($0.name, $0.mediaKind) } },
+            layerName: { id in actionRouter?.layerName(id) ?? LayerKind(rawValue: id)?.displayName })
+    }
+
+    @State private var tip: String?
 
     struct PageLook: Identifiable {
         let id: String
@@ -2019,7 +2084,8 @@ struct SlideTile: View {
         (slide.actions ?? []).map {
             slideActionLabel(
                 $0, model: model, timers: actionRouter?.timerChoices ?? [],
-                confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])
+                confidenceScreens: actionRouter?.confidenceScreenChoices ?? [],
+                layers: actionRouter?.layerStack ?? [])
         }.joined(separator: "\n")
     }
 }
@@ -2028,7 +2094,8 @@ struct SlideTile: View {
 func slideActionLabel(
     _ action: SlideAction, model: AppModel,
     timers: [(id: String, name: String)] = [],
-    confidenceScreens: [(id: String, name: String)] = []
+    confidenceScreens: [(id: String, name: String)] = [],
+    layers: [RenderLayer] = []
 ) -> String {
     func entryName(_ id: String?) -> String {
         guard let id, !id.isEmpty else { return "not set" }
@@ -2070,7 +2137,7 @@ func slideActionLabel(
     case .switchOutputPreset:
         "Switch Output Preset: \(entryName(action.presetId))"
     case .clearLayer:
-        "Clear \(action.layer.flatMap(LayerKind.init(rawValue:))?.displayName ?? "Layer")"
+        "Clear \(action.layer.flatMap { id in layers.first { $0.id == id }?.name ?? LayerKind(rawValue: id)?.displayName } ?? "Layer")"
     case .clearAll: "Clear All"
     case .clearAudio: "Clear Music"
     case .fireMedia: "Fire Media: \(entryName(action.mediaId))"
@@ -2635,9 +2702,132 @@ struct SongKeyChip: View {
     }
 }
 
-extension View {
-    @ViewBuilder
-    func tileHelp(_ text: @autoclosure () -> String) -> some View {
-        self
+private struct TileTipKey: EnvironmentKey {
+    static let defaultValue: Binding<String?>? = nil
+}
+
+extension EnvironmentValues {
+    var tileTip: Binding<String?>? {
+        get { self[TileTipKey.self] }
+        set { self[TileTipKey.self] = newValue }
     }
 }
+
+private struct TileHelp: ViewModifier {
+    let text: () -> String
+    @Environment(\.tileTip) private var tip
+    @State private var wait: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content.onHover { over in
+            wait?.cancel()
+            guard let tip else { return }
+            if over {
+                wait = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !Task.isCancelled else { return }
+                    let text = text()
+                    if !text.isEmpty { tip.wrappedValue = text }
+                }
+            } else if tip.wrappedValue != nil {
+                tip.wrappedValue = nil
+            }
+        }
+    }
+}
+
+extension View {
+    func tileHelp(_ text: @autoclosure @escaping () -> String) -> some View {
+        modifier(TileHelp(text: text))
+    }
+}
+
+struct TileTipLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.trailing)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(.sRGB, white: 0.12).opacity(0.92), in: RoundedRectangle.standard(CornerStandard.element))
+            .padding(.horizontal, 4)
+            .padding(.bottom, SlideGridMetrics.labelHeight + SlideGridMetrics.labelGap + 4)
+            .allowsHitTesting(false)
+    }
+}
+
+struct LayerChip: View {
+    let chip: SlideLayerFacts.Chip
+
+    static let layerTint = Color(red: 0.54, green: 0.71, blue: 1)
+
+    var body: some View {
+        let tint = Self.layerTint
+        Text(chip.label)
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(Color.black.opacity(0.7), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint, lineWidth: 1))
+    }
+}
+
+struct LayerChipHover: View {
+    let chip: SlideLayerFacts.Chip
+    let actionRouter: ActionRouter?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            lines
+        }
+        .padding(10)
+        .frame(width: 300, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var lines: some View {
+        Group {
+                Text("\(chip.itemName) · \(chip.label) layer")
+                    .font(.caption.weight(.semibold))
+                if let destinations = actionRouter?.activeDestinations(layerId: chip.targetId) {
+                    Text("under \(Text(destinations.preset).bold()) (active) lands on")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if destinations.screens.isEmpty {
+                        Text("nowhere")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 5) {
+                            ForEach(destinations.screens, id: \.self) { screen in
+                                Text(screen)
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .overlay(RoundedRectangle.standard(CornerStandard.element).strokeBorder(Color.green, lineWidth: 1))
+                            }
+                        }
+                    }
+                    let rest = actionRouter?.activeDestinations(layerId: LayerKind.slide.rawValue)?.screens ?? []
+                    Text("Everything else on this slide: Slide layer → \(rest.isEmpty ? "nowhere" : rest.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("No preset is active — every screen composites every layer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Nothing here is saved on the slide — the preset decides.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+

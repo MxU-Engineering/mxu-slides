@@ -37,9 +37,9 @@ private func cue(
     let song = presentation([a, b])
     var show = ShowState()
     show.fire(slide: a, presentation: song)
-    let after = show.liveMedia[.loopingVideos]
+    let after = show.liveMedia["loopingVideos"]
     show.fire(slide: b, presentation: song)
-    #expect(show.liveMedia[.loopingVideos] == after, "same media id = no-op, original kept")
+    #expect(show.liveMedia["loopingVideos"] == after, "same media id = no-op, original kept")
 }
 
 @Test func slideWithoutBackgroundLeavesMediaAlone() {
@@ -50,7 +50,7 @@ private func cue(
     var show = ShowState()
     show.fire(slide: a, presentation: song)
     show.fire(slide: b, presentation: song)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "ocean")
 }
 
 @Test func differentBackgroundReplacesOnItsLayer() {
@@ -60,7 +60,7 @@ private func cue(
     var show = ShowState()
     show.fire(slide: a, presentation: song)
     show.fire(slide: b, presentation: song)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "fire")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "fire")
 }
 
 @Test func songScopedBackgroundFiresFromAnySlide() {
@@ -69,7 +69,7 @@ private func cue(
     let song = presentation([a], background: cue("ocean"))
     var show = ShowState()
     show.fire(slide: a, presentation: song)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "ocean")
 }
 
 @Test func clearFunctionSlidesKeepsBackgroundLooping() {
@@ -79,7 +79,7 @@ private func cue(
     show.fire(slide: a, presentation: presentation([a]))
     show.clear(function: .slides)
     #expect(show.liveSlide == nil)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "ocean")
     let scene = show.scene()
     #expect(scene.layers.first { $0.kind == .slide }!.items.isEmpty)
     #expect(scene.layers.first { $0.kind == .loopingVideos }!.items.count == 1)
@@ -105,8 +105,8 @@ private func cue(
     show.fire(slide: a, presentation: song)
     show.fire(slide: b, presentation: song)
     show.clear(layer: .stillGraphics)
-    #expect(show.liveMedia[.stillGraphics] == nil)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean")
+    #expect(show.liveMedia["stillGraphics"] == nil)
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "ocean")
 }
 
 @Test func clearLayerSweepsAFiredVideoInput() {
@@ -115,9 +115,9 @@ private func cue(
     show.fire(
         media: CueMedia(mediaId: "camera::elgato", layer: .stillGraphics, loops: false),
         on: .videoInput)
-    #expect(show.liveMedia[.videoInput] != nil)
+    #expect(show.liveMedia["videoInput"] != nil)
     show.clear(layer: .videoInput)
-    #expect(show.liveMedia[.videoInput] == nil)
+    #expect(show.liveMedia["videoInput"] == nil)
 }
 
 @Test func overlayPersistsAcrossAdvancesAndClearsViaItsFunction() {
@@ -206,21 +206,21 @@ private func cue(
 
     var show = ShowState()
     show.fire(media: cue("walkin", loops: true), on: .loopingVideos)
-    let first = show.liveMedia[.loopingVideos]
+    let first = show.liveMedia["loopingVideos"]
     show.fire(media: cue("walkin"), on: .loopingVideos)
-    #expect(show.liveMedia[.loopingVideos] == first, "same id = no-op")
+    #expect(show.liveMedia["loopingVideos"] == first, "same id = no-op")
     show.fire(media: cue("sermon-bumper"), on: .videos)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "walkin", "other layers untouched")
-    #expect(show.liveMedia[.videos]?.mediaId == "sermon-bumper")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "walkin", "other layers untouched")
+    #expect(show.liveMedia["videos"]?.mediaId == "sermon-bumper")
 }
 
 @Test func firedForegroundStillSweepsOnSlideFire() {
     var show = ShowState()
     show.fire(media: cue("logo"), on: .stillGraphics)
-    #expect(show.liveMedia[.stillGraphics]?.mediaId == "logo")
+    #expect(show.liveMedia["stillGraphics"]?.mediaId == "logo")
     show.fire(slide: slide("verse1"), presentation: presentation([slide("verse1")]))
-    #expect(show.liveMedia[.stillGraphics] == nil, "the next slide clears a fired foreground still")
-    #expect(!show.directMediaFires.contains(.stillGraphics))
+    #expect(show.liveMedia["stillGraphics"] == nil, "the next slide clears a fired foreground still")
+    #expect(!show.directMediaFires.contains("stillGraphics"))
 }
 
 @Test func foregroundStillSurvivesWhenIncomingSlideRedeclaresIt() {
@@ -231,12 +231,12 @@ private func cue(
         "b", actions: [SlideAction(id: "a1", kind: .fireMedia, mediaId: "logo")]
     )
     show.fire(slide: keeps, presentation: presentation([keeps]))
-    #expect(show.liveMedia[.stillGraphics]?.mediaId == "logo", "re-declared still never flashes out")
+    #expect(show.liveMedia["stillGraphics"]?.mediaId == "logo", "re-declared still never flashes out")
     let drops = slide(
         "c", actions: [SlideAction(id: "a2", kind: .fireMedia, mediaId: "other")]
     )
     show.fire(slide: drops, presentation: presentation([drops]))
-    #expect(show.liveMedia[.stillGraphics] == nil, "a different declaration doesn't protect it")
+    #expect(show.liveMedia["stillGraphics"] == nil, "a different declaration doesn't protect it")
 }
 
 @Test func foregroundStampedStillAttachmentLeavesWithItsSlide() {
@@ -244,12 +244,12 @@ private func cue(
     let a = slide("a", background: cue("mountains", layer: .stillGraphics, classification: .foreground))
     var show = ShowState()
     show.fire(slide: a, presentation: presentation([a]))
-    #expect(show.liveMedia[.stillGraphics]?.mediaId == "mountains")
+    #expect(show.liveMedia["stillGraphics"]?.mediaId == "mountains")
     let other = slide("sermon1")
     show.fire(slide: other, presentation: Presentation(
         id: "p2", name: "Sermon", presentationKind: .deck, themeId: "", slides: [other]
     ))
-    #expect(show.liveMedia[.stillGraphics] == nil, "a foreground still leaves with its slide")
+    #expect(show.liveMedia["stillGraphics"] == nil, "a foreground still leaves with its slide")
 }
 
 @Test func backgroundStillOnStillGraphicsPersistsStampedOrNot() {
@@ -262,7 +262,7 @@ private func cue(
         show.fire(slide: other, presentation: Presentation(
             id: "p2", name: "Sermon", presentationKind: .deck, themeId: "", slides: [other]
         ))
-        #expect(show.liveMedia[.stillGraphics]?.mediaId == "mountains", "background persists (stamp: \(String(describing: stamp)))")
+        #expect(show.liveMedia["stillGraphics"]?.mediaId == "mountains", "background persists (stamp: \(String(describing: stamp)))")
     }
 }
 
@@ -272,11 +272,11 @@ private func cue(
     var show = ShowState()
     show.fire(slide: a, presentation: presentation([a]))
     show.fire(slide: slide("b"), presentation: presentation([a, slide("b")]))
-    #expect(show.liveMedia[.videos]?.mediaId == "bumper")
+    #expect(show.liveMedia["videos"]?.mediaId == "bumper")
     let unstamped = slide("c", background: cue("bumper2", layer: .videos))
     show.fire(slide: unstamped, presentation: presentation([unstamped]))
     show.fire(slide: slide("d"), presentation: presentation([slide("d")]))
-    #expect(show.liveMedia[.videos] == nil, "unstamped on Foreground Videos still reads foreground")
+    #expect(show.liveMedia["videos"] == nil, "unstamped on Foreground Videos still reads foreground")
 }
 
 @Test func firedBackgroundMediaStillPersistsAcrossSlideFires() {
@@ -284,7 +284,7 @@ private func cue(
     var show = ShowState()
     show.fire(media: cue("bg-still"), on: .loopingVideos)
     show.fire(slide: slide("verse1"), presentation: presentation([slide("verse1")]))
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "bg-still")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "bg-still")
 }
 
 @Test func scopedClearAllKeepsTheFiredSlideAndItsBackground() {
@@ -294,10 +294,10 @@ private func cue(
     show.fire(overlay: Overlay(id: "o1", name: "Lower Third", objects: []))
     show.fire(audio: CueAudio(audioItemId: "walkin"))
     show.fire(slide: verse, presentation: presentation([verse]))
-    show.clearAll(protecting: [.slide, .loopingVideos])
+    show.clearAll(protecting: ["slide", "loopingVideos"])
     #expect(show.liveSlide?.slide.id == "verse1", "the fire's own slide survives its clear")
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean", "the fire's own background survives")
-    #expect(show.liveMedia[.videos] == nil, "the stage being left sweeps")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "ocean", "the fire's own background survives")
+    #expect(show.liveMedia["videos"] == nil, "the stage being left sweeps")
     #expect(show.liveOverlays.isEmpty)
     #expect(show.liveAudio.isEmpty, "audio clears with the setting, exactly like the full form")
 }
@@ -305,7 +305,7 @@ private func cue(
 @Test func scopedClearAllHonorsTheAudioSetting() {
     var show = ShowState()
     show.fire(audio: CueAudio(audioItemId: "walkin"))
-    show.clearAll(sweeping: ClearAllScope.swept(skips: [.audio]), protecting: [.slide])
+    show.clearAll(sweeping: ClearAllScope.swept(skips: [.audio]), protecting: ["slide"])
     #expect(!show.liveAudio.isEmpty, "walk-in music survives when the panic clear excludes audio")
 }
 
@@ -325,7 +325,7 @@ private func cue(
     let song = presentation([a, b])
     var show = ShowState()
     show.fire(slide: b, presentation: song)
-    #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "ocean")
 }
 
 @Test func audioPersistsAcrossSlideAdvancesAndClears() {
@@ -530,13 +530,13 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     show.fire(media: cue("input::item::cam1"), on: .videoInput)
     show.fire(media: cue("input::item::cam2"), on: .videos)
     show.clear(function: .media)
-    #expect(show.liveMedia[.loopingVideos] == nil)
-    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "Clear Media leaves the camera up")
-    #expect(show.liveMedia[.videos]?.mediaId == "input::item::cam2", "an input fired on any layer is still Inputs")
+    #expect(show.liveMedia["loopingVideos"] == nil)
+    #expect(show.liveMedia["videoInput"]?.mediaId == "input::item::cam1", "Clear Media leaves the camera up")
+    #expect(show.liveMedia["videos"]?.mediaId == "input::item::cam2", "an input fired on any layer is still Inputs")
     show.fire(media: cue("ocean"), on: .loopingVideos)
     show.clear(function: .inputs)
-    #expect(show.liveMedia.keys.sorted { $0.rawValue < $1.rawValue } == [.loopingVideos])
-    #expect(show.directMediaFires == [.loopingVideos])
+    #expect(show.liveMedia.keys.sorted() == ["loopingVideos"])
+    #expect(show.directMediaFires == ["loopingVideos"])
 }
 
 @Test func clearLayerVideoInputStillSweepsTheCamera() {
@@ -552,13 +552,13 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     show.fire(media: cue("input::item::cam1"), on: .videoInput)
     show.fire(media: cue("bumper"), on: .videos)
     show.fire(slide: verse, presentation: presentation([verse]))
-    show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips), protecting: [.slide])
-    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "fire-scoped Clear All keeps the camera")
-    #expect(show.liveMedia[.videos] == nil)
+    show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips), protecting: ["slide"])
+    #expect(show.liveMedia["videoInput"]?.mediaId == "input::item::cam1", "fire-scoped Clear All keeps the camera")
+    #expect(show.liveMedia["videos"] == nil)
     #expect(show.liveSlide != nil)
     show.clearAll(sweeping: ClearAllScope.swept(skips: ClearAllScope.defaultSkips))
     #expect(show.liveSlide == nil)
-    #expect(show.liveMedia[.videoInput]?.mediaId == "input::item::cam1", "panic Clear All keeps the camera")
+    #expect(show.liveMedia["videoInput"]?.mediaId == "input::item::cam1", "panic Clear All keeps the camera")
     show.clearAll()
     #expect(show.liveMedia.isEmpty, "ticked, Inputs clears with everything else")
 }
@@ -605,4 +605,80 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     #expect(ShowFunction(apiName: "audio") == .audio)
     #expect(ShowFunction(apiName: "slides") == .slides)
     #expect(ShowFunction(apiName: "signage") == nil)
+}
+
+@Test func aCueOnACustomLayerCompositesAboveTheLayerItNames() {
+    var show = ShowState()
+    show.setCustomLayers([CustomLayer(id: "lower", name: "Lower Third", above: "slide")])
+    var background = cue("bug", classification: .background)
+    background.layerId = "lower"
+    show.fire(slide: slide("a", background: background))
+    #expect(show.liveMedia["lower"]?.mediaId == "bug")
+    #expect(show.liveMedia["loopingVideos"] == nil, "the custom layer, not the built-in default")
+    let ids = show.scene().layers.map(\.id)
+    #expect(ids.firstIndex(of: "lower") == ids.firstIndex(of: "slide").map { $0 + 1 })
+    let lower = show.scene().layers.first { $0.id == "lower" }
+    #expect(lower?.kind == nil)
+    #expect(lower?.name == "Lower Third")
+    #expect(lower?.items.map(\.id) == ["live-media-lower"])
+    #expect(show.wantedMedia().keys.contains("bug"))
+}
+
+@Test func anUnknownLayerIdFallsBackToTheDefaultLayer() {
+    var show = ShowState()
+    var background = cue("bug")
+    background.layerId = "gone"
+    show.fire(slide: slide("a", background: background))
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "bug")
+    #expect(show.liveMedia["gone"] == nil)
+}
+
+@Test func aForegroundCueOnACustomLayerSweepsLikeAnyForeground() {
+    var show = ShowState()
+    show.setCustomLayers([CustomLayer(id: "lower", name: "Lower", above: "slide")])
+    var background = cue("bug", classification: .foreground)
+    background.layerId = "lower"
+    show.fire(slide: slide("a", background: background))
+    show.fire(slide: slide("b"))
+    #expect(show.liveMedia["lower"] == nil, "foreground leaves with its slide")
+    var persists = cue("logo", classification: .background)
+    persists.layerId = "lower"
+    show.fire(slide: slide("c", background: persists))
+    show.fire(slide: slide("d"))
+    #expect(show.liveMedia["lower"]?.mediaId == "logo", "background persists until replaced")
+    show.clear(function: .media)
+    #expect(show.liveMedia["lower"] == nil)
+}
+
+@Test func removingACustomLayerTakesItsCueDownAndClearAllRespectsIt() {
+    var show = ShowState()
+    show.setCustomLayers([CustomLayer(id: "lower", name: "Lower", above: "slide")])
+    var background = cue("bug")
+    background.layerId = "lower"
+    show.fire(slide: slide("a", background: background))
+    show.clearAll(protecting: ["slide", "lower"])
+    #expect(show.liveMedia["lower"]?.mediaId == "bug", "a fire's own Clear All spares its custom layer")
+    show.clearAll(protecting: ["slide"])
+    #expect(show.liveMedia["lower"] == nil)
+    show.fire(slide: slide("a", background: background))
+    show.setCustomLayers([])
+    #expect(show.liveMedia["lower"] == nil, "no layer left to composite it")
+    #expect(!show.scene().layers.contains { $0.id == "lower" })
+}
+
+@Test func clearLayerByIdTakesDownOnlyThatCustomLayer() {
+    var show = ShowState()
+    show.setCustomLayers([CustomLayer(id: "lower", name: "Lower", above: "slide")])
+    var band = cue("band")
+    band.layerId = "lower"
+    show.fire(slide: slide("a", background: band))
+    show.fire(media: cue("walk-in"), on: .loopingVideos)
+    show.clear(layerID: "gone")
+    #expect(show.liveMedia["lower"]?.mediaId == "band", "an unknown id clears nothing")
+    show.clear(layerID: "lower")
+    #expect(show.liveMedia["lower"] == nil)
+    #expect(show.liveSlide != nil, "the slide stays")
+    #expect(show.liveMedia["loopingVideos"]?.mediaId == "walk-in", "other layers stay")
+    show.clear(layerID: "loopingVideos")
+    #expect(show.liveMedia["loopingVideos"] == nil, "a built-in id clears as Clear Layer always did")
 }

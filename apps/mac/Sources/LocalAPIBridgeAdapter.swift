@@ -136,7 +136,7 @@ final class AppAPIBridge: LocalAPIBridge {
         }
         var mediaLayers: [String: APIShowStatus.LayerContent] = [:]
         for (layer, cue) in state.liveMedia {
-            mediaLayers[layer.rawValue] = APIShowStatus.LayerContent(
+            mediaLayers[layer] = APIShowStatus.LayerContent(
                 mediaId: cue.mediaId,
                 mediaName: appModel.entry(cue.mediaId)?.name,
                 loops: cue.loops
@@ -179,7 +179,7 @@ final class AppAPIBridge: LocalAPIBridge {
         let countdowns = render.confidenceInfo.videoCountdowns
             .sorted { $0.key < $1.key }
             .map { layer, countdown in
-                let mediaId = LayerKind(rawValue: layer).flatMap { controls.state.liveMedia[$0]?.mediaId }
+                let mediaId = controls.state.liveMedia[layer]?.mediaId
                 let serviceItemId = mediaId.flatMap { controls.mediaFireContexts[$0] }
                 return APIVideoCountdown(
                     layer: layer, name: countdown.name, duration: countdown.duration,
@@ -240,7 +240,7 @@ final class AppAPIBridge: LocalAPIBridge {
         return controls.media.rows.map { row in
             APITransportRow(
                 mediaId: row.id, name: row.name,
-                layer: row.candidate.layer.rawValue,
+                layer: row.candidate.layerID,
                 playing: row.state.isPlaying,
                 looping: row.state.isLooping,
                 position: row.state.position(at: now),
@@ -258,6 +258,8 @@ final class AppAPIBridge: LocalAPIBridge {
                     "display"
                 } else if NDIScreenOutputs.shared.isCarrying(slice.id) {
                     "ndi"
+                } else if SyphonScreenOutputs.shared.isCarrying(slice.id) {
+                    "syphon"
                 } else if DeckLinkScreenOutputs.shared.isCarrying(slice.id) {
                     "decklink"
                 } else {
@@ -530,12 +532,11 @@ final class AppAPIBridge: LocalAPIBridge {
             }
             controls.clear(function: function)
         } else if let raw = command.layer {
-            guard let layer = LayerKind(rawValue: raw) else {
-                throw APIError.badRequest(
-                    "Unknown layer '\(raw)'. Layers: \(LayerKind.allCases.map(\.rawValue).joined(separator: ", "))."
-                )
+            let ids = controls.layerStack.map(\.id)
+            guard ids.contains(raw) else {
+                throw APIError.badRequest("Unknown layer '\(raw)'. Layers: \(ids.joined(separator: ", ")).")
             }
-            controls.clear(layer: layer)
+            controls.clear(layerID: raw)
         } else {
             throw APIError.badRequest("Provide either 'function' or 'layer'.")
         }

@@ -41,3 +41,11 @@ private let stuck = FocusWatch.Click(
     noKey.targetCanBecomeKey = false
     #expect(noKey.summary == "app active, no key window, window can't become key")
 }
+
+@Test func focusWatchResyncsOnlyWhenTheSystemHasTheInactiveAppInFront() {
+    let missed = FocusWatch.Front(appActive: false, frontIsSelf: true)
+    #expect(missed.resyncs, "AppKit missed the activation: give front up and take it back")
+    #expect(missed.summary == "app inactive, system front: this app")
+    #expect(!FocusWatch.Front(appActive: false, frontIsSelf: false).resyncs, "another app is in front: its click activates the usual way")
+    #expect(!FocusWatch.Front(appActive: true, frontIsSelf: true).resyncs)
+}

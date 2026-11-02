@@ -51,6 +51,19 @@ import Testing
         #expect(grid.contains("Glyph(kind: .timers, size: 12)\n                        .foregroundStyle(.secondary)"))
     }
 
+    @Test func tileBadgesTellTheirStoryOnHoverWithoutAppKitTooltips() throws {
+        let grid = try source("PresentGridView.swift")
+        let start = try #require(grid.range(of: "struct SlideTile: View {"))
+        let end = try #require(grid.range(of: "\nstruct ", range: start.upperBound..<grid.endIndex))
+        let tile = String(grid[start.lowerBound..<end.lowerBound])
+        #expect(!tile.contains(".help("), "a tile badge uses tileHelp, never an AppKit tooltip")
+        #expect(!grid.contains("reliableHelp("))
+        #expect(tile.contains(".environment(\\.tileTip, $tip)"))
+        #expect(tile.contains("if let tip { TileTipLabel(text: tip) }"))
+        #expect(grid.contains("modifier(TileHelp(text: text))"), "tileHelp is no longer the no-op seam")
+        #expect(grid.contains("content.onHover { over in"))
+    }
+
     @Test func combosCanUseTheLightIconAndSeeEachGlyph() throws {
         let combos = try source("Modules/ActionCombosModule.swift")
         #expect(combos.contains("(.light, \"Light\")"))

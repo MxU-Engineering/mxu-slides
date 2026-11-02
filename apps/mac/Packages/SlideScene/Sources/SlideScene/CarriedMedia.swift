@@ -94,7 +94,7 @@ extension SlideSceneBuilder {
                     live[layer] = nil
                 }
             case .clearAll:
-                for layer in live.keys where !protected.contains(layer) {
+                for layer in live.keys where !protected.contains(layer.rawValue) {
                     live[layer] = nil
                 }
             default:

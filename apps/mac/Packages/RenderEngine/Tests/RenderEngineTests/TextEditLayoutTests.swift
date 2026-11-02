@@ -19,6 +19,16 @@ final class TextEditLayoutTests: XCTestCase {
         XCTAssertGreaterThan(caps.caretRect(at: 3).minX, lower.caretRect(at: 3).minX + 5)
     }
 
+    func testPerRunUppercaseKeepsSourceIndexes() {
+        var text = StyledText(string: "aßb", fontSize: 120, alignment: .left)
+        text.styleRuns = [StyleRun(line: 0, column: 1, length: 1, transform: .uppercase)]
+        let caps = TextEditLayout(text: text, sceneFrame: box)
+        let upper = TextEditLayout(text: StyledText(string: "aSSb", fontSize: 120, alignment: .left), sceneFrame: box)
+
+        XCTAssertEqual(caps.sourceLength, 3)
+        XCTAssertEqual(caps.caretRect(at: 2).minX, upper.caretRect(at: 3).minX, accuracy: 0.01)
+    }
+
     func testWidenedUppercaseKeepsSourceIndexes() {
 
         let caps = TextEditLayout(
