@@ -96,7 +96,7 @@ final class FollowController {
 
     var me: String? { controls?.appModel.machineID }
 
-    private var myName: String { controls?.appModel.computerName() ?? "This Mac" }
+    var myName: String { controls?.appModel.computerName() ?? "This Mac" }
 
     var backingUp: Bool { pairing != nil && !inCharge }
 
@@ -179,6 +179,13 @@ final class FollowController {
         save(pairing)
         DiagnosticsStore.shared.note("follow.mode", detail: mirrors ? "live" : "standby")
         if backingUp, let endpoint { await catchUp(endpoint) }
+    }
+
+    func setAutomatic(_ automatic: Bool) {
+        guard var pairing, (pairing.automatic ?? true) != automatic else { return }
+        pairing.automatic = automatic
+        save(pairing)
+        DiagnosticsStore.shared.note("follow.automatic", detail: automatic ? "on" : "off")
     }
 
     private func putUpBoothPicture() async {
@@ -734,7 +741,9 @@ struct FollowBanner: View {
         .background(color.opacity(0.18))
     }
 
-    private var color: Color {
+    private var color: Color { Self.color(follow) }
+
+    static func color(_ follow: FollowController) -> Color {
         if follow.boothQuit, follow.state != .live { return .gray }
         return switch follow.state {
         case .live: .green

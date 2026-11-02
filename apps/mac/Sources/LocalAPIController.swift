@@ -174,6 +174,8 @@ final class LocalAPIController {
             guard let self else { return }
             self.cachedDefaultKeySecret = secret
             self.keysDidChange()
+
+            FollowController.shared.refreshBackups()
         }
     }
 

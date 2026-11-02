@@ -6,43 +6,139 @@ struct FollowSettingsControl: View {
     @State private var choosing = false
 
     var body: some View {
+        Button("Make This the Backup\u{2026}") { choosing = true }
+            .disabled(FollowController.shared.me == nil)
+            .sheet(isPresented: $choosing) {
+                FollowPairingSheet(own: FollowController.shared.me)
+            }
+    }
+}
+
+struct BackupSideControl: View {
+    var body: some View {
         let follow = FollowController.shared
         if let pairing = follow.pairing {
             HStack(spacing: 8) {
-                Picker("While \(pairing.name) runs", selection: Binding(
-                    get: { pairing.mirrors ?? true },
-                    set: { mirrors in Task { await follow.setMirrors(mirrors) } })) {
-                    Text("Show it live").tag(true)
-                    Text("Stay ready").tag(false)
+                if follow.inCharge {
+                    Button("Hand Back") { Task { await follow.handBack() } }
+                } else {
+                    if follow.state == .gaveUp {
+                        Button("Try Again") { follow.tryAgain() }
+                    }
+                    Button("Take Over") { Task { await follow.takeOver() } }
                 }
-                .labelsHidden()
+                Menu("Options") {
+                    Picker("While \(pairing.name) runs", selection: Binding(
+                        get: { pairing.mirrors ?? true },
+                        set: { mirrors in Task { await follow.setMirrors(mirrors) } })) {
+                        Text("Show the same thing live").tag(true)
+                        Text("Stay ready, show nothing").tag(false)
+                    }
+                    .pickerStyle(.inline)
+                    Picker("If \(pairing.name) stops", selection: Binding(
+                        get: { pairing.automatic ?? true },
+                        set: { follow.setAutomatic($0) })) {
+                        Text("Take over after 3 seconds").tag(true)
+                        Text("Wait for Take Over").tag(false)
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Button("Stop Backing Up") { Task { await follow.unpair() } }
+                }
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
                 .fixedSize()
-                Button("Stop Backing Up") { Task { await follow.unpair() } }
             }
-        } else {
-            Button("Back Up Another Computer\u{2026}") { choosing = true }
-                .disabled(follow.me == nil)
-                .sheet(isPresented: $choosing) {
-                    FollowPairingSheet(own: follow.me)
-                }
         }
     }
 }
 
-struct FollowPairingCodeControl: View {
+struct BoothSideControl: View {
     let api: LocalAPIController?
+    @State private var settingUp = false
+    @State private var forgetting: String?
 
     var body: some View {
-        if FollowController.shared.pairing != nil {
-            Text("Not while this computer is a backup.").foregroundStyle(.secondary)
-        } else if let api, api.running {
-            HStack(spacing: 8) {
-                Text(api.pairingCode).font(.title3.monospacedDigit().weight(.semibold))
-                Button("New Code") { api.newPairingCode() }
+        let follow = FollowController.shared
+        Group {
+            if follow.steppedDown != nil {
+                Button("Take Back") { follow.takeBack() }
+            } else if follow.backups.isEmpty {
+                Button("Set Up a Backup\u{2026}") { settingUp = true }
+            } else {
+                Menu("Options") {
+                    Button("Set Up Another Backup\u{2026}") { settingUp = true }
+                    Divider()
+                    ForEach(follow.backups, id: \.self) { name in
+                        Button("Forget \(name)\u{2026}") { forgetting = name }
+                    }
+                }
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
+                .fixedSize()
             }
-        } else {
-            Text("Turn on the API in Network & API first.").foregroundStyle(.secondary)
         }
+        .sheet(isPresented: $settingUp) { BackupCodeSheet(api: api, name: FollowController.shared.myName) }
+        .confirmationDialog("Forget \(forgetting ?? "")?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } })) {
+            Button("Forget", role: .destructive) {
+                if let forgetting { follow.forget(backup: forgetting) }
+            }
+        } message: {
+            Text("It stops following this computer until it pairs again with this computer's code.")
+        }
+    }
+}
+
+struct BackupCodeSheet: View {
+    let api: LocalAPIController?
+    let name: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Set up a backup").font(.headline)
+            Text("A second Mac on this network follows this one and can take over if it stops.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            if let api, api.running {
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
+                    GridRow {
+                        Text("1.").foregroundStyle(.secondary)
+                        Text("On the backup Mac, open MxU Slides › Settings › Backup.")
+                    }
+                    GridRow {
+                        Text("2.").foregroundStyle(.secondary)
+                        Text("Click Make This the Backup\u{2026} and pick \(name.isEmpty ? "this computer" : name).")
+                    }
+                    GridRow(alignment: .firstTextBaseline) {
+                        Text("3.").foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("Enter this code:")
+                            Text(api.pairingCode).font(.title2.monospacedDigit().weight(.semibold))
+                            Button("New Code") { api.newPairingCode() }
+                                .controlSize(.small)
+                        }
+                    }
+                }
+            } else if let api {
+                HStack {
+                    Text("The backup reaches this computer through its API, which is off.")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Turn On the API") { api.enabled = true }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .padding(20)
+        .frame(width: 440)
     }
 }
 
@@ -78,8 +174,8 @@ struct FollowPairingSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Back up another computer").font(.headline)
-            Text("This computer follows the other one fire for fire: live on its own screens, or ready with clear screens until it takes over. Its own triggers wait until then.")
+            Text("Make this the backup").font(.headline)
+            Text("This Mac shows what the main computer shows, or stays ready with clear screens. It answers its own triggers only after it takes over.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
@@ -90,6 +186,7 @@ struct FollowPairingSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
+
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
                     GridRow {
                         Text("Computer").gridColumnAlignment(.trailing)

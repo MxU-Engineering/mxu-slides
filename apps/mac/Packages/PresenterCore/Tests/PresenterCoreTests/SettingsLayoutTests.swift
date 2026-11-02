@@ -5,7 +5,7 @@ import Testing
 @Suite struct SettingsLayoutTests {
     @Test func sidebarOrderIsS13() {
         #expect(SettingsLayout.pages.map(\.id) == [
-            "general", "present", "edit", "screens",
+            "general", "backup", "present", "edit", "screens",
             "avInputs", "streamRecord", "midi", "keyboard", "api",
         ])
     }
@@ -22,7 +22,9 @@ import Testing
             "groups.palette": "edit",
             "edit.hideSidebar": "edit",
             "appearance.scheme": "general",
-            "library.scheduledBackup": "general",
+            "library.scheduledBackup": "backup",
+            "station.backup": "backup",
+            "station.beBackup": "backup",
             "audio.fadeEnabled": "present",
         ]
         for (row, page) in expected {

@@ -217,7 +217,7 @@ struct SettingsFormRow: View {
         LabeledContent {
             spec.control
         } label: {
-            Text(spec.title)
+            SettingsRowTitle(title: spec.title, dot: spec.dot)
             if let caption = spec.caption, !caption.isEmpty {
                 Text(caption)
                     .font(.caption)
@@ -226,6 +226,20 @@ struct SettingsFormRow: View {
             }
         }
         .settingsHelp(spec.help)
+    }
+}
+
+struct SettingsRowTitle: View {
+    let title: String
+    var dot: Color? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let dot {
+                Circle().fill(dot).frame(width: 8, height: 8)
+            }
+            Text(title)
+        }
     }
 }
 

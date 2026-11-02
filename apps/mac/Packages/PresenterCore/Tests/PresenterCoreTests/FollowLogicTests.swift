@@ -114,4 +114,34 @@ import Testing
         #expect(Follow.backupDroppedBanner("Backup Mac").title == "Backup Mac stopped following.")
         #expect(Follow.boothBackupLine("Backup Mac", connected: true, inCharge: true).hasPrefix("Backup Mac took over"))
     }
+
+    @Test func settingsSaysHowThePairStandsOnTheBooth() {
+        #expect(Follow.boothSettingsLine(backups: [], connected: [], tookOver: nil).title == "No backup computer")
+        #expect(Follow.boothSettingsLine(backups: ["Backup Mac"], connected: ["Backup Mac"], tookOver: nil).title == "Backup Mac is following this computer")
+        #expect(Follow.boothSettingsLine(backups: ["Backup Mac"], connected: [], tookOver: nil).title == "Backup Mac isn't connected")
+        let two = Follow.boothSettingsLine(backups: ["A", "B"], connected: ["B"], tookOver: nil)
+        #expect(two.title == "2 backups follow this computer" && two.detail == "Connected now: B.")
+        #expect(Follow.boothSettingsLine(backups: ["Backup Mac"], connected: [], tookOver: "Backup Mac").title == "Backup Mac took over")
+    }
+
+    @Test func settingsSaysHowThePairStandsOnTheBackup() {
+        let live = Follow.backupSettingsLine(following: "Booth", state: .live, inCharge: false, standby: false, automatic: true, copied: 2)
+        #expect(live.title == "Backing up Booth")
+        #expect(live.detail == "Shows the same thing live. Takes over after 3 seconds. 2 items copied.")
+        let ready = Follow.backupSettingsLine(following: "Booth", state: .live, inCharge: false, standby: true, automatic: false, copied: 0)
+        #expect(ready.title == "Ready to take over from Booth")
+        #expect(ready.detail == "Stays ready with clear screens. Waits for Take Over.")
+        #expect(Follow.backupSettingsLine(following: "Booth", state: .lost(frozen: true), inCharge: false, standby: false, automatic: true, copied: 0).title == "Booth froze")
+        #expect(Follow.backupSettingsLine(following: "Booth", state: .live, inCharge: true, standby: false, automatic: true, copied: 0).title == "Took over from Booth")
+    }
+
+    @Test func optionsChangeHowTheBackupFollowsWhilePaired() throws {
+        let sweep = try SourceSweep.app()
+        let options = try #require(sweep.file("FollowPairingSheet.swift")).text
+        #expect(options.contains("set: { mirrors in Task { await follow.setMirrors(mirrors) } }"))
+        #expect(options.contains("set: { follow.setAutomatic($0) }"))
+        let controller = try #require(sweep.file("FollowController.swift")).text
+        #expect(controller.contains("pairing.automatic = automatic\n        save(pairing)"))
+        #expect(controller.contains("Follow.takesOverOnItsOwn(automatic: pairing?.automatic ?? true"))
+    }
 }
