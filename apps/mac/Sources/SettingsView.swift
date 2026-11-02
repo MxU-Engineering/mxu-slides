@@ -448,8 +448,34 @@ struct AppSettingsView: View {
             control: AnyView(NDINetworkScopeControl())
         ))
         rows.append(contentsOf: apiRows)
+        rows.append(contentsOf: backupComputerRows)
         return rows
             .sorted { SettingsLayout.order(ofRow: $0.id) < SettingsLayout.order(ofRow: $1.id) }
+    }
+
+    private var backupComputerRows: [SettingsRowSpec] {
+        let follow = FollowController.shared
+        let keywords = "follow failover backup standby mirror pair pairing code take over booth redundant spare second computer"
+        if let pairing = follow.pairing {
+            let line = Follow.backupSettingsLine(
+                following: pairing.name, state: follow.state, inCharge: follow.inCharge, standby: follow.standingBy,
+                automatic: pairing.automatic ?? true, copied: follow.copiedItems, boothQuit: follow.boothQuit)
+            return [SettingsRowSpec(
+                id: "station.backup", title: line.title, caption: line.detail, keywords: keywords,
+                control: AnyView(BackupSideControl()), dot: follow.inCharge ? .blue : FollowBanner.color(follow))]
+        }
+        let line = Follow.boothSettingsLine(backups: follow.backups, connected: follow.connectedBackups, tookOver: follow.steppedDown?.backupName)
+        let dot: Color = follow.steppedDown != nil ? .orange : follow.connectedBackups.isEmpty ? .secondary : .green
+        var rows = [SettingsRowSpec(
+            id: "station.backup", title: line.title, caption: line.detail, keywords: keywords,
+            control: AnyView(BoothSideControl(api: api)), dot: dot)]
+        if follow.backups.isEmpty, follow.steppedDown == nil {
+            rows.append(SettingsRowSpec(
+                id: "station.beBackup", title: "Make this the backup",
+                caption: "Is this Mac the spare? Pair it with the main computer from here.", keywords: keywords,
+                control: AnyView(FollowSettingsControl())))
+        }
+        return rows
     }
 
     private var groupsRows: [SettingsRowSpec] {
@@ -568,6 +594,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     case general
 
+    case backup
+
     case present
 
     case edit
@@ -596,6 +624,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .streamRecord: "Stream & Record"
 
         case .api: "Network & API"
+        case .backup: "Backup"
         }
     }
 
@@ -610,6 +639,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .screens: "display"
         case .streamRecord: "record.circle"
         case .api: "network"
+        case .backup: "display.2"
         }
     }
 }
@@ -646,6 +676,8 @@ struct SettingsRowSpec: Identifiable {
     let control: AnyView
 
     var stacked: Bool = false
+
+    var dot: Color? = nil
 
     var help: String? { Self.help[id] }
 

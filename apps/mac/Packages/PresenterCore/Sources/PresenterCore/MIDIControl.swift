@@ -268,6 +268,8 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
     case stopTimeline
     case rewindTimeline
 
+    case followTakeOver
+
     public var defaultNote: Int {
         switch self {
         case .clearAll: 0
@@ -301,6 +303,7 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .startTimeline: 14
         case .stopTimeline: 15
         case .rewindTimeline: 16
+        case .followTakeOver: 36
         }
     }
 
@@ -316,7 +319,7 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .videoGoToBeginning, .videoPlayPause, .videoPlay, .videoPause:
             .video
         case .nextServiceItem, .previousServiceItem, .nextSlide, .previousSlide,
-             .startTimeline, .stopTimeline, .rewindTimeline:
+             .startTimeline, .stopTimeline, .rewindTimeline, .followTakeOver:
             .presentation
         case .selectService, .selectServiceItem, .triggerSlide,
              .selectAudioPlaylist, .triggerAudio,
@@ -359,6 +362,7 @@ public enum MIDICommand: String, Codable, CaseIterable, Sendable {
         case .startTimeline: "Start Timeline"
         case .stopTimeline: "Stop Timeline"
         case .rewindTimeline: "Rewind Timeline"
+        case .followTakeOver: "Take Over (Backup)"
         }
     }
 }

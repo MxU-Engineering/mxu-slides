@@ -602,6 +602,11 @@ struct SlideEditorView: View {
             }
         }
 
+        if let dropped = appModel.themeDesign(payload) {
+            guard model.hasPresentationSettings else { return false }
+            model.pickThemeSlide(dropped.design.name, themeId: dropped.themeId, for: slide.id)
+            return true
+        }
         if insertZone {
             return model.insertMediaSlide(mediaID: payload, beforeSlideID: slide.id)
         }

@@ -1,4 +1,5 @@
 import Foundation
+import LocalAPI
 import MediaEngine
 import Observation
 import PresenterCore
@@ -91,6 +92,9 @@ final class MediaTransportController {
 
     func togglePlayPause(_ id: String) {
         guard let row = rows.first(where: { $0.id == id }) else { return }
+
+        APIFireFeed.shared.publish(APIFireEvent(
+            kind: .mediaTransport, id: id, mediaTransport: APIMediaTransportCommand(action: row.state.isPlaying ? "pause" : "resume")))
         if row.state.isPlaying {
             render.media.pause(id: id)
         } else {
@@ -100,11 +104,15 @@ final class MediaTransportController {
     }
 
     func seek(_ id: String, to seconds: Double, final: Bool) {
+        if final {
+            APIFireFeed.shared.publish(APIFireEvent(kind: .mediaTransport, id: id, mediaTransport: APIMediaTransportCommand(action: "seek", position: seconds)))
+        }
         render.media.seek(id: id, to: seconds, precise: final)
         refresh()
     }
 
     func resetToStart(_ id: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .mediaTransport, id: id, mediaTransport: APIMediaTransportCommand(action: "reset")))
         render.media.seek(id: id, to: 0, precise: true)
         refresh()
     }

@@ -32,7 +32,7 @@ public enum ScheduledBackup {
     }
 
     public static func caption(folder: String?, lastRun: Date?, problem: String?, calendar: Calendar = .current) -> String {
-        guard let folder else { return "Off. Choose a folder or drive to back up to every night." }
+        guard let folder else { return "Off. Choose a folder or drive." }
         let name = (folder as NSString).lastPathComponent
         if let problem { return "The last backup to \(name) didn't finish: \(problem)" }
         let last = lastRun.map { " Last: \($0.formatted(Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).weekday(.abbreviated).hour().minute()))." } ?? ""

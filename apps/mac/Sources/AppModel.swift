@@ -36,7 +36,7 @@ enum LibrarySection: String, CaseIterable, Identifiable {
     }
 
     var isBrowseOnly: Bool {
-        self == .media || self == .audio
+        self == .media || self == .audio || self == .themes
     }
 
     var playlistKind: PlaylistKind? {
@@ -2301,6 +2301,13 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    func themeDesign(_ payload: String) -> (themeId: String, design: Slide)? {
+        guard let drag = ThemeDesignDrag.parse(payload),
+              let design = theme(drag.themeId)?.slides?.first(where: { $0.id == drag.designId })
+        else { return nil }
+        return (drag.themeId, design)
     }
 
     func presentationHasSlideThemes(_ presentationID: String) -> Bool {

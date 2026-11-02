@@ -99,6 +99,8 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
 
     private var ages = (windowStart: -Double.infinity, video: 0.0, audio: 0.0)
     private var lastAges: (video: Double, audio: Double)?
+
+    private var backlog = DirectInputBacklog()
     private var black = DropoutWatch()
 
     init(persistentID: Int64, name: String) {
@@ -111,8 +113,10 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
     }
 
     var ageSummary: String? {
-        lock.withLock { lastAges }.map {
+        let (ages, driver) = lock.withLock { (lastAges, backlog.last) }
+        return ages.map {
             "card \(name) videoAge=\(Int($0.video * 1000))ms audioAge=\(Int($0.audio * 1000))ms"
+                + (driver.map { " " + $0.summary } ?? "")
         }
     }
 
@@ -290,6 +294,27 @@ final class DeckLinkDirectCapture: @unchecked Sendable {
         }
     }
 
+    fileprivate func timingArrived(
+        audioMinusVideo: Double, queuedAudioFrames: Int32, queuedVideoFrames: Int32,
+        stampAge: Double, droppedPictures: Int64, generation: Int
+    ) {
+        let jump = lock.withLock { () -> (from: Double, to: Double)? in
+            guard generation == self.generation else { return nil }
+            return backlog.record(
+                audioMinusVideo: audioMinusVideo.isNaN ? nil : audioMinusVideo,
+                queuedAudioFrames: queuedAudioFrames < 0 ? nil : Int(queuedAudioFrames),
+                queuedVideoFrames: queuedVideoFrames < 0 ? nil : Int(queuedVideoFrames),
+                stampAge: stampAge < 0 ? nil : stampAge,
+                droppedPictures: droppedPictures, at: CACurrentMediaTime())
+        }
+        if let jump {
+            DiagnosticsStore.shared.note(
+                "input.decklink",
+                detail: "\(name): card sound vs picture moved "
+                    + String(format: "%+.3f s → %+.3f s", jump.from, jump.to))
+        }
+    }
+
     fileprivate func formatChanged(_ format: String, interlaced: Bool, generation: Int) {
         if lock.withLock({ generation == self.generation }) {
             DiagnosticsStore.shared.note(
@@ -325,6 +350,16 @@ private final class DeckLinkDirectSink: NSObject, DeckLinkInputSinkProtocol, @un
         owner?.audioArrived(
             samples, frames: Int(frames), channels: Int(channels), hostTime: hostTime,
             generation: generation)
+    }
+
+    func inputTiming(
+        audioMinusVideo: Double, queuedAudioFrames: Int32, queuedVideoFrames: Int32,
+        stampAge: Double, droppedPictures: Int64
+    ) {
+        owner?.timingArrived(
+            audioMinusVideo: audioMinusVideo, queuedAudioFrames: queuedAudioFrames,
+            queuedVideoFrames: queuedVideoFrames, stampAge: stampAge,
+            droppedPictures: droppedPictures, generation: generation)
     }
 
     func inputFormat(_ name: String, interlaced: Bool) {

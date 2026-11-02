@@ -13,6 +13,12 @@ struct APIWebSocketHandler: WSMessageHandler {
         tokens.activeToken(id: token.id)?.scope == token.scope
     }
 
+    var beat: (@Sendable () -> UInt64)? = nil
+
+    var hold: (@Sendable (APIRoute) -> APIError?)? = nil
+
+    var heard: (@Sendable (String) -> Void)? = nil
+
     struct Inbound: Decodable {
         var type: String
         var topics: [String]?
@@ -76,7 +82,10 @@ struct APIWebSocketHandler: WSMessageHandler {
         }
         switch inbound.type {
         case "ping":
-            Self.send(["type": "pong"], to: continuation)
+            if let heard { heard(token.name) }
+            var pong: [String: Any] = ["type": "pong"]
+            if let beat { pong["beat"] = beat() }
+            Self.send(pong, to: continuation)
         case "subscribe", "unsubscribe":
             let topics = (inbound.topics ?? APITopic.allCases.map(\.rawValue))
                 .compactMap(APITopic.init(rawValue:))
@@ -124,6 +133,10 @@ struct APIWebSocketHandler: WSMessageHandler {
         guard scope.allows(match.route.scope) else {
             let error = APIError.forbidden(match.route.scope)
             reply(status: error.status, data: encode(error))
+            return
+        }
+        if let held = hold?(match.route) {
+            reply(status: held.status, data: encode(held))
             return
         }
         let body = inbound.body.map { $0.encoded() } ?? Data()

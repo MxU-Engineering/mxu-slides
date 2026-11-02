@@ -6,7 +6,7 @@ public enum LibraryPresentLogic {
     }
 
     public static func editsFromRow(_ kind: DocumentKind) -> Bool {
-        fires(kind) || kind == .presentation
+        fires(kind) || kind == .presentation || kind == .theme
     }
 
     public static let volunteerDefaultKinds: [DocumentKind] = [.presentation, .overlay, .media, .audio]

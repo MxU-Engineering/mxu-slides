@@ -98,3 +98,10 @@ private func theme(_ id: String, _ designs: [Slide]) -> Theme {
     #expect(contexts.filter { offScreen.answers($0, contexts: contexts, isHostTarget: $0 == "sermon") } == ["sermon"])
     #expect(contexts.filter { NewSlideRoute().answers($0, contexts: contexts, isHostTarget: false) }.isEmpty)
 }
+
+@Test func aDraggedThemeDesignRoundTrips() {
+    let payload = ThemeDesignDrag.payload(themeId: "worship", designId: "lyrics")
+    #expect(ThemeDesignDrag.parse(payload).map { [$0.themeId, $0.designId] } == ["worship", "lyrics"])
+    #expect(ThemeDesignDrag.parse("mxuslide::deck::slide") == nil, "another drag")
+    #expect(ThemeDesignDrag.parse("mxuthemedesign::worship") == nil, "no design")
+}

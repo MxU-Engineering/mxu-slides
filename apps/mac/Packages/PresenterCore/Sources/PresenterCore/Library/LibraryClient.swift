@@ -479,7 +479,7 @@ import Foundation
         }
     }
 
-    private func afterQueued<T: Sendable>(
+    func afterQueued<T: Sendable>(
         _ work: @escaping @Sendable @LibraryActor (LibraryEngine) async throws -> T
     ) -> Task<T, any Error> {
         let previous = tail

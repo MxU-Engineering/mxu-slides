@@ -11,13 +11,15 @@ import Testing
         #expect(!LibraryPresentLogic.fires(.theme))
     }
 
-    @Test func decksEditFromTheirRowButNeverFire() {
-        #expect(LibraryPresentLogic.editsFromRow(.presentation))
-        #expect(!LibraryPresentLogic.fires(.presentation))
+    @Test func decksAndThemesEditFromTheirRowButNeverFire() {
+        for kind in [DocumentKind.presentation, .theme] {
+            #expect(LibraryPresentLogic.editsFromRow(kind))
+            #expect(!LibraryPresentLogic.fires(kind))
+        }
         for kind in [DocumentKind.media, .audio, .overlay] {
             #expect(LibraryPresentLogic.editsFromRow(kind))
         }
-        #expect(!LibraryPresentLogic.editsFromRow(.theme))
+        #expect(!LibraryPresentLogic.editsFromRow(.service))
     }
 
     @Test func volunteersGetTheFiringLibrariesByDefault() {

@@ -53,6 +53,8 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
     private var watchdogPing: UInt64 = 0
 
     private let answeredPing = OSAllocatedUnfairLock(initialState: UInt64(0))
+
+    var mainBeat: UInt64 { answeredPing.withLock { $0 } }
     private var lastHangSampleAt: Double = -1_000
     private var lastCPUTime: Double = -1
 

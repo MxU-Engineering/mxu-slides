@@ -698,7 +698,8 @@ final class PresentationTimelineController: TimelinePlayheadSource {
     private func apply(_ effects: [PresentationTimelines.Effect], cues: [TimelineCue], deck: Presentation) {
 
         let effects = underTimecode ? TimecodeFollow.underTimecode(effects, playsAudio: timecodePlaysAudio) : effects
-        guard !effects.isEmpty else { return }
+
+        guard !effects.isEmpty, !FollowController.isBackingUp else { return }
 
         fire(effects, cues: cues, deck: deck)
     }

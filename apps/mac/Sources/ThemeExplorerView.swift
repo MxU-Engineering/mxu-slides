@@ -18,19 +18,22 @@ struct ThemeLook: Identifiable {
         #endif
         let ordered = entries.filter { $0.id == firstThemeId } + entries.filter { $0.id != firstThemeId }
         return ordered.compactMap { entry in
-            appModel.theme(entry.id).map { theme in
-                let designs = theme.slides ?? []
-                let slides = designs.map { NewSlide.preview(of: $0, themeId: theme.id) }
-                return ThemeLook(
-                    theme: theme,
-                    deck: Presentation(
-                        id: "newSlide|\(theme.id)", name: theme.name, presentationKind: .deck,
-                        themeId: theme.id, slides: slides),
-
-                    previews: Dictionary(zip(designs.map(\.id), slides), uniquingKeysWith: { first, _ in first }),
-                    stamp: "\(entry.updatedAt.timeIntervalSince1970)")
-            }
+            appModel.theme(entry.id).map { ThemeLook($0, stamp: "\(entry.updatedAt.timeIntervalSince1970)") }
         }
+    }
+}
+
+extension ThemeLook {
+    init(_ theme: Theme, stamp: String) {
+        let designs = theme.slides ?? []
+        let slides = designs.map { NewSlide.preview(of: $0, themeId: theme.id) }
+        self.init(
+            theme: theme,
+            deck: Presentation(
+                id: "newSlide|\(theme.id)", name: theme.name, presentationKind: .deck,
+                themeId: theme.id, slides: slides),
+            previews: Dictionary(zip(designs.map(\.id), slides), uniquingKeysWith: { first, _ in first }),
+            stamp: stamp)
     }
 }
 

@@ -121,6 +121,13 @@ typedef struct {
     const int32_t *audio;
     int32_t audioFrames;
     int32_t audioChannels;
+
+    double audioMinusVideoSeconds;
+
+    int32_t queuedVideoFrames;
+    int32_t queuedAudioFrames;
+
+    double stampAgeSeconds;
 } DLKInputFrame;
 
 typedef void (*DLKInputFrameHandler)(void *context, const DLKInputFrame *frame);

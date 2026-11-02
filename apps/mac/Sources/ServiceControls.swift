@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import AudioEngine
 import Foundation
+import LocalAPI
 import MediaEngine
 import NDIKit
 import Observation
@@ -446,6 +447,23 @@ final class ServiceControls {
         contextID: String? = nil, occurrence: Int? = nil, slideActions: Bool = true
     ) {
 
+        let seq = APIFireFeed.shared.publish(APIFireEvent(
+            kind: .slide,
+            slide: APIFireSlideCommand(
+                presentationId: presentation.id, slideId: slide.id, arrangementId: arrangementId,
+                serviceItemId: contextID, occurrence: occurrence),
+            settled: nextFireArrivesSettled ? true : nil, slideActions: slideActions ? nil : false))
+        APIFireFeed.$cause.withValue(seq) {
+            dispatch(
+                slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
+                occurrence: occurrence, slideActions: slideActions)
+        }
+    }
+
+    private func dispatch(
+        slide: Slide, in presentation: Presentation, arrangementId: String?,
+        contextID: String?, occurrence: Int?, slideActions: Bool
+    ) {
         settlePending()
         let routed = slideActions ? slide : Self.withoutActions(slide)
         let incoming = actionRouter?.predictedOverrideThemes(for: routed, contextID: contextID) ?? Array(slideThemeOverrides.values)
@@ -461,7 +479,7 @@ final class ServiceControls {
                 self.pendingHandoff = nil
                 self.nextFireArrivesSettled = settled
                 defer { self.nextFireArrivesSettled = false }
-                self.fire(
+                self.dispatch(
                     slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
                     occurrence: occurrence, slideActions: slideActions)
             }
@@ -571,11 +589,13 @@ final class ServiceControls {
         }
         if steps > 0 {
             if state.advanceStep(atHostTime: CACurrentMediaTime()) {
+                APIFireFeed.shared.publish(APIFireEvent(kind: .step, steps: 1))
                 apply()
                 syncAutoAdvanceArming()
                 return
             }
         } else if state.unadvanceStep() {
+            APIFireFeed.shared.publish(APIFireEvent(kind: .step, steps: -1))
             apply()
             syncAutoAdvanceArming()
             return
@@ -1107,6 +1127,7 @@ final class ServiceControls {
     }
 
     func fire(overlay: Overlay) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .overlay, id: overlay.id))
         state.fire(overlay: overlay, atHostTime: CACurrentMediaTime())
         apply()
 
@@ -1140,12 +1161,16 @@ final class ServiceControls {
         }
 
         let contextID: String? = if case .serviceItem(let id) = context { id } else { nil }
+
+        let seq = APIFireFeed.shared.publish(APIFireEvent(
+            kind: .media, id: mediaItem.id, serviceItemId: contextID, loops: loopsOverride))
+
         if let contextID {
             mediaFireContexts[mediaItem.id] = contextID
         } else {
             mediaFireContexts[mediaItem.id] = nil
         }
-        actionRouter?.applyPresetSwitches(forMedia: mediaItem, contextID: contextID)
+        APIFireFeed.$cause.withValue(seq) { actionRouter?.applyPresetSwitches(forMedia: mediaItem, contextID: contextID) }
 
         if let own = RenderContext.sceneTransition(from: mediaItem.transition) {
             render.nextLiveTransitions[layer.rawValue] = own
@@ -1161,7 +1186,7 @@ final class ServiceControls {
             restart(mediaID: mediaItem.id)
         }
 
-        actionRouter?.mediaDidFire(mediaItem, on: layer)
+        APIFireFeed.$cause.withValue(seq) { actionRouter?.mediaDidFire(mediaItem, on: layer) }
         switch context {
         case .direct: cancelMediaAdvance()
         case .serviceItem(let id):
@@ -1173,11 +1198,13 @@ final class ServiceControls {
     }
 
     func dismissOverlay(id: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .dismissOverlay, id: id))
         state.dismissOverlay(id: id, atHostTime: CACurrentMediaTime())
         apply()
     }
 
     func dismissAllOverlays() {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .dismissOverlay))
         let now = CACurrentMediaTime()
         for overlay in state.liveOverlays {
             state.dismissOverlay(id: overlay.id, atHostTime: now)
@@ -1199,6 +1226,7 @@ final class ServiceControls {
     }
 
     func fire(playlist: Playlist, startAt entryID: String? = nil, repeatOverride: Bool? = nil) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioPlaylist, id: playlist.id, entryId: entryID))
         let replaced = audio.play(
             playlist: playlist, startAt: entryID, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }
@@ -1208,11 +1236,13 @@ final class ServiceControls {
     }
 
     func stopAudio(playlistID: String) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(playlistId: playlistID)))
         if let cue = audio.stop(playlistID: playlistID) { state.dismissAudio(cue) }
         apply()
     }
 
     func stopAudio(audioItemID: String, fade: TimeInterval? = nil, curve: AudioFadeCurve = .linear) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(audioItemId: audioItemID)))
         if let cue = audio.stop(audioItemID: audioItemID, fade: fade, curve: curve) { state.dismissAudio(cue) }
         apply()
     }
@@ -1225,6 +1255,7 @@ final class ServiceControls {
     }
 
     func fire(audioItem: AudioItem, repeatOverride: Bool? = nil) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .audioItem, id: audioItem.id))
         let replaced = audio.play(audioItem: audioItem, repeatOverride: repeatOverride)
         for cue in replaced { state.dismissAudio(cue) }
         state.fire(audio: CueAudio(audioItemId: audioItem.id))
@@ -1243,6 +1274,11 @@ final class ServiceControls {
     ) {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        APIFireFeed.shared.publish(APIFireEvent(
+            kind: .alert,
+            alert: APIFireAlertCommand(
+                presetId: id, message: trimmed, behavior: behavior.rawValue, target: target.rawValue, themeId: themeId),
+            layer: layer?.rawValue))
         pendingAlertTheme?.cancel()
         pendingAlertTheme = nil
 
@@ -1327,6 +1363,7 @@ final class ServiceControls {
     }
 
     func clear(function: ShowFunction) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .clear, clear: APIClearCommand(function: function.rawValue)))
         settlePending()
         if function == .media || function == .inputs {
             stashExitTransition(for: state.liveMedia.filter { $0.value.showFunction == function }.keys)
@@ -1362,6 +1399,7 @@ final class ServiceControls {
 
     func clear(layerID: String) {
         guard let layer = layerStack.first(where: { $0.id == layerID }) else { return }
+        APIFireFeed.shared.publish(APIFireEvent(kind: .clear, clear: APIClearCommand(layer: layerID)))
         settlePending()
         stashExitTransition(for: [layerID])
         state.clear(layerID: layerID, atHostTime: CACurrentMediaTime())
@@ -1376,6 +1414,7 @@ final class ServiceControls {
     }
 
     func clearAll(protecting: Set<String> = [], cancelsPendingActions: Bool = true) {
+        APIFireFeed.shared.publish(APIFireEvent(kind: .clearAll))
         settlePending()
         if cancelsPendingActions { actionRouter?.cancelPendingDelayedActions() }
 
