@@ -127,7 +127,6 @@ struct MediaTransportStrip: View {
                     if target.marks.isEmpty {
                         nameCaption(target, position: nil)
                     } else {
-
                         TimelineView(.animation(minimumInterval: 1, paused: !target.state.isPlaying)) { context in
                             nameCaption(target, position: target.state.position(at: context.date))
                         }
@@ -160,7 +159,6 @@ struct MediaTransportStrip: View {
                             font: .monospacedDigitSystemFont(ofSize: 10, weight: .regular), color: .tertiaryLabelColor,
                             alignment: .center, frame: view.bounds)
                     }
-
                     .frame(width: 80, height: 13)
                     .allowsHitTesting(false)
                     nameCaption(target, position: nil)
@@ -337,7 +335,6 @@ private struct GoToTimeReadout: View {
                 .help("Seek to this time (or press Return)")
             }
         } else {
-
             Color.clear
                 .frame(width: digitsWidth, height: 13)
                 .overlay {

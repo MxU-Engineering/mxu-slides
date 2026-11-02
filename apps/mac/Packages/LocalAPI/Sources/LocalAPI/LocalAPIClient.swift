@@ -37,7 +37,6 @@ public actor LocalAPIClient {
 
     public enum Health: Equatable, Sendable {
         public enum Loss: Equatable, Sendable {
-
             case closed
 
             case noAnswer
@@ -205,7 +204,6 @@ public actor LocalAPIClient {
 
 public struct HeartbeatMonitor: Sendable, Equatable {
     public struct Limits: Sendable, Equatable {
-
         public var lostAfter: Double = 3
 
         public var frozenAfter: Double = 2

@@ -174,7 +174,6 @@ final class AudioPlayer {
     }
 
     func togglePlayPause() {
-
         APIFireFeed.shared.publish(APIFireEvent(kind: .audioTransport, audioTransport: APIAudioTransportCommand(action: "playPause")))
         guard currentTrackName != nil else {
 

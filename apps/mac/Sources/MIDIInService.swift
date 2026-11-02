@@ -166,7 +166,6 @@ final class MIDIInController {
     }
 
     private func handleCommand(_ command: MIDICommand, velocity: Int) {
-
         let index = velocity - 1
         switch command {
         case .clearAll:

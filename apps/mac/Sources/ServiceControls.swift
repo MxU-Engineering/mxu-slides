@@ -464,7 +464,6 @@ final class ServiceControls {
         slide: Slide, in presentation: Presentation, arrangementId: String?,
         contextID: String?, occurrence: Int?, slideActions: Bool
     ) {
-
         settlePending()
         let routed = slideActions ? slide : Self.withoutActions(slide)
         let incoming = actionRouter?.predictedOverrideThemes(for: routed, contextID: contextID) ?? Array(slideThemeOverrides.values)

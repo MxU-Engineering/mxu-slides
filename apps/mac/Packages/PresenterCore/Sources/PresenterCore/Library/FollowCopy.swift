@@ -1,7 +1,6 @@
 import Foundation
 
 public enum FollowCopy {
-
     public static let kinds: [DocumentKind] = Library.listedKinds.filter { SyncScope.scope(for: $0) == .team || setupKinds.contains($0) }
 
     public static let setupKinds: Set<DocumentKind> = [.outputPreset, .streamRecordPreset, .streamDestination]
@@ -21,7 +20,6 @@ public enum FollowCopy {
 }
 
 extension LibraryEngine {
-
     public func documentBytes(kind: DocumentKind, id: String) throws -> Data? {
         try documentBytes(SyncScope.entityType(for: kind), id: id)
     }
@@ -58,7 +56,6 @@ extension LibraryEngine {
 }
 
 extension LibraryClient {
-
     public func documentBytes(kind: DocumentKind, id: String) async throws -> Data? {
         try await afterQueued { engine in try engine.documentBytes(kind: kind, id: id) }.value
     }

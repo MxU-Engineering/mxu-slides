@@ -36,7 +36,6 @@ import Testing
         ("TimersController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .timer, id: id, timer: .reset))"),
         ("ActionRouter.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .combo, id: comboID))"),
         ("OutputPresetsController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .outputPreset, id: id))"),
-
         ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .audioPlaylist, id: playlist.id, entryId: entryID))"),
         ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .audioItem, id: audioItem.id))"),
         ("ServiceControls.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .stopAudio, audioStop: APIAudioStopCommand(playlistId: playlistID)))"),
@@ -48,10 +47,8 @@ import Testing
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: row.state.isPlaying ? \"pause\" : \"resume\")"),
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"seek\", position: seconds)"),
         ("MediaTransportController.swift", "APIMediaTransportCommand(action: \"reset\")"),
-
         ("FollowController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .role, term: role.term, inCharge: me))"),
         ("StreamingController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .capture, id: live?.presetID))"),
-
         ("FollowController.swift", "APIFireFeed.shared.publish(APIFireEvent(kind: .quit))"),
     ]
 

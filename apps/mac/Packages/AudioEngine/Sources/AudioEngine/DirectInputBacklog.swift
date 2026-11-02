@@ -1,7 +1,6 @@
 import Foundation
 
 public struct DirectInputBacklog: Equatable, Sendable {
-
     public static let jumpSeconds = 0.1
     public static let windowSeconds = 10.0
 

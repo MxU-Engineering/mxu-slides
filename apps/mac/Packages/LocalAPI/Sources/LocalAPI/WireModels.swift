@@ -807,7 +807,6 @@ public struct APIOutputsStatus: Codable, Sendable {
 
 public struct APIFireEvent: Codable, Sendable, Equatable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
-
         case slide
 
         case step

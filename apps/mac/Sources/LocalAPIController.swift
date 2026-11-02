@@ -338,7 +338,6 @@ final class LocalAPIController {
             act("/v1/follow/takeover", "followTakeOver", "A backup takes over.") { await FollowController.shared.takeOver(reason: "API") },
             act("/v1/follow/handback", "followHandBack", "A backup in charge hands back.") { await FollowController.shared.handBack() },
             act("/v1/follow/takeback", "followTakeBack", "A booth that stepped down takes back.") { FollowController.shared.takeBack() },
-
             APIRoute("GET", "/v1/follow/files", scope: .control, operationId: "followFiles",
                      summary: "This computer's library items, for its backup.", tag: "Follow", responseSchema: object) { _ in
                 .json(try await FollowFileCopy.offered(model))

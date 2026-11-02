@@ -193,7 +193,6 @@ final class FollowController {
         let events = standby.takeover(here: bridge.showStatus(), now: .now)
         await APIFireSource.$current.withValue(APIFireSource(kind: .follow, name: pairing?.name)) {
             for event in events {
-
                 for attempt in 0..<10 {
                     do {
                         try await FollowReplay.apply(event, to: bridge)
@@ -368,7 +367,6 @@ final class FollowController {
         case .health(let health):
             let wasLive = state == .live
             state = switch health {
-
             case .connecting: if case .lost = state { state } else { .connecting }
             case .live: .live
             case .lost(.frozen): .lost(frozen: true)

@@ -976,7 +976,6 @@ struct LibrarySidebar: View {
             .draggablePayload(runOnly ? nil : entry.id)
             .contextMenu { entryMenu(entry, menus: menus) }
             .modifier(slideDropTarget(entry))
-
             .simultaneousGesture(TapGesture().onEnded {
                 if entry.kind == .theme, NSEvent.modifierFlags.isDisjoint(with: [.command, .shift]) {
                     model.librarySelection = [entry.id]
@@ -986,7 +985,6 @@ struct LibrarySidebar: View {
     }
 
     private func fireActions(_ entry: LibraryIndex.Entry) -> LibraryFireActions? {
-
         guard appModeRaw == AppMode.present.rawValue || entry.kind == .theme,
               LibraryPresentLogic.editsFromRow(entry.kind) else { return nil }
         return LibraryFireActions(model: model, controls: controls, entry: entry) {
@@ -1766,7 +1764,6 @@ private struct EntryRow: View {
                 LibraryRowFireControls(actions: fire, hovering: hovering)
             }
             if entry.kind == .theme {
-
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)

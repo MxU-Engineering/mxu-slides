@@ -168,7 +168,6 @@ public final class FollowPairing: @unchecked Sendable {
 }
 
 public final class FollowPresence: @unchecked Sendable {
-
     public static let prefix = "Backup: "
 
     public static func backupName(_ tokenName: String) -> String? {
@@ -227,7 +226,6 @@ public struct APIFollowPairResponse: Codable, Sendable, Equatable {
 }
 
 public enum FollowHold {
-
     public static let prefix = "/v1/follow"
 
     public static func error(for route: APIRoute, following name: String) -> APIError? {
@@ -251,7 +249,6 @@ public struct APIFollowRoleCommand: Codable, Sendable, Equatable {
 }
 
 public struct APIFollowStatus: Codable, Sendable, Equatable {
-
     public var role: String
 
     public var name: String?
@@ -274,7 +271,6 @@ public struct APIFollowStatus: Codable, Sendable, Equatable {
 }
 
 public enum FollowFiles {
-
     public struct Item: Codable, Sendable, Equatable {
         public var kind: String
         public var id: String
@@ -300,7 +296,6 @@ public enum FollowFiles {
     }
 
     public struct Document: Codable, Sendable, Equatable {
-
         public var bytes: Data
         public init(bytes: Data) { self.bytes = bytes }
     }

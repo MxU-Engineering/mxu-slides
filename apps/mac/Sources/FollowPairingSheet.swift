@@ -186,7 +186,6 @@ struct FollowPairingSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 10) {
                     GridRow {
                         Text("Computer").gridColumnAlignment(.trailing)

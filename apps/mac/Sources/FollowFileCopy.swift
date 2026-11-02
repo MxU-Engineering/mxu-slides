@@ -4,7 +4,6 @@ import PresenterCore
 
 @MainActor
 enum FollowFileCopy {
-
     static let copiedKey = "follow.copiedItems"
 
     static func offered(_ model: AppModel) async throws -> FollowFiles.List {

@@ -8,7 +8,7 @@ import Testing
         #expect(library.contains("Theme.self, id: entry.id, updatedAt: stamp, client: client"), "the face decodes off main")
         #expect(library.contains("if entry.kind == .theme, NSEvent.modifierFlags.isDisjoint(with: [.command, .shift]) {\n                    model.librarySelection = [entry.id]\n                    openThemeID = entry.id"), "the click selects it too, so Edit opens it")
         #expect(!library.contains("openThemeID = nil\n"), "stays open across tabs: pick a deck in Slides, drag its designs onto the editor's rows")
-        #expect(library.contains(".modifier(slideDropTarget(entry))\n            // A theme opens like a folder"), "the tap sits outside the drop target, which Edit's click rebuilds")
+        #expect(library.contains(".modifier(slideDropTarget(entry))\n            .simultaneousGesture(TapGesture().onEnded {"), "the tap sits outside the drop target, which Edit's click rebuilds")
         #expect(library.contains("AppModel.folderableSections.contains(model.selectedSection) || model.selectedSection == .themes"), "Themes has the grid")
         #expect(library.contains("if entry.kind == .theme, !NSEvent.modifierFlags.contains(.shift) {\n                    openThemeID = entry.id"), "a theme card opens too")
     }
@@ -37,7 +37,7 @@ import Testing
         #expect(drops.contains("!GutterDropDelegate.appliesToSlide(payload: payload)"), "gaps refuse it")
         let grid = try #require(sweep.file("PresentGridView.swift")).text
         #expect(grid.contains("model.applyTheme(to: presentation.id, slideIDs: [slide.id], themeID: dropped.themeId, design: dropped.design.name)"))
-        #expect(try #require(sweep.file("AppModel.swift")).text.contains("self == .media || self == .audio || self == .notes || self == .themes"),
+        #expect(try #require(sweep.file("AppModel.swift")).text.contains("self == .media || self == .audio || self == .themes"),
                 "Edit keeps the deck open on the Themes tab, to drop designs on")
         let editor = try #require(sweep.file("SlideEditorView.swift")).text
         #expect(editor.contains("guard model.hasPresentationSettings else { return false }\n            model.pickThemeSlide(dropped.design.name, themeId: dropped.themeId, for: slide.id)"))

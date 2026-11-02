@@ -1,7 +1,6 @@
 import Foundation
 
 public enum Follow {
-
     public static func holds(_ kind: SlideActionKind) -> Bool {
         switch kind {
         case .midiOut, .captureStart, .captureStop: true
@@ -58,7 +57,6 @@ public enum Follow {
 }
 
 public struct FollowRole: Codable, Equatable, Sendable {
-
     public var term: Int
 
     public var inCharge: String
@@ -82,7 +80,6 @@ public struct FollowRole: Codable, Equatable, Sendable {
 }
 
 public extension Follow {
-
     static func takesOverOnItsOwn(automatic: Bool, backingUp: Bool, wasLive: Bool, boothQuit: Bool = false, now state: State) -> Bool {
         guard automatic, backingUp, wasLive, !boothQuit else { return false }
         if case .lost = state { return true }

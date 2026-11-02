@@ -99,7 +99,6 @@ public final class BonjourBrowser: @unchecked Sendable {
     }
 
     private func resolve(_ endpoint: NWEndpoint, _ candidate: Candidate) {
-
         let parameters = NWParameters.tcp
         (parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options)?.version = .v4
         let connection = NWConnection(to: endpoint, using: parameters)

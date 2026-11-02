@@ -20,7 +20,6 @@ struct LibraryThemeDesigns: View {
     @State private var selection: String?
 
     var body: some View {
-
         let theme = model.theme(entry.id)
         VStack(spacing: 0) {
             header
@@ -40,7 +39,6 @@ struct LibraryThemeDesigns: View {
             }
         }
         .task(id: entry.id) { await model.themesFilled([entry.id]) }
-
         .onChange(of: selection) { _, id in
             if let id { pick(id) }
         }
@@ -97,10 +95,8 @@ struct LibraryThemeDesigns: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 2)
                 }
-
                 .modifier(LibraryCardFireOverlay(actions: actions(design)))
                 .contentShape(Rectangle())
-
                 .onTapGesture { selection = design.id }
                 .accessibilityAddTraits(.isButton)
                 .overlay {
